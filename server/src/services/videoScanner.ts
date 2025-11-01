@@ -28,15 +28,18 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
   const folderPath = getVideosFolderPath();
   const files = await fs.readdir(folderPath);
   
-  const descriptionFiles = files.filter(file => file.endsWith('.description'));
+  // Filter out system files (starting with dot)
+  const visibleFiles = files.filter(file => !file.startsWith('.'));
+  
+  const descriptionFiles = visibleFiles.filter(file => file.endsWith('.description'));
   const videos: VideoInfo[] = [];
 
   for (const descFile of descriptionFiles) {
     const baseName = getBaseName(descFile);
     
-    // Find corresponding .mp4 and .webp files
-    const videoFile = files.find(f => getBaseName(f) === baseName && f.endsWith('.mp4'));
-    const thumbnailFile = files.find(f => getBaseName(f) === baseName && f.endsWith('.webp'));
+    // Find corresponding .mp4 and .webp files (only from visible files)
+    const videoFile = visibleFiles.find(f => getBaseName(f) === baseName && f.endsWith('.mp4'));
+    const thumbnailFile = visibleFiles.find(f => getBaseName(f) === baseName && f.endsWith('.webp'));
 
     if (videoFile && thumbnailFile) {
       try {
