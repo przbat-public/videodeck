@@ -4,6 +4,7 @@
   "description": "YouTube video search application with yt-dlp support",
   "scripts": {
     "install:all": "cd server && npm install && cd ../client && npm install",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
     "build:server": "cd server && npm run build",
@@ -18,5 +19,8 @@
   },
   "engines": {
     "node": "22.x"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   }
 }
