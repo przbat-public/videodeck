@@ -1,5 +1,5 @@
 import express from 'express';
-import { searchVideos, scanVideos } from '../services/videoScanner';
+import { searchVideos, getAllVideos } from '../services/videoScanner';
 import { getVideoFilePath, validateVideosFolder } from '../config';
 import fs from 'fs/promises';
 import path from 'path';
@@ -9,12 +9,11 @@ const router = express.Router();
 // GET /api/videos/search?q={query}
 router.get('/search', async (req, res) => {
   try {
-    await validateVideosFolder();
     const query = req.query.q as string | undefined;
     
     const videos = query 
-      ? await searchVideos(query) 
-      : await scanVideos();
+      ? searchVideos(query) 
+      : getAllVideos();
     
     res.json({ videos });
   } catch (error) {
@@ -27,10 +26,9 @@ router.get('/search', async (req, res) => {
 });
 
 // GET /api/videos/list
-router.get('/list', async (req, res) => {
+router.get('/list', (req, res) => {
   try {
-    await validateVideosFolder();
-    const videos = await scanVideos();
+    const videos = getAllVideos();
     res.json({ videos });
   } catch (error) {
     console.error('Error listing videos:', error);
@@ -44,7 +42,6 @@ router.get('/list', async (req, res) => {
 // GET /api/videos/file/:filename
 router.get('/file/:filename', async (req, res) => {
   try {
-    await validateVideosFolder();
     const filename = req.params.filename;
     const filePath = getVideoFilePath(filename);
     

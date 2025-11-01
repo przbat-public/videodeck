@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { validateVideosFolder } from './config';
+import { loadVideosCache } from './services/videoScanner';
 import videosRouter from './routes/videos';
 
 dotenv.config();
@@ -27,6 +28,9 @@ async function startServer() {
     // Validate videos folder on startup
     await validateVideosFolder();
     console.log(`Videos folder validated: ${process.env.VIDEOS_FOLDER_PATH}`);
+    
+    // Load videos cache into memory
+    await loadVideosCache();
     
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);

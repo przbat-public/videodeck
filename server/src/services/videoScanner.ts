@@ -10,6 +10,10 @@ export interface VideoInfo {
   thumbnailPath: string;
 }
 
+// Cache in memory
+let videosCache: VideoInfo[] = [];
+let isCacheLoaded = false;
+
 /**
  * Extract base name from filename (remove extension)
  */
@@ -20,7 +24,7 @@ function getBaseName(filename: string): string {
 /**
  * Scan folder for .description files and extract video information
  */
-export async function scanVideos(): Promise<VideoInfo[]> {
+async function scanVideosFromDisk(): Promise<VideoInfo[]> {
   const folderPath = getVideosFolderPath();
   const files = await fs.readdir(folderPath);
   
@@ -57,17 +61,53 @@ export async function scanVideos(): Promise<VideoInfo[]> {
 }
 
 /**
- * Search videos by query in description
+ * Load videos into cache (called on server startup)
  */
-export async function searchVideos(query: string): Promise<VideoInfo[]> {
-  if (!query || query.trim().length === 0) {
-    return scanVideos();
+export async function loadVideosCache(): Promise<void> {
+  try {
+    console.log('Loading videos cache...');
+    videosCache = await scanVideosFromDisk();
+    isCacheLoaded = true;
+    console.log(`Videos cache loaded: ${videosCache.length} videos found`);
+  } catch (error) {
+    console.error('Failed to load videos cache:', error);
+    throw error;
+  }
+}
+
+/**
+ * Refresh videos cache
+ */
+export async function refreshVideosCache(): Promise<void> {
+  isCacheLoaded = false;
+  await loadVideosCache();
+}
+
+/**
+ * Get all videos from cache
+ */
+export function getAllVideos(): VideoInfo[] {
+  if (!isCacheLoaded) {
+    throw new Error('Videos cache not loaded. Call loadVideosCache() first.');
+  }
+  return [...videosCache]; // Return a copy to prevent external modifications
+}
+
+/**
+ * Search videos by query in description (uses cache)
+ */
+export function searchVideos(query: string): VideoInfo[] {
+  if (!isCacheLoaded) {
+    throw new Error('Videos cache not loaded. Call loadVideosCache() first.');
   }
 
-  const allVideos = await scanVideos();
+  if (!query || query.trim().length === 0) {
+    return [];
+  }
+
   const searchTerm = query.toLowerCase().trim();
 
-  return allVideos.filter(video => 
+  return videosCache.filter(video => 
     video.description.toLowerCase().includes(searchTerm) ||
     video.name.toLowerCase().includes(searchTerm)
   );
