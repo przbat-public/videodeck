@@ -199,75 +199,161 @@
   flex: 1;
 }
 
-/* Video Player */
-.video-player-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 2rem;
-}
-
-.video-player-container {
-  position: relative;
-  max-width: 1200px;
-  width: 100%;
-  background: #000;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.video-player-close {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.7);
-  color: white;
-  border: none;
-  font-size: 2rem;
-  cursor: pointer;
-  z-index: 1001;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  transition: background 0.3s;
-}
-
-.video-player-close:hover {
-  background: rgba(0, 0, 0, 0.9);
-}
-
-.video-player {
-  width: 100%;
-  height: auto;
+/* Video Card Link */
+.video-card-link {
+  text-decoration: none;
+  color: inherit;
   display: block;
 }
 
-.video-player-info {
-  padding: 1.5rem;
-  background: #1a1a1a;
-  color: white;
+/* Video Detail Page */
+.video-detail-page {
+  min-height: 100vh;
+  background: #f5f5f5;
 }
 
-.video-player-info h2 {
-  font-size: 1.5rem;
+.video-detail-header {
+  padding: 1rem 2rem;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.back-link {
+  display: inline-block;
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.3s;
+}
+
+.back-link:hover {
+  color: #5568d3;
+}
+
+.video-detail-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.video-detail-main {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.video-player-section {
+  margin-bottom: 2rem;
+}
+
+.video-player-full {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  background: #000;
+}
+
+.video-detail-info h1 {
+  font-size: 1.8rem;
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.video-meta {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.video-meta span {
+  padding: 0.25rem 0.5rem;
+  background: #f0f0f0;
+  border-radius: 4px;
+}
+
+.video-description-full {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.video-description-full h2 {
+  font-size: 1.2rem;
   margin-bottom: 0.75rem;
+  color: #333;
 }
 
-.video-player-info p {
-  color: #ccc;
+.video-description-full p {
   line-height: 1.6;
+  color: #666;
   white-space: pre-wrap;
+}
+
+/* Comments Section */
+.video-comments-section {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.video-comments-section h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  color: #333;
+}
+
+.comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.comment-item {
+  padding: 1rem;
+  background: #f9f9f9;
+  border-radius: 6px;
+  border-left: 3px solid #667eea;
+}
+
+.comment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.comment-header strong {
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.comment-likes {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.comment-text {
+  color: #555;
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+}
+
+.comment-time {
+  color: #999;
+  font-size: 0.85rem;
+}
+
+.no-comments {
+  color: #666;
+  font-style: italic;
+  padding: 2rem;
+  text-align: center;
 }
 
 /* Responsive */
@@ -288,20 +374,16 @@
     grid-template-columns: 1fr;
   }
 
-  .video-player-overlay {
-    padding: 0;
+  .video-detail-container {
+    padding: 1rem;
   }
 
-  .video-player-container {
-    border-radius: 0;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
+  .video-detail-main {
+    padding: 1rem;
   }
 
-  .video-player {
-    flex: 1;
-    object-fit: contain;
+  .video-comments-section {
+    padding: 1rem;
   }
 }
 

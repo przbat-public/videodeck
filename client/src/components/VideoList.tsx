@@ -3,10 +3,9 @@ import VideoCard from './VideoCard';
 
 interface VideoListProps {
   videos: VideoInfo[];
-  onPlay: (video: VideoInfo) => void;
 }
 
-export default function VideoList({ videos, onPlay }: VideoListProps) {
+export default function VideoList({ videos }: VideoListProps) {
   if (videos.length === 0) {
     return (
       <div className="video-list-empty">
@@ -18,7 +17,7 @@ export default function VideoList({ videos, onPlay }: VideoListProps) {
   return (
     <div className="video-list">
       {videos.map((video) => (
-        <VideoCard key={video.baseName} video={video} onPlay={onPlay} />
+        <VideoCard key={video.baseName} video={video} />
       ))}
     </div>
   );

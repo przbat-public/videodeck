@@ -1,28 +1,19 @@
-import { useState } from 'react';
-import { useVideoSearch, VideoInfo } from './hooks/useVideoSearch';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { useVideoSearch } from './hooks/useVideoSearch';
 import SearchBar from './components/SearchBar';
 import VideoList from './components/VideoList';
-import VideoPlayer from './components/VideoPlayer';
+import VideoDetail from './pages/VideoDetail';
 import './App.css';
 
-function App() {
+function HomePage() {
   const { videos, loading, error, search } = useVideoSearch();
-  const [selectedVideo, setSelectedVideo] = useState<VideoInfo | null>(null);
 
   const handleSearch = async (query: string) => {
     await search(query);
   };
 
-  const handlePlay = (video: VideoInfo) => {
-    setSelectedVideo(video);
-  };
-
-  const handleClosePlayer = () => {
-    setSelectedVideo(null);
-  };
-
   return (
-    <div className="app">
+    <>
       <header className="app-header">
         <h1>Video Search</h1>
         <p>Search through your downloaded YouTube videos</p>
@@ -42,12 +33,23 @@ function App() {
             <p>Loading videos...</p>
           </div>
         ) : (
-          <VideoList videos={videos} onPlay={handlePlay} />
+          <VideoList videos={videos} />
         )}
       </main>
+    </>
+  );
+}
 
-      <VideoPlayer video={selectedVideo} onClose={handleClosePlayer} />
-    </div>
+function App() {
+  return (
+    <Router>
+      <div className="app">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/video/:baseName" element={<VideoDetail />} />
+        </Routes>
+      </div>
+    </Router>
   );
 }
 
