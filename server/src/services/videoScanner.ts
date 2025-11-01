@@ -58,7 +58,9 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
   const videos: VideoInfo[] = [];
   let loadedCount = 0;
 
-  console.log(`Scanning folder: ${totalFiles} .info.json files found`);
+  if (totalFiles > 0) {
+    console.log(`Scanning folder: ${totalFiles} .info.json files found`);
+  }
 
   for (const infoFile of infoJsonFiles) {
     // Remove .info.json extension to get base name for matching video/webp files
@@ -93,7 +95,7 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
           }
           // Skip this file and continue with others
           const percentage = totalFiles > 0 ? ((loadedCount / totalFiles) * 100).toFixed(1) : '0.0';
-          console.log(`Loaded: ${loadedCount}/${totalFiles} files (${percentage}%)`);
+          process.stdout.write(`\rLoaded: ${loadedCount}/${totalFiles} files (${percentage}%)`);
           continue;
         }
 
@@ -109,16 +111,31 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
           thumbnailPath: thumbnailFile,
           uploadDate,
         });
-
-        // Log progress after each successfully loaded file
-        const percentage = totalFiles > 0 ? ((loadedCount / totalFiles) * 100).toFixed(1) : '0.0';
-        console.log(`Loaded: ${loadedCount}/${totalFiles} files (${percentage}%)`);
       } catch (error) {
         // Handle file read errors (not JSON parsing errors)
         console.error(`Error reading info.json file ${infoFile}:`, error);
-        // Continue with other files
+        loadedCount++; // Count even files that failed to read
       }
+    } else {
+      // File .info.json doesn't have matching .mp4 or .webp, but count it as processed
+      if (!videoFile && !thumbnailFile) {
+        console.error(`\nSkipping ${infoFile}: missing both video (.mp4) and thumbnail (.webp) files`);
+      } else if (!videoFile) {
+        console.error(`\nSkipping ${infoFile}: missing video file (.mp4)`);
+      } else if (!thumbnailFile) {
+        console.error(`\nSkipping ${infoFile}: missing thumbnail file (.webp)`);
+      }
+      loadedCount++;
     }
+
+    // Log progress after processing each file (overwrite same line)
+    const percentage = totalFiles > 0 ? ((loadedCount / totalFiles) * 100).toFixed(1) : '0.0';
+    process.stdout.write(`\rLoaded: ${loadedCount}/${totalFiles} files (${percentage}%)`);
+  }
+
+  // Add newline after progress is complete
+  if (totalFiles > 0) {
+    process.stdout.write('\n');
   }
 
   // Sort by upload date (newest first)
