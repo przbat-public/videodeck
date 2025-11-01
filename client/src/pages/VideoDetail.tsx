@@ -254,11 +254,9 @@ export default function VideoDetail() {
             
             {details && (
               <div className="video-meta">
-                <span>{details.channel}</span>
                 {details.viewCount > 0 && <span>{details.viewCount.toLocaleString()} views</span>}
                 {details.likeCount > 0 && <span>{details.likeCount.toLocaleString()} likes</span>}
                 {details.uploadDate && <span>{formatDate(details.uploadDate)}</span>}
-                {details.duration && <span>{details.duration}</span>}
               </div>
             )}
 
