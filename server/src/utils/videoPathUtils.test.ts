@@ -1,4 +1,4 @@
-import { sanitizeFilename, getVideoFilePath } from './config';
+import { sanitizeFilename, getVideoFilePath } from './videoPathUtils';
 
 describe('sanitizeFilename', () => {
   it('should return valid filename as-is', () => {
@@ -79,4 +79,3 @@ describe.skip('getVideoFilePath', () => {
     expect(() => getVideoFilePath('')).toThrow();
   });
 });
-

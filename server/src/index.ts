@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { validateVideosFolder } from './config';
+import { validateVideosFolder } from './utils/videoPathUtils';
 import { loadVideosCache } from './services/videoScanner';
 import videosRouter from './routes/videos';
 

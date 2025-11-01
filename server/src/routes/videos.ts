@@ -1,6 +1,7 @@
 import express from 'express';
 import { searchVideos, getAllVideos } from '../services/videoScanner';
-import { getVideoFilePath, getVideosFolderPath } from '../config';
+import { getVideoFilePath } from '../utils/videoPathUtils';
+import { getVideosFolderPath } from '../config';
 import fs from 'fs/promises';
 import path from 'path';
 

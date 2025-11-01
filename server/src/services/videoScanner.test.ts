@@ -3,7 +3,6 @@ import {
   searchVideos,
   loadVideosCache,
   refreshVideosCache,
-  VideoInfo,
 } from './videoScanner';
 import * as fs from 'fs/promises';
 import * as config from '../config';
@@ -16,33 +15,6 @@ const mockedFs = fs as jest.Mocked<typeof fs>;
 const mockedConfig = config as jest.Mocked<typeof config>;
 
 describe('videoScanner', () => {
-  const mockVideos: VideoInfo[] = [
-    {
-      baseName: '20231201_TestVideo1',
-      name: 'Test Video 1',
-      description: 'Test Video 1',
-      videoPath: '20231201_TestVideo1.mp4',
-      thumbnailPath: '20231201_TestVideo1.webp',
-      uploadDate: '20231201',
-    },
-    {
-      baseName: '20231115_TestVideo2',
-      name: 'Test Video 2',
-      description: 'Another test video',
-      videoPath: '20231115_TestVideo2.mp4',
-      thumbnailPath: '20231115_TestVideo2.webp',
-      uploadDate: '20231115',
-    },
-    {
-      baseName: '20231010_TestVideo3',
-      name: 'Test Video 3',
-      description: 'Third test video',
-      videoPath: '20231010_TestVideo3.mp4',
-      thumbnailPath: '20231010_TestVideo3.webp',
-      uploadDate: '20231010',
-    },
-  ];
-
   beforeEach(() => {
     jest.clearAllMocks();
     // Reset module state
