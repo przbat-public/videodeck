@@ -382,10 +382,26 @@
   font-size: 0.85rem;
 }
 
-.comment-replies-count {
+.comment-replies-toggle {
+  background: none;
+  border: none;
   color: #667eea;
+  cursor: pointer;
+  padding: 0;
   font-size: 0.85rem;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: color 0.2s;
+}
+
+.comment-replies-toggle:hover {
+  color: #5568d3;
+}
+
+.comment-replies-count {
+  color: inherit;
 }
 
 .comment-replies {

@@ -70,6 +70,20 @@ function formatCommentDate(timestamp: number): string {
 }
 
 /**
+ * Count total nested comments (including replies to replies)
+ */
+function countAllReplies(comment: Comment): number {
+  if (!comment.replies || comment.replies.length === 0) {
+    return 0;
+  }
+  let count = comment.replies.length;
+  comment.replies.forEach(reply => {
+    count += countAllReplies(reply);
+  });
+  return count;
+}
+
+/**
  * Recursive component for rendering comments with nested replies
  */
 function CommentComponent({ comment, depth = 0 }: { comment: Comment; depth?: number }) {
@@ -77,12 +91,15 @@ function CommentComponent({ comment, depth = 0 }: { comment: Comment; depth?: nu
   const hasReplies = comment.replies && comment.replies.length > 0;
   const isReply = depth > 0;
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isRepliesExpanded, setIsRepliesExpanded] = useState(false); // Default to collapsed
   
   const commentText = comment.text || '';
   const isLong = commentText.length > MAX_COMMENT_LENGTH;
   const displayText = isLong && !isExpanded 
     ? commentText.substring(0, MAX_COMMENT_LENGTH) + '...'
     : commentText;
+  
+  const totalRepliesCount = hasReplies ? countAllReplies(comment) : 0;
 
   return (
     <div className={`comment-item ${isReply ? 'comment-reply' : ''}`} style={{ marginLeft: `${depth * 1.5}rem` }}>
@@ -116,14 +133,21 @@ function CommentComponent({ comment, depth = 0 }: { comment: Comment; depth?: nu
           <span className="comment-time">{comment.time_text || comment._time_text}</span>
         )}
         {hasReplies && (
-          <span className="comment-replies-count">
-            {comment.reply_count || comment.replies?.length || 0} {comment.reply_count === 1 ? 'reply' : 'replies'}
-          </span>
+          <button 
+            className="comment-replies-toggle"
+            onClick={() => setIsRepliesExpanded(!isRepliesExpanded)}
+            title={isRepliesExpanded ? 'Hide replies' : 'Show replies'}
+          >
+            {isRepliesExpanded ? '▼' : '▶'} 
+            <span className="comment-replies-count">
+              ({totalRepliesCount} {totalRepliesCount === 1 ? 'reply' : 'replies'})
+            </span>
+          </button>
         )}
       </div>
       
       {/* Render nested replies recursively */}
-      {hasReplies && depth < maxDepth && (
+      {hasReplies && depth < maxDepth && isRepliesExpanded && (
         <div className="comment-replies">
           {comment.replies!.map((reply, index) => (
             <CommentComponent key={reply.id || `reply-${index}`} comment={reply} depth={depth + 1} />
