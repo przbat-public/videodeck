@@ -16,6 +16,30 @@ let videosCache: VideoInfo[] = [];
 let isCacheLoaded = false;
 
 /**
+ * Check if stdout is a TTY (terminal) - important for concurrently compatibility
+ * When running through concurrently, stdout may not be a TTY, so we use console.log instead
+ */
+const isStdoutTTY = process.stdout.isTTY;
+
+/**
+ * Log progress with support for both TTY and non-TTY environments (e.g., concurrently)
+ */
+function logProgress(loadedCount: number, totalFiles: number, percentage: string): void {
+  const message = `Loaded: ${loadedCount}/${totalFiles} files (${percentage}%)`;
+  
+  if (isStdoutTTY) {
+    // Terminal supports carriage return for overwriting same line
+    process.stdout.write(`\r${message}`);
+  } else {
+    // Non-TTY (e.g., through concurrently) - use console.log
+    // Only log every 10% or every 10 files to avoid spam
+    if (totalFiles <= 10 || loadedCount % Math.max(1, Math.floor(totalFiles / 10)) === 0 || loadedCount === totalFiles) {
+      console.log(message);
+    }
+  }
+}
+
+/**
  * Extract base name from filename (remove extension)
  */
 function getBaseName(filename: string): string {
@@ -95,7 +119,7 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
           }
           // Skip this file and continue with others
           const percentage = totalFiles > 0 ? ((loadedCount / totalFiles) * 100).toFixed(1) : '0.0';
-          process.stdout.write(`\rLoaded: ${loadedCount}/${totalFiles} files (${percentage}%)`);
+          logProgress(loadedCount, totalFiles, percentage);
           continue;
         }
 
@@ -128,13 +152,13 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
       loadedCount++;
     }
 
-    // Log progress after processing each file (overwrite same line)
+    // Log progress after processing each file
     const percentage = totalFiles > 0 ? ((loadedCount / totalFiles) * 100).toFixed(1) : '0.0';
-    process.stdout.write(`\rLoaded: ${loadedCount}/${totalFiles} files (${percentage}%)`);
+    logProgress(loadedCount, totalFiles, percentage);
   }
 
-  // Add newline after progress is complete
-  if (totalFiles > 0) {
+  // Add newline after progress is complete (only for TTY)
+  if (totalFiles > 0 && isStdoutTTY) {
     process.stdout.write('\n');
   }
 
