@@ -8,9 +8,7 @@ describe('sanitizeFilename', () => {
   });
 
   it('should decode URL-encoded filenames', () => {
-    expect(sanitizeFilename('video%20with%20spaces.mp4')).toBe(
-      'video with spaces.mp4'
-    );
+    expect(sanitizeFilename('video%20with%20spaces.mp4')).toBe('video with spaces.mp4');
     expect(sanitizeFilename('test%2Ffile.mp4')).toBe('file.mp4'); // path separator removed
   });
 
@@ -38,9 +36,7 @@ describe('sanitizeFilename', () => {
 
   it('should handle special characters in filenames', () => {
     expect(sanitizeFilename('file-with-dashes.mp4')).toBe('file-with-dashes.mp4');
-    expect(sanitizeFilename('file_with_underscores.mp4')).toBe(
-      'file_with_underscores.mp4'
-    );
+    expect(sanitizeFilename('file_with_underscores.mp4')).toBe('file_with_underscores.mp4');
     expect(sanitizeFilename('file123.mp4')).toBe('file123.mp4');
   });
 
@@ -53,7 +49,7 @@ describe('sanitizeFilename', () => {
     // basename removes forward slashes (Unix/URL paths)
     expect(sanitizeFilename('file/name.mp4')).toBe('name.mp4');
     expect(sanitizeFilename('path/to/file.mp4')).toBe('file.mp4');
-    
+
     // On Unix/Mac, backslash is not a path separator, so it's treated as regular char
     // On Windows, basename would remove it
     // The sanitization check will catch it if basename didn't remove it

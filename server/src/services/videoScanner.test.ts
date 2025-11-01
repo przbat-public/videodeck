@@ -1,9 +1,4 @@
-import {
-  getAllVideos,
-  searchVideos,
-  loadVideosCache,
-  refreshVideosCache,
-} from './videoScanner';
+import { getAllVideos, searchVideos, loadVideosCache, refreshVideosCache } from './videoScanner';
 import * as fs from 'fs/promises';
 import * as config from '../config';
 
@@ -116,13 +111,11 @@ describe('videoScanner', () => {
       ] as any);
 
       // First file has invalid JSON, second is valid
-      mockedFs.readFile
-        .mockResolvedValueOnce('invalid json content')
-        .mockResolvedValueOnce(
-          JSON.stringify({
-            title: 'Test Video 2',
-          })
-        );
+      mockedFs.readFile.mockResolvedValueOnce('invalid json content').mockResolvedValueOnce(
+        JSON.stringify({
+          title: 'Test Video 2',
+        })
+      );
 
       // Should not throw, should skip invalid file
       await expect(loadVideosCache()).resolves.not.toThrow();
@@ -208,4 +201,3 @@ describe('videoScanner', () => {
     });
   });
 });
-

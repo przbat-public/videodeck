@@ -26,14 +26,18 @@ const isStdoutTTY = process.stdout.isTTY;
  */
 function logProgress(loadedCount: number, totalFiles: number, percentage: string): void {
   const message = `Loaded: ${loadedCount}/${totalFiles} files (${percentage}%)`;
-  
+
   if (isStdoutTTY) {
     // Terminal supports carriage return for overwriting same line
     process.stdout.write(`\r${message}`);
   } else {
     // Non-TTY (e.g., through concurrently) - use console.log
     // Only log every 10% or every 10 files to avoid spam
-    if (totalFiles <= 10 || loadedCount % Math.max(1, Math.floor(totalFiles / 10)) === 0 || loadedCount === totalFiles) {
+    if (
+      totalFiles <= 10 ||
+      loadedCount % Math.max(1, Math.floor(totalFiles / 10)) === 0 ||
+      loadedCount === totalFiles
+    ) {
       console.log(message);
     }
   }
@@ -143,7 +147,9 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
     } else {
       // File .info.json doesn't have matching .mp4 or .webp, but count it as processed
       if (!videoFile && !thumbnailFile) {
-        console.error(`\nSkipping ${infoFile}: missing both video (.mp4) and thumbnail (.webp) files`);
+        console.error(
+          `\nSkipping ${infoFile}: missing both video (.mp4) and thumbnail (.webp) files`
+        );
       } else if (!videoFile) {
         console.error(`\nSkipping ${infoFile}: missing video file (.mp4)`);
       } else if (!thumbnailFile) {
@@ -213,10 +219,7 @@ export function searchVideos(query: string): VideoInfo[] {
 
   const searchTerm = query.toLowerCase().trim();
 
-  const filtered = videosCache.filter(
-    (video) =>
-      video.name.toLowerCase().includes(searchTerm)
-  );
+  const filtered = videosCache.filter((video) => video.name.toLowerCase().includes(searchTerm));
 
   // Return filtered results sorted by date (already sorted, but ensure consistency)
   return sortVideosByDate(filtered);
