@@ -7,7 +7,14 @@
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
     "build:server": "cd server && npm run build",
-    "build:client": "cd client && npm run build"
+    "build:client": "cd client && npm run build",
+    "lint": "cd server && npm run lint && cd ../client && npm run lint",
+    "lint:fix": "cd server && npm run lint:fix && cd ../client && npm run lint:fix",
+    "format": "cd server && npm run format && cd ../client && npm run format",
+    "format:check": "cd server && npm run format:check && cd ../client && npm run format:check",
+    "test": "cd server && npm run test && cd ../client && npm run test:run",
+    "test:watch": "cd server && npm run test:watch",
+    "test:coverage": "cd server && npm run test:coverage && cd ../client && npm run test:coverage"
   },
   "engines": {
     "node": "22.x"

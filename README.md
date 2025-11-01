@@ -69,6 +69,105 @@ npm run build:client
 cd client && npm run preview
 ```
 
+## Linting i Formatowanie
+
+Projekt używa ESLint i Prettier do utrzymania spójności kodu.
+
+### Sprawdzenie kodu (lint)
+
+**Wszystkie projekty:**
+```bash
+npm run lint
+```
+
+**Tylko backend:**
+```bash
+cd server && npm run lint
+```
+
+**Tylko frontend:**
+```bash
+cd client && npm run lint
+```
+
+### Automatyczne naprawianie błędów
+
+**Wszystkie projekty:**
+```bash
+npm run lint:fix
+```
+
+**Tylko backend:**
+```bash
+cd server && npm run lint:fix
+```
+
+**Tylko frontend:**
+```bash
+cd client && npm run lint:fix
+```
+
+### Formatowanie kodu
+
+**Wszystkie projekty:**
+```bash
+npm run format
+```
+
+**Tylko backend:**
+```bash
+cd server && npm run format
+```
+
+**Tylko frontend:**
+```bash
+cd client && npm run format
+```
+
+### Sprawdzenie formatowania (bez zmiany plików)
+
+```bash
+npm run format:check
+```
+
+## Testy
+
+Projekt używa **Jest** dla backendu i **Vitest** dla frontendu.
+
+### Uruchamianie testów
+
+**Wszystkie projekty:**
+```bash
+npm test
+```
+
+**Tylko backend:**
+```bash
+cd server && npm test
+cd server && npm run test:watch  # Tryb watch
+cd server && npm run test:coverage  # Z raportem pokrycia
+```
+
+**Tylko frontend:**
+```bash
+cd client && npm test  # Tryb watch
+cd client && npm run test:run  # Jednorazowe uruchomienie
+cd client && npm run test:ui  # Interfejs graficzny
+cd client && npm run test:coverage  # Z raportem pokrycia
+```
+
+### Pokrycie testami
+
+```bash
+# Backend
+cd server && npm run test:coverage
+
+# Frontend
+cd client && npm run test:coverage
+```
+
+Raporty pokrycia są generowane w folderze `coverage/`.
+
 ## Struktura projektu
 
 ```

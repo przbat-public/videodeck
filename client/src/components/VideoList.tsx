@@ -22,4 +22,3 @@ export default function VideoList({ videos }: VideoListProps) {
     </div>
   );
 }
-

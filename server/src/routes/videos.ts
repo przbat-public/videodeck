@@ -10,17 +10,15 @@ const router = express.Router();
 router.get('/search', async (req, res) => {
   try {
     const query = req.query.q as string | undefined;
-    
-    const videos = query 
-      ? searchVideos(query) 
-      : getAllVideos();
-    
+
+    const videos = query ? searchVideos(query) : getAllVideos();
+
     res.json({ videos });
   } catch (error) {
     console.error('Error searching videos:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to search videos',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -32,9 +30,9 @@ router.get('/list', (req, res) => {
     res.json({ videos });
   } catch (error) {
     console.error('Error listing videos:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to list videos',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -48,7 +46,7 @@ router.get('/file/:filename', async (req, res) => {
       console.log('Received filename:', filename);
     }
     const filePath = getVideoFilePath(filename);
-    
+
     // Check if file exists
     try {
       await fs.access(filePath);
@@ -59,7 +57,7 @@ router.get('/file/:filename', async (req, res) => {
     // Determine content type
     const ext = path.extname(filename).toLowerCase();
     let contentType = 'application/octet-stream';
-    
+
     if (ext === '.mp4') {
       contentType = 'video/mp4';
     } else if (ext === '.webp') {
@@ -70,9 +68,9 @@ router.get('/file/:filename', async (req, res) => {
     res.sendFile(path.resolve(filePath));
   } catch (error) {
     console.error('Error serving file:', error);
-    res.status(400).json({ 
+    res.status(400).json({
       error: 'Failed to serve file',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -82,7 +80,7 @@ router.get('/:baseName/details', async (req, res) => {
   try {
     const baseName = req.params.baseName;
     const infoJsonPath = path.join(getVideosFolderPath(), `${baseName}.info.json`);
-    
+
     // Check if file exists
     try {
       await fs.access(infoJsonPath);
@@ -91,14 +89,27 @@ router.get('/:baseName/details', async (req, res) => {
     }
 
     // Read and parse info.json
-    const infoJsonContent = await fs.readFile(infoJsonPath, 'utf-8');
-    const infoJson = JSON.parse(infoJsonContent);
-    
+    let infoJson;
+    try {
+      const infoJsonContent = await fs.readFile(infoJsonPath, 'utf-8');
+      infoJson = JSON.parse(infoJsonContent);
+    } catch (parseError) {
+      console.error(`Error reading or parsing info.json file ${infoJsonPath}:`, parseError);
+      if (parseError instanceof SyntaxError) {
+        return res.status(500).json({
+          error: 'Invalid JSON format in video metadata',
+          message: 'The video metadata file is corrupted or invalid',
+        });
+      }
+      // Re-throw file read errors to be caught by outer catch
+      throw parseError;
+    }
+
     // Reconstruct nested comment structure from flat array
     // Comments may be stored flat with 'parent' field instead of nested 'replies'
     const buildCommentTree = (comments: any[]): any[] => {
       if (!comments || comments.length === 0) return [];
-      
+
       // Check if comments already have nested structure
       const hasNestedReplies = comments.some((c: any) => c.replies && Array.isArray(c.replies));
       if (hasNestedReplies) {
@@ -110,11 +121,11 @@ router.get('/:baseName/details', async (req, res) => {
         });
         return sorted;
       }
-      
+
       // Build tree from flat structure using 'parent' field
       const commentMap = new Map<string, any>();
       const rootComments: any[] = [];
-      
+
       // First pass: create map and prepare comments
       comments.forEach((comment: any) => {
         const processed = {
@@ -124,11 +135,11 @@ router.get('/:baseName/details', async (req, res) => {
         };
         commentMap.set(comment.id, processed);
       });
-      
+
       // Second pass: build tree structure
       comments.forEach((comment: any) => {
         const processed = commentMap.get(comment.id)!;
-        
+
         if (comment.parent === 'root' || !comment.parent) {
           rootComments.push(processed);
         } else {
@@ -142,19 +153,19 @@ router.get('/:baseName/details', async (req, res) => {
           }
         }
       });
-      
+
       // Sort root comments by like_count (descending - most likes first)
       rootComments.sort((a, b) => {
         const likesA = a.like_count || 0;
         const likesB = b.like_count || 0;
         return likesB - likesA;
       });
-      
+
       return rootComments;
     };
-    
+
     const comments = buildCommentTree(infoJson.comments || []);
-    
+
     // Extract only needed fields (especially comments)
     // Use title from info.json as the main description/title
     const details = {
@@ -172,12 +183,11 @@ router.get('/:baseName/details', async (req, res) => {
     res.json({ details });
   } catch (error) {
     console.error('Error loading video details:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to load video details',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
 
 export default router;
-

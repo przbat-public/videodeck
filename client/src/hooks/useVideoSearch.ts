@@ -68,4 +68,3 @@ export function useVideoSearch(): UseVideoSearchResult {
 
   return { videos, loading, error, search, loadAll };
 }
-

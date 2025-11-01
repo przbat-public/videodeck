@@ -3,3 +3,7 @@ dist/
 *.log
 .env
 .DS_Store
+.eslintcache
+coverage/
+.nyc_output/
+*.lcov

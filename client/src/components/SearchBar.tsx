@@ -23,11 +23,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
         disabled={loading}
         className="search-input"
       />
-      <button 
-        type="submit" 
-        disabled={loading}
-        className="search-button"
-      >
+      <button type="submit" disabled={loading} className="search-button">
         {loading ? 'Searching...' : 'Search'}
       </button>
       {query && (
@@ -46,4 +42,3 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
     </form>
   );
 }
-

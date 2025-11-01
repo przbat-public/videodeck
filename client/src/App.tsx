@@ -18,16 +18,16 @@ function HomePage() {
         <h1>Video Search</h1>
         <p>Search through your downloaded YouTube videos</p>
       </header>
-      
+
       <main className="app-main">
         <SearchBar onSearch={handleSearch} loading={loading} />
-        
+
         {error && (
           <div className="error-message">
             <p>Error: {error}</p>
           </div>
         )}
-        
+
         {loading && videos.length === 0 ? (
           <div className="loading">
             <p>Loading videos...</p>
@@ -54,4 +54,3 @@ function App() {
 }
 
 export default App;
-

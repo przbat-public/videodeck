@@ -45,7 +45,7 @@ function formatCommentDate(timestamp: number): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  
+
   // If less than 7 days, show relative time
   if (diffDays === 0) {
     return 'Today';
@@ -61,10 +61,10 @@ function formatCommentDate(timestamp: number): string {
     return `${months} ${months === 1 ? 'month' : 'months'} ago`;
   } else {
     // For older comments, show full date
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
     });
   }
 }
@@ -77,7 +77,7 @@ function countAllReplies(comment: Comment): number {
     return 0;
   }
   let count = comment.replies.length;
-  comment.replies.forEach(reply => {
+  comment.replies.forEach((reply) => {
     count += countAllReplies(reply);
   });
   return count;
@@ -92,17 +92,19 @@ function CommentComponent({ comment, depth = 0 }: { comment: Comment; depth?: nu
   const isReply = depth > 0;
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRepliesExpanded, setIsRepliesExpanded] = useState(false); // Default to collapsed
-  
+
   const commentText = comment.text || '';
   const isLong = commentText.length > MAX_COMMENT_LENGTH;
-  const displayText = isLong && !isExpanded 
-    ? commentText.substring(0, MAX_COMMENT_LENGTH) + '...'
-    : commentText;
-  
+  const displayText =
+    isLong && !isExpanded ? commentText.substring(0, MAX_COMMENT_LENGTH) + '...' : commentText;
+
   const totalRepliesCount = hasReplies ? countAllReplies(comment) : 0;
 
   return (
-    <div className={`comment-item ${isReply ? 'comment-reply' : ''}`} style={{ marginLeft: `${depth * 1.5}rem` }}>
+    <div
+      className={`comment-item ${isReply ? 'comment-reply' : ''}`}
+      style={{ marginLeft: `${depth * 1.5}rem` }}
+    >
       <div className="comment-header">
         <strong>{comment.author || 'Anonymous'}</strong>
         {comment.like_count !== undefined && comment.like_count > 0 && (
@@ -112,10 +114,7 @@ function CommentComponent({ comment, depth = 0 }: { comment: Comment; depth?: nu
       <p className="comment-text">
         {displayText}
         {isLong && (
-          <button 
-            className="comment-expand-btn"
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
+          <button className="comment-expand-btn" onClick={() => setIsExpanded(!isExpanded)}>
             {isExpanded ? ' Show less' : ' Read more'}
           </button>
         )}
@@ -129,28 +128,34 @@ function CommentComponent({ comment, depth = 0 }: { comment: Comment; depth?: nu
         {!comment.timestamp && comment.time_parsed && (
           <span className="comment-time">{comment.time_parsed}</span>
         )}
-        {!comment.timestamp && !comment.time_parsed && (comment.time_text || comment._time_text) && (
-          <span className="comment-time">{comment.time_text || comment._time_text}</span>
-        )}
+        {!comment.timestamp &&
+          !comment.time_parsed &&
+          (comment.time_text || comment._time_text) && (
+            <span className="comment-time">{comment.time_text || comment._time_text}</span>
+          )}
         {hasReplies && (
-          <button 
+          <button
             className="comment-replies-toggle"
             onClick={() => setIsRepliesExpanded(!isRepliesExpanded)}
             title={isRepliesExpanded ? 'Hide replies' : 'Show replies'}
           >
-            {isRepliesExpanded ? '▼' : '▶'} 
+            {isRepliesExpanded ? '▼' : '▶'}
             <span className="comment-replies-count">
               ({totalRepliesCount} {totalRepliesCount === 1 ? 'reply' : 'replies'})
             </span>
           </button>
         )}
       </div>
-      
+
       {/* Render nested replies recursively */}
       {hasReplies && depth < maxDepth && isRepliesExpanded && (
         <div className="comment-replies">
           {comment.replies!.map((reply, index) => (
-            <CommentComponent key={reply.id || `reply-${index}`} comment={reply} depth={depth + 1} />
+            <CommentComponent
+              key={reply.id || `reply-${index}`}
+              comment={reply}
+              depth={depth + 1}
+            />
           ))}
         </div>
       )}
@@ -181,15 +186,19 @@ export default function VideoDetail() {
         const listResponse = await fetch('/api/videos/list');
         if (!listResponse.ok) throw new Error('Failed to load videos');
         const listData = await listResponse.json();
-        const foundVideo = listData.videos.find((v: VideoInfo) => v.baseName === decodeURIComponent(baseName));
-        
+        const foundVideo = listData.videos.find(
+          (v: VideoInfo) => v.baseName === decodeURIComponent(baseName)
+        );
+
         if (!foundVideo) {
           throw new Error('Video not found');
         }
         setVideo(foundVideo);
 
         // Load details (including comments)
-        const detailsResponse = await fetch(`/api/videos/${encodeURIComponent(foundVideo.baseName)}/details`);
+        const detailsResponse = await fetch(
+          `/api/videos/${encodeURIComponent(foundVideo.baseName)}/details`
+        );
         if (!detailsResponse.ok) throw new Error('Failed to load video details');
         const detailsData = await detailsResponse.json();
         setDetails(detailsData.details);
@@ -218,7 +227,9 @@ export default function VideoDetail() {
       <div className="video-detail-page">
         <div className="error-message">
           <p>Error: {error || 'Video not found'}</p>
-          <Link to="/" className="back-link">← Back to search</Link>
+          <Link to="/" className="back-link">
+            ← Back to search
+          </Link>
         </div>
       </div>
     );
@@ -233,25 +244,22 @@ export default function VideoDetail() {
   return (
     <div className="video-detail-page">
       <div className="video-detail-header">
-        <Link to="/" className="back-link">← Back to search</Link>
+        <Link to="/" className="back-link">
+          ← Back to search
+        </Link>
       </div>
 
       <div className="video-detail-container">
         <div className="video-detail-main">
           <div className="video-player-section">
-            <video
-              src={videoUrl}
-              controls
-              autoPlay
-              className="video-player-full"
-            >
+            <video src={videoUrl} controls autoPlay className="video-player-full">
               Your browser does not support the video tag.
             </video>
           </div>
 
           <div className="video-detail-info">
             <h1>{details?.title || video.name}</h1>
-            
+
             {details && (
               <div className="video-meta">
                 {details.viewCount > 0 && <span>{details.viewCount.toLocaleString()} views</span>}
@@ -269,7 +277,7 @@ export default function VideoDetail() {
 
         <div className="video-comments-section">
           <h2>Comments {details?.commentCount ? `(${details.commentCount})` : ''}</h2>
-          
+
           {details?.comments && details.comments.length > 0 ? (
             <div className="comments-list">
               {details.comments.map((comment, index) => (
@@ -284,4 +292,3 @@ export default function VideoDetail() {
     </div>
   );
 }
-

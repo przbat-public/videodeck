@@ -49,24 +49,24 @@ function sortVideosByDate(videos: VideoInfo[]): VideoInfo[] {
 async function scanVideosFromDisk(): Promise<VideoInfo[]> {
   const folderPath = getVideosFolderPath();
   const files = await fs.readdir(folderPath);
-  
+
   // Filter out system files (starting with dot)
-  const visibleFiles = files.filter(file => !file.startsWith('.'));
-  
-  const infoJsonFiles = visibleFiles.filter(file => file.endsWith('.info.json'));
+  const visibleFiles = files.filter((file) => !file.startsWith('.'));
+
+  const infoJsonFiles = visibleFiles.filter((file) => file.endsWith('.info.json'));
   const videos: VideoInfo[] = [];
   for (const infoFile of infoJsonFiles) {
     // Remove .info.json extension to get base name for matching video/webp files
     // Example: "20230520_File.info.json" -> "20230520_File"
     const baseName = infoFile.replace(/\.info\.json$/, '');
-    
+
     // Find corresponding .mp4 and .webp files (only from visible files)
     // Match by base name without extension
-    const videoFile = visibleFiles.find(f => {
+    const videoFile = visibleFiles.find((f) => {
       const fBaseName = getBaseName(f);
       return fBaseName === baseName && f.endsWith('.mp4');
     });
-    const thumbnailFile = visibleFiles.find(f => {
+    const thumbnailFile = visibleFiles.find((f) => {
       const fBaseName = getBaseName(f);
       return fBaseName === baseName && f.endsWith('.webp');
     });
@@ -75,12 +75,24 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
       try {
         const infoJsonPath = path.join(folderPath, infoFile);
         const infoJsonContent = await fs.readFile(infoJsonPath, 'utf-8');
-        const infoJson = JSON.parse(infoJsonContent);
-        
+
+        let infoJson;
+        try {
+          infoJson = JSON.parse(infoJsonContent);
+        } catch (parseError) {
+          if (parseError instanceof SyntaxError) {
+            console.error(`Invalid JSON format in ${infoFile}:`, parseError.message);
+          } else {
+            console.error(`Error parsing JSON in ${infoFile}:`, parseError);
+          }
+          // Skip this file and continue with others
+          continue;
+        }
+
         // Use title from info.json as the description for search
         const title = infoJson.title || infoJson.fulltitle || '';
         const uploadDate = extractUploadDate(baseName);
-        
+
         videos.push({
           baseName,
           name: title || baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''), // Use title, fallback to baseName
@@ -90,6 +102,7 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
           uploadDate,
         });
       } catch (error) {
+        // Handle file read errors (not JSON parsing errors)
         console.error(`Error reading info.json file ${infoFile}:`, error);
         // Continue with other files
       }
@@ -147,12 +160,12 @@ export function searchVideos(query: string): VideoInfo[] {
 
   const searchTerm = query.toLowerCase().trim();
 
-  const filtered = videosCache.filter(video => 
-    video.description.toLowerCase().includes(searchTerm) ||
-    video.name.toLowerCase().includes(searchTerm)
+  const filtered = videosCache.filter(
+    (video) =>
+      video.description.toLowerCase().includes(searchTerm) ||
+      video.name.toLowerCase().includes(searchTerm)
   );
 
   // Return filtered results sorted by date (already sorted, but ensure consistency)
   return sortVideosByDate(filtered);
 }
-
