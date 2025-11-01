@@ -1,6 +1,29 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { VideoInfo } from '../hooks/useVideoSearch';
+
+const MAX_COMMENT_LENGTH = 250;
+
+/**
+ * Comment structure with nested replies (recursive)
+ */
+interface Comment {
+  id?: string;
+  author?: string;
+  author_id?: string;
+  text?: string;
+  like_count?: number;
+  timestamp?: number;
+  time_parsed?: string;
+  time_text?: string;
+  _time_text?: string; // Alternative time text field from yt-dlp
+  is_favorited?: boolean;
+  author_thumbnail?: string;
+  author_is_uploader?: boolean;
+  parent?: string;
+  replies?: Comment[]; // Nested replies (recursive structure)
+  reply_count?: number;
+}
 
 interface VideoDetails {
   title: string;
@@ -10,21 +33,109 @@ interface VideoDetails {
   viewCount: number;
   likeCount: number;
   channel: string;
-  comments: Array<{
-    id?: string;
-    author?: string;
-    author_id?: string;
-    text?: string;
-    like_count?: number;
-    timestamp?: number;
-    time_parsed?: string;
-  }>;
+  comments: Comment[];
   commentCount: number;
+}
+
+/**
+ * Format comment timestamp to readable date
+ */
+function formatCommentDate(timestamp: number): string {
+  const date = new Date(timestamp * 1000);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  // If less than 7 days, show relative time
+  if (diffDays === 0) {
+    return 'Today';
+  } else if (diffDays === 1) {
+    return 'Yesterday';
+  } else if (diffDays < 7) {
+    return `${diffDays} days ago`;
+  } else if (diffDays < 30) {
+    const weeks = Math.floor(diffDays / 7);
+    return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`;
+  } else if (diffDays < 365) {
+    const months = Math.floor(diffDays / 30);
+    return `${months} ${months === 1 ? 'month' : 'months'} ago`;
+  } else {
+    // For older comments, show full date
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  }
+}
+
+/**
+ * Recursive component for rendering comments with nested replies
+ */
+function CommentComponent({ comment, depth = 0 }: { comment: Comment; depth?: number }) {
+  const maxDepth = 5; // Prevent infinite nesting
+  const hasReplies = comment.replies && comment.replies.length > 0;
+  const isReply = depth > 0;
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  const commentText = comment.text || '';
+  const isLong = commentText.length > MAX_COMMENT_LENGTH;
+  const displayText = isLong && !isExpanded 
+    ? commentText.substring(0, MAX_COMMENT_LENGTH) + '...'
+    : commentText;
+
+  return (
+    <div className={`comment-item ${isReply ? 'comment-reply' : ''}`} style={{ marginLeft: `${depth * 1.5}rem` }}>
+      <div className="comment-header">
+        <strong>{comment.author || 'Anonymous'}</strong>
+        {comment.like_count !== undefined && comment.like_count > 0 && (
+          <span className="comment-likes">{comment.like_count} likes</span>
+        )}
+      </div>
+      <p className="comment-text">
+        {displayText}
+        {isLong && (
+          <button 
+            className="comment-expand-btn"
+            onClick={() => setIsExpanded(!isExpanded)}
+          >
+            {isExpanded ? ' Show less' : ' Read more'}
+          </button>
+        )}
+      </p>
+      <div className="comment-footer">
+        {comment.timestamp && (
+          <span className="comment-time" title={formatCommentDate(comment.timestamp)}>
+            {formatCommentDate(comment.timestamp)}
+          </span>
+        )}
+        {!comment.timestamp && comment.time_parsed && (
+          <span className="comment-time">{comment.time_parsed}</span>
+        )}
+        {!comment.timestamp && !comment.time_parsed && (comment.time_text || comment._time_text) && (
+          <span className="comment-time">{comment.time_text || comment._time_text}</span>
+        )}
+        {hasReplies && (
+          <span className="comment-replies-count">
+            {comment.reply_count || comment.replies?.length || 0} {comment.reply_count === 1 ? 'reply' : 'replies'}
+          </span>
+        )}
+      </div>
+      
+      {/* Render nested replies recursively */}
+      {hasReplies && depth < maxDepth && (
+        <div className="comment-replies">
+          {comment.replies!.map((reply, index) => (
+            <CommentComponent key={reply.id || `reply-${index}`} comment={reply} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function VideoDetail() {
   const { baseName } = useParams<{ baseName: string }>();
-  const navigate = useNavigate();
   const [video, setVideo] = useState<VideoInfo | null>(null);
   const [details, setDetails] = useState<VideoDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -140,18 +251,7 @@ export default function VideoDetail() {
           {details?.comments && details.comments.length > 0 ? (
             <div className="comments-list">
               {details.comments.map((comment, index) => (
-                <div key={comment.id || index} className="comment-item">
-                  <div className="comment-header">
-                    <strong>{comment.author || 'Anonymous'}</strong>
-                    {comment.like_count !== undefined && comment.like_count > 0 && (
-                      <span className="comment-likes">{comment.like_count} likes</span>
-                    )}
-                  </div>
-                  <p className="comment-text">{comment.text || ''}</p>
-                  {comment.time_parsed && (
-                    <span className="comment-time">{comment.time_parsed}</span>
-                  )}
-                </div>
+                <CommentComponent key={comment.id || index} comment={comment} />
               ))}
             </div>
           ) : (
