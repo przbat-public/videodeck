@@ -6,6 +6,7 @@ export interface VideoInfo {
   description: string;
   videoPath: string;
   thumbnailPath: string;
+  uploadDate?: string; // YYYYMMDD format from filename
 }
 
 interface UseVideoSearchResult {

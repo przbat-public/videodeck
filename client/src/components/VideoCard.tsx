@@ -5,6 +5,11 @@ interface VideoCardProps {
   video: VideoInfo;
 }
 
+function formatVideoDate(dateStr?: string): string {
+  if (!dateStr || dateStr.length !== 8) return '';
+  return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+}
+
 export default function VideoCard({ video }: VideoCardProps) {
   const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}`;
   const descriptionPreview = video.description.length > 200
@@ -31,6 +36,9 @@ export default function VideoCard({ video }: VideoCardProps) {
           </div>
         </div>
         <div className="video-info">
+          {video.uploadDate && (
+            <div className="video-card-date">{formatVideoDate(video.uploadDate)}</div>
+          )}
           <h3 className="video-title">{video.name}</h3>
           <p className="video-description">{descriptionPreview}</p>
         </div>

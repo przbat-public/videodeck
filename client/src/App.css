@@ -184,6 +184,13 @@
   flex-direction: column;
 }
 
+.video-card-date {
+  font-size: 0.85rem;
+  color: #999;
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+}
+
 .video-title {
   font-size: 1.1rem;
   font-weight: 600;
