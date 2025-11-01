@@ -31,24 +31,48 @@ export function getVideosFolderPath(): string {
 
 // Sanitize filename to prevent path traversal
 export function sanitizeFilename(filename: string): string {
+  // Express automatically URL-decodes route parameters, but handle edge cases
+  // Check if the filename contains URL-encoded characters and decode if needed
+  let decoded = filename;
+  if (filename.includes('%')) {
+    try {
+      decoded = decodeURIComponent(filename);
+    } catch {
+      // If decoding fails, use original (might already be decoded or malformed)
+      decoded = filename;
+    }
+  }
+  
   // Remove any path separators and parent directory references
-  const sanitized = path.basename(filename);
+  // Use path.basename to extract only the filename, removing any path components
+  const sanitized = path.basename(decoded);
   
   // Prevent path traversal attempts
-  // Check for path separators first
+  // After path.basename(), we only have the filename without any path components.
+  // We need to block only explicit directory references (".", "..") and path separators.
+  // 
+  // Important: Names ending with dots (like "file." or "file..webp") are allowed
+  // because after path.basename() they're just regular filenames without path components.
+  // Only block when the entire filename is exactly "." or ".." (directory references).
+  
+  // Check for path separators (shouldn't exist after basename, but double-check)
   if (sanitized.includes('/') || sanitized.includes('\\')) {
+    console.error(`Path traversal detected in filename: ${filename} (decoded: ${decoded}, sanitized: ${sanitized})`);
     throw new Error('Invalid filename: path traversal detected');
   }
   
-  // Check for ".." as a sequence, but allow "..." (three dots)
-  // Look for ".." that is NOT preceded by "." and NOT followed by "."
-  // This allows "..." but blocks ".."
-  if (sanitized.match(/(?<!\.)\.\.(?!\.)/)) {
+  // Check for path traversal patterns: "." or ".." as the entire filename only
+  // These are directory references, not valid filenames
+  // Allowed: "file.", "file..webp", "name...ext" - dots are part of the filename
+  // Blocked: "." or ".." as the complete filename (directory references)
+  if (sanitized === '.' || sanitized === '..') {
+    console.error(`Path traversal detected in filename: ${filename} (decoded: ${decoded}, sanitized: ${sanitized})`);
     throw new Error('Invalid filename: path traversal detected');
   }
   
   // Ensure it's not empty
   if (!sanitized || sanitized.trim().length === 0) {
+    console.error(`Empty filename detected: ${filename} (decoded: ${decoded})`);
     throw new Error('Invalid filename: empty filename');
   }
   

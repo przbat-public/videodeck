@@ -43,6 +43,10 @@ router.get('/list', (req, res) => {
 router.get('/file/:filename', async (req, res) => {
   try {
     const filename = req.params.filename;
+    // Log the received filename for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Received filename:', filename);
+    }
     const filePath = getVideoFilePath(filename);
     
     // Check if file exists
