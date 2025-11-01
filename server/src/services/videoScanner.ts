@@ -8,6 +8,7 @@ export interface VideoInfo {
   description: string;
   videoPath: string;
   thumbnailPath: string;
+  uploadDate?: string; // YYYYMMDD format from filename
 }
 
 // Cache in memory
@@ -19,6 +20,27 @@ let isCacheLoaded = false;
  */
 function getBaseName(filename: string): string {
   return path.parse(filename).name;
+}
+
+/**
+ * Extract upload date from baseName (format: YYYYMMDD_title)
+ * Returns date string in YYYYMMDD format or undefined if not found
+ */
+function extractUploadDate(baseName: string): string | undefined {
+  const match = baseName.match(/^(\d{8})_/);
+  return match ? match[1] : undefined;
+}
+
+/**
+ * Sort videos by upload date (newest first)
+ */
+function sortVideosByDate(videos: VideoInfo[]): VideoInfo[] {
+  return [...videos].sort((a, b) => {
+    const dateA = a.uploadDate || '00000000';
+    const dateB = b.uploadDate || '00000000';
+    // Sort descending (newest first)
+    return dateB.localeCompare(dateA);
+  });
 }
 
 /**
@@ -46,12 +68,15 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
         const descriptionPath = path.join(folderPath, descFile);
         const description = await fs.readFile(descriptionPath, 'utf-8');
         
+        const uploadDate = extractUploadDate(baseName);
+        
         videos.push({
           baseName,
           name: baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''), // Remove date prefix if present
           description: description.trim(),
           videoPath: videoFile,
           thumbnailPath: thumbnailFile,
+          uploadDate,
         });
       } catch (error) {
         console.error(`Error reading description file ${descFile}:`, error);
@@ -60,7 +85,8 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
     }
   }
 
-  return videos;
+  // Sort by upload date (newest first)
+  return sortVideosByDate(videos);
 }
 
 /**
@@ -110,9 +136,12 @@ export function searchVideos(query: string): VideoInfo[] {
 
   const searchTerm = query.toLowerCase().trim();
 
-  return videosCache.filter(video => 
+  const filtered = videosCache.filter(video => 
     video.description.toLowerCase().includes(searchTerm) ||
     video.name.toLowerCase().includes(searchTerm)
   );
+
+  // Return filtered results sorted by date (already sorted, but ensure consistency)
+  return sortVideosByDate(filtered);
 }
 
