@@ -12,10 +12,6 @@ function formatVideoDate(dateStr?: string): string {
 
 export default function VideoCard({ video }: VideoCardProps) {
   const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}`;
-  const descriptionPreview =
-    video.description.length > 200
-      ? video.description.substring(0, 200) + '...'
-      : video.description;
 
   return (
     <Link
@@ -45,7 +41,6 @@ export default function VideoCard({ video }: VideoCardProps) {
             <div className="video-card-date">{formatVideoDate(video.uploadDate)}</div>
           )}
           <h3 className="video-title">{video.name}</h3>
-          <p className="video-description">{descriptionPreview}</p>
         </div>
       </div>
     </Link>

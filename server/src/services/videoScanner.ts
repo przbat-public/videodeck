@@ -99,14 +99,14 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
           continue;
         }
 
-        // Use title from info.json as the description for search
         const title = infoJson.title || infoJson.fulltitle || '';
-        const uploadDate = extractUploadDate(baseName);
+        const description = infoJson.description || title;
+        const uploadDate = infoJson.upload_date || extractUploadDate(baseName);
 
         videos.push({
           baseName,
           name: title || baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''), // Use title, fallback to baseName
-          description: title, // Use title for searching
+          description,
           videoPath: videoFile,
           thumbnailPath: thumbnailFile,
           uploadDate,
