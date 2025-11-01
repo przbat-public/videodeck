@@ -7,7 +7,7 @@ interface VideoCardProps {
 
 export default function VideoCard({ video }: VideoCardProps) {
   const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}`;
-  const descriptionPreview = video.description.length > 200 
+  const descriptionPreview = video.description.length > 200
     ? video.description.substring(0, 200) + '...'
     : video.description;
 

@@ -255,6 +255,13 @@
   background: #000;
 }
 
+.video-upload-date {
+  font-size: 0.9rem;
+  color: #999;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
 .video-detail-info h1 {
   font-size: 1.8rem;
   margin-bottom: 1rem;

@@ -44,7 +44,7 @@ function sortVideosByDate(videos: VideoInfo[]): VideoInfo[] {
 }
 
 /**
- * Scan folder for .description files and extract video information
+ * Scan folder for .info.json files and extract video information
  */
 async function scanVideosFromDisk(): Promise<VideoInfo[]> {
   const folderPath = getVideosFolderPath();
@@ -53,33 +53,44 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
   // Filter out system files (starting with dot)
   const visibleFiles = files.filter(file => !file.startsWith('.'));
   
-  const descriptionFiles = visibleFiles.filter(file => file.endsWith('.description'));
+  const infoJsonFiles = visibleFiles.filter(file => file.endsWith('.info.json'));
   const videos: VideoInfo[] = [];
-
-  for (const descFile of descriptionFiles) {
-    const baseName = getBaseName(descFile);
+  for (const infoFile of infoJsonFiles) {
+    // Remove .info.json extension to get base name for matching video/webp files
+    // Example: "20230520_File.info.json" -> "20230520_File"
+    const baseName = infoFile.replace(/\.info\.json$/, '');
     
     // Find corresponding .mp4 and .webp files (only from visible files)
-    const videoFile = visibleFiles.find(f => getBaseName(f) === baseName && f.endsWith('.mp4'));
-    const thumbnailFile = visibleFiles.find(f => getBaseName(f) === baseName && f.endsWith('.webp'));
+    // Match by base name without extension
+    const videoFile = visibleFiles.find(f => {
+      const fBaseName = getBaseName(f);
+      return fBaseName === baseName && f.endsWith('.mp4');
+    });
+    const thumbnailFile = visibleFiles.find(f => {
+      const fBaseName = getBaseName(f);
+      return fBaseName === baseName && f.endsWith('.webp');
+    });
 
     if (videoFile && thumbnailFile) {
       try {
-        const descriptionPath = path.join(folderPath, descFile);
-        const description = await fs.readFile(descriptionPath, 'utf-8');
+        const infoJsonPath = path.join(folderPath, infoFile);
+        const infoJsonContent = await fs.readFile(infoJsonPath, 'utf-8');
+        const infoJson = JSON.parse(infoJsonContent);
         
+        // Use title from info.json as the description for search
+        const title = infoJson.title || infoJson.fulltitle || '';
         const uploadDate = extractUploadDate(baseName);
         
         videos.push({
           baseName,
-          name: baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''), // Remove date prefix if present
-          description: description.trim(),
+          name: title || baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''), // Use title, fallback to baseName
+          description: title, // Use title for searching
           videoPath: videoFile,
           thumbnailPath: thumbnailFile,
           uploadDate,
         });
       } catch (error) {
-        console.error(`Error reading description file ${descFile}:`, error);
+        console.error(`Error reading info.json file ${infoFile}:`, error);
         // Continue with other files
       }
     }

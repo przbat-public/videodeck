@@ -152,9 +152,10 @@ router.get('/:baseName/details', async (req, res) => {
     const comments = buildCommentTree(infoJson.comments || []);
     
     // Extract only needed fields (especially comments)
+    // Use title from info.json as the main description/title
     const details = {
       title: infoJson.title || infoJson.fulltitle || '',
-      description: infoJson.description || '',
+      description: infoJson.description || infoJson.title || infoJson.fulltitle || '', // Fallback to title if description missing
       uploadDate: infoJson.upload_date || '',
       duration: infoJson.duration_string || infoJson.duration || '',
       viewCount: infoJson.view_count || 0,
