@@ -35,7 +35,15 @@ export function sanitizeFilename(filename: string): string {
   const sanitized = path.basename(filename);
   
   // Prevent path traversal attempts
-  if (sanitized.includes('..') || sanitized.includes('/') || sanitized.includes('\\')) {
+  // Check for path separators first
+  if (sanitized.includes('/') || sanitized.includes('\\')) {
+    throw new Error('Invalid filename: path traversal detected');
+  }
+  
+  // Check for ".." as a sequence, but allow "..." (three dots)
+  // Look for ".." that is NOT preceded by "." and NOT followed by "."
+  // This allows "..." but blocks ".."
+  if (sanitized.match(/(?<!\.)\.\.(?!\.)/)) {
     throw new Error('Invalid filename: path traversal detected');
   }
   
@@ -50,8 +58,6 @@ export function sanitizeFilename(filename: string): string {
 // Get full path to a file in videos folder
 export function getVideoFilePath(filename: string): string {
   const sanitized = sanitizeFilename(filename);
-  const a =  path.join(VIDEOS_FOLDER_PATH, sanitized);
-  console.log(a)
-  return a;
+  return path.join(VIDEOS_FOLDER_PATH, sanitized);
 }
 

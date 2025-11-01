@@ -12,7 +12,7 @@ export default function VideoCard({ video }: VideoCardProps) {
     : video.description;
 
   return (
-    <Link to={`/video/${encodeURIComponent(video.baseName)}`} className="video-card-link">
+    <Link to={`/video/${encodeURIComponent(video.baseName)}`} target="_blank" className="video-card-link">
       <div className="video-card">
         <div className="video-thumbnail">
           <img 
