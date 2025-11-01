@@ -1,22 +1,15 @@
 {
-  "name": "project-1",
+  "name": "video-search-app",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "YouTube video search application with yt-dlp support",
   "scripts": {
-    "dev": "tsx watch index.ts",
-    "start": "tsx index.ts",
-    "build": "tsc -p tsconfig.json",
-    "start:prod": "node dist/index.js"
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build:server": "cd server && npm run build",
+    "build:client": "cd client && npm run build"
   },
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "engines": {
     "node": "22.x"
-  },
-  "devDependencies": {
-    "@types/node": "^24.7.0",
-    "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
   }
 }
