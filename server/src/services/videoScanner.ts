@@ -54,7 +54,12 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
   const visibleFiles = files.filter((file) => !file.startsWith('.'));
 
   const infoJsonFiles = visibleFiles.filter((file) => file.endsWith('.info.json'));
+  const totalFiles = infoJsonFiles.length;
   const videos: VideoInfo[] = [];
+  let loadedCount = 0;
+
+  console.log(`Scanning folder: ${totalFiles} .info.json files found`);
+
   for (const infoFile of infoJsonFiles) {
     // Remove .info.json extension to get base name for matching video/webp files
     // Example: "20230520_File.info.json" -> "20230520_File"
@@ -75,6 +80,7 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
       try {
         const infoJsonPath = path.join(folderPath, infoFile);
         const infoJsonContent = await fs.readFile(infoJsonPath, 'utf-8');
+        loadedCount++;
 
         let infoJson;
         try {
@@ -86,6 +92,8 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
             console.error(`Error parsing JSON in ${infoFile}:`, parseError);
           }
           // Skip this file and continue with others
+          const percentage = totalFiles > 0 ? ((loadedCount / totalFiles) * 100).toFixed(1) : '0.0';
+          console.log(`Loaded: ${loadedCount}/${totalFiles} files (${percentage}%)`);
           continue;
         }
 
@@ -101,6 +109,10 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
           thumbnailPath: thumbnailFile,
           uploadDate,
         });
+
+        // Log progress after each successfully loaded file
+        const percentage = totalFiles > 0 ? ((loadedCount / totalFiles) * 100).toFixed(1) : '0.0';
+        console.log(`Loaded: ${loadedCount}/${totalFiles} files (${percentage}%)`);
       } catch (error) {
         // Handle file read errors (not JSON parsing errors)
         console.error(`Error reading info.json file ${infoFile}:`, error);
