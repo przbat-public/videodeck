@@ -202,11 +202,11 @@ export function getAllVideos(): VideoInfo[] {
   if (!isCacheLoaded) {
     throw new Error('Videos cache not loaded. Call loadVideosCache() first.');
   }
-  return [...videosCache]; // Return a copy to prevent external modifications
+  return videosCache;
 }
 
 /**
- * Search videos by query in description (uses cache)
+ * Search videos by query in name (title)
  */
 export function searchVideos(query: string): VideoInfo[] {
   if (!isCacheLoaded) {
