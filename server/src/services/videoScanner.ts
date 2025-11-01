@@ -129,7 +129,7 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
 
         videos.push({
           baseName,
-          name: title || baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''), // Use title, fallback to baseName
+          name: title || baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''),
           description,
           videoPath: videoFile,
           thumbnailPath: thumbnailFile,
@@ -215,7 +215,6 @@ export function searchVideos(query: string): VideoInfo[] {
 
   const filtered = videosCache.filter(
     (video) =>
-      video.description.toLowerCase().includes(searchTerm) ||
       video.name.toLowerCase().includes(searchTerm)
   );
 
