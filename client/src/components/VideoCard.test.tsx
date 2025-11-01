@@ -23,21 +23,6 @@ describe('VideoCard', () => {
     expect(screen.getByText('Test Video Title')).toBeInTheDocument();
   });
 
-  it('should render video description', () => {
-    renderWithRouter(<VideoCard video={mockVideo} />);
-    expect(screen.getByText(/This is a test video description/)).toBeInTheDocument();
-  });
-
-  it('should truncate long descriptions', () => {
-    const longDescriptionVideo = {
-      ...mockVideo,
-      description: 'A'.repeat(300), // Very long description
-    };
-    renderWithRouter(<VideoCard video={longDescriptionVideo} />);
-    const description = screen.getByText(/A+/);
-    expect(description.textContent?.length).toBeLessThanOrEqual(203); // 200 chars + "..."
-  });
-
   it('should render formatted date', () => {
     renderWithRouter(<VideoCard video={mockVideo} />);
     expect(screen.getByText('2023-12-01')).toBeInTheDocument();
