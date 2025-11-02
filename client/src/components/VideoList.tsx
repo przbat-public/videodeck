@@ -3,9 +3,10 @@ import VideoCard from './VideoCard';
 
 interface VideoListProps {
   videos: VideoListItem[];
+  searchQuery?: string;
 }
 
-export default function VideoList({ videos }: VideoListProps) {
+export default function VideoList({ videos, searchQuery }: VideoListProps) {
   if (videos.length === 0) {
     return (
       <div className="video-list-empty">
@@ -17,7 +18,7 @@ export default function VideoList({ videos }: VideoListProps) {
   return (
     <div className="video-list">
       {videos.map((video) => (
-        <VideoCard key={video.baseName} video={video} />
+        <VideoCard key={video.baseName} video={video} searchQuery={searchQuery} />
       ))}
     </div>
   );

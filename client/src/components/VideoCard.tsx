@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom';
 import { VideoListItem } from '../types';
+import React from 'react';
 
 interface VideoCardProps {
   video: VideoListItem;
+  searchQuery?: string;
 }
 
 function formatVideoDate(dateStr?: string): string {
@@ -21,8 +23,41 @@ function formatViewCount(viewCount?: number): string {
   return viewCount.toString();
 }
 
-export default function VideoCard({ video }: VideoCardProps) {
+function truncateDescription(description?: string, maxLength: number = 250): string {
+  if (!description) return '';
+  if (description.length <= maxLength) return description;
+  return description.substring(0, maxLength).trim() + '...';
+}
+
+/**
+ * Highlight search query in text by wrapping matching parts in <mark> tags
+ */
+function highlightText(text: string, query?: string): React.ReactNode {
+  if (!query || !query.trim()) {
+    return text;
+  }
+
+  const searchTerm = query.trim();
+  const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escapedTerm})`, 'gi');
+  const parts = text.split(regex);
+
+  return parts.map((part, index) => {
+    // Check if this part matches the search term (case-insensitive)
+    if (part.toLowerCase() === searchTerm.toLowerCase()) {
+      return (
+        <mark key={index} className="search-highlight">
+          {part}
+        </mark>
+      );
+    }
+    return <React.Fragment key={index}>{part}</React.Fragment>;
+  });
+}
+
+export default function VideoCard({ video, searchQuery }: VideoCardProps) {
   const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}`;
+  const truncatedDescription = truncateDescription(video.description, 250);
 
   return (
     <Link
@@ -56,7 +91,10 @@ export default function VideoCard({ video }: VideoCardProps) {
               <div className="video-card-views">{formatViewCount(video.viewCount)}</div>
             )}
           </div>
-          <h3 className="video-title">{video.title}</h3>
+          <h3 className="video-title">{highlightText(video.title, searchQuery)}</h3>
+          {video.description && (
+            <p className="video-description">{highlightText(truncatedDescription, searchQuery)}</p>
+          )}
         </div>
       </div>
     </Link>

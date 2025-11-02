@@ -36,17 +36,13 @@ function formatCommentDate(timestamp: number): string {
 }
 
 /**
- * Count total nested comments (including replies to replies)
+ * Count replies (only one level of nesting supported)
  */
-function countAllReplies(comment: Comment): number {
+function countReplies(comment: Comment): number {
   if (!comment.replies || comment.replies.length === 0) {
     return 0;
   }
-  let count = comment.replies.length;
-  comment.replies.forEach((reply) => {
-    count += countAllReplies(reply);
-  });
-  return count;
+  return comment.replies.length;
 }
 
 interface CommentComponentProps {
@@ -58,7 +54,6 @@ interface CommentComponentProps {
  * Recursive component for rendering comments with nested replies
  */
 export default function CommentComponent({ comment, depth = 0 }: CommentComponentProps) {
-  const maxDepth = 5; // Prevent infinite nesting
   const hasReplies = comment.replies && comment.replies.length > 0;
   const isReply = depth > 0;
   const [isExpanded, setIsExpanded] = useState(false);
@@ -69,7 +64,7 @@ export default function CommentComponent({ comment, depth = 0 }: CommentComponen
   const displayText =
     isLong && !isExpanded ? commentText.substring(0, MAX_COMMENT_LENGTH) + '...' : commentText;
 
-  const totalRepliesCount = hasReplies ? countAllReplies(comment) : 0;
+  const totalRepliesCount = hasReplies ? countReplies(comment) : 0;
 
   return (
     <div
@@ -119,7 +114,7 @@ export default function CommentComponent({ comment, depth = 0 }: CommentComponen
       </div>
 
       {/* Render nested replies recursively */}
-      {hasReplies && depth < maxDepth && isRepliesExpanded && (
+      {hasReplies && isRepliesExpanded && (
         <div className="comment-replies">
           {comment.replies!.map((reply, index) => (
             <CommentComponent

@@ -190,7 +190,7 @@ export async function refreshVideosCache(): Promise<void> {
 }
 
 /**
- * Search videos by query in title
+ * Search videos by query in title and description
  */
 export function getVideos(query?: string): VideoListItem[] {
   if (!isCacheLoaded) {
@@ -203,7 +203,11 @@ export function getVideos(query?: string): VideoListItem[] {
 
   const searchTerm = query.toLowerCase().trim();
 
-  const filtered = videosCache.filter((video) => video.title.toLowerCase().includes(searchTerm));
+  const filtered = videosCache.filter(
+    (video) =>
+      video.title.toLowerCase().includes(searchTerm) ||
+      (video.description && video.description.toLowerCase().includes(searchTerm))
+  );
 
   // Return filtered results sorted by date (already sorted, but ensure consistency)
   return sortVideosByDate(filtered);

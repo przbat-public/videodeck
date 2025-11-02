@@ -3,7 +3,7 @@ import SearchBar from '../components/SearchBar';
 import VideoList from '../components/VideoList';
 
 export default function VideoListPage() {
-  const { videos, loading, error, search } = useVideoSearch();
+  const { videos, loading, error, query, search } = useVideoSearch();
 
   const handleSearch = async (query: string) => {
     await search(query);
@@ -24,7 +24,7 @@ export default function VideoListPage() {
           <p>Loading videos...</p>
         </div>
       ) : (
-        <VideoList videos={videos} />
+        <VideoList videos={videos} searchQuery={query} />
       )}
     </main>
   );

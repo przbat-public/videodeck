@@ -1,25 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useReducer, useEffect } from 'react';
 import queryString from 'query-string';
 import { VideoListItem } from '../types';
+import {
+  videoSearchReducer,
+  initialState,
+} from '../reducers/videoSearchReducer';
 
 interface UseVideoSearchResult {
   videos: VideoListItem[];
   loading: boolean;
   error: string | null;
+  query: string;
   search: (query?: string) => Promise<void>;
 }
 
 export function useVideoSearch(): UseVideoSearchResult {
-  const [videos, setVideos] = useState<VideoListItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [state, dispatch] = useReducer(videoSearchReducer, initialState);
 
   const search = async (query?: string) => {
-    setLoading(true);
-    setError(null);
+    const trimmedQuery = query?.trim() || '';
+    dispatch({ type: 'SEARCH_START', payload: trimmedQuery });
+    
     try {
-      const trimmedQuery = query?.trim();
-
       const url = queryString.stringifyUrl(
         { url: '/api/videos/search', query: { q: trimmedQuery } },
         { skipEmptyString: true, skipNull: true }
@@ -30,12 +32,12 @@ export function useVideoSearch(): UseVideoSearchResult {
         throw new Error('Failed to search videos');
       }
       const data = await response.json();
-      setVideos(data.videos || []);
+      dispatch({ type: 'SEARCH_SUCCESS', payload: data.videos || [] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      setVideos([]);
-    } finally {
-      setLoading(false);
+      dispatch({
+        type: 'SEARCH_ERROR',
+        payload: err instanceof Error ? err.message : 'An error occurred',
+      });
     }
   };
 
@@ -43,5 +45,11 @@ export function useVideoSearch(): UseVideoSearchResult {
     search();
   }, []);
 
-  return { videos, loading, error, search };
+  return {
+    videos: state.videos,
+    loading: state.loading,
+    error: state.error,
+    query: state.query,
+    search,
+  };
 }

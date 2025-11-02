@@ -217,6 +217,14 @@
   flex: 1;
 }
 
+.search-highlight {
+  background-color: #fff3cd;
+  color: #856404;
+  padding: 0.1em 0.2em;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
 /* Video Card Link */
 .video-card-link {
   text-decoration: none;
