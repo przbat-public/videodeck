@@ -1,4 +1,5 @@
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { debounce } from 'lodash';
 
 export type SortOption = 
   | 'date-desc'
@@ -13,40 +14,62 @@ interface SearchBarProps {
   loading?: boolean;
 }
 
-export default function SearchBar({ onSearch, loading }: SearchBarProps) {
+const MIN_SEARCH_LENGTH = 3;
+const DEBOUNCE_DELAY = 300;
+
+export default function SearchBar({ onSearch }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortOption>('date-desc');
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    onSearch(query, sort);
-  };
+  // Utwórz debounced funkcję wyszukiwania
+  // Teraz onSearch jest stabilne dzięki useCallback w useVideoSearch
+  const debouncedSearch = useMemo(
+    () => debounce((searchQuery: string, searchSort: SortOption) => {
+      onSearch(searchQuery, searchSort);
+    }, DEBOUNCE_DELAY),
+    [onSearch]
+  );
+
+  // Automatyczne wyszukiwanie po zmianie zapytania (minimum 3 znaki)
+  useEffect(() => {
+    const trimmedQuery = query.trim();
+    
+    if (trimmedQuery.length >= MIN_SEARCH_LENGTH) {
+      debouncedSearch(trimmedQuery, sort);
+    } else if (trimmedQuery.length === 0) {
+      // Wyczyść wyniki gdy zapytanie jest puste
+      debouncedSearch('', sort);
+    }
+
+    // Cleanup: anuluj pending wywołanie przy odmontowaniu komponentu
+    return () => {
+      debouncedSearch.cancel();
+    };
+  }, [query, sort, debouncedSearch]);
 
   const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newSort = e.target.value as SortOption;
     setSort(newSort);
-    onSearch(query, newSort);
+    // Wyszukiwanie nastąpi automatycznie przez useEffect
   };
 
   const handleClear = () => {
     setQuery('');
-    onSearch('', sort);
+    // Wyszukiwanie nastąpi automatycznie przez useEffect
   };
 
   return (
-    <form onSubmit={handleSubmit} className="search-bar">
+    <div className="search-bar">
       <input
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search videos by description..."
-        disabled={loading}
         className="search-input"
       />
       <select
         value={sort}
         onChange={handleSortChange}
-        disabled={loading}
         className="sort-select"
       >
         <option value="date-desc">Newest first</option>
@@ -56,19 +79,15 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
         <option value="likes-desc">Most likes first</option>
         <option value="likes-asc">Least likes first</option>
       </select>
-      <button type="submit" disabled={loading} className="search-button">
-        {loading ? 'Searching...' : 'Search'}
-      </button>
       {query && (
         <button
           type="button"
           onClick={handleClear}
-          disabled={loading}
           className="clear-button"
         >
           Clear
         </button>
       )}
-    </form>
+    </div>
   );
 }

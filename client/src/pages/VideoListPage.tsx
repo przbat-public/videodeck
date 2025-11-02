@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useVideoSearch } from '../hooks/useVideoSearch';
 import SearchBar, { SortOption } from '../components/SearchBar';
 import VideoList from '../components/VideoList';
@@ -5,9 +6,9 @@ import VideoList from '../components/VideoList';
 export default function VideoListPage() {
   const { videos, loading, error, query, search } = useVideoSearch();
 
-  const handleSearch = async (query: string, sort: SortOption) => {
+  const handleSearch = useCallback(async (query: string, sort: SortOption) => {
     await search(query, sort);
-  };
+  }, [search]);
 
   return (
     <main className="app-main">

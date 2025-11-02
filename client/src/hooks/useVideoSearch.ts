@@ -1,4 +1,4 @@
-import { useReducer, useEffect } from 'react';
+import { useReducer, useEffect, useCallback } from 'react';
 import queryString from 'query-string';
 import { VideoListItem } from '../types';
 import { SortOption } from '../components/SearchBar';
@@ -18,7 +18,7 @@ interface UseVideoSearchResult {
 export function useVideoSearch(): UseVideoSearchResult {
   const [state, dispatch] = useReducer(videoSearchReducer, initialState);
 
-  const search = async (query?: string, sort: SortOption = 'date-desc') => {
+  const search = useCallback(async (query?: string, sort: SortOption = 'date-desc') => {
     const trimmedQuery = query?.trim() || '';
     dispatch({ type: 'SEARCH_START', payload: trimmedQuery });
     
@@ -46,11 +46,11 @@ export function useVideoSearch(): UseVideoSearchResult {
         payload: err instanceof Error ? err.message : 'An error occurred',
       });
     }
-  };
+  }, []);
 
   useEffect(() => {
     search();
-  }, []);
+  }, [search]);
 
   return {
     videos: state.videos,
