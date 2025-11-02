@@ -26,20 +26,6 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// GET /api/videos/list
-router.get('/list', (req, res) => {
-  try {
-    const videos = getVideos();
-    res.json({ videos });
-  } catch (error) {
-    console.error('Error listing videos:', error);
-    res.status(500).json({
-      error: 'Failed to list videos',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-});
-
 // GET /api/videos/file/:filename - Must be before /:baseName routes to avoid route conflicts
 router.get('/file/:filename', async (req, res) => {
   try {
