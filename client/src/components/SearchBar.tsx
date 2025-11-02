@@ -21,8 +21,6 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortOption>('date-desc');
 
-  // Utwórz debounced funkcję wyszukiwania
-  // Teraz onSearch jest stabilne dzięki useCallback w useVideoSearch
   const debouncedSearch = useMemo(
     () => debounce((searchQuery: string, searchSort: SortOption) => {
       onSearch(searchQuery, searchSort);
@@ -30,18 +28,15 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
     [onSearch]
   );
 
-  // Automatyczne wyszukiwanie po zmianie zapytania (minimum 3 znaki)
   useEffect(() => {
     const trimmedQuery = query.trim();
     
     if (trimmedQuery.length >= MIN_SEARCH_LENGTH) {
       debouncedSearch(trimmedQuery, sort);
     } else if (trimmedQuery.length === 0) {
-      // Wyczyść wyniki gdy zapytanie jest puste
       debouncedSearch('', sort);
     }
 
-    // Cleanup: anuluj pending wywołanie przy odmontowaniu komponentu
     return () => {
       debouncedSearch.cancel();
     };
@@ -50,12 +45,10 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
   const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newSort = e.target.value as SortOption;
     setSort(newSort);
-    // Wyszukiwanie nastąpi automatycznie przez useEffect
   };
 
   const handleClear = () => {
     setQuery('');
-    // Wyszukiwanie nastąpi automatycznie przez useEffect
   };
 
   return (

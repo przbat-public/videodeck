@@ -168,6 +168,7 @@ async function scanFolder(folderPath: string): Promise<VideoListItem[]> {
         const uploadDate = infoJson.upload_date || extractUploadDate(baseName);
         const viewCount = infoJson.view_count;
         const likeCount = infoJson.like_count;
+        const channelName = infoJson.channel || infoJson.uploader;
 
         videos.push({
           baseName,
@@ -179,6 +180,7 @@ async function scanFolder(folderPath: string): Promise<VideoListItem[]> {
           uploadDate,
           viewCount,
           likeCount,
+          channelName,
         });
       } catch (error) {
         // Handle file read errors (not JSON parsing errors)

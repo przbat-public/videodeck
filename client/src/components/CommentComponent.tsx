@@ -12,7 +12,6 @@ function formatCommentDate(timestamp: number): string {
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  // If less than 7 days, show relative time
   if (diffDays === 0) {
     return 'Today';
   } else if (diffDays === 1) {
@@ -26,7 +25,6 @@ function formatCommentDate(timestamp: number): string {
     const months = Math.floor(diffDays / 30);
     return `${months} ${months === 1 ? 'month' : 'months'} ago`;
   } else {
-    // For older comments, show full date
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',

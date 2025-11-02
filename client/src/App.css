@@ -204,6 +204,13 @@
   flex-direction: column;
 }
 
+.video-card-channel {
+  font-size: 0.9rem;
+  color: #666;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
 .video-card-meta {
   display: flex;
   justify-content: space-between;

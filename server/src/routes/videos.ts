@@ -133,7 +133,7 @@ router.get('/:baseName/details', async (req, res) => {
       duration: infoJson.duration_string || (infoJson.duration ? String(infoJson.duration) : ''),
       viewCount: infoJson.view_count || 0,
       likeCount: infoJson.like_count || 0,
-      channel: infoJson.channel || infoJson.uploader || '',
+      channelName: infoJson.channel || infoJson.uploader || '',
       comments: comments,
       commentCount: infoJson.comment_count || comments.length || 0,
       videoPath: video.videoPath,

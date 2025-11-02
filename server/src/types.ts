@@ -11,6 +11,7 @@ export interface VideoListItem {
   uploadDate?: string;
   viewCount?: number;
   likeCount?: number;
+  channelName?: string;
 }
 
 /**
@@ -108,7 +109,7 @@ export interface VideoDetails {
   duration: string;
   viewCount: number;
   likeCount: number;
-  channel: string;
+  channelName: string;
   comments: CommentWithReplies[];
   commentCount: number;
   videoPath: string;

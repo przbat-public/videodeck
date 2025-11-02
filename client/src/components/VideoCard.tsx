@@ -23,12 +23,6 @@ function formatViewCount(viewCount?: number): string {
   return viewCount.toString();
 }
 
-function truncateDescription(description?: string, maxLength: number = 250): string {
-  if (!description) return '';
-  if (description.length <= maxLength) return description;
-  return description.substring(0, maxLength).trim() + '...';
-}
-
 /**
  * Highlight search query in text by wrapping matching parts in <mark> tags
  */
@@ -57,7 +51,6 @@ function highlightText(text: string, query?: string): React.ReactNode {
 
 export default function VideoCard({ video, searchQuery }: VideoCardProps) {
   const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}`;
-  const truncatedDescription = truncateDescription(video.description, 250);
 
   return (
     <Link
@@ -83,6 +76,9 @@ export default function VideoCard({ video, searchQuery }: VideoCardProps) {
           </div>
         </div>
         <div className="video-info">
+          {video.channelName && (
+            <div className="video-card-channel">{video.channelName}</div>
+          )}
           <div className="video-card-meta">
             {video.uploadDate && (
               <div className="video-card-date">{formatVideoDate(video.uploadDate)}</div>
@@ -92,9 +88,6 @@ export default function VideoCard({ video, searchQuery }: VideoCardProps) {
             )}
           </div>
           <h3 className="video-title">{highlightText(video.title, searchQuery)}</h3>
-          {video.description && (
-            <p className="video-description">{highlightText(truncatedDescription, searchQuery)}</p>
-          )}
         </div>
       </div>
     </Link>
