@@ -27,7 +27,8 @@ async function startServer() {
   try {
     // Validate videos folder on startup
     await validateVideosFolder();
-    console.log(`Videos folder validated: ${process.env.VIDEOS_FOLDER_PATH}`);
+    const folderPaths = process.env.VIDEOS_FOLDER_PATH?.split(/[;,]/).map(p => p.trim()).filter(p => p) || [];
+    console.log(`Videos folder(s) validated: ${folderPaths.join(', ')}`);
 
     // Load videos cache into memory
     await loadVideosCache();

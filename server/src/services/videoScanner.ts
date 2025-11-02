@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { getVideosFolderPath } from '../config';
+import { getVideosFolderPaths } from '../config';
 import { VideoListItem } from '../types';
 
 // Cache in memory
@@ -118,23 +118,16 @@ function sortVideos(videos: VideoListItem[], sortOption: SortOption = 'date-desc
 }
 
 /**
- * Scan folder for .info.json files and extract video information
+ * Scan a single folder for .info.json files and extract video information
  */
-async function scanVideosFromDisk(): Promise<VideoListItem[]> {
-  const folderPath = getVideosFolderPath();
+async function scanFolder(folderPath: string): Promise<VideoListItem[]> {
   const files = await fs.readdir(folderPath);
 
   // Filter out system files (starting with dot)
   const visibleFiles = files.filter((file) => !file.startsWith('.'));
 
   const infoJsonFiles = visibleFiles.filter((file) => file.endsWith('.info.json'));
-  const totalFiles = infoJsonFiles.length;
   const videos: VideoListItem[] = [];
-  let loadedCount = 0;
-
-  if (totalFiles > 0) {
-    console.log(`Scanning folder: ${totalFiles} .info.json files found`);
-  }
 
   for (const infoFile of infoJsonFiles) {
     // Remove .info.json extension to get base name for matching video/webp files
@@ -156,7 +149,6 @@ async function scanVideosFromDisk(): Promise<VideoListItem[]> {
       try {
         const infoJsonPath = path.join(folderPath, infoFile);
         const infoJsonContent = await fs.readFile(infoJsonPath, 'utf-8');
-        loadedCount++;
 
         let infoJson;
         try {
@@ -168,8 +160,6 @@ async function scanVideosFromDisk(): Promise<VideoListItem[]> {
             console.error(`Error parsing JSON in ${infoFile}:`, parseError);
           }
           // Skip this file and continue with others
-          const percentage = totalFiles > 0 ? ((loadedCount / totalFiles) * 100).toFixed(1) : '0.0';
-          logProgress(loadedCount, totalFiles, percentage);
           continue;
         }
 
@@ -185,6 +175,7 @@ async function scanVideosFromDisk(): Promise<VideoListItem[]> {
           description,
           videoPath: videoFile,
           thumbnailPath: thumbnailFile,
+          folderPath, // Store the folder path for this video
           uploadDate,
           viewCount,
           likeCount,
@@ -192,10 +183,9 @@ async function scanVideosFromDisk(): Promise<VideoListItem[]> {
       } catch (error) {
         // Handle file read errors (not JSON parsing errors)
         console.error(`Error reading info.json file ${infoFile}:`, error);
-        loadedCount++; // Count even files that failed to read
       }
     } else {
-      // File .info.json doesn't have matching .mp4 or .webp, but count it as processed
+      // File .info.json doesn't have matching .mp4 or .webp
       if (!videoFile && !thumbnailFile) {
         console.error(
           `\nSkipping ${infoFile}: missing both video (.mp4) and thumbnail (.webp) files`
@@ -205,12 +195,50 @@ async function scanVideosFromDisk(): Promise<VideoListItem[]> {
       } else if (!thumbnailFile) {
         console.error(`\nSkipping ${infoFile}: missing thumbnail file (.webp)`);
       }
-      loadedCount++;
     }
+  }
 
-    // Log progress after processing each file
-    const percentage = totalFiles > 0 ? ((loadedCount / totalFiles) * 100).toFixed(1) : '0.0';
-    logProgress(loadedCount, totalFiles, percentage);
+  return videos;
+}
+
+/**
+ * Scan all configured folders for .info.json files and extract video information
+ */
+async function scanVideosFromDisk(): Promise<VideoListItem[]> {
+  const folderPaths = getVideosFolderPaths();
+  const allVideos: VideoListItem[] = [];
+  let totalFiles = 0;
+  let loadedCount = 0;
+
+  // First pass: count total files across all folders
+  for (const folderPath of folderPaths) {
+    try {
+      const files = await fs.readdir(folderPath);
+      const visibleFiles = files.filter((file) => !file.startsWith('.'));
+      const infoJsonFiles = visibleFiles.filter((file) => file.endsWith('.info.json'));
+      totalFiles += infoJsonFiles.length;
+    } catch (error) {
+      console.error(`Error reading folder ${folderPath}:`, error);
+    }
+  }
+
+  if (totalFiles > 0) {
+    console.log(`Scanning ${folderPaths.length} folder(s): ${totalFiles} total .info.json files found`);
+  }
+
+  // Second pass: scan each folder
+  for (const folderPath of folderPaths) {
+    try {
+      const folderVideos = await scanFolder(folderPath);
+      allVideos.push(...folderVideos);
+      loadedCount += folderVideos.length;
+
+      // Log progress
+      const percentage = totalFiles > 0 ? ((loadedCount / totalFiles) * 100).toFixed(1) : '0.0';
+      logProgress(loadedCount, totalFiles, percentage);
+    } catch (error) {
+      console.error(`Error scanning folder ${folderPath}:`, error);
+    }
   }
 
   // Add newline after progress is complete (only for TTY)
@@ -219,7 +247,7 @@ async function scanVideosFromDisk(): Promise<VideoListItem[]> {
   }
 
   // Sort by upload date (newest first) as default
-  return sortVideos(videos, 'date-desc');
+  return sortVideos(allVideos, 'date-desc');
 }
 
 /**

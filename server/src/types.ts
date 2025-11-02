@@ -7,6 +7,7 @@ export interface VideoListItem {
   description: string;
   videoPath: string;
   thumbnailPath: string;
+  folderPath: string; // Path to the folder containing this video
   uploadDate?: string;
   viewCount?: number;
   likeCount?: number;

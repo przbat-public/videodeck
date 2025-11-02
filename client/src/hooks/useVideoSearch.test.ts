@@ -40,6 +40,7 @@ describe('useVideoSearch', () => {
         description: 'Description 1',
         videoPath: 'test1.mp4',
         thumbnailPath: 'test1.webp',
+        folderPath: '/test/videos',
       },
     ];
 
@@ -65,6 +66,7 @@ describe('useVideoSearch', () => {
         description: 'Test description',
         videoPath: 'test1.mp4',
         thumbnailPath: 'test1.webp',
+        folderPath: '/test/videos',
       },
     ];
 

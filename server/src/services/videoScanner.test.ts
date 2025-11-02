@@ -32,7 +32,7 @@ describe('videoScanner', () => {
 
     it('should return all videos for empty query', async () => {
       // Mock cache as loaded
-      mockedConfig.getVideosFolderPath.mockReturnValue('/test/videos');
+      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
       mockedFs.readdir.mockResolvedValue([
         '20231201_TestVideo1.info.json',
         '20231201_TestVideo1.mp4',
@@ -48,10 +48,11 @@ describe('videoScanner', () => {
       const result = getVideos('');
       expect(result.length).toBe(1);
       expect(result[0].title).toBe('Test Video 1');
+      expect(result[0].folderPath).toBe('/test/videos');
     });
 
     it('should return all videos for whitespace-only query', async () => {
-      mockedConfig.getVideosFolderPath.mockReturnValue('/test/videos');
+      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
       mockedFs.readdir.mockResolvedValue([
         '20231201_TestVideo1.info.json',
         '20231201_TestVideo1.mp4',
@@ -67,12 +68,13 @@ describe('videoScanner', () => {
       const result = getVideos('   ');
       expect(result.length).toBe(1);
       expect(result[0].title).toBe('Test Video 1');
+      expect(result[0].folderPath).toBe('/test/videos');
     });
   });
 
   describe('loadVideosCache', () => {
     it('should load videos from disk and populate cache', async () => {
-      mockedConfig.getVideosFolderPath.mockReturnValue('/test/videos');
+      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
       mockedFs.readdir.mockResolvedValue([
         '20231201_TestVideo1.info.json',
         '20231201_TestVideo1.mp4',
@@ -98,10 +100,11 @@ describe('videoScanner', () => {
       const videos = getVideos();
       expect(videos.length).toBeGreaterThan(0);
       expect(videos[0].title).toBeDefined();
+      expect(videos[0].folderPath).toBe('/test/videos');
     });
 
     it('should handle invalid JSON files gracefully', async () => {
-      mockedConfig.getVideosFolderPath.mockReturnValue('/test/videos');
+      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
       mockedFs.readdir.mockResolvedValue([
         '20231201_TestVideo1.info.json',
         '20231201_TestVideo1.mp4',
@@ -125,10 +128,11 @@ describe('videoScanner', () => {
       // Should only have one video (the valid one)
       expect(videos.length).toBe(1);
       expect(videos[0].title).toBe('Test Video 2');
+      expect(videos[0].folderPath).toBe('/test/videos');
     });
 
     it('should sort videos by date (newest first)', async () => {
-      mockedConfig.getVideosFolderPath.mockReturnValue('/test/videos');
+      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
       mockedFs.readdir.mockResolvedValue([
         '20231010_OldVideo.info.json',
         '20231010_OldVideo.mp4',
@@ -157,12 +161,14 @@ describe('videoScanner', () => {
       // Newest should be first
       expect(videos[0].baseName).toBe('20231201_NewVideo');
       expect(videos[1].baseName).toBe('20231010_OldVideo');
+      expect(videos[0].folderPath).toBe('/test/videos');
+      expect(videos[1].folderPath).toBe('/test/videos');
     });
   });
 
   describe('refreshVideosCache', () => {
     it('should reload cache', async () => {
-      mockedConfig.getVideosFolderPath.mockReturnValue('/test/videos');
+      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
       mockedFs.readdir.mockResolvedValue([
         '20231201_TestVideo1.info.json',
         '20231201_TestVideo1.mp4',

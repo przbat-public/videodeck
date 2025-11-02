@@ -2,7 +2,6 @@ import express from 'express';
 import { getVideos, SortOption } from '../services/videoScanner';
 import { getVideoFilePath } from '../utils/videoPathUtils';
 import { buildCommentTree } from '../utils/commentTreeUtils';
-import { getVideosFolderPath } from '../config';
 import { VideoInfoJson, VideoDetails } from '../types';
 import fs from 'fs/promises';
 import path from 'path';
@@ -49,7 +48,14 @@ router.get('/file/:filename', async (req, res) => {
     if (process.env.NODE_ENV === 'development') {
       console.log('Received filename:', filename);
     }
-    const filePath = getVideoFilePath(filename);
+
+    // Try to find the video in cache to get its folder path
+    const allVideos = getVideos();
+    const video = allVideos.find(
+      (video) => video.videoPath === filename || video.thumbnailPath === filename
+    );
+
+    const filePath = getVideoFilePath(filename, video?.folderPath);
 
     // Check if file exists
     try {
@@ -83,7 +89,6 @@ router.get('/file/:filename', async (req, res) => {
 router.get('/:baseName/details', async (req, res) => {
   try {
     const baseName = req.params.baseName;
-    const infoJsonPath = path.join(getVideosFolderPath(), `${baseName}.info.json`);
 
     const allVideos = getVideos();
     const video = allVideos.find((v) => v.baseName === baseName);
@@ -91,6 +96,9 @@ router.get('/:baseName/details', async (req, res) => {
     if (!video) {
       return res.status(404).json({ error: 'Video not found' });
     }
+
+    // Use the folder path from the video item
+    const infoJsonPath = path.join(video.folderPath, `${baseName}.info.json`);
 
     // Check if video file details exist
     try {

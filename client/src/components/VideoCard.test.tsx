@@ -10,6 +10,7 @@ const mockVideo: VideoListItem = {
   description: 'This is a test video description that might be quite long',
   videoPath: '20231201_TestVideo.mp4',
   thumbnailPath: '20231201_TestVideo.webp',
+  folderPath: '/test/videos',
   uploadDate: '20231201',
 };
 

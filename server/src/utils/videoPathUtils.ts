@@ -1,21 +1,29 @@
 import path from 'path';
 import fs from 'fs/promises';
-import { getVideosFolderPath } from '../config';
+import { getVideosFolderPaths } from '../config';
 
-// Validate that the folder exists
+// Validate that all folders exist
 export async function validateVideosFolder(): Promise<void> {
-  try {
-    const folderPath = getVideosFolderPath();
-    const stats = await fs.stat(folderPath);
-    if (!stats.isDirectory()) {
-      throw new Error(`VIDEOS_FOLDER_PATH is not a directory: ${folderPath}`);
+  const folderPaths = getVideosFolderPaths();
+  const errors: string[] = [];
+
+  for (const folderPath of folderPaths) {
+    try {
+      const stats = await fs.stat(folderPath);
+      if (!stats.isDirectory()) {
+        errors.push(`${folderPath} is not a directory`);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        errors.push(`${folderPath} does not exist`);
+      } else {
+        errors.push(`Error accessing ${folderPath}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
-  } catch (error) {
-    const folderPath = getVideosFolderPath();
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(`VIDEOS_FOLDER_PATH does not exist: ${folderPath}`);
-    }
-    throw error;
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`VIDEOS_FOLDER_PATH validation failed:\n${errors.join('\n')}`);
   }
 }
 
@@ -74,8 +82,20 @@ export function sanitizeFilename(filename: string): string {
 }
 
 // Get full path to a file in videos folder
-export function getVideoFilePath(filename: string): string {
+export function getVideoFilePath(filename: string, folderPath?: string): string {
   const sanitized = sanitizeFilename(filename);
-  const folderPath = getVideosFolderPath();
-  return path.join(folderPath, sanitized);
+  
+  if (folderPath) {
+    // Use provided folder path (from video item)
+    return path.join(folderPath, sanitized);
+  }
+  
+  // Fallback: try to find file in any of the configured folders
+  // This maintains backwards compatibility but is less efficient
+  const folderPaths = getVideosFolderPaths();
+  if (folderPaths.length > 0) {
+    return path.join(folderPaths[0], sanitized);
+  }
+  
+  throw new Error('No video folders configured');
 }

@@ -11,6 +11,7 @@ const mockVideos: VideoListItem[] = [
     description: 'Description 1',
     videoPath: '20231201_TestVideo1.mp4',
     thumbnailPath: '20231201_TestVideo1.webp',
+    folderPath: '/test/videos',
     uploadDate: '20231201',
   },
   {
@@ -19,6 +20,7 @@ const mockVideos: VideoListItem[] = [
     description: 'Description 2',
     videoPath: '20231115_TestVideo2.mp4',
     thumbnailPath: '20231115_TestVideo2.webp',
+    folderPath: '/test/videos',
     uploadDate: '20231115',
   },
 ];
