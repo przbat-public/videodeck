@@ -1,45 +1,15 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { useVideoSearch } from './hooks/useVideoSearch';
-import SearchBar from './components/SearchBar';
-import VideoList from './components/VideoList';
-import VideoDetail from './pages/VideoDetail';
+import VideoListPage from './pages/VideoListPage';
+import VideoDetailPage from './pages/VideoDetailPage';
 import './App.css';
-
-function HomePage() {
-  const { videos, loading, error, search } = useVideoSearch();
-
-  const handleSearch = async (query: string) => {
-    await search(query);
-  };
-
-  return (
-    <main className="app-main">
-      <SearchBar onSearch={handleSearch} loading={loading} />
-
-      {error && (
-        <div className="error-message">
-          <p>Error: {error}</p>
-        </div>
-      )}
-
-      {loading && videos.length === 0 ? (
-        <div className="loading">
-          <p>Loading videos...</p>
-        </div>
-      ) : (
-        <VideoList videos={videos} />
-      )}
-    </main>
-  );
-}
 
 function App() {
   return (
     <Router>
       <div className="app">
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/video/:baseName" element={<VideoDetail />} />
+          <Route path="/" element={<VideoListPage />} />
+          <Route path="/video/:baseName" element={<VideoDetailPage />} />
         </Routes>
       </div>
     </Router>
