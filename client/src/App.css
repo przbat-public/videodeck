@@ -183,10 +183,22 @@
   flex-direction: column;
 }
 
+.video-card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
 .video-card-date {
   font-size: 0.85rem;
   color: #999;
-  margin-bottom: 0.25rem;
+  font-weight: 500;
+}
+
+.video-card-views {
+  font-size: 0.85rem;
+  color: #999;
   font-weight: 500;
 }
 

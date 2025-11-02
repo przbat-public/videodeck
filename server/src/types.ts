@@ -8,6 +8,7 @@ export interface VideoListItem {
   videoPath: string;
   thumbnailPath: string;
   uploadDate?: string;
+  viewCount?: number;
 }
 
 /**

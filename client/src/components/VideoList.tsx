@@ -1,8 +1,8 @@
-import { VideoInfo } from '../hooks/useVideoSearch';
+import { VideoListItem } from '../types';
 import VideoCard from './VideoCard';
 
 interface VideoListProps {
-  videos: VideoInfo[];
+  videos: VideoListItem[];
 }
 
 export default function VideoList({ videos }: VideoListProps) {

@@ -19,3 +19,27 @@ export interface Comment {
   reply_count?: number;
 }
 
+export interface VideoListItem {
+  baseName: string;
+  title: string;
+  description: string;
+  videoPath: string;
+  thumbnailPath: string;
+  uploadDate?: string;
+  viewCount?: number;
+}
+
+export interface VideoDetails {
+  title: string;
+  description: string;
+  uploadDate: string;
+  duration: string;
+  viewCount: number;
+  likeCount: number;
+  channel: string;
+  comments: Comment[];
+  commentCount: number;
+  videoPath: string;
+  thumbnailPath: string;
+}
+

@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import VideoList from './VideoList';
-import { VideoInfo } from '../hooks/useVideoSearch';
+import { VideoListItem } from '../types';
 
-const mockVideos: VideoInfo[] = [
+const mockVideos: VideoListItem[] = [
   {
     baseName: '20231201_TestVideo1',
     title: 'Test Video 1',

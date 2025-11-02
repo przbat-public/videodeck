@@ -1,24 +1,16 @@
 import { useState, useEffect } from 'react';
 import queryString from 'query-string';
-
-export interface VideoInfo {
-  baseName: string;
-  title: string;
-  description: string;
-  videoPath: string;
-  thumbnailPath: string;
-  uploadDate?: string;
-}
+import { VideoListItem } from '../types';
 
 interface UseVideoSearchResult {
-  videos: VideoInfo[];
+  videos: VideoListItem[];
   loading: boolean;
   error: string | null;
   search: (query?: string) => Promise<void>;
 }
 
 export function useVideoSearch(): UseVideoSearchResult {
-  const [videos, setVideos] = useState<VideoInfo[]>([]);
+  const [videos, setVideos] = useState<VideoListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

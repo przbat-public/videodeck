@@ -1,13 +1,24 @@
 import { Link } from 'react-router-dom';
-import { VideoInfo } from '../hooks/useVideoSearch';
+import { VideoListItem } from '../types';
 
 interface VideoCardProps {
-  video: VideoInfo;
+  video: VideoListItem;
 }
 
 function formatVideoDate(dateStr?: string): string {
   if (!dateStr || dateStr.length !== 8) return '';
   return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+}
+
+function formatViewCount(viewCount?: number): string {
+  if (!viewCount) return '';
+  if (viewCount >= 1000000) {
+    return `${(viewCount / 1000000).toFixed(1)}M`;
+  }
+  if (viewCount >= 1000) {
+    return `${(viewCount / 1000).toFixed(1)}K`;
+  }
+  return viewCount.toString();
 }
 
 export default function VideoCard({ video }: VideoCardProps) {
@@ -37,9 +48,14 @@ export default function VideoCard({ video }: VideoCardProps) {
           </div>
         </div>
         <div className="video-info">
-          {video.uploadDate && (
-            <div className="video-card-date">{formatVideoDate(video.uploadDate)}</div>
-          )}
+          <div className="video-card-meta">
+            {video.uploadDate && (
+              <div className="video-card-date">{formatVideoDate(video.uploadDate)}</div>
+            )}
+            {video.viewCount !== undefined && (
+              <div className="video-card-views">{formatViewCount(video.viewCount)}</div>
+            )}
+          </div>
           <h3 className="video-title">{video.title}</h3>
         </div>
       </div>

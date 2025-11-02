@@ -122,6 +122,7 @@ async function scanVideosFromDisk(): Promise<VideoListItem[]> {
         const title = infoJson.title || infoJson.fulltitle || '';
         const description = infoJson.description || title;
         const uploadDate = infoJson.upload_date || extractUploadDate(baseName);
+        const viewCount = infoJson.view_count;
 
         videos.push({
           baseName,
@@ -130,6 +131,7 @@ async function scanVideosFromDisk(): Promise<VideoListItem[]> {
           videoPath: videoFile,
           thumbnailPath: thumbnailFile,
           uploadDate,
+          viewCount,
         });
       } catch (error) {
         // Handle file read errors (not JSON parsing errors)

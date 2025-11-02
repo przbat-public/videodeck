@@ -1,22 +1,7 @@
-import { VideoInfo } from '../hooks/useVideoSearch';
-import { Comment } from '../types';
-
-export interface VideoDetails {
-  title: string;
-  description: string;
-  uploadDate: string;
-  duration: string;
-  viewCount: number;
-  likeCount: number;
-  channel: string;
-  comments: Comment[];
-  commentCount: number;
-  videoPath: string;
-  thumbnailPath: string;
-}
+import { VideoListItem, VideoDetails } from '../types';
 
 export interface VideoDetailState {
-  video: VideoInfo | null;
+  video: VideoListItem | null;
   details: VideoDetails | null;
   loading: boolean;
   error: string | null;
