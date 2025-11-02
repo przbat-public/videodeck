@@ -47,7 +47,7 @@ describe('videoScanner', () => {
       await loadVideosCache();
       const result = getVideos('');
       expect(result.length).toBe(1);
-      expect(result[0].name).toBe('Test Video 1');
+      expect(result[0].title).toBe('Test Video 1');
     });
 
     it('should return all videos for whitespace-only query', async () => {
@@ -66,7 +66,7 @@ describe('videoScanner', () => {
       await loadVideosCache();
       const result = getVideos('   ');
       expect(result.length).toBe(1);
-      expect(result[0].name).toBe('Test Video 1');
+      expect(result[0].title).toBe('Test Video 1');
     });
   });
 
@@ -97,7 +97,7 @@ describe('videoScanner', () => {
 
       const videos = getVideos();
       expect(videos.length).toBeGreaterThan(0);
-      expect(videos[0].name).toBeDefined();
+      expect(videos[0].title).toBeDefined();
     });
 
     it('should handle invalid JSON files gracefully', async () => {
@@ -124,7 +124,7 @@ describe('videoScanner', () => {
       const videos = getVideos();
       // Should only have one video (the valid one)
       expect(videos.length).toBe(1);
-      expect(videos[0].name).toBe('Test Video 2');
+      expect(videos[0].title).toBe('Test Video 2');
     });
 
     it('should sort videos by date (newest first)', async () => {

@@ -7,7 +7,7 @@ import { VideoInfo } from '../hooks/useVideoSearch';
 const mockVideos: VideoInfo[] = [
   {
     baseName: '20231201_TestVideo1',
-    name: 'Test Video 1',
+    title: 'Test Video 1',
     description: 'Description 1',
     videoPath: '20231201_TestVideo1.mp4',
     thumbnailPath: '20231201_TestVideo1.webp',
@@ -15,7 +15,7 @@ const mockVideos: VideoInfo[] = [
   },
   {
     baseName: '20231115_TestVideo2',
-    name: 'Test Video 2',
+    title: 'Test Video 2',
     description: 'Description 2',
     videoPath: '20231115_TestVideo2.mp4',
     thumbnailPath: '20231115_TestVideo2.webp',

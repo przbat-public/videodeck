@@ -1,7 +1,9 @@
 import express from 'express';
 import { getVideos } from '../services/videoScanner';
 import { getVideoFilePath } from '../utils/videoPathUtils';
+import { buildCommentTree } from '../utils/commentTreeUtils';
 import { getVideosFolderPath } from '../config';
+import { VideoInfoJson, VideoDetails } from '../types';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -38,7 +40,7 @@ router.get('/list', (req, res) => {
   }
 });
 
-// GET /api/videos/file/:filename - Must be before /:baseName/details to avoid route conflicts
+// GET /api/videos/file/:filename - Must be before /:baseName routes to avoid route conflicts
 router.get('/file/:filename', async (req, res) => {
   try {
     const filename = req.params.filename;
@@ -82,7 +84,14 @@ router.get('/:baseName/details', async (req, res) => {
     const baseName = req.params.baseName;
     const infoJsonPath = path.join(getVideosFolderPath(), `${baseName}.info.json`);
 
-    // Check if file exists
+    const allVideos = getVideos();
+    const video = allVideos.find((v) => v.baseName === baseName);
+
+    if (!video) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    // Check if video file details exist
     try {
       await fs.access(infoJsonPath);
     } catch {
@@ -90,7 +99,7 @@ router.get('/:baseName/details', async (req, res) => {
     }
 
     // Read and parse info.json
-    let infoJson;
+    let infoJson: VideoInfoJson;
     try {
       const infoJsonContent = await fs.readFile(infoJsonPath, 'utf-8');
       infoJson = JSON.parse(infoJsonContent);
@@ -106,79 +115,20 @@ router.get('/:baseName/details', async (req, res) => {
       throw parseError;
     }
 
-    // Reconstruct nested comment structure from flat array
-    // Comments may be stored flat with 'parent' field instead of nested 'replies'
-    const buildCommentTree = (comments: any[]): any[] => {
-      if (!comments || comments.length === 0) return [];
-
-      // Check if comments already have nested structure
-      const hasNestedReplies = comments.some((c: any) => c.replies && Array.isArray(c.replies));
-      if (hasNestedReplies) {
-        // Sort root comments by like_count (descending - most likes first)
-        const sorted = [...comments].sort((a, b) => {
-          const likesA = a.like_count || 0;
-          const likesB = b.like_count || 0;
-          return likesB - likesA;
-        });
-        return sorted;
-      }
-
-      // Build tree from flat structure using 'parent' field
-      const commentMap = new Map<string, any>();
-      const rootComments: any[] = [];
-
-      // First pass: create map and prepare comments
-      comments.forEach((comment: any) => {
-        const processed = {
-          ...comment,
-          replies: [] as any[],
-          reply_count: 0,
-        };
-        commentMap.set(comment.id, processed);
-      });
-
-      // Second pass: build tree structure
-      comments.forEach((comment: any) => {
-        const processed = commentMap.get(comment.id)!;
-
-        if (comment.parent === 'root' || !comment.parent) {
-          rootComments.push(processed);
-        } else {
-          const parent = commentMap.get(comment.parent);
-          if (parent) {
-            parent.replies.push(processed);
-            parent.reply_count = (parent.reply_count || 0) + 1;
-          } else {
-            // Orphaned reply, treat as root comment
-            rootComments.push(processed);
-          }
-        }
-      });
-
-      // Sort root comments by like_count (descending - most likes first)
-      rootComments.sort((a, b) => {
-        const likesA = a.like_count || 0;
-        const likesB = b.like_count || 0;
-        return likesB - likesA;
-      });
-
-      return rootComments;
-    };
-
     const comments = buildCommentTree(infoJson.comments || []);
 
-    // Extract only needed fields (especially comments)
-    // Use title from info.json as the main description/title
-    const details = {
+    const details: VideoDetails = {
       title: infoJson.title || infoJson.fulltitle || '',
-      description: infoJson.description || infoJson.title || infoJson.fulltitle || '', // Fallback to title if description missing
+      description: infoJson.description || infoJson.title || infoJson.fulltitle || '',
       uploadDate: infoJson.upload_date || '',
-      duration: infoJson.duration_string || infoJson.duration || '',
+      duration: infoJson.duration_string || (infoJson.duration ? String(infoJson.duration) : ''),
       viewCount: infoJson.view_count || 0,
       likeCount: infoJson.like_count || 0,
       channel: infoJson.channel || infoJson.uploader || '',
       comments: comments,
       commentCount: infoJson.comment_count || comments.length || 0,
+      videoPath: video.videoPath,
+      thumbnailPath: video.thumbnailPath,
     };
 
     res.json({ details });

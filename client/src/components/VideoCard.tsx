@@ -23,7 +23,7 @@ export default function VideoCard({ video }: VideoCardProps) {
         <div className="video-thumbnail">
           <img
             src={thumbnailUrl}
-            alt={video.name}
+            alt={video.title}
             loading="lazy"
             onError={(e) => {
               // Fallback if thumbnail fails to load
@@ -40,7 +40,7 @@ export default function VideoCard({ video }: VideoCardProps) {
           {video.uploadDate && (
             <div className="video-card-date">{formatVideoDate(video.uploadDate)}</div>
           )}
-          <h3 className="video-title">{video.name}</h3>
+          <h3 className="video-title">{video.title}</h3>
         </div>
       </div>
     </Link>

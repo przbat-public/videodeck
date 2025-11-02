@@ -6,7 +6,7 @@ import { VideoInfo } from '../hooks/useVideoSearch';
 
 const mockVideo: VideoInfo = {
   baseName: '20231201_TestVideo',
-  name: 'Test Video Title',
+  title: 'Test Video Title',
   description: 'This is a test video description that might be quite long',
   videoPath: '20231201_TestVideo.mp4',
   thumbnailPath: '20231201_TestVideo.webp',

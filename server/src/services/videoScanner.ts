@@ -1,18 +1,10 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { getVideosFolderPath } from '../config';
-
-export interface VideoInfo {
-  baseName: string;
-  name: string;
-  description: string;
-  videoPath: string;
-  thumbnailPath: string;
-  uploadDate?: string;
-}
+import { VideoListItem } from '../types';
 
 // Cache in memory
-let videosCache: VideoInfo[] = [];
+let videosCache: VideoListItem[] = [];
 let isCacheLoaded = false;
 
 /**
@@ -62,7 +54,7 @@ function extractUploadDate(baseName: string): string | undefined {
 /**
  * Sort videos by upload date (newest first)
  */
-function sortVideosByDate(videos: VideoInfo[]): VideoInfo[] {
+function sortVideosByDate(videos: VideoListItem[]): VideoListItem[] {
   return [...videos].sort((a, b) => {
     const dateA = a.uploadDate || '00000000';
     const dateB = b.uploadDate || '00000000';
@@ -74,7 +66,7 @@ function sortVideosByDate(videos: VideoInfo[]): VideoInfo[] {
 /**
  * Scan folder for .info.json files and extract video information
  */
-async function scanVideosFromDisk(): Promise<VideoInfo[]> {
+async function scanVideosFromDisk(): Promise<VideoListItem[]> {
   const folderPath = getVideosFolderPath();
   const files = await fs.readdir(folderPath);
 
@@ -83,7 +75,7 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
 
   const infoJsonFiles = visibleFiles.filter((file) => file.endsWith('.info.json'));
   const totalFiles = infoJsonFiles.length;
-  const videos: VideoInfo[] = [];
+  const videos: VideoListItem[] = [];
   let loadedCount = 0;
 
   if (totalFiles > 0) {
@@ -133,7 +125,7 @@ async function scanVideosFromDisk(): Promise<VideoInfo[]> {
 
         videos.push({
           baseName,
-          name: title || baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''),
+          title: title || baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''),
           description,
           videoPath: videoFile,
           thumbnailPath: thumbnailFile,
@@ -196,9 +188,9 @@ export async function refreshVideosCache(): Promise<void> {
 }
 
 /**
- * Search videos by query in name (title)
+ * Search videos by query in title
  */
-export function getVideos(query?: string): VideoInfo[] {
+export function getVideos(query?: string): VideoListItem[] {
   if (!isCacheLoaded) {
     throw new Error('Videos cache not loaded. Call loadVideosCache() first.');
   }
@@ -209,7 +201,7 @@ export function getVideos(query?: string): VideoInfo[] {
 
   const searchTerm = query.toLowerCase().trim();
 
-  const filtered = videosCache.filter((video) => video.name.toLowerCase().includes(searchTerm));
+  const filtered = videosCache.filter((video) => video.title.toLowerCase().includes(searchTerm));
 
   // Return filtered results sorted by date (already sorted, but ensure consistency)
   return sortVideosByDate(filtered);

@@ -1,71 +1,12 @@
-import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { VideoInfo } from '../hooks/useVideoSearch';
 import CommentComponent from '../components/CommentComponent';
-import { Comment } from '../types';
-
-interface VideoDetails {
-  title: string;
-  description: string;
-  uploadDate: string;
-  duration: string;
-  viewCount: number;
-  likeCount: number;
-  channel: string;
-  comments: Comment[];
-  commentCount: number;
-}
+import { useVideoDetail } from '../hooks/useVideoDetail';
 
 export default function VideoDetailPage() {
   const { baseName } = useParams<{ baseName: string }>();
-  const [video, setVideo] = useState<VideoInfo | null>(null);
-  const [details, setDetails] = useState<VideoDetails | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { state } = useVideoDetail(baseName);
 
-  useEffect(() => {
-    if (!baseName) {
-      setError('Invalid video ID');
-      setLoading(false);
-      return;
-    }
-
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        // Find video in list
-        const listResponse = await fetch('/api/videos/list');
-        if (!listResponse.ok) throw new Error('Failed to load videos');
-        const listData = await listResponse.json();
-        const foundVideo = listData.videos.find(
-          (v: VideoInfo) => v.baseName === decodeURIComponent(baseName)
-        );
-
-        if (!foundVideo) {
-          throw new Error('Video not found');
-        }
-        setVideo(foundVideo);
-
-        // Load details (including comments)
-        const detailsResponse = await fetch(
-          `/api/videos/${encodeURIComponent(foundVideo.baseName)}/details`
-        );
-        if (!detailsResponse.ok) throw new Error('Failed to load video details');
-        const detailsData = await detailsResponse.json();
-        setDetails(detailsData.details);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [baseName]);
-
-  if (loading) {
+  if (state.loading) {
     return (
       <div className="video-detail-page">
         <div className="loading">
@@ -75,11 +16,11 @@ export default function VideoDetailPage() {
     );
   }
 
-  if (error || !video) {
+  if (state.error || !state.details) {
     return (
       <div className="video-detail-page">
         <div className="error-message">
-          <p>Error: {error || 'Video not found'}</p>
+          <p>Error: {state.error || 'Video not found'}</p>
           <Link to="/" className="back-link">
             ← Back to search
           </Link>
@@ -88,7 +29,7 @@ export default function VideoDetailPage() {
     );
   }
 
-  const videoUrl = `/api/videos/file/${encodeURIComponent(video.videoPath)}`;
+  const videoUrl = `/api/videos/file/${encodeURIComponent(state.details.videoPath)}`;
   const formatDate = (dateStr: string) => {
     if (!dateStr || dateStr.length !== 8) return dateStr;
     return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
@@ -111,29 +52,35 @@ export default function VideoDetailPage() {
           </div>
 
           <div className="video-detail-info">
-            <h1>{details?.title || video.name}</h1>
+            <h1>{state.details?.title}</h1>
 
-            {details && (
+            {state.details && (
               <div className="video-meta">
-                {details.viewCount > 0 && <span>{details.viewCount.toLocaleString()} views</span>}
-                {details.likeCount > 0 && <span>{details.likeCount.toLocaleString()} likes</span>}
-                {details.uploadDate && <span>{formatDate(details.uploadDate)}</span>}
+                {state.details.viewCount > 0 && (
+                  <span>{state.details.viewCount.toLocaleString()} views</span>
+                )}
+                {state.details.likeCount > 0 && (
+                  <span>{state.details.likeCount.toLocaleString()} likes</span>
+                )}
+                {state.details.uploadDate && <span>{formatDate(state.details.uploadDate)}</span>}
               </div>
             )}
 
             <div className="video-description-full">
               <h2>Description</h2>
-              <p>{details?.description || video.description}</p>
+              <p>{state.details?.description}</p>
             </div>
           </div>
         </div>
 
         <div className="video-comments-section">
-          <h2>Comments {details?.commentCount ? `(${details.commentCount})` : ''}</h2>
+          <h2>
+            Comments {state.details?.commentCount ? `(${state.details.commentCount})` : ''}
+          </h2>
 
-          {details?.comments && details.comments.length > 0 ? (
+          {state.details?.comments && state.details.comments.length > 0 ? (
             <div className="comments-list">
-              {details.comments.map((comment, index) => (
+              {state.details.comments.map((comment, index) => (
                 <CommentComponent key={comment.id || index} comment={comment} />
               ))}
             </div>
