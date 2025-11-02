@@ -1,6 +1,16 @@
 import { sanitizeFilename, getVideoFilePath } from './videoPathUtils';
 
 describe('sanitizeFilename', () => {
+  beforeEach(() => {
+    // Mock console.error to suppress output during tests
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    // Restore original console methods
+    jest.restoreAllMocks();
+  });
+
   it('should return valid filename as-is', () => {
     expect(sanitizeFilename('video.mp4')).toBe('video.mp4');
     expect(sanitizeFilename('test.webp')).toBe('test.webp');

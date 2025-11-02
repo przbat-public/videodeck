@@ -1,8 +1,7 @@
-import { getAllVideos, searchVideos, loadVideosCache, refreshVideosCache } from './videoScanner';
+import { getVideos, loadVideosCache, refreshVideosCache } from './videoScanner';
 import * as fs from 'fs/promises';
 import * as config from '../config';
 
-// Mock modules
 jest.mock('fs/promises');
 jest.mock('../config');
 
@@ -12,26 +11,26 @@ const mockedConfig = config as jest.Mocked<typeof config>;
 describe('videoScanner', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset module state
     jest.resetModules();
+    // Mock console.log and console.error to suppress output during tests
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
   });
 
-  describe('getAllVideos', () => {
-    it('should throw error if cache is not loaded', () => {
-      expect(() => getAllVideos()).toThrow(
-        'Videos cache not loaded. Call loadVideosCache() first.'
-      );
-    });
+  afterEach(() => {
+    // Restore original console methods
+    jest.restoreAllMocks();
   });
 
   describe('searchVideos', () => {
     it('should throw error if cache is not loaded', () => {
-      expect(() => searchVideos('test')).toThrow(
+      expect(() => getVideos('test')).toThrow(
         'Videos cache not loaded. Call loadVideosCache() first.'
       );
     });
 
-    it('should return empty array for empty query', async () => {
+    it('should return all videos for empty query', async () => {
       // Mock cache as loaded
       mockedConfig.getVideosFolderPath.mockReturnValue('/test/videos');
       mockedFs.readdir.mockResolvedValue([
@@ -46,11 +45,12 @@ describe('videoScanner', () => {
       mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
 
       await loadVideosCache();
-      const result = searchVideos('');
-      expect(result).toEqual([]);
+      const result = getVideos('');
+      expect(result.length).toBe(1);
+      expect(result[0].name).toBe('Test Video 1');
     });
 
-    it('should return empty array for whitespace-only query', async () => {
+    it('should return all videos for whitespace-only query', async () => {
       mockedConfig.getVideosFolderPath.mockReturnValue('/test/videos');
       mockedFs.readdir.mockResolvedValue([
         '20231201_TestVideo1.info.json',
@@ -64,8 +64,9 @@ describe('videoScanner', () => {
       mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
 
       await loadVideosCache();
-      const result = searchVideos('   ');
-      expect(result).toEqual([]);
+      const result = getVideos('   ');
+      expect(result.length).toBe(1);
+      expect(result[0].name).toBe('Test Video 1');
     });
   });
 
@@ -94,7 +95,7 @@ describe('videoScanner', () => {
 
       await loadVideosCache();
 
-      const videos = getAllVideos();
+      const videos = getVideos();
       expect(videos.length).toBeGreaterThan(0);
       expect(videos[0].name).toBeDefined();
     });
@@ -120,7 +121,7 @@ describe('videoScanner', () => {
       // Should not throw, should skip invalid file
       await expect(loadVideosCache()).resolves.not.toThrow();
 
-      const videos = getAllVideos();
+      const videos = getVideos();
       // Should only have one video (the valid one)
       expect(videos.length).toBe(1);
       expect(videos[0].name).toBe('Test Video 2');
@@ -151,7 +152,7 @@ describe('videoScanner', () => {
 
       await loadVideosCache();
 
-      const videos = getAllVideos();
+      const videos = getVideos();
       expect(videos.length).toBe(2);
       // Newest should be first
       expect(videos[0].baseName).toBe('20231201_NewVideo');
@@ -175,7 +176,7 @@ describe('videoScanner', () => {
       );
 
       await loadVideosCache();
-      const initialCount = getAllVideos().length;
+      const initialCount = getVideos().length;
 
       // Change what readdir returns
       mockedFs.readdir.mockResolvedValue([
@@ -194,7 +195,7 @@ describe('videoScanner', () => {
       );
 
       await refreshVideosCache();
-      const newCount = getAllVideos().length;
+      const newCount = getVideos().length;
 
       // Should have reloaded with new files
       expect(mockedFs.readdir).toHaveBeenCalled();

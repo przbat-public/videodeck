@@ -196,25 +196,15 @@ export async function refreshVideosCache(): Promise<void> {
 }
 
 /**
- * Get all videos from cache
- */
-export function getAllVideos(): VideoInfo[] {
-  if (!isCacheLoaded) {
-    throw new Error('Videos cache not loaded. Call loadVideosCache() first.');
-  }
-  return videosCache;
-}
-
-/**
  * Search videos by query in name (title)
  */
-export function searchVideos(query: string): VideoInfo[] {
+export function getVideos(query?: string): VideoInfo[] {
   if (!isCacheLoaded) {
     throw new Error('Videos cache not loaded. Call loadVideosCache() first.');
   }
 
   if (!query || query.trim().length === 0) {
-    return [];
+    return videosCache;
   }
 
   const searchTerm = query.toLowerCase().trim();

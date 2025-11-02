@@ -1,5 +1,5 @@
 import express from 'express';
-import { searchVideos, getAllVideos } from '../services/videoScanner';
+import { getVideos } from '../services/videoScanner';
 import { getVideoFilePath } from '../utils/videoPathUtils';
 import { getVideosFolderPath } from '../config';
 import fs from 'fs/promises';
@@ -12,7 +12,7 @@ router.get('/search', async (req, res) => {
   try {
     const query = req.query.q as string | undefined;
 
-    const videos = query ? searchVideos(query) : getAllVideos();
+    const videos = getVideos(query);
 
     res.json({ videos });
   } catch (error) {
@@ -27,7 +27,7 @@ router.get('/search', async (req, res) => {
 // GET /api/videos/list
 router.get('/list', (req, res) => {
   try {
-    const videos = getAllVideos();
+    const videos = getVideos();
     res.json({ videos });
   } catch (error) {
     console.error('Error listing videos:', error);

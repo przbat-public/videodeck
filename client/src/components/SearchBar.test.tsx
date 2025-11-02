@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act } from 'react';
 import userEvent from '@testing-library/user-event';
 import SearchBar from './SearchBar';
 
@@ -20,10 +21,16 @@ describe('SearchBar', () => {
     const input = screen.getByPlaceholderText('Search videos by description...');
     const button = screen.getByRole('button', { name: /search/i });
 
-    await user.type(input, 'test query');
-    await user.click(button);
+    await act(async () => {
+      await user.type(input, 'test query');
+    });
+    await act(async () => {
+      await user.click(button);
+    });
 
-    expect(mockOnSearch).toHaveBeenCalledWith('test query');
+    await waitFor(() => {
+      expect(mockOnSearch).toHaveBeenCalledWith('test query');
+    });
   });
 
   it('should call onSearch when Enter is pressed', async () => {
@@ -32,19 +39,27 @@ describe('SearchBar', () => {
     render(<SearchBar onSearch={mockOnSearch} />);
 
     const input = screen.getByPlaceholderText('Search videos by description...');
-    await user.type(input, 'test query{Enter}');
+    await act(async () => {
+      await user.type(input, 'test query{Enter}');
+    });
 
-    expect(mockOnSearch).toHaveBeenCalledWith('test query');
+    await waitFor(() => {
+      expect(mockOnSearch).toHaveBeenCalledWith('test query');
+    });
   });
 
-  it('should show clear button when query is not empty', () => {
+  it('should show clear button when query is not empty', async () => {
     const mockOnSearch = vi.fn();
     render(<SearchBar onSearch={mockOnSearch} />);
 
     const input = screen.getByPlaceholderText('Search videos by description...');
-    fireEvent.change(input, { target: { value: 'test' } });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'test' } });
+    });
 
-    expect(screen.getByRole('button', { name: /clear/i })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /clear/i })).toBeInTheDocument();
+    });
   });
 
   it('should clear input and call onSearch with empty string when clear is clicked', async () => {
@@ -53,13 +68,19 @@ describe('SearchBar', () => {
     render(<SearchBar onSearch={mockOnSearch} />);
 
     const input = screen.getByPlaceholderText('Search videos by description...');
-    await user.type(input, 'test');
+    await act(async () => {
+      await user.type(input, 'test');
+    });
     
     const clearButton = screen.getByRole('button', { name: /clear/i });
-    await user.click(clearButton);
+    await act(async () => {
+      await user.click(clearButton);
+    });
 
-    expect(input).toHaveValue('');
-    expect(mockOnSearch).toHaveBeenCalledWith('');
+    await waitFor(() => {
+      expect(input).toHaveValue('');
+      expect(mockOnSearch).toHaveBeenCalledWith('');
+    });
   });
 
   it('should disable inputs when loading', () => {

@@ -1,27 +1,34 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { act } from 'react';
 import { useVideoSearch } from './useVideoSearch';
 
-// Mock fetch globally
-global.fetch = vi.fn();
+globalThis.fetch = vi.fn();
 
 describe('useVideoSearch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset fetch mock
-    (fetch as any).mockClear();
+    (globalThis.fetch as any).mockClear();
   });
 
-  it('should initialize with empty videos', () => {
-    (fetch as any).mockResolvedValueOnce({
+  it('should initialize with empty videos', async () => {
+    (globalThis.fetch as any).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ videos: [] }),
     });
 
     const { result } = renderHook(() => useVideoSearch());
 
+    // Initially loading should be true because loadAll() is called in useEffect
+    expect(result.current.loading).toBe(true);
+    
+    // Wait for loading to complete
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
     expect(result.current.videos).toEqual([]);
-    expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
   });
 
@@ -36,7 +43,7 @@ describe('useVideoSearch', () => {
       },
     ];
 
-    (fetch as any).mockResolvedValueOnce({
+    (globalThis.fetch as any).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ videos: mockVideos }),
     });
@@ -47,7 +54,7 @@ describe('useVideoSearch', () => {
       expect(result.current.videos).toEqual(mockVideos);
     });
 
-    expect(fetch).toHaveBeenCalledWith('/api/videos/list');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/list');
   });
 
   it('should search videos with query', async () => {
@@ -61,7 +68,7 @@ describe('useVideoSearch', () => {
       },
     ];
 
-    (fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ videos: [] }),
@@ -77,17 +84,19 @@ describe('useVideoSearch', () => {
       expect(result.current.videos).toEqual([]);
     });
 
-    await result.current.search('test');
+    await act(async () => {
+      await result.current.search('test');
+    });
 
     await waitFor(() => {
       expect(result.current.videos).toEqual(mockVideos);
     });
 
-    expect(fetch).toHaveBeenCalledWith('/api/videos/search?q=test');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?q=test');
   });
 
   it('should handle search error', async () => {
-    (fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ videos: [] }),
@@ -100,7 +109,9 @@ describe('useVideoSearch', () => {
       expect(result.current.videos).toEqual([]);
     });
 
-    await result.current.search('test');
+    await act(async () => {
+      await result.current.search('test');
+    });
 
     await waitFor(() => {
       expect(result.current.error).toBe('Network error');
@@ -109,7 +120,7 @@ describe('useVideoSearch', () => {
   });
 
   it('should handle non-ok response', async () => {
-    (fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ videos: [] }),
@@ -125,7 +136,9 @@ describe('useVideoSearch', () => {
       expect(result.current.videos).toEqual([]);
     });
 
-    await result.current.search('test');
+    await act(async () => {
+      await result.current.search('test');
+    });
 
     await waitFor(() => {
       expect(result.current.error).toBe('Failed to search videos');
@@ -133,7 +146,7 @@ describe('useVideoSearch', () => {
   });
 
   it('should trim query before searching', async () => {
-    (fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ videos: [] }),
@@ -149,13 +162,15 @@ describe('useVideoSearch', () => {
       expect(result.current.videos).toEqual([]);
     });
 
-    await result.current.search('  test  ');
+    await act(async () => {
+      await result.current.search('  test  ');
+    });
 
-    expect(fetch).toHaveBeenCalledWith('/api/videos/search?q=test');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?q=test');
   });
 
   it('should handle empty query', async () => {
-    (fetch as any)
+    (globalThis.fetch as any)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ videos: [] }),
@@ -171,9 +186,11 @@ describe('useVideoSearch', () => {
       expect(result.current.videos).toEqual([]);
     });
 
-    await result.current.search('');
+    await act(async () => {
+      await result.current.search('');
+    });
 
-    expect(fetch).toHaveBeenCalledWith('/api/videos/search?');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?');
   });
 });
 
