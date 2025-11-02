@@ -11,6 +11,7 @@ describe('SearchBar', () => {
 
     expect(screen.getByPlaceholderText('Search videos by description...')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /search/i })).toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toBeInTheDocument();
   });
 
   it('should call onSearch when form is submitted', async () => {
@@ -29,7 +30,7 @@ describe('SearchBar', () => {
     });
 
     await waitFor(() => {
-      expect(mockOnSearch).toHaveBeenCalledWith('test query');
+      expect(mockOnSearch).toHaveBeenCalledWith('test query', 'date-desc');
     });
   });
 
@@ -44,7 +45,27 @@ describe('SearchBar', () => {
     });
 
     await waitFor(() => {
-      expect(mockOnSearch).toHaveBeenCalledWith('test query');
+      expect(mockOnSearch).toHaveBeenCalledWith('test query', 'date-desc');
+    });
+  });
+
+  it('should call onSearch with selected sort option when sort changes', async () => {
+    const user = userEvent.setup();
+    const mockOnSearch = vi.fn();
+    render(<SearchBar onSearch={mockOnSearch} />);
+
+    const input = screen.getByPlaceholderText('Search videos by description...');
+    const select = screen.getByRole('combobox');
+
+    await act(async () => {
+      await user.type(input, 'test');
+    });
+    await act(async () => {
+      await user.selectOptions(select, 'views-desc');
+    });
+
+    await waitFor(() => {
+      expect(mockOnSearch).toHaveBeenCalledWith('test', 'views-desc');
     });
   });
 
@@ -79,7 +100,7 @@ describe('SearchBar', () => {
 
     await waitFor(() => {
       expect(input).toHaveValue('');
-      expect(mockOnSearch).toHaveBeenCalledWith('');
+      expect(mockOnSearch).toHaveBeenCalledWith('', 'date-desc');
     });
   });
 
@@ -89,9 +110,11 @@ describe('SearchBar', () => {
 
     const input = screen.getByPlaceholderText('Search videos by description...');
     const button = screen.getByRole('button', { name: /searching/i });
+    const select = screen.getByRole('combobox');
 
     expect(input).toBeDisabled();
     expect(button).toBeDisabled();
+    expect(select).toBeDisabled();
   });
 
   it('should show "Searching..." text when loading', () => {

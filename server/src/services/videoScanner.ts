@@ -51,16 +51,70 @@ function extractUploadDate(baseName: string): string | undefined {
   return match ? match[1] : undefined;
 }
 
+export type SortOption = 
+  | 'date-desc'
+  | 'date-asc'
+  | 'views-desc'
+  | 'views-asc'
+  | 'likes-desc'
+  | 'likes-asc';
+
 /**
- * Sort videos by upload date (newest first)
+ * Sort videos based on the provided sort option
  */
-function sortVideosByDate(videos: VideoListItem[]): VideoListItem[] {
-  return [...videos].sort((a, b) => {
-    const dateA = a.uploadDate || '00000000';
-    const dateB = b.uploadDate || '00000000';
-    // Sort descending (newest first)
-    return dateB.localeCompare(dateA);
-  });
+function sortVideos(videos: VideoListItem[], sortOption: SortOption = 'date-desc'): VideoListItem[] {
+  const sorted = [...videos];
+
+  switch (sortOption) {
+    case 'date-desc':
+      return sorted.sort((a, b) => {
+        const dateA = a.uploadDate || '00000000';
+        const dateB = b.uploadDate || '00000000';
+        return dateB.localeCompare(dateA);
+      });
+
+    case 'date-asc':
+      return sorted.sort((a, b) => {
+        const dateA = a.uploadDate || '00000000';
+        const dateB = b.uploadDate || '00000000';
+        return dateA.localeCompare(dateB);
+      });
+
+    case 'views-desc':
+      return sorted.sort((a, b) => {
+        const viewsA = a.viewCount ?? 0;
+        const viewsB = b.viewCount ?? 0;
+        return viewsB - viewsA;
+      });
+
+    case 'views-asc':
+      return sorted.sort((a, b) => {
+        const viewsA = a.viewCount ?? 0;
+        const viewsB = b.viewCount ?? 0;
+        return viewsA - viewsB;
+      });
+
+    case 'likes-desc':
+      return sorted.sort((a, b) => {
+        const likesA = a.likeCount ?? 0;
+        const likesB = b.likeCount ?? 0;
+        return likesB - likesA;
+      });
+
+    case 'likes-asc':
+      return sorted.sort((a, b) => {
+        const likesA = a.likeCount ?? 0;
+        const likesB = b.likeCount ?? 0;
+        return likesA - likesB;
+      });
+
+    default:
+      return sorted.sort((a, b) => {
+        const dateA = a.uploadDate || '00000000';
+        const dateB = b.uploadDate || '00000000';
+        return dateB.localeCompare(dateA);
+      });
+  }
 }
 
 /**
@@ -123,6 +177,7 @@ async function scanVideosFromDisk(): Promise<VideoListItem[]> {
         const description = infoJson.description || title;
         const uploadDate = infoJson.upload_date || extractUploadDate(baseName);
         const viewCount = infoJson.view_count;
+        const likeCount = infoJson.like_count;
 
         videos.push({
           baseName,
@@ -132,6 +187,7 @@ async function scanVideosFromDisk(): Promise<VideoListItem[]> {
           thumbnailPath: thumbnailFile,
           uploadDate,
           viewCount,
+          likeCount,
         });
       } catch (error) {
         // Handle file read errors (not JSON parsing errors)
@@ -162,8 +218,8 @@ async function scanVideosFromDisk(): Promise<VideoListItem[]> {
     process.stdout.write('\n');
   }
 
-  // Sort by upload date (newest first)
-  return sortVideosByDate(videos);
+  // Sort by upload date (newest first) as default
+  return sortVideos(videos, 'date-desc');
 }
 
 /**
@@ -192,23 +248,24 @@ export async function refreshVideosCache(): Promise<void> {
 /**
  * Search videos by query in title and description
  */
-export function getVideos(query?: string): VideoListItem[] {
+export function getVideos(query?: string, sortOption: SortOption = 'date-desc'): VideoListItem[] {
   if (!isCacheLoaded) {
     throw new Error('Videos cache not loaded. Call loadVideosCache() first.');
   }
 
+  let results: VideoListItem[];
+
   if (!query || query.trim().length === 0) {
-    return videosCache;
+    results = videosCache;
+  } else {
+    const searchTerm = query.toLowerCase().trim();
+    results = videosCache.filter(
+      (video) =>
+        video.title.toLowerCase().includes(searchTerm) ||
+        (video.description && video.description.toLowerCase().includes(searchTerm))
+    );
   }
 
-  const searchTerm = query.toLowerCase().trim();
-
-  const filtered = videosCache.filter(
-    (video) =>
-      video.title.toLowerCase().includes(searchTerm) ||
-      (video.description && video.description.toLowerCase().includes(searchTerm))
-  );
-
-  // Return filtered results sorted by date (already sorted, but ensure consistency)
-  return sortVideosByDate(filtered);
+  // Sort results according to the provided sort option
+  return sortVideos(results, sortOption);
 }

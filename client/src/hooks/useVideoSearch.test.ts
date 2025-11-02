@@ -54,7 +54,7 @@ describe('useVideoSearch', () => {
       expect(result.current.videos).toEqual(mockVideos);
     });
 
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?sort=date-desc');
   });
 
   it('should search videos with query', async () => {
@@ -92,7 +92,7 @@ describe('useVideoSearch', () => {
       expect(result.current.videos).toEqual(mockVideos);
     });
 
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?q=test');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?q=test&sort=date-desc');
   });
 
   it('should handle search error', async () => {
@@ -166,7 +166,7 @@ describe('useVideoSearch', () => {
       await result.current.search('  test  ');
     });
 
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?q=test');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?q=test&sort=date-desc');
   });
 
   it('should load all videos when query is empty', async () => {
@@ -190,7 +190,7 @@ describe('useVideoSearch', () => {
       await result.current.search('');
     });
 
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?sort=date-desc');
   });
 
   it('should load all videos when query is not provided', async () => {
@@ -214,7 +214,31 @@ describe('useVideoSearch', () => {
       await result.current.search();
     });
 
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?sort=date-desc');
+  });
+
+  it('should include sort parameter when searching', async () => {
+    (globalThis.fetch as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ videos: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ videos: [] }),
+      });
+
+    const { result } = renderHook(() => useVideoSearch());
+
+    await waitFor(() => {
+      expect(result.current.videos).toEqual([]);
+    });
+
+    await act(async () => {
+      await result.current.search('test', 'views-desc');
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?q=test&sort=views-desc');
   });
 });
 

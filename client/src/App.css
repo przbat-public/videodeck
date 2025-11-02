@@ -56,6 +56,27 @@
   border-color: #667eea;
 }
 
+.sort-select {
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.3s;
+  min-width: 200px;
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.sort-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .search-button,
 .clear-button {
   padding: 0.75rem 1.5rem;
@@ -220,7 +241,6 @@
 .search-highlight {
   background-color: #fff3cd;
   color: #856404;
-  padding: 0.1em 0.2em;
   border-radius: 3px;
   font-weight: 600;
 }
@@ -462,6 +482,11 @@
 
   .search-bar {
     flex-direction: column;
+  }
+
+  .sort-select {
+    min-width: auto;
+    width: 100%;
   }
 
   .video-list {

@@ -1,6 +1,7 @@
 import { useReducer, useEffect } from 'react';
 import queryString from 'query-string';
 import { VideoListItem } from '../types';
+import { SortOption } from '../components/SearchBar';
 import {
   videoSearchReducer,
   initialState,
@@ -11,19 +12,25 @@ interface UseVideoSearchResult {
   loading: boolean;
   error: string | null;
   query: string;
-  search: (query?: string) => Promise<void>;
+  search: (query?: string, sort?: SortOption) => Promise<void>;
 }
 
 export function useVideoSearch(): UseVideoSearchResult {
   const [state, dispatch] = useReducer(videoSearchReducer, initialState);
 
-  const search = async (query?: string) => {
+  const search = async (query?: string, sort: SortOption = 'date-desc') => {
     const trimmedQuery = query?.trim() || '';
     dispatch({ type: 'SEARCH_START', payload: trimmedQuery });
     
     try {
       const url = queryString.stringifyUrl(
-        { url: '/api/videos/search', query: { q: trimmedQuery } },
+        { 
+          url: '/api/videos/search', 
+          query: { 
+            q: trimmedQuery || undefined,
+            sort: sort || 'date-desc'
+          } 
+        },
         { skipEmptyString: true, skipNull: true }
       );
       

@@ -1,12 +1,12 @@
 import { useVideoSearch } from '../hooks/useVideoSearch';
-import SearchBar from '../components/SearchBar';
+import SearchBar, { SortOption } from '../components/SearchBar';
 import VideoList from '../components/VideoList';
 
 export default function VideoListPage() {
   const { videos, loading, error, query, search } = useVideoSearch();
 
-  const handleSearch = async (query: string) => {
-    await search(query);
+  const handleSearch = async (query: string, sort: SortOption) => {
+    await search(query, sort);
   };
 
   return (

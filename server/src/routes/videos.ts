@@ -1,5 +1,5 @@
 import express from 'express';
-import { getVideos } from '../services/videoScanner';
+import { getVideos, SortOption } from '../services/videoScanner';
 import { getVideoFilePath } from '../utils/videoPathUtils';
 import { buildCommentTree } from '../utils/commentTreeUtils';
 import { getVideosFolderPath } from '../config';
@@ -9,12 +9,13 @@ import path from 'path';
 
 const router = express.Router();
 
-// GET /api/videos/search?q={query}
+// GET /api/videos/search?q={query}&sort={sortOption}
 router.get('/search', async (req, res) => {
   try {
     const query = req.query.q as string | undefined;
+    const sort = (req.query.sort as SortOption) || 'date-desc';
 
-    const videos = getVideos(query);
+    const videos = getVideos(query, sort);
 
     res.json({ videos });
   } catch (error) {
