@@ -1,4 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
+import ReactPlayer from 'react-player';
 import CommentComponent from '../components/CommentComponent';
 import { useVideoDetail } from '../hooks/useVideoDetail';
 
@@ -46,9 +47,14 @@ export default function VideoDetailPage() {
       <div className="video-detail-container">
         <div className="video-detail-main">
           <div className="video-player-section">
-            <video src={videoUrl} controls autoPlay className="video-player-full">
-              Your browser does not support the video tag.
-            </video>
+            <ReactPlayer
+              src={videoUrl}
+              controls
+              playing
+              width="100%"
+              height="100%"
+              className="video-player-full"
+            />
           </div>
 
           <div className="video-detail-info">
