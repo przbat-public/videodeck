@@ -16,7 +16,7 @@ const isStdoutTTY = process.stdout.isTTY;
 /**
  * Log progress with support for both TTY and non-TTY environments (e.g., concurrently)
  */
-function logProgress(loadedCount: number, totalFiles: number, percentage: string): void {
+const logProgress = (loadedCount: number, totalFiles: number, percentage: string): void => {
   const message = `Loaded: ${loadedCount}/${totalFiles} files (${percentage}%)`;
 
   if (isStdoutTTY) {
@@ -33,7 +33,7 @@ function logProgress(loadedCount: number, totalFiles: number, percentage: string
       console.log(message);
     }
   }
-}
+};
 
 /**
  * Extract base name from filename (remove extension)
@@ -51,7 +51,7 @@ function extractUploadDate(baseName: string): string | undefined {
   return match ? match[1] : undefined;
 }
 
-export type SortOption = 
+export type SortOption =
   | 'date-desc'
   | 'date-asc'
   | 'views-desc'
@@ -176,7 +176,7 @@ async function scanFolder(folderPath: string): Promise<VideoListItem[]> {
           description,
           videoPath: videoFile,
           thumbnailPath: thumbnailFile,
-          folderPath, // Store the folder path for this video
+          folderPath,
           uploadDate,
           viewCount,
           likeCount,
@@ -203,10 +203,7 @@ async function scanFolder(folderPath: string): Promise<VideoListItem[]> {
   return videos;
 }
 
-/**
- * Scan all configured folders for .info.json files and extract video information
- */
-async function scanVideosFromDisk(): Promise<VideoListItem[]> {
+const scanVideosFromDisk = async (): Promise<VideoListItem[]> => {
   const folderPaths = getVideosFolderPaths();
   const allVideos: VideoListItem[] = [];
   let totalFiles = 0;
@@ -252,9 +249,6 @@ async function scanVideosFromDisk(): Promise<VideoListItem[]> {
   return sortVideos(allVideos, 'date-desc');
 }
 
-/**
- * Load videos into cache (called on server startup)
- */
 export async function loadVideosCache(): Promise<void> {
   try {
     console.log('Loading videos cache...');
@@ -267,35 +261,28 @@ export async function loadVideosCache(): Promise<void> {
   }
 }
 
-/**
- * Refresh videos cache
- */
 export async function refreshVideosCache(): Promise<void> {
   isCacheLoaded = false;
   await loadVideosCache();
 }
 
-/**
- * Search videos by query in title and description
- */
-export function getVideos(query?: string, sortOption: SortOption = 'date-desc'): VideoListItem[] {
+export const getVideos = (query?: string, sortOption: SortOption = 'date-desc'): VideoListItem[] => {
   if (!isCacheLoaded) {
     throw new Error('Videos cache not loaded. Call loadVideosCache() first.');
   }
 
-  let results: VideoListItem[];
-
   if (!query || query.trim().length === 0) {
-    results = videosCache;
-  } else {
-    const searchTerm = query.toLowerCase().trim();
-    results = videosCache.filter(
+    return sortVideos(videosCache);
+  }
+
+  const searchTerm = query.toLowerCase().trim();
+
+  return sortVideos(
+    videosCache.filter(
       (video) =>
         video.title.toLowerCase().includes(searchTerm) ||
         (video.description && video.description.toLowerCase().includes(searchTerm))
-    );
-  }
-
-  // Sort results according to the provided sort option
-  return sortVideos(results, sortOption);
-}
+    ),
+    sortOption
+  );
+};
