@@ -250,7 +250,7 @@ export async function searchVideos(
     searchQuery = {
       multi_match: {
         query: searchTerm,
-        fields: ['title^3', 'description^2', 'comments.text^1'],
+        fields: ['baseName^4', 'title^3', 'description^2', 'comments.text^1'],
         type: 'best_fields',
         fuzziness: 'AUTO',
       },

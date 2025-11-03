@@ -101,7 +101,7 @@ router.get('/:baseName/details', async (req, res) => {
   try {
     const baseName = req.params.baseName;
 
-    const allVideos = await getVideos();
+    const allVideos = await getVideos(baseName);
     const video = allVideos.find((v) => v.baseName === baseName);
 
     if (!video) {
