@@ -1,10 +1,12 @@
 import { VideoListItem } from '../types';
+import { SortOption } from '../components/SearchBar';
 
 export interface VideoSearchState {
   videos: VideoListItem[];
   loading: boolean;
   error: string | null;
   query: string;
+  sort: SortOption;
 }
 
 export enum VideoSearchActionType {
@@ -14,7 +16,7 @@ export enum VideoSearchActionType {
 }
 
 export type VideoSearchAction =
-  | { type: VideoSearchActionType.SEARCH_START; payload: string }
+  | { type: VideoSearchActionType.SEARCH_START; payload: { query: string; sort: SortOption } }
   | { type: VideoSearchActionType.SEARCH_SUCCESS; payload: VideoListItem[] }
   | { type: VideoSearchActionType.SEARCH_ERROR; payload: string };
 
@@ -23,6 +25,7 @@ export const initialState: VideoSearchState = {
   loading: false,
   error: null,
   query: '',
+  sort: 'date-desc',
 };
 
 export function videoSearchReducer(
@@ -35,7 +38,8 @@ export function videoSearchReducer(
         ...state,
         loading: true,
         error: null,
-        query: action.payload,
+        query: action.payload.query,
+        sort: action.payload.sort,
       };
     case VideoSearchActionType.SEARCH_SUCCESS:
       return {

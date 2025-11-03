@@ -12,7 +12,16 @@ export interface VideoListItem {
   viewCount?: number;
   likeCount?: number;
   channelName?: string;
+  comments: CommentWithReplies[];
 }
+
+export type SortOption =
+  | 'date-desc'
+  | 'date-asc'
+  | 'views-desc'
+  | 'views-asc'
+  | 'likes-desc'
+  | 'likes-asc';
 
 /**
  * Comment structure from yt-dlp info.json

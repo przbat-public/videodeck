@@ -1,39 +1,15 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { getVideosFolderPaths } from '../config';
-import { VideoListItem } from '../types';
-
-// Cache in memory
-let videosCache: VideoListItem[] = [];
-let isCacheLoaded = false;
-
-/**
- * Check if stdout is a TTY (terminal) - important for concurrently compatibility
- * When running through concurrently, stdout may not be a TTY, so we use console.log instead
- */
-const isStdoutTTY = process.stdout.isTTY;
-
-/**
- * Log progress with support for both TTY and non-TTY environments (e.g., concurrently)
- */
-const logProgress = (loadedCount: number, totalFiles: number, percentage: string): void => {
-  const message = `Loaded: ${loadedCount}/${totalFiles} files (${percentage}%)`;
-
-  if (isStdoutTTY) {
-    // Terminal supports carriage return for overwriting same line
-    process.stdout.write(`\r${message}`);
-  } else {
-    // Non-TTY (e.g., through concurrently) - use console.log
-    // Only log every 10% or every 10 files to avoid spam
-    if (
-      totalFiles <= 10 ||
-      loadedCount % Math.max(1, Math.floor(totalFiles / 10)) === 0 ||
-      loadedCount === totalFiles
-    ) {
-      console.log(message);
-    }
-  }
-};
+import { VideoListItem, SortOption } from '../types';
+import {
+  indexVideo,
+  searchVideos,
+  deleteAllVideosFromFolder,
+  createIndex,
+  checkElasticsearchConnection,
+} from './elasticsearchService';
+import { buildCommentTree } from '../utils/commentTreeUtils';
 
 /**
  * Extract base name from filename (remove extension)
@@ -51,83 +27,20 @@ function extractUploadDate(baseName: string): string | undefined {
   return match ? match[1] : undefined;
 }
 
-export type SortOption =
-  | 'date-desc'
-  | 'date-asc'
-  | 'views-desc'
-  | 'views-asc'
-  | 'likes-desc'
-  | 'likes-asc';
-
-/**
- * Sort videos based on the provided sort option
- */
-function sortVideos(videos: VideoListItem[], sortOption: SortOption = 'date-desc'): VideoListItem[] {
-  const sorted = [...videos];
-
-  switch (sortOption) {
-    case 'date-desc':
-      return sorted.sort((a, b) => {
-        const dateA = a.uploadDate || '00000000';
-        const dateB = b.uploadDate || '00000000';
-        return dateB.localeCompare(dateA);
-      });
-
-    case 'date-asc':
-      return sorted.sort((a, b) => {
-        const dateA = a.uploadDate || '00000000';
-        const dateB = b.uploadDate || '00000000';
-        return dateA.localeCompare(dateB);
-      });
-
-    case 'views-desc':
-      return sorted.sort((a, b) => {
-        const viewsA = a.viewCount ?? 0;
-        const viewsB = b.viewCount ?? 0;
-        return viewsB - viewsA;
-      });
-
-    case 'views-asc':
-      return sorted.sort((a, b) => {
-        const viewsA = a.viewCount ?? 0;
-        const viewsB = b.viewCount ?? 0;
-        return viewsA - viewsB;
-      });
-
-    case 'likes-desc':
-      return sorted.sort((a, b) => {
-        const likesA = a.likeCount ?? 0;
-        const likesB = b.likeCount ?? 0;
-        return likesB - likesA;
-      });
-
-    case 'likes-asc':
-      return sorted.sort((a, b) => {
-        const likesA = a.likeCount ?? 0;
-        const likesB = b.likeCount ?? 0;
-        return likesA - likesB;
-      });
-
-    default:
-      return sorted.sort((a, b) => {
-        const dateA = a.uploadDate || '00000000';
-        const dateB = b.uploadDate || '00000000';
-        return dateB.localeCompare(dateA);
-      });
-  }
-}
-
 /**
  * Scan a single folder for .info.json files and extract video information
+ * Indexes videos to Elasticsearch on the fly
  */
-async function scanFolder(folderPath: string): Promise<VideoListItem[]> {
+async function scanFolder(folderPath: string): Promise<void> {
   const files = await fs.readdir(folderPath);
 
   // Filter out system files (starting with dot)
   const visibleFiles = files.filter((file) => !file.startsWith('.'));
 
   const infoJsonFiles = visibleFiles.filter((file) => file.endsWith('.info.json'));
-  const videos: VideoListItem[] = [];
+
+  await createIndex(folderPath);
+  await deleteAllVideosFromFolder(folderPath);
 
   for (const infoFile of infoJsonFiles) {
     // Remove .info.json extension to get base name for matching video/webp files
@@ -171,7 +84,7 @@ async function scanFolder(folderPath: string): Promise<VideoListItem[]> {
         const likeCount = infoJson.like_count;
         const channelName = infoJson.channel || infoJson.uploader;
 
-        videos.push({
+        const video: VideoListItem = {
           baseName,
           title: title || baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''),
           description,
@@ -182,80 +95,55 @@ async function scanFolder(folderPath: string): Promise<VideoListItem[]> {
           viewCount,
           likeCount,
           channelName,
-        });
+          comments: buildCommentTree(infoJson.comments || []),
+        };
+
+        try {
+          await indexVideo(video);
+        } catch (error) {
+          console.error(`Failed to index video ${baseName}:`, error);
+        }
       } catch (error) {
         // Handle file read errors (not JSON parsing errors)
         console.error(`Error reading info.json file ${infoFile}:`, error);
       }
     } else {
-      // File .info.json doesn't have matching .mp4 or .webp
+      // File .info.json doesn't have matching .mp4 (or .mkv) or .webp (or .jpg)
       if (!videoFile && !thumbnailFile) {
         console.error(
-          `\nSkipping ${infoFile}: missing both video (.mp4) and thumbnail (.webp) files`
+          `\nSkipping ${infoFile}: missing both video (.mp4 or .mkv) and thumbnail (.webp or .jpg) files`
         );
       } else if (!videoFile) {
-        console.error(`\nSkipping ${infoFile}: missing video file (.mp4)`);
+        console.error(`\nSkipping ${infoFile}: missing video file (.mp4 or .mkv)`);
       } else if (!thumbnailFile) {
-        console.error(`\nSkipping ${infoFile}: missing thumbnail file (.webp)`);
+        console.error(`\nSkipping ${infoFile}: missing thumbnail file (.webp or .jpg)`);
       }
     }
   }
-
-  return videos;
 }
 
-const scanVideosFromDisk = async (): Promise<VideoListItem[]> => {
+const scanVideosFromDisk = async (): Promise<void> => {
   const folderPaths = getVideosFolderPaths();
-  const allVideos: VideoListItem[] = [];
-  let totalFiles = 0;
-  let loadedCount = 0;
 
-  // First pass: count total files across all folders
   for (const folderPath of folderPaths) {
     try {
-      const files = await fs.readdir(folderPath);
-      const visibleFiles = files.filter((file) => !file.startsWith('.'));
-      const infoJsonFiles = visibleFiles.filter((file) => file.endsWith('.info.json'));
-      totalFiles += infoJsonFiles.length;
-    } catch (error) {
-      console.error(`Error reading folder ${folderPath}:`, error);
-    }
-  }
-
-  if (totalFiles > 0) {
-    console.log(`Scanning ${folderPaths.length} folder(s): ${totalFiles} total .info.json files found`);
-  }
-
-  // Second pass: scan each folder
-  for (const folderPath of folderPaths) {
-    try {
-      const folderVideos = await scanFolder(folderPath);
-      allVideos.push(...folderVideos);
-      loadedCount += folderVideos.length;
-
-      // Log progress
-      const percentage = totalFiles > 0 ? ((loadedCount / totalFiles) * 100).toFixed(1) : '0.0';
-      logProgress(loadedCount, totalFiles, percentage);
+      await scanFolder(folderPath);
     } catch (error) {
       console.error(`Error scanning folder ${folderPath}:`, error);
     }
   }
-
-  // Add newline after progress is complete (only for TTY)
-  if (totalFiles > 0 && isStdoutTTY) {
-    process.stdout.write('\n');
-  }
-
-  // Sort by upload date (newest first) as default
-  return sortVideos(allVideos, 'date-desc');
 }
 
 export async function loadVideosCache(): Promise<void> {
   try {
-    console.log('Loading videos cache...');
-    videosCache = await scanVideosFromDisk();
-    isCacheLoaded = true;
-    console.log(`Videos cache loaded: ${videosCache.length} videos found`);
+    // Check Elasticsearch connection
+    const isConnected = await checkElasticsearchConnection();
+    if (!isConnected) {
+      throw new Error('Elasticsearch is not available. Please ensure Elasticsearch is running.');
+    }
+
+    console.log('Loading videos cache from disk...');
+    await scanVideosFromDisk();
   } catch (error) {
     console.error('Failed to load videos cache:', error);
     throw error;
@@ -263,27 +151,14 @@ export async function loadVideosCache(): Promise<void> {
 }
 
 export async function refreshVideosCache(): Promise<void> {
-  isCacheLoaded = false;
   await loadVideosCache();
 }
 
-export const getVideos = (query?: string, sortOption: SortOption = 'date-desc'): VideoListItem[] => {
-  if (!isCacheLoaded) {
-    throw new Error('Videos cache not loaded. Call loadVideosCache() first.');
-  }
-
-  if (!query || query.trim().length === 0) {
-    return sortVideos(videosCache, sortOption);
-  }
-
-  const searchTerm = query.toLowerCase().trim();
-
-  return sortVideos(
-    videosCache.filter(
-      (video) =>
-        video.title.toLowerCase().includes(searchTerm) ||
-        (video.description && video.description.toLowerCase().includes(searchTerm))
-    ),
-    sortOption
-  );
+export const getVideos = async (
+  query?: string,
+  sortOption: SortOption = 'date-desc'
+): Promise<VideoListItem[]> => {
+  // Use Elasticsearch for search and sorting
+  // Videos are always available from Elasticsearch (indexed on the fly)
+  return searchVideos(query, sortOption);
 };

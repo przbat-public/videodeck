@@ -42,6 +42,96 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+/* Toolbar */
+.toolbar {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toolbar-left {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+}
+
+.video-count {
+  color: #666;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.toolbar-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.toolbar-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-cache-button-fixed {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.refresh-cache-button-fixed:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-message {
+  padding: 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  border-left: 4px solid;
+}
+
+.refresh-success {
+  background: #d4edda;
+  color: #155724;
+  border-left-color: #28a745;
+}
+
+.refresh-error {
+  background: #f8d7da;
+  color: #721c24;
+  border-left-color: #dc3545;
+}
+
+.refresh-message p {
+  margin: 0;
+}
+
 .search-input {
   flex: 1;
   padding: 0.75rem 1rem;
@@ -489,6 +579,33 @@
 
   .search-bar {
     flex-direction: column;
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-left {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .toolbar-right {
+    justify-content: center;
+    margin-top: 0.5rem;
+  }
+
+  .toolbar-button {
+    width: 100%;
+  }
+
+  .refresh-cache-button-fixed {
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
   }
 
   .sort-select {

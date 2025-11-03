@@ -46,10 +46,11 @@ describe('videos router', () => {
           videoPath: '20231201_TestVideo.mp4',
           thumbnailPath: '20231201_TestVideo.webp',
           folderPath: '/test/videos',
+          comments: [],
         },
       ];
 
-      mockedGetVideos.mockReturnValue(mockVideos);
+      mockedGetVideos.mockResolvedValue(mockVideos);
 
       const response = await request(app).get('/api/videos/search?q=test');
 
@@ -60,7 +61,7 @@ describe('videos router', () => {
 
     it('should use default sort when sort parameter is not provided', async () => {
       const mockVideos: VideoListItem[] = [];
-      mockedGetVideos.mockReturnValue(mockVideos);
+      mockedGetVideos.mockResolvedValue(mockVideos);
 
       const response = await request(app).get('/api/videos/search?q=test');
 
@@ -70,7 +71,7 @@ describe('videos router', () => {
 
     it('should use provided sort parameter', async () => {
       const mockVideos: VideoListItem[] = [];
-      mockedGetVideos.mockReturnValue(mockVideos);
+      mockedGetVideos.mockResolvedValue(mockVideos);
 
       const response = await request(app).get('/api/videos/search?q=test&sort=title-asc');
 
@@ -80,7 +81,7 @@ describe('videos router', () => {
 
     it('should handle empty query', async () => {
       const mockVideos: VideoListItem[] = [];
-      mockedGetVideos.mockReturnValue(mockVideos);
+      mockedGetVideos.mockResolvedValue(mockVideos);
 
       const response = await request(app).get('/api/videos/search');
 
@@ -91,9 +92,7 @@ describe('videos router', () => {
 
     it('should handle errors from getVideos', async () => {
       const error = new Error('Failed to load videos');
-      mockedGetVideos.mockImplementation(() => {
-        throw error;
-      });
+      mockedGetVideos.mockRejectedValue(error);
 
       const response = await request(app).get('/api/videos/search?q=test');
 
@@ -105,9 +104,7 @@ describe('videos router', () => {
     });
 
     it('should handle non-Error exceptions', async () => {
-      mockedGetVideos.mockImplementation(() => {
-        throw 'String error';
-      });
+      mockedGetVideos.mockRejectedValue('String error');
 
       const response = await request(app).get('/api/videos/search?q=test');
 
@@ -127,6 +124,7 @@ describe('videos router', () => {
       videoPath: '20231201_TestVideo.mp4',
       thumbnailPath: '20231201_TestVideo.webp',
       folderPath: '/test/videos',
+      comments: [],
     };
 
     let sendFileSpy: jest.SpyInstance;
@@ -166,7 +164,7 @@ describe('videos router', () => {
       const filename = '20231201_TestVideo.mp4';
       const mockFilePath = '/test/videos/20231201_TestVideo.mp4';
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
       mockedFs.access.mockResolvedValue(undefined);
 
@@ -182,7 +180,7 @@ describe('videos router', () => {
       const filename = '20231201_TestVideo.webp';
       const mockFilePath = '/test/videos/20231201_TestVideo.webp';
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
       mockedFs.access.mockResolvedValue(undefined);
 
@@ -201,7 +199,7 @@ describe('videos router', () => {
         videoPath: filename,
       };
 
-      mockedGetVideos.mockReturnValue([videoWithMatchingPath]);
+      mockedGetVideos.mockResolvedValue([videoWithMatchingPath]);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
       mockedFs.access.mockResolvedValue(undefined);
 
@@ -219,7 +217,7 @@ describe('videos router', () => {
         thumbnailPath: filename,
       };
 
-      mockedGetVideos.mockReturnValue([videoWithMatchingThumbnail]);
+      mockedGetVideos.mockResolvedValue([videoWithMatchingThumbnail]);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
       mockedFs.access.mockResolvedValue(undefined);
 
@@ -232,7 +230,7 @@ describe('videos router', () => {
       const filename = 'nonexistent.mp4';
       const mockFilePath = '/test/videos/nonexistent.mp4';
 
-      mockedGetVideos.mockReturnValue([]);
+      mockedGetVideos.mockResolvedValue([]);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
       mockedFs.access.mockRejectedValue(new Error('File not found'));
 
@@ -246,7 +244,7 @@ describe('videos router', () => {
       const filename = 'test.mp4';
       const mockFilePath = '/test/videos/test.mp4';
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
       mockedFs.access.mockRejectedValue(new Error('Permission denied'));
 
@@ -260,7 +258,7 @@ describe('videos router', () => {
       const filename = 'test.mp4';
       const mockFilePath = '/test/videos/test.mp4';
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
       mockedFs.access.mockResolvedValue(undefined);
 
@@ -274,7 +272,7 @@ describe('videos router', () => {
       const filename = 'test.webp';
       const mockFilePath = '/test/videos/test.webp';
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
       mockedFs.access.mockResolvedValue(undefined);
 
@@ -288,7 +286,7 @@ describe('videos router', () => {
       const filename = 'test.unknown';
       const mockFilePath = '/test/videos/test.unknown';
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
       mockedFs.access.mockResolvedValue(undefined);
 
@@ -302,7 +300,7 @@ describe('videos router', () => {
       const filename = 'test.mp4';
       const error = new Error('Failed to read file');
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedGetVideoFilePath.mockImplementation(() => {
         throw error;
       });
@@ -323,7 +321,7 @@ describe('videos router', () => {
       const filename = 'test.mp4';
       const mockFilePath = '/test/videos/test.mp4';
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
       mockedFs.access.mockResolvedValue(undefined);
 
@@ -343,6 +341,7 @@ describe('videos router', () => {
       videoPath: '20231201_TestVideo.mp4',
       thumbnailPath: '20231201_TestVideo.webp',
       folderPath: '/test/videos',
+      comments: [],
     };
 
     const mockInfoJson: VideoInfoJson = {
@@ -363,7 +362,7 @@ describe('videos router', () => {
       const baseName = '20231201_TestVideo';
       const infoJsonPath = path.join(mockVideo.folderPath, `${baseName}.info.json`);
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
       mockedBuildCommentTree.mockReturnValue([]);
@@ -395,7 +394,7 @@ describe('videos router', () => {
         description: 'Test Description',
       };
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithoutTitle));
       mockedBuildCommentTree.mockReturnValue([]);
@@ -414,7 +413,7 @@ describe('videos router', () => {
         uploader: 'Test Uploader',
       };
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithoutChannel));
       mockedBuildCommentTree.mockReturnValue([]);
@@ -432,7 +431,7 @@ describe('videos router', () => {
         duration: 630, // 10:30 in seconds
       };
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithNumericDuration));
       mockedBuildCommentTree.mockReturnValue([]);
@@ -456,7 +455,7 @@ describe('videos router', () => {
         comments: mockComments as any,
       };
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithComments));
       mockedBuildCommentTree.mockReturnValue(mockTree as any);
@@ -471,7 +470,7 @@ describe('videos router', () => {
     it('should return 404 when video is not found', async () => {
       const baseName = 'nonexistent';
 
-      mockedGetVideos.mockReturnValue([]);
+      mockedGetVideos.mockResolvedValue([]);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
 
@@ -482,7 +481,7 @@ describe('videos router', () => {
     it('should return 404 when info.json file does not exist', async () => {
       const baseName = '20231201_TestVideo';
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedFs.access.mockRejectedValue(new Error('File not found'));
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
@@ -495,7 +494,7 @@ describe('videos router', () => {
       const baseName = '20231201_TestVideo';
       const infoJsonPath = path.join(mockVideo.folderPath, `${baseName}.info.json`);
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue('invalid json content');
 
@@ -513,7 +512,7 @@ describe('videos router', () => {
       const infoJsonPath = path.join(mockVideo.folderPath, `${baseName}.info.json`);
       const error = new Error('Permission denied');
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockRejectedValue(error);
 
@@ -530,9 +529,7 @@ describe('videos router', () => {
       const baseName = '20231201_TestVideo';
       const error = new Error('Failed to load videos');
 
-      mockedGetVideos.mockImplementation(() => {
-        throw error;
-      });
+      mockedGetVideos.mockRejectedValue(error);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
 
@@ -553,7 +550,7 @@ describe('videos router', () => {
         comments: mockComments as any,
       };
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithoutCommentCount));
       mockedBuildCommentTree.mockReturnValue(mockTree as any);
@@ -570,7 +567,7 @@ describe('videos router', () => {
         title: 'Minimal Video',
       };
 
-      mockedGetVideos.mockReturnValue([mockVideo]);
+      mockedGetVideos.mockResolvedValue([mockVideo]);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(minimalInfoJson));
       mockedBuildCommentTree.mockReturnValue([]);

@@ -6,12 +6,14 @@ Aplikacja webowa do wyszukiwania i przeglądania filmów pobranych przez yt-dlp.
 
 - Node.js 22.x
 - npm
+- Elasticsearch 8.x lub 9.x (lokalnie lub zdalnie)
 
 ## Technologie
 
 ### Backend
 - **Node.js** + **Express** - serwer HTTP i API REST
 - **TypeScript** - typowane rozszerzenie JavaScript
+- **Elasticsearch** - silnik wyszukiwania i indeksowania filmów
 - **Jest** - framework do testowania
 
 ### Frontend
@@ -40,27 +42,63 @@ cd server && npm install
 cd ../client && npm install
 ```
 
-2. Skonfiguruj zmienną środowiskową:
+2. Uruchom Elasticsearch:
+
+**Opcja A: Docker (zalecane)**
+
+Najpierw upewnij się, że Docker Desktop jest uruchomiony:
+- Na macOS: Otwórz aplikację "Docker Desktop" z folderu Applications lub użyj Spotlight (Cmd+Space → "Docker")
+- Sprawdź czy Docker działa: `docker ps` (powinno działać bez błędów)
+
+Następnie uruchom Elasticsearch:
+```bash
+docker run -d -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.0
+```
+
+**Opcja B: Homebrew (macOS)**
+
+Jeśli wolisz zainstalować Elasticsearch lokalnie bez Dockera:
+```bash
+brew install elasticsearch
+brew services start elasticsearch
+```
+
+**Opcja C: Pobranie i ręczna instalacja**
+
+Zgodnie z [oficjalną dokumentacją Elasticsearch](https://www.elastic.co/guide/en/elasticsearch/reference/current/install-elasticsearch.html).
+
+**Sprawdzenie czy Elasticsearch działa:**
+```bash
+curl http://localhost:9200
+```
+
+Powinieneś zobaczyć odpowiedź JSON z informacjami o Elasticsearch.
+
+3. Skonfiguruj zmienne środowiskowe:
 
 Utwórz plik `.env` w głównym katalogu projektu:
 
 ```bash
 VIDEOS_FOLDER_PATH=/ścieżka/do/folderu/z/filmami
+ELASTICSEARCH_URL=http://localhost:9200
 ```
 
 Przykład dla jednego folderu:
 ```
 VIDEOS_FOLDER_PATH=/Volumes/MEDIA/example-channel
+ELASTICSEARCH_URL=http://localhost:9200
 ```
 
 Przykład dla wielu folderów (oddzielone średnikiem lub przecinkiem):
 ```
 VIDEOS_FOLDER_PATH=/Volumes/MEDIA/folder1;/Volumes/MEDIA/folder2;/Volumes/MEDIA/folder3
+ELASTICSEARCH_URL=http://localhost:9200
 ```
-lub
-```
-VIDEOS_FOLDER_PATH=/Volumes/MEDIA/folder1,/Volumes/MEDIA/folder2,/Volumes/MEDIA/folder3
-```
+
+**Uwaga:** 
+- Jeśli Elasticsearch działa na innym hoście lub porcie, zaktualizuj `ELASTICSEARCH_URL` odpowiednio.
+- Jeśli używasz Docker i otrzymujesz błąd "Cannot connect to the Docker daemon", upewnij się że Docker Desktop jest uruchomiony.
+- Po pierwszym uruchomieniu serwera, filmy będą automatycznie zindeksowane do Elasticsearch (może to potrwać chwilę w zależności od liczby filmów).
 
 ## Uruchomienie
 
@@ -201,7 +239,7 @@ Raporty pokrycia są generowane w folderze `coverage/`.
 - **Separacja odpowiedzialności** - podział na warstwy: routes, services, utils
 - **Zarządzanie stanem** - reducery dla złożonego stanu w React
 - **Custom hooks** - reużywalna logika (useVideoSearch, useVideoDetail)
-- **Cache w pamięci** - buforowanie listy filmów dla wydajności
+- **Elasticsearch** - indeksowanie i wyszukiwanie filmów z pełnotekstowym wyszukiwaniem i sortowaniem
 - **Rekursywne struktury** - zagnieżdżone drzewo komentarzy
 
 ### Jakość kodu
@@ -227,7 +265,8 @@ video-search-app/
 │   │   ├── routes/      # Endpointy API
 │   │   │   └── videos.ts
 │   │   ├── services/    # Logika biznesowa
-│   │   │   └── videoScanner.ts
+│   │   │   ├── videoScanner.ts
+│   │   │   └── elasticsearchService.ts
 │   │   ├── utils/       # Narzędzia pomocnicze
 │   │   │   ├── commentTreeUtils.ts
 │   │   │   └── videoPathUtils.ts
@@ -258,7 +297,7 @@ video-search-app/
 
 ## Funkcjonalności
 
-- **Wyszukiwanie filmów** - przeszukiwanie po opisach filmów (pliki `.description`)
+- **Wyszukiwanie filmów** - zaawansowane wyszukiwanie pełnotekstowe po tytule, opisie i nazwie kanału z wykorzystaniem Elasticsearch
 - **Wsparcie dla wielu folderów** - możliwość skanowania filmów z wielu katalogów jednocześnie
 - **Lista filmów** - wyświetlanie filmów z miniaturkami (`.webp`)
 - **Odtwarzacz wideo** - odtwarzanie filmów w przeglądarce (HTML5 video)
@@ -278,6 +317,19 @@ video-search-app/
 - **Responsywny design** - dostosowanie do różnych rozmiarów ekranów
 
 ## API Endpoints
+
+### GET /api/videos/refreshCache
+Odświeża i reindeksuje wszystkie filmy z skonfigurowanych folderów do Elasticsearch.
+
+**Odpowiedź:**
+```json
+{
+  "message": "Cache refreshed successfully",
+  "status": "ok"
+}
+```
+
+**Uwaga:** Ten endpoint może zająć dużo czasu w zależności od liczby filmów. Filmy są indeksowane na bieżąco podczas skanowania.
 
 ### GET /api/videos/search
 Wyszukuje filmy po frazie w opisach.

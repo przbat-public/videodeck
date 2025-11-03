@@ -1,5 +1,6 @@
 import express from 'express';
-import { getVideos, SortOption } from '../services/videoScanner';
+import { getVideos, refreshVideosCache } from '../services/videoScanner';
+import { SortOption } from '../types';
 import { getVideoFilePath } from '../utils/videoPathUtils';
 import { buildCommentTree } from '../utils/commentTreeUtils';
 import { VideoInfoJson, VideoDetails } from '../types';
@@ -8,13 +9,37 @@ import path from 'path';
 
 const router = express.Router();
 
+// GET /api/videos/refreshCache - Refresh/reindex videos cache
+router.get('/refreshCache', async (req, res) => {
+  try {
+    console.log('Cache refresh requested...');
+    
+    // Start the refresh process asynchronously (fire and forget)
+    refreshVideosCache().catch((error) => {
+      console.error('Error refreshing cache in background:', error);
+    });
+    
+    // Return immediately
+    res.status(200).json({ 
+      message: 'Cache refresh process started',
+      status: 'ok'
+    });
+  } catch (error) {
+    console.error('Error starting cache refresh:', error);
+    res.status(500).json({
+      error: 'Failed to start cache refresh',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // GET /api/videos/search?q={query}&sort={sortOption}
 router.get('/search', async (req, res) => {
   try {
     const query = req.query.q as string | undefined;
     const sort = (req.query.sort as SortOption) || 'date-desc';
 
-    const videos = getVideos(query, sort);
+    const videos = await getVideos(query, sort);
 
     res.json({ videos });
   } catch (error) {
@@ -36,7 +61,7 @@ router.get('/file/:filename', async (req, res) => {
     }
 
     // Try to find the video in cache to get its folder path
-    const allVideos = getVideos();
+    const allVideos = await getVideos();
     const video = allVideos.find(
       (video) => video.videoPath === filename || video.thumbnailPath === filename
     );
@@ -76,7 +101,7 @@ router.get('/:baseName/details', async (req, res) => {
   try {
     const baseName = req.params.baseName;
 
-    const allVideos = getVideos();
+    const allVideos = await getVideos();
     const video = allVideos.find((v) => v.baseName === baseName);
 
     if (!video) {
@@ -120,7 +145,7 @@ router.get('/:baseName/details', async (req, res) => {
       viewCount: infoJson.view_count || 0,
       likeCount: infoJson.like_count || 0,
       channelName: infoJson.channel || infoJson.uploader || '',
-      comments: comments,
+      comments: buildCommentTree(infoJson.comments || []),
       commentCount: infoJson.comment_count || comments.length || 0,
       videoPath: video.videoPath,
       thumbnailPath: video.thumbnailPath,

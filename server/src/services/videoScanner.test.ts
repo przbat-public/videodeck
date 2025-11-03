@@ -1,12 +1,15 @@
 import { getVideos, loadVideosCache, refreshVideosCache } from './videoScanner';
 import * as fs from 'fs/promises';
 import * as config from '../config';
+import * as elasticsearchService from './elasticsearchService';
 
 jest.mock('fs/promises');
 jest.mock('../config');
+jest.mock('./elasticsearchService');
 
 const mockedFs = fs as jest.Mocked<typeof fs>;
 const mockedConfig = config as jest.Mocked<typeof config>;
+const mockedElasticsearchService = elasticsearchService as jest.Mocked<typeof elasticsearchService>;
 
 describe('videoScanner', () => {
   beforeEach(() => {
@@ -23,57 +26,74 @@ describe('videoScanner', () => {
     jest.restoreAllMocks();
   });
 
-  describe('searchVideos', () => {
-    it('should throw error if cache is not loaded', () => {
-      expect(() => getVideos('test')).toThrow(
-        'Videos cache not loaded. Call loadVideosCache() first.'
-      );
+  describe('getVideos', () => {
+    beforeEach(() => {
+      mockedElasticsearchService.checkElasticsearchConnection.mockResolvedValue(true);
+      mockedElasticsearchService.createIndex.mockResolvedValue(undefined);
+      mockedElasticsearchService.deleteAllVideosFromFolder.mockResolvedValue(undefined);
+      mockedElasticsearchService.indexVideo.mockResolvedValue(undefined);
     });
 
-    it('should return all videos for empty query', async () => {
-      // Mock cache as loaded
-      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
-      mockedFs.readdir.mockResolvedValue([
-        '20231201_TestVideo1.info.json',
-        '20231201_TestVideo1.mp4',
-        '20231201_TestVideo1.webp',
-      ] as any);
+    it('should return videos from Elasticsearch', async () => {
+      const mockVideos = [
+        {
+          baseName: '20231201_TestVideo1',
+          title: 'Test Video 1',
+          description: 'Description 1',
+          videoPath: '20231201_TestVideo1.mp4',
+          thumbnailPath: '20231201_TestVideo1.webp',
+          folderPath: '/test/videos',
+          comments: [],
+        },
+      ];
 
-      const mockInfoJson = {
-        title: 'Test Video 1',
-      };
-      mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
+      mockedElasticsearchService.searchVideos.mockResolvedValue(mockVideos);
 
-      await loadVideosCache();
-      const result = getVideos('');
+      const result = await getVideos('');
       expect(result.length).toBe(1);
       expect(result[0].title).toBe('Test Video 1');
       expect(result[0].folderPath).toBe('/test/videos');
+      expect(mockedElasticsearchService.searchVideos).toHaveBeenCalledWith('', 'date-desc');
     });
 
-    it('should return all videos for whitespace-only query', async () => {
-      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
-      mockedFs.readdir.mockResolvedValue([
-        '20231201_TestVideo1.info.json',
-        '20231201_TestVideo1.mp4',
-        '20231201_TestVideo1.webp',
-      ] as any);
+    it('should return videos with query', async () => {
+      const mockVideos = [
+        {
+          baseName: '20231201_TestVideo1',
+          title: 'Test Video 1',
+          description: 'Description 1',
+          videoPath: '20231201_TestVideo1.mp4',
+          thumbnailPath: '20231201_TestVideo1.webp',
+          folderPath: '/test/videos',
+          comments: [],
+        },
+      ];
 
-      const mockInfoJson = {
-        title: 'Test Video 1',
-      };
-      mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
+      mockedElasticsearchService.searchVideos.mockResolvedValue(mockVideos);
 
-      await loadVideosCache();
-      const result = getVideos('   ');
+      const result = await getVideos('test');
       expect(result.length).toBe(1);
-      expect(result[0].title).toBe('Test Video 1');
-      expect(result[0].folderPath).toBe('/test/videos');
+      expect(mockedElasticsearchService.searchVideos).toHaveBeenCalledWith('test', 'date-desc');
+    });
+
+    it('should return videos with sort option', async () => {
+      const mockVideos: any[] = [];
+      mockedElasticsearchService.searchVideos.mockResolvedValue(mockVideos);
+
+      await getVideos('test', 'views-desc');
+      expect(mockedElasticsearchService.searchVideos).toHaveBeenCalledWith('test', 'views-desc');
     });
   });
 
   describe('loadVideosCache', () => {
-    it('should load videos from disk and populate cache', async () => {
+    beforeEach(() => {
+      mockedElasticsearchService.checkElasticsearchConnection.mockResolvedValue(true);
+      mockedElasticsearchService.createIndex.mockResolvedValue(undefined);
+      mockedElasticsearchService.deleteAllVideosFromFolder.mockResolvedValue(undefined);
+      mockedElasticsearchService.indexVideo.mockResolvedValue(undefined);
+    });
+
+    it('should load videos from disk and index them', async () => {
       mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
       mockedFs.readdir.mockResolvedValue([
         '20231201_TestVideo1.info.json',
@@ -97,10 +117,9 @@ describe('videoScanner', () => {
 
       await loadVideosCache();
 
-      const videos = getVideos();
-      expect(videos.length).toBeGreaterThan(0);
-      expect(videos[0].title).toBeDefined();
-      expect(videos[0].folderPath).toBe('/test/videos');
+      expect(mockedElasticsearchService.createIndex).toHaveBeenCalledWith('/test/videos');
+      expect(mockedElasticsearchService.deleteAllVideosFromFolder).toHaveBeenCalledWith('/test/videos');
+      expect(mockedElasticsearchService.indexVideo).toHaveBeenCalledTimes(2);
     });
 
     it('should handle invalid JSON files gracefully', async () => {
@@ -124,49 +143,19 @@ describe('videoScanner', () => {
       // Should not throw, should skip invalid file
       await expect(loadVideosCache()).resolves.not.toThrow();
 
-      const videos = getVideos();
-      // Should only have one video (the valid one)
-      expect(videos.length).toBe(1);
-      expect(videos[0].title).toBe('Test Video 2');
-      expect(videos[0].folderPath).toBe('/test/videos');
-    });
-
-    it('should sort videos by date (newest first)', async () => {
-      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
-      mockedFs.readdir.mockResolvedValue([
-        '20231010_OldVideo.info.json',
-        '20231010_OldVideo.mp4',
-        '20231010_OldVideo.webp',
-        '20231201_NewVideo.info.json',
-        '20231201_NewVideo.mp4',
-        '20231201_NewVideo.webp',
-      ] as any);
-
-      mockedFs.readFile
-        .mockResolvedValueOnce(
-          JSON.stringify({
-            title: 'Old Video',
-          })
-        )
-        .mockResolvedValueOnce(
-          JSON.stringify({
-            title: 'New Video',
-          })
-        );
-
-      await loadVideosCache();
-
-      const videos = getVideos();
-      expect(videos.length).toBe(2);
-      // Newest should be first
-      expect(videos[0].baseName).toBe('20231201_NewVideo');
-      expect(videos[1].baseName).toBe('20231010_OldVideo');
-      expect(videos[0].folderPath).toBe('/test/videos');
-      expect(videos[1].folderPath).toBe('/test/videos');
+      // Should only index one video (the valid one)
+      expect(mockedElasticsearchService.indexVideo).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('refreshVideosCache', () => {
+    beforeEach(() => {
+      mockedElasticsearchService.checkElasticsearchConnection.mockResolvedValue(true);
+      mockedElasticsearchService.createIndex.mockResolvedValue(undefined);
+      mockedElasticsearchService.deleteAllVideosFromFolder.mockResolvedValue(undefined);
+      mockedElasticsearchService.indexVideo.mockResolvedValue(undefined);
+    });
+
     it('should reload cache', async () => {
       mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
       mockedFs.readdir.mockResolvedValue([
@@ -182,7 +171,7 @@ describe('videoScanner', () => {
       );
 
       await loadVideosCache();
-      const initialCount = getVideos().length;
+      const initialIndexCalls = mockedElasticsearchService.indexVideo.mock.calls.length;
 
       // Change what readdir returns
       mockedFs.readdir.mockResolvedValue([
@@ -201,10 +190,10 @@ describe('videoScanner', () => {
       );
 
       await refreshVideosCache();
-      const newCount = getVideos().length;
 
       // Should have reloaded with new files
       expect(mockedFs.readdir).toHaveBeenCalled();
+      expect(mockedElasticsearchService.indexVideo.mock.calls.length).toBeGreaterThan(initialIndexCalls);
     });
   });
 });

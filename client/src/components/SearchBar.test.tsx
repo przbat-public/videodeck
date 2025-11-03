@@ -30,7 +30,9 @@ describe('SearchBar', () => {
 
     const input = screen.getByPlaceholderText('Search videos by description...');
     
-    await user.type(input, 'abc');
+    await act(async () => {
+      await user.type(input, 'abc');
+    });
 
     await act(async () => {
       vi.advanceTimersByTime(300);
@@ -47,7 +49,9 @@ describe('SearchBar', () => {
 
     const input = screen.getByPlaceholderText('Search videos by description...');
     
-    await user.type(input, 'ab');
+    await act(async () => {
+      await user.type(input, 'ab');
+    });
 
     await act(async () => {
       vi.advanceTimersByTime(300);
@@ -64,7 +68,9 @@ describe('SearchBar', () => {
 
     const input = screen.getByPlaceholderText('Search videos by description...');
     
-    await user.type(input, 'abc');
+    await act(async () => {
+      await user.type(input, 'abc');
+    });
 
     // Nie powinno jeszcze wywołać wyszukiwania
     await act(async () => {
@@ -92,7 +98,9 @@ describe('SearchBar', () => {
     const select = screen.getByRole('combobox');
 
     // Wpisz zapytanie (min 3 znaki)
-    await user.type(input, 'test');
+    await act(async () => {
+      await user.type(input, 'test');
+    });
 
     await act(async () => {
       vi.advanceTimersByTime(300);
@@ -104,7 +112,9 @@ describe('SearchBar', () => {
     mockOnSearch.mockClear();
 
     // Zmień sortowanie
-    await user.selectOptions(select, 'views-desc');
+    await act(async () => {
+      await user.selectOptions(select, 'views-desc');
+    });
 
     await act(async () => {
       vi.advanceTimersByTime(300);
@@ -120,7 +130,9 @@ describe('SearchBar', () => {
     render(<SearchBar onSearch={mockOnSearch} />);
 
     const input = screen.getByPlaceholderText('Search videos by description...');
-    await user.type(input, 'test');
+    await act(async () => {
+      await user.type(input, 'test');
+    });
 
     expect(screen.getByRole('button', { name: /clear/i })).toBeInTheDocument();
   });
@@ -131,7 +143,9 @@ describe('SearchBar', () => {
     render(<SearchBar onSearch={mockOnSearch} />);
 
     const input = screen.getByPlaceholderText('Search videos by description...');
-    await user.type(input, 'test');
+    await act(async () => {
+      await user.type(input, 'test');
+    });
 
     await act(async () => {
       vi.advanceTimersByTime(300);
@@ -139,7 +153,9 @@ describe('SearchBar', () => {
     });
 
     const clearButton = screen.getByRole('button', { name: /clear/i });
-    await user.click(clearButton);
+    await act(async () => {
+      await user.click(clearButton);
+    });
 
     await act(async () => {
       vi.advanceTimersByTime(300);
@@ -158,7 +174,9 @@ describe('SearchBar', () => {
     const input = screen.getByPlaceholderText('Search videos by description...');
     
     // Wpisz zapytanie
-    await user.type(input, 'test query');
+    await act(async () => {
+      await user.type(input, 'test query');
+    });
 
     await act(async () => {
       vi.advanceTimersByTime(300);
@@ -170,7 +188,9 @@ describe('SearchBar', () => {
     mockOnSearch.mockClear();
 
     // Wyczyść zapytanie
-    await user.clear(input);
+    await act(async () => {
+      await user.clear(input);
+    });
 
     await act(async () => {
       vi.advanceTimersByTime(300);
@@ -187,7 +207,9 @@ describe('SearchBar', () => {
 
     const input = screen.getByPlaceholderText('Search videos by description...');
     
-    await user.type(input, '  abc  ');
+    await act(async () => {
+      await user.type(input, '  abc  ');
+    });
 
     await act(async () => {
       vi.advanceTimersByTime(300);

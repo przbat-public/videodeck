@@ -1,5 +1,6 @@
 import { useReducer, useEffect, useCallback } from 'react';
 import queryString from 'query-string';
+import toast from 'react-hot-toast';
 import { VideoListItem } from '../types';
 import { SortOption } from '../components/SearchBar';
 import {
@@ -13,15 +14,19 @@ interface UseVideoSearchResult {
   loading: boolean;
   error: string | null;
   query: string;
+  sort: SortOption;
   search: (query?: string, sort?: SortOption) => Promise<void>;
 }
 
 export function useVideoSearch(): UseVideoSearchResult {
   const [state, dispatch] = useReducer(videoSearchReducer, initialState);
 
-  const search = useCallback(async (query?: string, sort: SortOption = 'date-desc') => {
+  const search = useCallback(async (query?: string, sort: SortOption = 'date-desc'): Promise<void> => {
     const trimmedQuery = query?.trim() || '';
-    dispatch({ type: VideoSearchActionType.SEARCH_START, payload: trimmedQuery });
+    dispatch({ 
+      type: VideoSearchActionType.SEARCH_START, 
+      payload: { query: trimmedQuery, sort } 
+    });
     
     try {
       const url = queryString.stringifyUrl(
@@ -42,10 +47,14 @@ export function useVideoSearch(): UseVideoSearchResult {
       const data = await response.json();
       dispatch({ type: VideoSearchActionType.SEARCH_SUCCESS, payload: data.videos || [] });
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
       dispatch({
         type: VideoSearchActionType.SEARCH_ERROR,
-        payload: err instanceof Error ? err.message : 'An error occurred',
+        payload: errorMessage,
       });
+      
+      // Show error toast
+      toast.error(`Failed to search videos: ${errorMessage}`);
     }
   }, []);
 
@@ -58,6 +67,7 @@ export function useVideoSearch(): UseVideoSearchResult {
     loading: state.loading,
     error: state.error,
     query: state.query,
+    sort: state.sort,
     search,
   };
 }

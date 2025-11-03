@@ -8,6 +8,8 @@ if (!VIDEOS_FOLDER_PATH) {
   throw new Error('VIDEOS_FOLDER_PATH environment variable is required');
 }
 
+export const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL || 'http://localhost:9200';
+
 /**
  * Get all video folder paths from environment variable
  * Supports multiple paths separated by semicolon (;) or comma (,)

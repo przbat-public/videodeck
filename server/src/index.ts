@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { validateVideosFolder } from './utils/videoPathUtils';
-import { loadVideosCache } from './services/videoScanner';
 import videosRouter from './routes/videos';
 
 dotenv.config();
@@ -25,13 +24,9 @@ app.get('/health', (req, res) => {
 // Start server
 async function startServer() {
   try {
-    // Validate videos folder on startup
     await validateVideosFolder();
-    const folderPaths = process.env.VIDEOS_FOLDER_PATH?.split(/[;,]/).map(p => p.trim()).filter(p => p) || [];
-    console.log(`Videos folder(s) validated: ${folderPaths.join(', ')}`);
-
-    // Load videos cache into memory
-    await loadVideosCache();
+    console.log('Videos folder(s) validated');
+    console.log('Server ready. Use GET /api/videos/refreshCache to index videos.');
 
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
