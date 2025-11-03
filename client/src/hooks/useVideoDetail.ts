@@ -3,6 +3,7 @@ import {
   videoDetailReducer,
   initialState,
   VideoDetailState,
+  VideoDetailActionType,
 } from '../reducers/videoDetailReducer';
 
 interface UseVideoDetailResult {
@@ -14,22 +15,22 @@ export function useVideoDetail(baseName: string | undefined): UseVideoDetailResu
 
   useEffect(() => {
     if (!baseName) {
-      dispatch({ type: 'FETCH_ERROR', payload: 'Invalid video ID' });
+      dispatch({ type: VideoDetailActionType.FETCH_ERROR, payload: 'Invalid video ID' });
       return;
     }
 
     const fetchVideoDetail = async () => {
       try {
-        dispatch({ type: 'FETCH_DETAILS_START' });
+        dispatch({ type: VideoDetailActionType.FETCH_DETAILS_START });
         const detailsResponse = await fetch(
           `/api/videos/${encodeURIComponent(baseName)}/details`
         );
         if (!detailsResponse.ok) throw new Error('Failed to load video details');
         const detailsData = await detailsResponse.json();
-        dispatch({ type: 'FETCH_DETAILS_SUCCESS', payload: detailsData.details });
+        dispatch({ type: VideoDetailActionType.FETCH_DETAILS_SUCCESS, payload: detailsData.details });
       } catch (err) {
         dispatch({
-          type: 'FETCH_ERROR',
+          type: VideoDetailActionType.FETCH_ERROR,
           payload: err instanceof Error ? err.message : 'An error occurred',
         });
       }

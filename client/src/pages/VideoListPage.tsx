@@ -3,16 +3,16 @@ import { useVideoSearch } from '../hooks/useVideoSearch';
 import SearchBar, { SortOption } from '../components/SearchBar';
 import VideoList from '../components/VideoList';
 
-export default function VideoListPage() {
+export default function VideoListPage(): JSX.Element {
   const { videos, loading, error, query, search } = useVideoSearch();
 
-  const handleSearch = useCallback(async (query: string, sort: SortOption) => {
+  const handleSearch = useCallback(async (query: string, sort: SortOption): Promise<void> => {
     await search(query, sort);
   }, [search]);
 
   return (
     <main className="app-main">
-      <SearchBar onSearch={handleSearch} loading={loading} />
+      <SearchBar onSearch={handleSearch} />
 
       {error && (
         <div className="error-message">
@@ -29,5 +29,5 @@ export default function VideoListPage() {
       )}
     </main>
   );
-}
+};
 

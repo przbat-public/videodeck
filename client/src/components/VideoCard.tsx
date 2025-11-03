@@ -7,12 +7,12 @@ interface VideoCardProps {
   searchQuery?: string;
 }
 
-function formatVideoDate(dateStr?: string): string {
+const formatVideoDate = (dateStr?: string): string => {
   if (!dateStr || dateStr.length !== 8) return '';
   return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-}
+};
 
-function formatViewCount(viewCount?: number): string {
+const formatViewCount = (viewCount?: number): string => {
   if (!viewCount) return '';
   if (viewCount >= 1000000) {
     return `${(viewCount / 1000000).toFixed(1)}M`;
@@ -21,12 +21,9 @@ function formatViewCount(viewCount?: number): string {
     return `${(viewCount / 1000).toFixed(1)}K`;
   }
   return viewCount.toString();
-}
+};
 
-/**
- * Highlight search query in text by wrapping matching parts in <mark> tags
- */
-function highlightText(text: string, query?: string): React.ReactNode {
+const highlightText = (text: string, query?: string): React.ReactNode => {
   if (!query || !query.trim()) {
     return text;
   }
@@ -47,9 +44,9 @@ function highlightText(text: string, query?: string): React.ReactNode {
     }
     return <React.Fragment key={index}>{part}</React.Fragment>;
   });
-}
+};
 
-export default function VideoCard({ video, searchQuery }: VideoCardProps) {
+export default function VideoCard({ video, searchQuery }: VideoCardProps): JSX.Element {
   const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}`;
 
   return (
@@ -65,7 +62,6 @@ export default function VideoCard({ video, searchQuery }: VideoCardProps) {
             alt={video.title}
             loading="lazy"
             onError={(e) => {
-              // Fallback if thumbnail fails to load
               (e.target as HTMLImageElement).style.display = 'none';
             }}
           />
@@ -92,4 +88,4 @@ export default function VideoCard({ video, searchQuery }: VideoCardProps) {
       </div>
     </Link>
   );
-}
+};

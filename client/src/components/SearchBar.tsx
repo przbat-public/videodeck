@@ -11,7 +11,6 @@ export type SortOption =
 
 interface SearchBarProps {
   onSearch: (query: string, sort: SortOption) => void;
-  loading?: boolean;
 }
 
 const MIN_SEARCH_LENGTH = 3;

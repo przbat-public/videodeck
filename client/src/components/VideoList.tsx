@@ -6,7 +6,7 @@ interface VideoListProps {
   searchQuery?: string;
 }
 
-export default function VideoList({ videos, searchQuery }: VideoListProps) {
+export default function VideoList({ videos, searchQuery }: VideoListProps): JSX.Element {
   if (videos.length === 0) {
     return (
       <div className="video-list-empty">
@@ -22,4 +22,4 @@ export default function VideoList({ videos, searchQuery }: VideoListProps) {
       ))}
     </div>
   );
-}
+};

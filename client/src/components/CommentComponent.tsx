@@ -6,7 +6,7 @@ const MAX_COMMENT_LENGTH = 250;
 /**
  * Format comment timestamp to readable date
  */
-function formatCommentDate(timestamp: number): string {
+const formatCommentDate = (timestamp: number): string => {
   const date = new Date(timestamp * 1000);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -31,17 +31,17 @@ function formatCommentDate(timestamp: number): string {
       day: 'numeric',
     });
   }
-}
+};
 
 /**
  * Count replies (only one level of nesting supported)
  */
-function countReplies(comment: Comment): number {
+const countReplies = (comment: Comment): number => {
   if (!comment.replies || comment.replies.length === 0) {
     return 0;
   }
   return comment.replies.length;
-}
+};
 
 interface CommentComponentProps {
   comment: Comment;
@@ -51,7 +51,7 @@ interface CommentComponentProps {
 /**
  * Recursive component for rendering comments with nested replies
  */
-export default function CommentComponent({ comment, depth = 0 }: CommentComponentProps) {
+export default function CommentComponent({ comment, depth = 0 }: CommentComponentProps): JSX.Element {
   const hasReplies = comment.replies && comment.replies.length > 0;
   const isReply = depth > 0;
   const [isExpanded, setIsExpanded] = useState(false);
@@ -110,8 +110,6 @@ export default function CommentComponent({ comment, depth = 0 }: CommentComponen
           </button>
         )}
       </div>
-
-      {/* Render nested replies recursively */}
       {hasReplies && isRepliesExpanded && (
         <div className="comment-replies">
           {comment.replies!.map((reply, index) => (

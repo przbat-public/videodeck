@@ -7,10 +7,16 @@ export interface VideoSearchState {
   query: string;
 }
 
+export enum VideoSearchActionType {
+  SEARCH_START = 'SEARCH_START',
+  SEARCH_SUCCESS = 'SEARCH_SUCCESS',
+  SEARCH_ERROR = 'SEARCH_ERROR',
+}
+
 export type VideoSearchAction =
-  | { type: 'SEARCH_START'; payload: string }
-  | { type: 'SEARCH_SUCCESS'; payload: VideoListItem[] }
-  | { type: 'SEARCH_ERROR'; payload: string };
+  | { type: VideoSearchActionType.SEARCH_START; payload: string }
+  | { type: VideoSearchActionType.SEARCH_SUCCESS; payload: VideoListItem[] }
+  | { type: VideoSearchActionType.SEARCH_ERROR; payload: string };
 
 export const initialState: VideoSearchState = {
   videos: [],
@@ -24,20 +30,20 @@ export function videoSearchReducer(
   action: VideoSearchAction
 ): VideoSearchState {
   switch (action.type) {
-    case 'SEARCH_START':
+    case VideoSearchActionType.SEARCH_START:
       return {
         ...state,
         loading: true,
         error: null,
         query: action.payload,
       };
-    case 'SEARCH_SUCCESS':
+    case VideoSearchActionType.SEARCH_SUCCESS:
       return {
         ...state,
         videos: action.payload,
         loading: false,
       };
-    case 'SEARCH_ERROR':
+    case VideoSearchActionType.SEARCH_ERROR:
       return {
         ...state,
         error: action.payload,

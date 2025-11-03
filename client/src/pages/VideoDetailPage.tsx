@@ -3,7 +3,7 @@ import ReactPlayer from 'react-player';
 import CommentComponent from '../components/CommentComponent';
 import { useVideoDetail } from '../hooks/useVideoDetail';
 
-export default function VideoDetailPage() {
+export default function VideoDetailPage(): JSX.Element {
   const { baseName } = useParams<{ baseName: string }>();
   const { state } = useVideoDetail(baseName);
 
@@ -31,7 +31,8 @@ export default function VideoDetailPage() {
   }
 
   const videoUrl = `/api/videos/file/${encodeURIComponent(state.details.videoPath)}`;
-  const formatDate = (dateStr: string) => {
+
+  const formatDate = (dateStr: string): string => {
     if (!dateStr || dateStr.length !== 8) return dateStr;
     return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
   };
@@ -97,4 +98,4 @@ export default function VideoDetailPage() {
       </div>
     </div>
   );
-}
+};

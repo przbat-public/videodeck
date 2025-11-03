@@ -5,6 +5,7 @@ import { SortOption } from '../components/SearchBar';
 import {
   videoSearchReducer,
   initialState,
+  VideoSearchActionType,
 } from '../reducers/videoSearchReducer';
 
 interface UseVideoSearchResult {
@@ -20,7 +21,7 @@ export function useVideoSearch(): UseVideoSearchResult {
 
   const search = useCallback(async (query?: string, sort: SortOption = 'date-desc') => {
     const trimmedQuery = query?.trim() || '';
-    dispatch({ type: 'SEARCH_START', payload: trimmedQuery });
+    dispatch({ type: VideoSearchActionType.SEARCH_START, payload: trimmedQuery });
     
     try {
       const url = queryString.stringifyUrl(
@@ -39,10 +40,10 @@ export function useVideoSearch(): UseVideoSearchResult {
         throw new Error('Failed to search videos');
       }
       const data = await response.json();
-      dispatch({ type: 'SEARCH_SUCCESS', payload: data.videos || [] });
+      dispatch({ type: VideoSearchActionType.SEARCH_SUCCESS, payload: data.videos || [] });
     } catch (err) {
       dispatch({
-        type: 'SEARCH_ERROR',
+        type: VideoSearchActionType.SEARCH_ERROR,
         payload: err instanceof Error ? err.message : 'An error occurred',
       });
     }

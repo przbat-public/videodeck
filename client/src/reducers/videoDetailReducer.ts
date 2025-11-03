@@ -7,11 +7,18 @@ export interface VideoDetailState {
   error: string | null;
 }
 
+export enum VideoDetailActionType {
+  FETCH_DETAILS_START = 'FETCH_DETAILS_START',
+  FETCH_DETAILS_SUCCESS = 'FETCH_DETAILS_SUCCESS',
+  FETCH_ERROR = 'FETCH_ERROR',
+  RESET = 'RESET',
+}
+
 export type VideoDetailAction =
-  | { type: 'FETCH_DETAILS_START' }
-  | { type: 'FETCH_DETAILS_SUCCESS'; payload: VideoDetails }
-  | { type: 'FETCH_ERROR'; payload: string }
-  | { type: 'RESET' };
+  | { type: VideoDetailActionType.FETCH_DETAILS_START }
+  | { type: VideoDetailActionType.FETCH_DETAILS_SUCCESS; payload: VideoDetails }
+  | { type: VideoDetailActionType.FETCH_ERROR; payload: string }
+  | { type: VideoDetailActionType.RESET };
 
 export const initialState: VideoDetailState = {
   video: null,
@@ -25,25 +32,25 @@ export function videoDetailReducer(
   action: VideoDetailAction
 ): VideoDetailState {
   switch (action.type) {
-    case 'FETCH_DETAILS_START':
+    case VideoDetailActionType.FETCH_DETAILS_START:
       return {
         ...state,
         loading: true,
         error: null,
       };
-    case 'FETCH_DETAILS_SUCCESS':
+    case VideoDetailActionType.FETCH_DETAILS_SUCCESS:
       return {
         ...state,
         details: action.payload,
         loading: false,
       };
-    case 'FETCH_ERROR':
+    case VideoDetailActionType.FETCH_ERROR:
       return {
         ...state,
         error: action.payload,
         loading: false,
       };
-    case 'RESET':
+    case VideoDetailActionType.RESET:
       return initialState;
     default:
       return state;
