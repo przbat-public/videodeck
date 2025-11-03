@@ -138,11 +138,12 @@ async function scanFolder(folderPath: string): Promise<VideoListItem[]> {
     // Match by base name without extension
     const videoFile = visibleFiles.find((f) => {
       const fBaseName = getBaseName(f);
-      return fBaseName === baseName && f.endsWith('.mp4');
+      return (fBaseName === baseName && f.endsWith('.mp4')) || (fBaseName === baseName && f.endsWith('.mkv'));
     });
+
     const thumbnailFile = visibleFiles.find((f) => {
       const fBaseName = getBaseName(f);
-      return fBaseName === baseName && f.endsWith('.webp');
+      return (fBaseName === baseName && f.endsWith('.webp')) || (fBaseName === baseName && f.endsWith('.jpg'));
     });
 
     if (videoFile && thumbnailFile) {
@@ -272,7 +273,7 @@ export const getVideos = (query?: string, sortOption: SortOption = 'date-desc'):
   }
 
   if (!query || query.trim().length === 0) {
-    return sortVideos(videosCache);
+    return sortVideos(videosCache, sortOption);
   }
 
   const searchTerm = query.toLowerCase().trim();
