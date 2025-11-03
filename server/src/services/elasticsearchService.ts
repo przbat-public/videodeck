@@ -258,18 +258,28 @@ export async function searchVideos(
   }
 
   // Search across all video indices
+  // Exclude comments from search results to save memory - they're only needed for individual video details
+  // Limit results to prevent memory issues (consider adding pagination for larger result sets)
   const response = await esClient.search<VideoListItem>({
     index: getIndexPattern(),
     query: searchQuery,
     sort: buildSortOptions(sortOption),
-    size: 10000,
+    size: 100,
+    _source: {
+      excludes: ['comments'],
+    },
   });
 
   return response.hits.hits.map((hit) => {
     if (!hit._source) {
       throw new Error(`Video document ${hit._id} has no _source field`);
     }
-    return hit._source as VideoListItem;
+    // Ensure comments field is empty array for search results
+    const video = hit._source as VideoListItem;
+    return {
+      ...video,
+      comments: [],
+    };
   });
 }
 

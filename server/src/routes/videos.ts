@@ -1,11 +1,11 @@
 import express from 'express';
 import { getVideos, refreshVideosCache } from '../services/videoScanner';
+import fs from 'fs/promises';
+import path from 'path';
 import { SortOption } from '../types';
 import { getVideoFilePath } from '../utils/videoPathUtils';
 import { buildCommentTree } from '../utils/commentTreeUtils';
 import { VideoInfoJson, VideoDetails } from '../types';
-import fs from 'fs/promises';
-import path from 'path';
 
 const router = express.Router();
 

@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { getVideosFolderPaths } from '../config';
-import { VideoListItem, SortOption } from '../types';
+import { VideoListItem, SortOption, VideoInfoJson } from '../types';
 import {
   indexVideo,
   searchVideos,
@@ -9,7 +9,6 @@ import {
   createIndex,
   checkElasticsearchConnection,
 } from './elasticsearchService';
-import { buildCommentTree } from '../utils/commentTreeUtils';
 
 /**
  * Extract base name from filename (remove extension)
@@ -64,7 +63,7 @@ async function scanFolder(folderPath: string): Promise<void> {
         const infoJsonPath = path.join(folderPath, infoFile);
         const infoJsonContent = await fs.readFile(infoJsonPath, 'utf-8');
 
-        let infoJson;
+        let infoJson: VideoInfoJson;
         try {
           infoJson = JSON.parse(infoJsonContent);
         } catch (parseError) {
@@ -78,24 +77,19 @@ async function scanFolder(folderPath: string): Promise<void> {
         }
 
         const title = infoJson.title || infoJson.fulltitle || '';
-        const description = infoJson.description || title;
-        const uploadDate = infoJson.upload_date || extractUploadDate(baseName);
-        const viewCount = infoJson.view_count;
-        const likeCount = infoJson.like_count;
-        const channelName = infoJson.channel || infoJson.uploader;
 
         const video: VideoListItem = {
           baseName,
           title: title || baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''),
-          description,
+          description: infoJson.description || title,
           videoPath: videoFile,
           thumbnailPath: thumbnailFile,
           folderPath,
-          uploadDate,
-          viewCount,
-          likeCount,
-          channelName,
-          comments: buildCommentTree(infoJson.comments || []),
+          uploadDate: infoJson.upload_date || extractUploadDate(baseName),
+          viewCount: infoJson.view_count,
+          likeCount: infoJson.like_count,
+          channelName: infoJson.channel || infoJson.uploader,
+          comments: infoJson.comments || [],
         };
 
         try {

@@ -12,7 +12,7 @@ export interface VideoListItem {
   viewCount?: number;
   likeCount?: number;
   channelName?: string;
-  comments: CommentWithReplies[];
+  comments: VideoComment[];
 }
 
 export type SortOption =
