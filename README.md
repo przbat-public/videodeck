@@ -98,7 +98,7 @@ ELASTICSEARCH_URL=http://localhost:9200
 **Uwaga:** 
 - Jeśli Elasticsearch działa na innym hoście lub porcie, zaktualizuj `ELASTICSEARCH_URL` odpowiednio.
 - Jeśli używasz Docker i otrzymujesz błąd "Cannot connect to the Docker daemon", upewnij się że Docker Desktop jest uruchomiony.
-- Po pierwszym uruchomieniu serwera, filmy będą automatycznie zindeksowane do Elasticsearch (może to potrwać chwilę w zależności od liczby filmów).
+- Po pierwszym uruchomieniu serwera, musisz ręcznie wywołać endpoint `/api/videos/refreshCache` aby zindeksować filmy do Elasticsearch (może to potrwać chwilę w zależności od liczby filmów).
 
 ## Uruchomienie
 
@@ -241,6 +241,7 @@ Raporty pokrycia są generowane w folderze `coverage/`.
 - **Custom hooks** - reużywalna logika (useVideoSearch, useVideoDetail)
 - **Elasticsearch** - indeksowanie i wyszukiwanie filmów z pełnotekstowym wyszukiwaniem i sortowaniem
 - **Rekursywne struktury** - zagnieżdżone drzewo komentarzy
+- **Toast notifications** - nieinwazyjne komunikaty o sukcesie/błędach (react-hot-toast)
 
 ### Jakość kodu
 - **TypeScript** - silne typowanie w całym projekcie
@@ -285,10 +286,12 @@ video-search-app/
 │   │   │   └── VideoDetailPage.tsx
 │   │   ├── hooks/       # Custom hooks
 │   │   │   ├── useVideoSearch.ts
-│   │   │   └── useVideoDetail.ts
+│   │   │   ├── useVideoDetail.ts
+│   │   │   └── useCacheRefresh.ts
 │   │   ├── reducers/    # Zarządzanie stanem
 │   │   │   ├── videoSearchReducer.ts
-│   │   │   └── videoDetailReducer.ts
+│   │   │   ├── videoDetailReducer.ts
+│   │   │   └── cacheRefreshReducer.ts
 │   │   ├── types.ts     # Definicje typów
 │   │   └── App.tsx      # Główny komponent
 │   └── package.json
@@ -299,6 +302,8 @@ video-search-app/
 
 - **Wyszukiwanie filmów** - zaawansowane wyszukiwanie pełnotekstowe po tytule, opisie i nazwie kanału z wykorzystaniem Elasticsearch
 - **Wsparcie dla wielu folderów** - możliwość skanowania filmów z wielu katalogów jednocześnie
+- **Odświeżanie cache** - przycisk "Refresh Cache" do ręcznego odświeżania indeksu filmów z dysku
+- **Przeładowanie listy** - przycisk "Reload" do przeładowania aktualnie wyświetlanych filmów
 - **Lista filmów** - wyświetlanie filmów z miniaturkami (`.webp`)
 - **Odtwarzacz wideo** - odtwarzanie filmów w przeglądarce (HTML5 video)
 - **Szczegóły filmu** - wyświetlanie szczegółowych informacji o filmie:
@@ -324,12 +329,12 @@ Odświeża i reindeksuje wszystkie filmy z skonfigurowanych folderów do Elastic
 **Odpowiedź:**
 ```json
 {
-  "message": "Cache refreshed successfully",
+  "message": "Cache refresh process started",
   "status": "ok"
 }
 ```
 
-**Uwaga:** Ten endpoint może zająć dużo czasu w zależności od liczby filmów. Filmy są indeksowane na bieżąco podczas skanowania.
+**Uwaga:** Ten endpoint uruchamia proces indeksowania w tle i od razu zwraca odpowiedź. Filmy są indeksowane na bieżąco podczas skanowania. Proces może zająć dużo czasu w zależności od liczby filmów, ale odpowiedź HTTP jest zwracana natychmiast.
 
 ### GET /api/videos/search
 Wyszukuje filmy po frazie w opisach.
@@ -354,10 +359,12 @@ Wyszukuje filmy po frazie w opisach.
       "description": "Opis...",
       "videoPath": "nazwa_filmu.mp4",
       "thumbnailPath": "nazwa_filmu.webp",
+      "folderPath": "/ścieżka/do/folderu",
       "uploadDate": "20231201",
       "viewCount": 1000,
       "likeCount": 50,
-      "channelName": "Nazwa kanału"
+      "channelName": "Nazwa kanału",
+      "comments": []
     }
   ]
 }
