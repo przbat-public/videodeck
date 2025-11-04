@@ -14,15 +14,15 @@ let client: Client | null = null;
 export function getIndexNameFromFolderPath(folderPath: string): string {
   // Create SHA-256 hash of the folder path
   const hash = createHash('sha256').update(folderPath).digest('hex').substring(0, 16);
-  
   return `${INDEX_PREFIX}_${hash}`;
 }
 
 /**
- * Get index pattern for searching across all folders
+ * Get index names for searching across currently configured folders
  */
-function getIndexPattern(): string {
-  return `${INDEX_PREFIX}_*`;
+function getIndexPattern(): string | string[] {
+  const folderPaths = getVideosFolderPaths();
+  return folderPaths.map((folderPath) => getIndexNameFromFolderPath(folderPath));
 }
 
 /**
