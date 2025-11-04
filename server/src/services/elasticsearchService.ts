@@ -53,6 +53,15 @@ export async function createIndex(folderPath: string): Promise<void> {
 
   await esClient.indices.create({
     index: indexName,
+    settings: {
+      index: {
+        mapping: {
+          nested_objects: {
+            limit: 100000, // Increase limit for videos with many comments
+          },
+        },
+      },
+    },
     mappings: {
       properties: {
         baseName: { type: 'keyword' },
@@ -77,6 +86,25 @@ export async function createIndex(folderPath: string): Promise<void> {
           type: 'text',
           fields: {
             keyword: { type: 'keyword' },
+          },
+        },
+        comments: {
+          type: 'nested',
+          properties: {
+            id: { type: 'keyword' },
+            parent: { type: 'keyword' },
+            text: { type: 'text', analyzer: 'standard' },
+            like_count: { type: 'integer' },
+            author_id: { type: 'keyword' },
+            author: { type: 'text' },
+            author_thumbnail: { type: 'keyword' },
+            author_is_uploader: { type: 'boolean' },
+            author_is_verified: { type: 'boolean' },
+            author_url: { type: 'keyword' },
+            is_favorited: { type: 'boolean' },
+            _time_text: { type: 'keyword' },
+            timestamp: { type: 'long' },
+            is_pinned: { type: 'boolean' },
           },
         },
       },
@@ -173,6 +201,17 @@ export async function deleteIndex(folderPath: string): Promise<void> {
 }
 
 /**
+ * Recreate an index with updated settings (deletes and recreates)
+ * Useful when index settings need to be updated (e.g., nested_objects.limit)
+ * Note: This will delete all documents in the index - reindexing is required after calling this
+ */
+export async function recreateIndex(folderPath: string): Promise<void> {
+  await deleteIndex(folderPath);
+  await createIndex(folderPath);
+  console.log(`Index recreated for folder: ${folderPath}`);
+}
+
+/**
  * Delete all video indices (useful for reindexing)
  */
 export async function deleteAllIndices(): Promise<void> {
@@ -180,6 +219,19 @@ export async function deleteAllIndices(): Promise<void> {
   
   for (const folderPath of folderPaths) {
     await deleteIndex(folderPath);
+  }
+}
+
+/**
+ * Recreate all indices with updated settings (deletes and recreates)
+ * Useful when index settings need to be updated (e.g., nested_objects.limit)
+ * Note: This will delete all documents in all indices - reindexing is required after calling this
+ */
+export async function recreateAllIndices(): Promise<void> {
+  const folderPaths = getVideosFolderPaths();
+  
+  for (const folderPath of folderPaths) {
+    await recreateIndex(folderPath);
   }
 }
 
@@ -248,11 +300,34 @@ export async function searchVideos(
   if (query && query.trim().length > 0) {
     const searchTerm = query.trim();
     searchQuery = {
-      multi_match: {
-        query: searchTerm,
-        fields: ['baseName^4', 'title^3', 'description^2', 'comments.text^1'],
-        type: 'best_fields',
-        fuzziness: 'AUTO',
+      bool: {
+        should: [
+          // Search in non-nested fields
+          {
+            multi_match: {
+              query: searchTerm,
+              fields: ['baseName^4', 'title^3', 'description^2'],
+              type: 'best_fields',
+              fuzziness: 'AUTO',
+            },
+          },
+          // Search in nested comments
+          {
+            nested: {
+              path: 'comments',
+              query: {
+                match: {
+                  'comments.text': {
+                    query: searchTerm,
+                    fuzziness: 'AUTO',
+                  },
+                },
+              },
+              score_mode: 'sum',
+            },
+          },
+        ],
+        minimum_should_match: 1,
       },
     };
   }

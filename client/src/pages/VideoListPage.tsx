@@ -1,12 +1,14 @@
 import { useCallback } from 'react';
 import { useVideoSearch } from '../hooks/useVideoSearch';
 import { useCacheRefresh } from '../hooks/useCacheRefresh';
+import { useRecreateIndices } from '../hooks/useRecreateIndices';
 import SearchBar, { SortOption } from '../components/SearchBar';
 import VideoList from '../components/VideoList';
 
 export default function VideoListPage(): JSX.Element {
   const { videos, totalCount, loading: videoLoading, query, sort, search } = useVideoSearch();
   const { loading: refreshLoading, refreshCache } = useCacheRefresh();
+  const { loading: recreateIndicesLoading, recreateIndices } = useRecreateIndices();
 
   const handleSearch = useCallback(async (query: string, sort: SortOption): Promise<void> => {
     await search(query, sort);
@@ -20,10 +22,23 @@ export default function VideoListPage(): JSX.Element {
     await search(query || '', sort);
   }, [search, query, sort]);
 
+  const handleRecreateIndices = useCallback(async (): Promise<void> => {
+    await recreateIndices();
+  }, [recreateIndices]);
+
   return (
     <main className="app-main">
       <div className="toolbar">
         <div className="toolbar-left">
+          <button
+            type="button"
+            onClick={handleRecreateIndices}
+            disabled={recreateIndicesLoading}
+            className="clear-button"
+            title="Recreate all Elasticsearch indices"
+          >
+            {recreateIndicesLoading ? 'Recreating...' : 'Recreate Indices'}
+          </button>
           <button
             type="button"
             onClick={handleRefreshCache}

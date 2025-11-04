@@ -6,7 +6,7 @@ import { SortOption } from '../types';
 import { getVideoFilePath } from '../utils/videoPathUtils';
 import { buildCommentTree } from '../utils/commentTreeUtils';
 import { VideoInfoJson, VideoDetails } from '../types';
-import { getTotalVideoCount } from '../services/elasticsearchService';
+import { getTotalVideoCount, recreateAllIndices } from '../services/elasticsearchService';
 
 const router = express.Router();
 
@@ -29,6 +29,30 @@ router.get('/refreshCache', async (req, res) => {
     console.error('Error starting cache refresh:', error);
     res.status(500).json({
       error: 'Failed to start cache refresh',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// POST /api/videos/recreateIndices - Recreate all Elasticsearch indices
+router.post('/recreateIndices', async (req, res) => {
+  try {
+    console.log('Recreate indices requested...');
+    
+    // Start the recreate process asynchronously (fire and forget)
+    recreateAllIndices().catch((error) => {
+      console.error('Error recreating indices in background:', error);
+    });
+    
+    // Return immediately
+    res.status(200).json({ 
+      message: 'Indices recreation process started',
+      status: 'ok'
+    });
+  } catch (error) {
+    console.error('Error starting indices recreation:', error);
+    res.status(500).json({
+      error: 'Failed to start indices recreation',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
