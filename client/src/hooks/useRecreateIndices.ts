@@ -17,6 +17,7 @@ export function useRecreateIndices(): UseRecreateIndicesResult {
 
   const recreateIndices = useCallback(async (): Promise<void> => {
     dispatch({ type: RecreateIndicesActionType.RECREATE_START });
+    const loadingToastId = toast.loading('Starting indices recreation process...');
 
     try {
       const response = await fetch('/api/videos/recreateIndices', {
@@ -31,7 +32,7 @@ export function useRecreateIndices(): UseRecreateIndicesResult {
       const data = await response.json();
       dispatch({ type: RecreateIndicesActionType.RECREATE_SUCCESS, payload: '' });
 
-      toast.success(data.message || 'Indices recreation process started successfully!');
+      toast.success(data.message || 'Indices recreation process started successfully!', { id: loadingToastId });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to start indices recreation';
       dispatch({
@@ -39,7 +40,7 @@ export function useRecreateIndices(): UseRecreateIndicesResult {
         payload: errorMessage,
       });
 
-      toast.error(errorMessage);
+      toast.error(errorMessage, { id: loadingToastId });
     }
   }, []);
 

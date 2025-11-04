@@ -13,6 +13,7 @@ export interface VideoListItem {
   likeCount?: number;
   channelName?: string;
   comments: VideoComment[];
+  subtitlePath?: string;
 }
 
 export type SortOption =
@@ -123,4 +124,5 @@ export interface VideoDetails {
   commentCount: number;
   videoPath: string;
   thumbnailPath: string;
+  subtitlePath?: string;
 }

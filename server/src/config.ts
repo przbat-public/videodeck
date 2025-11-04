@@ -10,6 +10,8 @@ if (!VIDEOS_FOLDER_PATH) {
 
 export const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL || 'http://localhost:9200';
 
+export const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
 /**
  * Get all video folder paths from environment variable
  * Supports multiple paths separated by semicolon (;) or comma (,)

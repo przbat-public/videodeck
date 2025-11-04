@@ -2,11 +2,57 @@ import express from 'express';
 import { getVideos, refreshVideosCache } from '../services/videoScanner';
 import fs from 'fs/promises';
 import path from 'path';
-import { SortOption } from '../types';
+import OpenAI from 'openai';
+import { SortOption, VideoInfoJson, VideoDetails } from '../types';
 import { getVideoFilePath } from '../utils/videoPathUtils';
 import { buildCommentTree } from '../utils/commentTreeUtils';
-import { VideoInfoJson, VideoDetails } from '../types';
 import { getTotalVideoCount, recreateAllIndices } from '../services/elasticsearchService';
+import { OPENAI_API_KEY } from '../config';
+
+/**
+ * Extracts plain text from VTT subtitle file by removing timestamps and metadata
+ * This significantly reduces token count for OpenAI API calls
+ */
+function extractTextFromVttSubtitles(vttContent: string): string {
+  const lines = vttContent.split('\n');
+  const textLines: string[] = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Skip empty lines
+    if (!line) continue;
+    
+    // Skip WEBVTT header
+    if (line === 'WEBVTT' || line.startsWith('WEBVTT')) continue;
+    
+    // Skip timestamp lines (format: 00:00:01.000 --> 00:00:04.000)
+    if (line.includes('-->')) continue;
+    
+    // Skip cue identifiers (numeric lines that appear before timestamps)
+    if (/^\d+$/.test(line)) continue;
+    
+    // Skip style/note blocks
+    if (line.startsWith('NOTE') || line.startsWith('STYLE')) {
+      // Skip until empty line
+      while (i < lines.length - 1 && lines[i + 1].trim()) {
+        i++;
+      }
+      continue;
+    }
+    
+    // This is actual subtitle text
+    textLines.push(line);
+  }
+  
+  // Join lines with spaces, removing excessive whitespace
+  // Multiple consecutive lines from same cue become one paragraph
+  return textLines
+    .join(' ')
+    .replace(/<c>/g, ' ') // Replace opening <c> tags with spaces
+    .replace(/<\/c>/g, ' ') // Replace closing </c> tags with spaces
+    .trim();
+}
 
 const router = express.Router();
 
@@ -122,6 +168,72 @@ router.get('/file/:filename', async (req, res) => {
   }
 });
 
+router.get('/:baseName/summary', async (req, res) => {
+  try {
+    const baseName = req.params.baseName;
+
+    const allVideos = await getVideos(baseName);
+    const video = allVideos.find((v) => v.baseName === baseName);
+
+    if (!video?.subtitlePath) {
+      return res.status(404).json({ error: 'Subtitle not found' });
+    }
+
+    if (!OPENAI_API_KEY) {
+      return res.status(500).json({
+        error: 'OpenAI API key not configured',
+        message: 'OPENAI_API_KEY environment variable is required',
+      });
+    }
+
+    const subtitleFilePath = path.join(video.folderPath, video.subtitlePath);
+    const subtitleFileContent = await fs.readFile(subtitleFilePath, 'utf-8');
+    
+    // Extract only text content from VTT, removing timestamps and metadata
+    // This significantly reduces token count for OpenAI API
+    const subtitleText = extractTextFromVttSubtitles(subtitleFileContent);
+
+    // Initialize OpenAI client
+    const openai = new OpenAI({
+      apiKey: OPENAI_API_KEY,
+    });
+
+    // Call OpenAI API to generate summary in Polish
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4.1',
+      messages: [
+        {
+          role: 'system',
+          content: 'Jesteś pomocnym asystentem, który tworzy zwięzłe podsumowania napisów filmowych w języku polskim.',
+        },
+        {
+          role: 'user',
+          content: `Przeanalizuj poniższe napisy filmowe i stwórz zwięzłe podsumowanie w języku polskim. Podsumowanie powinno zawierać główne tematy i kluczowe punkty omawiane w filmie. Nie umieszczaj na początku podsumowania o tym że jest to podsumowanie filmu.\n\nNapisy:\n${subtitleText}`,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 2000,
+    });
+
+    const summary = completion.choices[0]?.message?.content;
+
+    if (!summary) {
+      return res.status(500).json({
+        error: 'Failed to generate summary',
+        message: 'OpenAI API did not return a summary',
+      });
+    }
+
+    res.json({ summary });
+  } catch (error) {
+    console.error('Error getting video summary:', error);
+    res.status(500).json({
+      error: 'Failed to get video summary',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // GET /api/videos/:baseName/details
 router.get('/:baseName/details', async (req, res) => {
   try {
@@ -175,6 +287,7 @@ router.get('/:baseName/details', async (req, res) => {
       commentCount: infoJson.comment_count || comments.length || 0,
       videoPath: video.videoPath,
       thumbnailPath: video.thumbnailPath,
+      subtitlePath: video.subtitlePath,
     };
 
     res.json({ details });

@@ -49,13 +49,27 @@ async function scanFolder(folderPath: string): Promise<void> {
     // Find corresponding .mp4 and .webp files (only from visible files)
     // Match by base name without extension
     const videoFile = visibleFiles.find((f) => {
-      const fBaseName = getBaseName(f);
-      return (fBaseName === baseName && f.endsWith('.mp4')) || (fBaseName === baseName && f.endsWith('.mkv'));
+      if (f.endsWith('.mp4') || f.endsWith('.mkv')) {
+        return getBaseName(f) === baseName;
+      }
+
+      return false;
     });
 
     const thumbnailFile = visibleFiles.find((f) => {
-      const fBaseName = getBaseName(f);
-      return (fBaseName === baseName && f.endsWith('.webp')) || (fBaseName === baseName && f.endsWith('.jpg'));
+      if (f.endsWith('.webp') || f.endsWith('.jpg')) {
+        return getBaseName(f) === baseName;
+      }
+
+      return false;
+    });
+
+    const subtitleFile = visibleFiles.find((f) => {
+      if (f.endsWith('.en.vtt')) {
+        return  getBaseName(f) === `${baseName}.en`;
+      }
+
+      return false;
     });
 
     if (videoFile && thumbnailFile) {
@@ -90,6 +104,7 @@ async function scanFolder(folderPath: string): Promise<void> {
           likeCount: infoJson.like_count,
           channelName: infoJson.channel || infoJson.uploader,
           comments: infoJson.comments || [],
+          subtitlePath: subtitleFile,
         };
 
         try {

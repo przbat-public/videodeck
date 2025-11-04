@@ -1,6 +1,8 @@
 import { useParams, Link } from 'react-router-dom';
 import ReactPlayer from 'react-player';
-import CommentComponent from '../components/CommentComponent';
+
+import VideoSummary from '../components/VideoSummary';
+import VideoComments from '../components/VideoComments';
 import { useVideoDetail } from '../hooks/useVideoDetail';
 
 export default function VideoDetailPage(): JSX.Element {
@@ -80,21 +82,12 @@ export default function VideoDetailPage(): JSX.Element {
           </div>
         </div>
 
-        <div className="video-comments-section">
-          <h2>
-            Comments {state.details?.commentCount ? `(${state.details.commentCount})` : ''}
-          </h2>
+        <VideoSummary baseName={baseName} subtitlePath={state.details?.subtitlePath} />
 
-          {state.details?.comments && state.details.comments.length > 0 ? (
-            <div className="comments-list">
-              {state.details.comments.map((comment, index) => (
-                <CommentComponent key={comment.id || index} comment={comment} />
-              ))}
-            </div>
-          ) : (
-            <p className="no-comments">No comments available.</p>
-          )}
-        </div>
+        <VideoComments 
+          comments={state.details.comments || []} 
+          commentCount={state.details.commentCount} 
+        />
       </div>
     </div>
   );

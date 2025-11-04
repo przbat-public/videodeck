@@ -106,6 +106,10 @@ describe('videoScanner', () => {
 
       const mockInfoJson1 = {
         title: 'Test Video 1',
+        upload_date: '20231201',
+        view_count: 1000,
+        like_count: 50,
+        channel: 'Test Channel',
       };
       const mockInfoJson2 = {
         title: 'Test Video 2',
@@ -120,6 +124,13 @@ describe('videoScanner', () => {
       expect(mockedElasticsearchService.createIndex).toHaveBeenCalledWith('/test/videos');
       expect(mockedElasticsearchService.deleteAllVideosFromFolder).toHaveBeenCalledWith('/test/videos');
       expect(mockedElasticsearchService.indexVideo).toHaveBeenCalledTimes(2);
+      
+      // Verify first video has all new fields
+      const firstCall = mockedElasticsearchService.indexVideo.mock.calls[0][0];
+      expect(firstCall.uploadDate).toBe('20231201');
+      expect(firstCall.viewCount).toBe(1000);
+      expect(firstCall.likeCount).toBe(50);
+      expect(firstCall.channelName).toBe('Test Channel');
     });
 
     it('should handle invalid JSON files gracefully', async () => {
@@ -145,6 +156,133 @@ describe('videoScanner', () => {
 
       // Should only index one video (the valid one)
       expect(mockedElasticsearchService.indexVideo).toHaveBeenCalledTimes(1);
+    });
+
+    it('should filter out dot files (system files)', async () => {
+      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
+      mockedFs.readdir.mockResolvedValue([
+        '.DS_Store',
+        '.hidden_file',
+        '20231201_TestVideo1.info.json',
+        '20231201_TestVideo1.mp4',
+        '20231201_TestVideo1.webp',
+      ] as any);
+
+      mockedFs.readFile.mockResolvedValue(
+        JSON.stringify({
+          title: 'Test Video 1',
+        })
+      );
+
+      await loadVideosCache();
+
+      // Should only index one video, ignoring dot files
+      expect(mockedElasticsearchService.indexVideo).toHaveBeenCalledTimes(1);
+    });
+
+    it('should support .mkv video files', async () => {
+      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
+      mockedFs.readdir.mockResolvedValue([
+        '20231201_TestVideo1.info.json',
+        '20231201_TestVideo1.mkv',
+        '20231201_TestVideo1.webp',
+      ] as any);
+
+      mockedFs.readFile.mockResolvedValue(
+        JSON.stringify({
+          title: 'Test Video 1',
+        })
+      );
+
+      await loadVideosCache();
+
+      expect(mockedElasticsearchService.indexVideo).toHaveBeenCalledTimes(1);
+      const videoCall = mockedElasticsearchService.indexVideo.mock.calls[0][0];
+      expect(videoCall.videoPath).toBe('20231201_TestVideo1.mkv');
+    });
+
+    it('should support .jpg thumbnail files', async () => {
+      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
+      mockedFs.readdir.mockResolvedValue([
+        '20231201_TestVideo1.info.json',
+        '20231201_TestVideo1.mp4',
+        '20231201_TestVideo1.jpg',
+      ] as any);
+
+      mockedFs.readFile.mockResolvedValue(
+        JSON.stringify({
+          title: 'Test Video 1',
+        })
+      );
+
+      await loadVideosCache();
+
+      expect(mockedElasticsearchService.indexVideo).toHaveBeenCalledTimes(1);
+      const videoCall = mockedElasticsearchService.indexVideo.mock.calls[0][0];
+      expect(videoCall.thumbnailPath).toBe('20231201_TestVideo1.jpg');
+    });
+
+    it('should support subtitle files (.en.vtt)', async () => {
+      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
+      mockedFs.readdir.mockResolvedValue([
+        '20231201_TestVideo1.info.json',
+        '20231201_TestVideo1.mp4',
+        '20231201_TestVideo1.webp',
+        '20231201_TestVideo1.en.vtt',
+      ] as any);
+
+      mockedFs.readFile.mockResolvedValue(
+        JSON.stringify({
+          title: 'Test Video 1',
+        })
+      );
+
+      await loadVideosCache();
+
+      expect(mockedElasticsearchService.indexVideo).toHaveBeenCalledTimes(1);
+      const videoCall = mockedElasticsearchService.indexVideo.mock.calls[0][0];
+      expect(videoCall.subtitlePath).toBe('20231201_TestVideo1.en.vtt');
+    });
+
+    it('should extract uploadDate from baseName if not in info.json', async () => {
+      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
+      mockedFs.readdir.mockResolvedValue([
+        '20231201_TestVideo1.info.json',
+        '20231201_TestVideo1.mp4',
+        '20231201_TestVideo1.webp',
+      ] as any);
+
+      mockedFs.readFile.mockResolvedValue(
+        JSON.stringify({
+          title: 'Test Video 1',
+        })
+      );
+
+      await loadVideosCache();
+
+      const videoCall = mockedElasticsearchService.indexVideo.mock.calls[0][0];
+      expect(videoCall.uploadDate).toBe('20231201');
+    });
+
+    it('should use uploader as channelName if channel is not available', async () => {
+      mockedConfig.getVideosFolderPaths.mockReturnValue(['/test/videos']);
+      mockedFs.readdir.mockResolvedValue([
+        '20231201_TestVideo1.info.json',
+        '20231201_TestVideo1.mp4',
+        '20231201_TestVideo1.webp',
+      ] as any);
+
+      mockedFs.readFile.mockResolvedValue(
+        JSON.stringify({
+          title: 'Test Video 1',
+          uploader: 'Test Uploader',
+        })
+      );
+
+      await loadVideosCache();
+
+      const videoCall = mockedElasticsearchService.indexVideo.mock.calls[0][0];
+      expect(videoCall.channelName).toBe('Test Uploader');
     });
   });
 

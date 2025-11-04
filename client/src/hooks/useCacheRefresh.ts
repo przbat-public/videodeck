@@ -17,7 +17,8 @@ export function useCacheRefresh(): UseCacheRefreshResult {
 
   const refreshCache = useCallback(async (): Promise<void> => {
     dispatch({ type: CacheRefreshActionType.REFRESH_START });
-
+    const loadingToastId = toast.loading('Starting cache refresh process...');
+  
     try {
       const response = await fetch('/api/videos/refreshCache');
       
@@ -29,7 +30,7 @@ export function useCacheRefresh(): UseCacheRefreshResult {
       const data = await response.json();
       dispatch({ type: CacheRefreshActionType.REFRESH_SUCCESS, payload: '' });
 
-      toast.success(data.message || 'Cache refresh process started successfully!');
+      toast.success(data.message || 'Cache refresh process started successfully!', { id: loadingToastId });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to start cache refresh';
       dispatch({
@@ -37,7 +38,7 @@ export function useCacheRefresh(): UseCacheRefreshResult {
         payload: errorMessage,
       });
 
-      toast.error(errorMessage);
+      toast.error(errorMessage, { id: loadingToastId });
     }
   }, []);
 
