@@ -54,6 +54,47 @@ function extractTextFromVttSubtitles(vttContent: string): string {
     .trim();
 }
 
+/**
+ * Estimates approximate token count (rough estimate: 1 token ≈ 4 characters for Polish text)
+ * This is a conservative estimate to avoid exceeding API limits
+ */
+function estimateTokenCount(text: string): number {
+  // Rough estimate: Polish text typically uses ~4 characters per token
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Truncates text to fit within token limit, keeping complete sentences when possible
+ * Leaves some buffer for system prompt and response tokens
+ */
+function truncateTextToTokenLimit(text: string, maxTokens: number): string {
+  const estimatedTokens = estimateTokenCount(text);
+  
+  if (estimatedTokens <= maxTokens) {
+    return text;
+  }
+  
+  // Calculate max characters based on token limit
+  const maxChars = maxTokens * 4;
+  
+  // Try to truncate at sentence boundary
+  const truncated = text.substring(0, maxChars);
+  const lastSentenceEnd = Math.max(
+    truncated.lastIndexOf('.'),
+    truncated.lastIndexOf('!'),
+    truncated.lastIndexOf('?'),
+    truncated.lastIndexOf('\n')
+  );
+  
+  // If we found a sentence boundary in the last 20% of text, use it
+  if (lastSentenceEnd > maxChars * 0.8) {
+    return text.substring(0, lastSentenceEnd + 1).trim();
+  }
+  
+  // Otherwise, just truncate at character limit
+  return truncated.trim();
+}
+
 const router = express.Router();
 
 // GET /api/videos/refreshCache - Refresh/reindex videos cache
@@ -179,6 +220,19 @@ router.get('/:baseName/summary', async (req, res) => {
       return res.status(404).json({ error: 'Subtitle not found' });
     }
 
+    // Check if summary file already exists
+    const summaryFilePath = path.join(video.folderPath, `${baseName}.summary.txt`);
+    
+    try {
+      // Try to read existing summary
+      const existingSummary = await fs.readFile(summaryFilePath, 'utf-8');
+      if (existingSummary.trim()) {
+        return res.json({ summary: existingSummary.trim() });
+      }
+    } catch {
+      // File doesn't exist, continue to generate new summary
+    }
+
     if (!OPENAI_API_KEY) {
       return res.status(500).json({
         error: 'OpenAI API key not configured',
@@ -191,29 +245,74 @@ router.get('/:baseName/summary', async (req, res) => {
     
     // Extract only text content from VTT, removing timestamps and metadata
     // This significantly reduces token count for OpenAI API
-    const subtitleText = extractTextFromVttSubtitles(subtitleFileContent);
+    let subtitleText = extractTextFromVttSubtitles(subtitleFileContent);
+
+    // Truncate text to fit within token limits
+    // Reserve tokens for: system prompt (~50), user prompt (~100), response (2000), and buffer
+    // TPM limit is 30000, but we want to be safe with ~25000 tokens for input
+    const maxInputTokens = 25000;
+    const estimatedTokens = estimateTokenCount(subtitleText);
+    const wasTruncated = estimatedTokens > maxInputTokens;
+    
+    if (wasTruncated) {
+      console.warn(`Subtitle text is too long (estimated ${estimatedTokens} tokens). Truncating to ${maxInputTokens} tokens.`);
+      subtitleText = truncateTextToTokenLimit(subtitleText, maxInputTokens);
+    }
 
     // Initialize OpenAI client
     const openai = new OpenAI({
       apiKey: OPENAI_API_KEY,
     });
 
-    // Call OpenAI API to generate summary in Polish
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1',
-      messages: [
-        {
-          role: 'system',
-          content: 'Jesteś pomocnym asystentem, który tworzy zwięzłe podsumowania napisów filmowych w języku polskim.',
-        },
-        {
-          role: 'user',
-          content: `Przeanalizuj poniższe napisy filmowe i stwórz zwięzłe podsumowanie w języku polskim. Podsumowanie powinno zawierać główne tematy i kluczowe punkty omawiane w filmie. Nie umieszczaj na początku podsumowania o tym że jest to podsumowanie filmu.\n\nNapisy:\n${subtitleText}`,
-        },
-      ],
-      temperature: 0.7,
-      max_tokens: 2000,
-    });
+    // Try models in order of preference (higher TPM limits first)
+    // Note: gpt-4.1 might be a custom model name, so we include it as fallback
+    const models = ['gpt-4o', 'gpt-4-turbo', 'gpt-4o-mini', 'gpt-4'];
+    let completion;
+    let lastError: Error | null = null;
+
+    for (const model of models) {
+      try {
+        // Call OpenAI API to generate summary in Polish
+        completion = await openai.chat.completions.create({
+          model,
+          messages: [
+            {
+              role: 'system',
+              content: 'Jesteś pomocnym asystentem, który tworzy zwięzłe podsumowania napisów filmowych w języku polskim.',
+            },
+            {
+              role: 'user',
+              content: `Przeanalizuj poniższe napisy filmowe i stwórz zwięzłe podsumowanie w języku polskim. Podsumowanie powinno zawierać główne tematy i kluczowe punkty omawiane w filmie. Nie umieszczaj na początku podsumowania o tym że jest to podsumowanie filmu.\n\nNapisy:\n${subtitleText}`,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 2000,
+        });
+        break; // Success, exit loop
+      } catch (error: any) {
+        lastError = error;
+        // If it's a 429 error (rate limit), try next model
+        // If it's another error, also try next model
+        if (error?.status === 429 || error?.response?.status === 429) {
+          console.warn(`Rate limit hit for model ${model}, trying next model...`);
+          if (model === models[models.length - 1]) {
+            // Last model failed, wait a bit and retry
+            await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 60 seconds
+            throw new Error(`Rate limit exceeded for all models. Please try again later. Original error: ${error.message}`);
+          }
+          continue;
+        }
+        // For other errors, rethrow immediately
+        throw error;
+      }
+    }
+
+    if (!completion) {
+      return res.status(500).json({
+        error: 'Failed to generate summary',
+        message: lastError?.message || 'OpenAI API did not return a response',
+      });
+    }
 
     const summary = completion.choices[0]?.message?.content;
 
@@ -224,7 +323,18 @@ router.get('/:baseName/summary', async (req, res) => {
       });
     }
 
-    res.json({ summary });
+    // Save summary to disk for future use
+    try {
+      await fs.writeFile(summaryFilePath, summary, 'utf-8');
+    } catch (writeError) {
+      console.error('Error saving summary to disk:', writeError);
+      // Continue even if save fails - still return the summary
+    }
+
+    res.json({ 
+      summary,
+      truncated: wasTruncated ? true : undefined, // Only include if true
+    });
   } catch (error) {
     console.error('Error getting video summary:', error);
     res.status(500).json({

@@ -38,7 +38,7 @@ export default function VideoDetailPage(): JSX.Element {
     if (!dateStr || dateStr.length !== 8) return dateStr;
     return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
   };
-
+console.log(`${baseName}-${state.details?.subtitlePath}`)
   return (
     <div className="video-detail-page">
       <div className="video-detail-header">
@@ -82,7 +82,11 @@ export default function VideoDetailPage(): JSX.Element {
           </div>
         </div>
 
-        <VideoSummary baseName={baseName} subtitlePath={state.details?.subtitlePath} />
+        <VideoSummary 
+          key={`${baseName}-${state.details?.subtitlePath}`}
+          baseName={baseName} 
+          subtitlePath={state.details?.subtitlePath} 
+        />
 
         <VideoComments 
           comments={state.details.comments || []} 
