@@ -11,6 +11,7 @@ import {
 
 interface UseVideoSearchResult {
   videos: VideoListItem[];
+  totalCount: number;
   loading: boolean;
   error: string | null;
   query: string;
@@ -45,7 +46,13 @@ export function useVideoSearch(): UseVideoSearchResult {
         throw new Error('Failed to search videos');
       }
       const data = await response.json();
-      dispatch({ type: VideoSearchActionType.SEARCH_SUCCESS, payload: data.videos || [] });
+      dispatch({ 
+        type: VideoSearchActionType.SEARCH_SUCCESS, 
+        payload: { 
+          videos: data.videos || [], 
+          totalCount: data.totalCount || 0 
+        } 
+      });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';
       dispatch({
@@ -64,6 +71,7 @@ export function useVideoSearch(): UseVideoSearchResult {
 
   return {
     videos: state.videos,
+    totalCount: state.totalCount,
     loading: state.loading,
     error: state.error,
     query: state.query,

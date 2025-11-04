@@ -6,6 +6,7 @@ import { SortOption } from '../types';
 import { getVideoFilePath } from '../utils/videoPathUtils';
 import { buildCommentTree } from '../utils/commentTreeUtils';
 import { VideoInfoJson, VideoDetails } from '../types';
+import { getTotalVideoCount } from '../services/elasticsearchService';
 
 const router = express.Router();
 
@@ -40,8 +41,9 @@ router.get('/search', async (req, res) => {
     const sort = (req.query.sort as SortOption) || 'date-desc';
 
     const videos = await getVideos(query, sort);
+    const totalCount = await getTotalVideoCount();
 
-    res.json({ videos });
+    res.json({ videos, totalCount });
   } catch (error) {
     console.error('Error searching videos:', error);
     res.status(500).json({

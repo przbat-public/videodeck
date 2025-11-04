@@ -5,7 +5,7 @@ import SearchBar, { SortOption } from '../components/SearchBar';
 import VideoList from '../components/VideoList';
 
 export default function VideoListPage(): JSX.Element {
-  const { videos, loading: videoLoading, query, sort, search } = useVideoSearch();
+  const { videos, totalCount, loading: videoLoading, query, sort, search } = useVideoSearch();
   const { loading: refreshLoading, refreshCache } = useCacheRefresh();
 
   const handleSearch = useCallback(async (query: string, sort: SortOption): Promise<void> => {
@@ -45,7 +45,9 @@ export default function VideoListPage(): JSX.Element {
         </div>
         <div className="toolbar-right">
           <span className="video-count">
-            {videoLoading ? 'Loading...' : `${videos.length} video${videos.length !== 1 ? 's' : ''}`}
+            {videoLoading 
+              ? 'Loading...' 
+              : `${videos.length} video${videos.length !== 1 ? 's' : ''}${totalCount > 0 ? ` / ${totalCount} total` : ''}`}
           </span>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { SortOption } from '../components/SearchBar';
 
 export interface VideoSearchState {
   videos: VideoListItem[];
+  totalCount: number;
   loading: boolean;
   error: string | null;
   query: string;
@@ -17,11 +18,12 @@ export enum VideoSearchActionType {
 
 export type VideoSearchAction =
   | { type: VideoSearchActionType.SEARCH_START; payload: { query: string; sort: SortOption } }
-  | { type: VideoSearchActionType.SEARCH_SUCCESS; payload: VideoListItem[] }
+  | { type: VideoSearchActionType.SEARCH_SUCCESS; payload: { videos: VideoListItem[]; totalCount: number } }
   | { type: VideoSearchActionType.SEARCH_ERROR; payload: string };
 
 export const initialState: VideoSearchState = {
   videos: [],
+  totalCount: 0,
   loading: false,
   error: null,
   query: '',
@@ -44,7 +46,8 @@ export function videoSearchReducer(
     case VideoSearchActionType.SEARCH_SUCCESS:
       return {
         ...state,
-        videos: action.payload,
+        videos: action.payload.videos,
+        totalCount: action.payload.totalCount,
         loading: false,
       };
     case VideoSearchActionType.SEARCH_ERROR:
@@ -52,6 +55,7 @@ export function videoSearchReducer(
         ...state,
         error: action.payload,
         videos: [],
+        totalCount: 0,
         loading: false,
       };
     default:

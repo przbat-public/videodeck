@@ -329,6 +329,22 @@ export async function refreshIndex(folderPath: string): Promise<void> {
 }
 
 /**
+ * Get total count of all indexed videos across all indices
+ */
+export async function getTotalVideoCount(): Promise<number> {
+  const esClient = getElasticsearchClient();
+  
+  const response = await esClient.count({
+    index: getIndexPattern(),
+    query: {
+      match_all: {},
+    },
+  });
+  
+  return response.count;
+}
+
+/**
  * Check if Elasticsearch is available
  */
 export async function checkElasticsearchConnection(): Promise<boolean> {
