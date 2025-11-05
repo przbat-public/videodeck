@@ -38,7 +38,7 @@ export default function VideoDetailPage(): JSX.Element {
     if (!dateStr || dateStr.length !== 8) return dateStr;
     return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
   };
-console.log(`${baseName}-${state.details?.subtitlePath}`)
+
   return (
     <div className="video-detail-page">
       <div className="video-detail-header">
@@ -53,7 +53,7 @@ console.log(`${baseName}-${state.details?.subtitlePath}`)
             <ReactPlayer
               src={videoUrl}
               controls
-              playing
+              playing={false}
               width="100%"
               height="100%"
               className="video-player-full"
@@ -74,11 +74,6 @@ console.log(`${baseName}-${state.details?.subtitlePath}`)
                 {state.details.uploadDate && <span>{formatDate(state.details.uploadDate)}</span>}
               </div>
             )}
-
-            <div className="video-description-full">
-              <h2>Description</h2>
-              <p>{state.details?.description}</p>
-            </div>
           </div>
         </div>
 
@@ -87,6 +82,11 @@ console.log(`${baseName}-${state.details?.subtitlePath}`)
           baseName={baseName} 
           subtitlePath={state.details?.subtitlePath} 
         />
+
+        <div className="video-description-full">
+          <h2>Original description</h2>
+          <p>{state.details?.description}</p>
+        </div>
 
         <VideoComments 
           comments={state.details.comments || []} 
