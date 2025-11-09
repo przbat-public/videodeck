@@ -7,7 +7,12 @@ import { buildCommentTree } from '../utils/commentTreeUtils';
 import * as fs from 'fs/promises';
 import path from 'path';
 import { VideoListItem, VideoInfoJson } from '../types';
-import { getTotalVideoCount, recreateAllIndices } from '../services/elasticsearchService';
+import { 
+  getTotalVideoCount, 
+  recreateAllIndices,
+  getVideoByBaseName,
+  getVideoByVideoId,
+} from '../services/elasticsearchService';
 import OpenAI from 'openai';
 
 jest.mock('../services/videoScanner');
@@ -27,6 +32,8 @@ const mockedFs = fs as jest.Mocked<typeof fs>;
 const mockedRefreshVideosCache = refreshVideosCache as jest.MockedFunction<typeof refreshVideosCache>;
 const mockedRecreateAllIndices = recreateAllIndices as jest.MockedFunction<typeof recreateAllIndices>;
 const mockedGetTotalVideoCount = getTotalVideoCount as jest.MockedFunction<typeof getTotalVideoCount>;
+const mockedGetVideoByBaseName = getVideoByBaseName as jest.MockedFunction<typeof getVideoByBaseName>;
+const mockedGetVideoByVideoId = getVideoByVideoId as jest.MockedFunction<typeof getVideoByVideoId>;
 const MockedOpenAI = OpenAI as jest.MockedClass<typeof OpenAI>;
 
 describe('videos router', () => {
@@ -435,9 +442,10 @@ describe('videos router', () => {
     });
   });
 
-  describe('GET /api/videos/:baseName/summary', () => {
+  describe('GET /api/videos/:identifier/summary', () => {
     const mockVideo: VideoListItem = {
       baseName: '20231201_TestVideo',
+      videoId: 'testVideoId', // 11 characters to match YouTube ID pattern
       title: 'Test Video',
       description: 'A test video',
       videoPath: '20231201_TestVideo.mp4',
@@ -466,14 +474,17 @@ And another one`;
     beforeEach(() => {
       jest.clearAllMocks();
       MockedOpenAI.mockImplementation(() => mockOpenAIInstance as any);
+      // Reset mocks to return null by default
+      mockedGetVideoByVideoId.mockResolvedValue(null);
+      mockedGetVideoByBaseName.mockResolvedValue(null);
     });
 
-    it('should return existing summary from file if it exists', async () => {
+    it('should return existing summary from file if it exists (by baseName)', async () => {
       const baseName = '20231201_TestVideo';
       const summaryFilePath = path.join(mockVideo.folderPath, `${baseName}.summary.txt`);
       const existingSummary = 'Existing summary from file';
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       // First call: summary file exists
       mockedFs.readFile.mockResolvedValueOnce(existingSummary);
 
@@ -481,19 +492,38 @@ And another one`;
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ summary: existingSummary });
-      expect(mockedGetVideos).toHaveBeenCalledWith(baseName);
+      expect(mockedGetVideoByBaseName).toHaveBeenCalledWith(baseName);
       expect(mockedFs.readFile).toHaveBeenCalledWith(summaryFilePath, 'utf-8');
       // Should not call OpenAI API when summary file exists
       expect(mockOpenAIInstance.chat.completions.create).not.toHaveBeenCalled();
     });
 
-    it('should generate and save new summary when file does not exist', async () => {
+    it('should return existing summary from file if it exists (by videoId)', async () => {
+      const videoId = 'testVideoId'; // 11 characters to match YouTube ID pattern
+      const summaryFilePath = path.join(mockVideo.folderPath, `${mockVideo.baseName}.summary.txt`);
+      const existingSummary = 'Existing summary from file';
+
+      mockedGetVideoByVideoId.mockResolvedValue(mockVideo);
+      // First call: summary file exists
+      mockedFs.readFile.mockResolvedValueOnce(existingSummary);
+
+      const response = await request(app).get(`/api/videos/${videoId}/summary`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ summary: existingSummary });
+      expect(mockedGetVideoByVideoId).toHaveBeenCalledWith(videoId);
+      expect(mockedFs.readFile).toHaveBeenCalledWith(summaryFilePath, 'utf-8');
+      // Should not call OpenAI API when summary file exists
+      expect(mockOpenAIInstance.chat.completions.create).not.toHaveBeenCalled();
+    });
+
+    it('should generate and save new summary when file does not exist (by baseName)', async () => {
       const baseName = '20231201_TestVideo';
       const subtitleFilePath = path.join(mockVideo.folderPath, mockVideo.subtitlePath!);
       const summaryFilePath = path.join(mockVideo.folderPath, `${baseName}.summary.txt`);
       const mockSummary = 'This is a test video summary';
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       // First call: summary file doesn't exist (throw error)
       mockedFs.readFile.mockRejectedValueOnce(new Error('File not found'));
       // Second call: read subtitle file
@@ -513,20 +543,20 @@ And another one`;
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ summary: mockSummary });
-      expect(mockedGetVideos).toHaveBeenCalledWith(baseName);
+      expect(mockedGetVideoByBaseName).toHaveBeenCalledWith(baseName);
       expect(mockedFs.readFile).toHaveBeenCalledWith(summaryFilePath, 'utf-8');
       expect(mockedFs.readFile).toHaveBeenCalledWith(subtitleFilePath, 'utf-8');
       expect(mockOpenAIInstance.chat.completions.create).toHaveBeenCalled();
       expect(mockedFs.writeFile).toHaveBeenCalledWith(summaryFilePath, mockSummary, 'utf-8');
     });
 
-    it('should return video summary', async () => {
+    it('should return video summary (by baseName)', async () => {
       const baseName = '20231201_TestVideo';
       const subtitleFilePath = path.join(mockVideo.folderPath, mockVideo.subtitlePath!);
       const summaryFilePath = path.join(mockVideo.folderPath, `${baseName}.summary.txt`);
       const mockSummary = 'This is a test video summary';
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       // Summary file doesn't exist
       mockedFs.readFile.mockRejectedValueOnce(new Error('File not found'));
       // Read subtitle file
@@ -546,7 +576,7 @@ And another one`;
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ summary: mockSummary });
-      expect(mockedGetVideos).toHaveBeenCalledWith(baseName);
+      expect(mockedGetVideoByBaseName).toHaveBeenCalledWith(baseName);
       expect(mockedFs.readFile).toHaveBeenCalledWith(subtitleFilePath, 'utf-8');
       expect(mockOpenAIInstance.chat.completions.create).toHaveBeenCalled();
       expect(mockedFs.writeFile).toHaveBeenCalledWith(summaryFilePath, mockSummary, 'utf-8');
@@ -558,7 +588,7 @@ And another one`;
       const summaryFilePath = path.join(mockVideo.folderPath, `${baseName}.summary.txt`);
       const mockSummary = 'Generated summary';
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       // Summary file exists but is empty
       mockedFs.readFile.mockResolvedValueOnce('');
       // Read subtitle file
@@ -585,12 +615,13 @@ And another one`;
     it('should return 404 when video is not found', async () => {
       const baseName = 'nonexistent';
 
-      mockedGetVideos.mockResolvedValue([]);
+      mockedGetVideoByBaseName.mockResolvedValue(null);
+      mockedGetVideoByVideoId.mockResolvedValue(null);
 
       const response = await request(app).get(`/api/videos/${baseName}/summary`);
 
       expect(response.status).toBe(404);
-      expect(response.body).toEqual({ error: 'Subtitle not found' });
+      expect(response.body).toEqual({ error: 'Video not found' });
     });
 
     it('should return 404 when video has no subtitlePath', async () => {
@@ -600,7 +631,7 @@ And another one`;
         subtitlePath: undefined,
       };
 
-      mockedGetVideos.mockResolvedValue([videoWithoutSubtitle]);
+      mockedGetVideoByBaseName.mockResolvedValue(videoWithoutSubtitle);
 
       const response = await request(app).get(`/api/videos/${baseName}/summary`);
 
@@ -616,7 +647,7 @@ And another one`;
       // Create a very long subtitle text that would exceed token limit
       const longVttContent = `WEBVTT\n\n${Array(100000).fill('00:00:01.000 --> 00:00:04.000\nThis is a very long subtitle text that exceeds token limits. ').join('\n')}`;
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       mockedFs.readFile.mockRejectedValueOnce(new Error('File not found'));
       mockedFs.readFile.mockResolvedValueOnce(longVttContent);
       mockedFs.writeFile.mockResolvedValue(undefined);
@@ -648,7 +679,7 @@ And another one`;
       const summaryFilePath = path.join(mockVideo.folderPath, `${baseName}.summary.txt`);
       const mockSummary = 'Generated summary';
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       mockedFs.readFile.mockRejectedValueOnce(new Error('File not found'));
       mockedFs.readFile.mockResolvedValueOnce(mockVttContent);
       mockedFs.writeFile.mockResolvedValue(undefined);
@@ -685,7 +716,7 @@ And another one`;
       const summaryFilePath = path.join(mockVideo.folderPath, `${baseName}.summary.txt`);
       const mockSummary = 'Generated summary';
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       // Summary file doesn't exist
       mockedFs.readFile.mockRejectedValueOnce(new Error('File not found'));
       // Read subtitle file
@@ -715,7 +746,7 @@ And another one`;
       const subtitleFilePath = path.join(mockVideo.folderPath, mockVideo.subtitlePath!);
       const summaryFilePath = path.join(mockVideo.folderPath, `${baseName}.summary.txt`);
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       // Summary file doesn't exist
       mockedFs.readFile.mockRejectedValueOnce(new Error('File not found'));
       // Read subtitle file
@@ -740,7 +771,7 @@ And another one`;
       const summaryFilePath = path.join(mockVideo.folderPath, `${baseName}.summary.txt`);
       const error = new Error('Subtitle file not found');
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       // Summary file doesn't exist
       mockedFs.readFile.mockRejectedValueOnce(new Error('Summary file not found'));
       // Subtitle file read fails
@@ -761,7 +792,7 @@ And another one`;
       const summaryFilePath = path.join(mockVideo.folderPath, `${baseName}.summary.txt`);
       const error = new Error('OpenAI API error');
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       // Summary file doesn't exist
       mockedFs.readFile.mockRejectedValueOnce(new Error('File not found'));
       // Read subtitle file succeeds
@@ -793,7 +824,7 @@ This is a test subtitle
 And another one`;
       const mockSummary = 'Summary';
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       // Summary file doesn't exist
       mockedFs.readFile.mockRejectedValueOnce(new Error('File not found'));
       // Read subtitle file with metadata
@@ -822,9 +853,10 @@ And another one`;
     });
   });
 
-  describe('GET /api/videos/:baseName/details', () => {
+  describe('GET /api/videos/:identifier/details', () => {
     const mockVideo: VideoListItem = {
       baseName: '20231201_TestVideo',
+      videoId: 'testVideoId', // 11 characters to match YouTube ID pattern
       title: 'Test Video',
       description: 'A test video',
       videoPath: '20231201_TestVideo.mp4',
@@ -848,11 +880,18 @@ And another one`;
       comments: [],
     };
 
-    it('should return video details', async () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      // Reset mocks to return null by default
+      mockedGetVideoByVideoId.mockResolvedValue(null);
+      mockedGetVideoByBaseName.mockResolvedValue(null);
+    });
+
+    it('should return video details (by baseName)', async () => {
       const baseName = '20231201_TestVideo';
       const infoJsonPath = path.join(mockVideo.folderPath, `${baseName}.info.json`);
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
       mockedBuildCommentTree.mockReturnValue([]);
@@ -874,6 +913,38 @@ And another one`;
         thumbnailPath: mockVideo.thumbnailPath,
         subtitlePath: mockVideo.subtitlePath,
       });
+      expect(mockedGetVideoByBaseName).toHaveBeenCalledWith(baseName);
+      expect(mockedFs.readFile).toHaveBeenCalledWith(infoJsonPath, 'utf-8');
+      expect(mockedBuildCommentTree).toHaveBeenCalledWith([]);
+    });
+
+    it('should return video details (by videoId)', async () => {
+      const videoId = 'testVideoId'; // 11 characters to match YouTube ID pattern
+      const infoJsonPath = path.join(mockVideo.folderPath, `${mockVideo.baseName}.info.json`);
+
+      mockedGetVideoByVideoId.mockResolvedValue(mockVideo);
+      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
+      mockedBuildCommentTree.mockReturnValue([]);
+
+      const response = await request(app).get(`/api/videos/${videoId}/details`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.details).toMatchObject({
+        title: 'Test Video Title',
+        description: 'Test Description',
+        uploadDate: '20231201',
+        duration: '10:30',
+        viewCount: 1000,
+        likeCount: 50,
+        channelName: 'Test Channel',
+        comments: [],
+        commentCount: 5,
+        videoPath: mockVideo.videoPath,
+        thumbnailPath: mockVideo.thumbnailPath,
+        subtitlePath: mockVideo.subtitlePath,
+      });
+      expect(mockedGetVideoByVideoId).toHaveBeenCalledWith(videoId);
       expect(mockedFs.readFile).toHaveBeenCalledWith(infoJsonPath, 'utf-8');
       expect(mockedBuildCommentTree).toHaveBeenCalledWith([]);
     });
@@ -885,7 +956,7 @@ And another one`;
         description: 'Test Description',
       };
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithoutTitle));
       mockedBuildCommentTree.mockReturnValue([]);
@@ -904,7 +975,7 @@ And another one`;
         uploader: 'Test Uploader',
       };
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithoutChannel));
       mockedBuildCommentTree.mockReturnValue([]);
@@ -922,7 +993,7 @@ And another one`;
         duration: 630, // 10:30 in seconds
       };
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithNumericDuration));
       mockedBuildCommentTree.mockReturnValue([]);
@@ -946,7 +1017,7 @@ And another one`;
         comments: mockComments as any,
       };
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithComments));
       mockedBuildCommentTree.mockReturnValue(mockTree as any);
@@ -961,7 +1032,8 @@ And another one`;
     it('should return 404 when video is not found', async () => {
       const baseName = 'nonexistent';
 
-      mockedGetVideos.mockResolvedValue([]);
+      mockedGetVideoByBaseName.mockResolvedValue(null);
+      mockedGetVideoByVideoId.mockResolvedValue(null);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
 
@@ -972,7 +1044,7 @@ And another one`;
     it('should return 404 when info.json file does not exist', async () => {
       const baseName = '20231201_TestVideo';
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       mockedFs.access.mockRejectedValue(new Error('File not found'));
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
@@ -985,7 +1057,7 @@ And another one`;
       const baseName = '20231201_TestVideo';
       const infoJsonPath = path.join(mockVideo.folderPath, `${baseName}.info.json`);
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue('invalid json content');
 
@@ -1003,7 +1075,7 @@ And another one`;
       const infoJsonPath = path.join(mockVideo.folderPath, `${baseName}.info.json`);
       const error = new Error('Permission denied');
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockRejectedValue(error);
 
@@ -1016,18 +1088,18 @@ And another one`;
       });
     });
 
-    it('should handle errors when getVideos fails', async () => {
+    it('should handle errors when getVideoByBaseName fails', async () => {
       const baseName = '20231201_TestVideo';
-      const error = new Error('Failed to load videos');
+      const error = new Error('Failed to load video');
 
-      mockedGetVideos.mockRejectedValue(error);
+      mockedGetVideoByBaseName.mockRejectedValue(error);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
         error: 'Failed to load video details',
-        message: 'Failed to load videos',
+        message: 'Failed to load video',
       });
     });
 
@@ -1041,7 +1113,7 @@ And another one`;
         comments: mockComments as any,
       };
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithoutCommentCount));
       mockedBuildCommentTree.mockReturnValue(mockTree as any);
@@ -1058,7 +1130,7 @@ And another one`;
         title: 'Minimal Video',
       };
 
-      mockedGetVideos.mockResolvedValue([mockVideo]);
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
       mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(minimalInfoJson));
       mockedBuildCommentTree.mockReturnValue([]);

@@ -593,6 +593,534 @@
   text-align: center;
 }
 
+/* Status Page */
+.status-page {
+  margin: 0 auto;
+}
+
+.status-page h1 {
+  font-size: 2rem;
+  margin-bottom: 2rem;
+  color: #333;
+  text-align: center;
+}
+
+.status-content {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.status-section {
+  margin-bottom: 2rem;
+}
+
+.status-section:last-of-type {
+  margin-bottom: 0;
+}
+
+.status-section h2 {
+  font-size: 1.3rem;
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.status-paths ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.status-paths li {
+  padding: 0.75rem 1rem;
+  background: #f5f5f5;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  color: #333;
+  word-break: break-all;
+}
+
+.status-paths li:last-child {
+  margin-bottom: 0;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background: #28a745;
+  color: white;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.status-actions {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.status-link {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background: #667eea;
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+.status-link:hover {
+  background: #5568d3;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+/* Folder Sections */
+.folder-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.folder-section {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  background: #fafafa;
+  transition: all 0.3s;
+}
+
+.folder-section:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.folder-section-header {
+  margin-bottom: 1rem;
+}
+
+.folder-path {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+  font-family: 'Courier New', monospace;
+  word-break: break-all;
+}
+
+.folder-config {
+  margin-top: 1rem;
+}
+
+.config-loading {
+  color: #666;
+  font-style: italic;
+  padding: 1rem 0;
+}
+
+.config-error {
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 6px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+.config-error p {
+  margin: 0;
+  color: #c33;
+}
+
+.config-empty {
+  padding: 1rem;
+  background: #fff;
+  border-radius: 6px;
+  border: 1px dashed #ccc;
+}
+
+.config-empty p {
+  margin: 0 0 1rem 0;
+  color: #666;
+}
+
+.config-info {
+  background: white;
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+
+.config-field {
+  margin-bottom: 1rem;
+}
+
+.config-field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.config-value {
+  margin: 0;
+  padding: 0.75rem;
+  background: #f5f5f5;
+  border-radius: 4px;
+  color: #333;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+.config-value em {
+  color: #999;
+  font-style: italic;
+}
+
+.config-edit {
+  background: white;
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+
+.config-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  font-family: 'Courier New', monospace;
+  transition: border-color 0.3s;
+  box-sizing: border-box;
+}
+
+.config-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.config-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.create-config-button,
+.edit-config-button,
+.save-config-button,
+.cancel-config-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
+}
+
+.create-config-button,
+.edit-config-button {
+  background: #667eea;
+  color: white;
+}
+
+.create-config-button:hover,
+.edit-config-button:hover {
+  background: #5568d3;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+}
+
+.save-config-button {
+  background: #28a745;
+  color: white;
+}
+
+.save-config-button:hover {
+  background: #218838;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+}
+
+.cancel-config-button {
+  background: #6c757d;
+  color: white;
+}
+
+.cancel-config-button:hover {
+  background: #5a6268;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(108, 117, 125, 0.3);
+}
+
+.save-config-button:disabled,
+.cancel-config-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.save-config-button:disabled:hover,
+.cancel-config-button:disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Playlist Download Section */
+.playlist-download-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.playlist-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 1rem 0;
+}
+
+.playlist-info {
+  background: white;
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+
+.playlist-info p {
+  margin: 0 0 1rem 0;
+  color: #666;
+  font-size: 0.95rem;
+}
+
+.download-playlist-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
+  background: #17a2b8;
+  color: white;
+}
+
+.download-playlist-button:hover:not(:disabled) {
+  background: #138496;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(23, 162, 184, 0.3);
+}
+
+.download-playlist-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.download-playlist-button:disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Videos List Section */
+.videos-list-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.videos-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 1rem 0;
+}
+
+.videos-list {
+  background: white;
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+
+.videos-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.videos-count {
+  margin: 0;
+  color: #666;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.download-all-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
+  background: #28a745;
+  color: white;
+}
+
+.download-all-button:hover:not(:disabled) {
+  background: #218838;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+}
+
+.download-all-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.videos-list-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.video-list-item {
+  padding: 0.75rem;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.2s;
+}
+
+.video-list-item:last-child {
+  border-bottom: none;
+}
+
+.video-list-item:hover {
+  background-color: #f8f9fa;
+}
+
+.video-title {
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.video-title-link {
+  color: #667eea;
+  text-decoration: none;
+  font-size: 0.95rem;
+  display: block;
+  transition: color 0.2s;
+}
+
+.video-title-link:hover {
+  color: #5568d3;
+  text-decoration: underline;
+}
+
+/* Video Item */
+.video-item {
+  padding: 0.75rem;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.2s;
+}
+
+.video-item:last-child {
+  border-bottom: none;
+}
+
+.video-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.video-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.video-status {
+  font-size: 0.9rem;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.video-status.downloaded {
+  color: #28a745;
+  background-color: #d4edda;
+}
+
+.download-video-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+  background: #17a2b8;
+  color: white;
+}
+
+.download-video-button:hover:not(:disabled) {
+  background: #138496;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(23, 162, 184, 0.3);
+}
+
+.download-video-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.download-output {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+}
+
+.download-error {
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  background-color: #f8d7da;
+  color: #721c24;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.download-output-content {
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #333;
+}
+
+.output-line {
+  margin-bottom: 0.25rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .app-header h1 {
@@ -653,5 +1181,20 @@
 
   .video-comments-section {
     padding: 1rem;
+  }
+
+  .folder-section {
+    padding: 1rem;
+  }
+
+  .config-actions {
+    flex-direction: column;
+  }
+
+  .create-config-button,
+  .edit-config-button,
+  .save-config-button,
+  .cancel-config-button {
+    width: 100%;
   }
 }

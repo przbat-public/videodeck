@@ -3,6 +3,7 @@
  */
 export interface VideoListItem {
   baseName: string;
+  videoId?: string; // YouTube video ID
   title: string;
   description: string;
   videoPath: string;

@@ -132,9 +132,12 @@ export async function indexVideo(video: VideoListItem): Promise<void> {
   const esClient = getElasticsearchClient();
   const indexName = getIndexNameFromFolderPath(video.folderPath);
 
+  // Use videoId as ID if available, otherwise fallback to baseName
+  const documentId = video.videoId || video.baseName;
+
   await esClient.index({
     index: indexName,
-    id: video.baseName,
+    id: documentId,
     document: video,
   });
 }
@@ -165,7 +168,7 @@ export async function bulkIndexVideos(videos: VideoListItem[]): Promise<void> {
     await createIndex(folderPath);
     
     const operations = folderVideos.flatMap((video) => [
-      { index: { _index: indexName, _id: video.baseName } },
+      { index: { _index: indexName, _id: video.videoId || video.baseName } },
       video,
     ]);
 
@@ -363,6 +366,37 @@ export async function searchVideos(
  */
 export async function getAllVideos(sortOption: SortOption = 'date-desc'): Promise<VideoListItem[]> {
   return searchVideos(undefined, sortOption);
+}
+
+/**
+ * Get a single video by videoId (YouTube ID) (searches across all indices)
+ * Uses document ID lookup for better performance
+ */
+export async function getVideoByVideoId(videoId: string): Promise<VideoListItem | null> {
+  const esClient = getElasticsearchClient();
+
+  // Try to get document by ID across all indices
+  // Since we don't know which index contains the document, we search by IDs query
+  const response = await esClient.search<VideoListItem>({
+    index: getIndexPattern(),
+    query: {
+      ids: {
+        values: [videoId],
+      },
+    },
+    size: 1,
+  });
+
+  if (response.hits.hits.length === 0) {
+    return null;
+  }
+
+  const hit = response.hits.hits[0];
+  if (!hit._source) {
+    return null;
+  }
+
+  return hit._source as VideoListItem;
 }
 
 /**

@@ -94,6 +94,7 @@ async function scanFolder(folderPath: string): Promise<void> {
 
         const video: VideoListItem = {
           baseName,
+          videoId: infoJson.id,
           title: title || baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''),
           description: infoJson.description || title,
           videoPath: videoFile,

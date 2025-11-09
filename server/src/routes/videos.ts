@@ -3,10 +3,15 @@ import { getVideos, refreshVideosCache } from '../services/videoScanner';
 import fs from 'fs/promises';
 import path from 'path';
 import OpenAI from 'openai';
-import { SortOption, VideoInfoJson, VideoDetails } from '../types';
+import { SortOption, VideoInfoJson, VideoDetails, VideoListItem } from '../types';
 import { getVideoFilePath } from '../utils/videoPathUtils';
 import { buildCommentTree } from '../utils/commentTreeUtils';
-import { getTotalVideoCount, recreateAllIndices } from '../services/elasticsearchService';
+import {
+  getVideoByBaseName,
+  getVideoByVideoId,
+  getTotalVideoCount,
+  recreateAllIndices,
+} from '../services/elasticsearchService';
 import { OPENAI_API_KEY } from '../config';
 
 /**
@@ -209,12 +214,30 @@ router.get('/file/:filename', async (req, res) => {
   }
 });
 
-router.get('/:baseName/summary', async (req, res) => {
+// GET /api/videos/:identifier/summary - supports both baseName and videoId
+router.get('/:identifier/summary', async (req, res) => {
   try {
-    const baseName = req.params.baseName;
+    const identifier = req.params.identifier;
 
-    const allVideos = await getVideos(baseName);
-    const video = allVideos.find((v) => v.baseName === baseName);
+    // Try to find by videoId first (YouTube IDs are typically 11 characters)
+    // If it looks like a videoId (alphanumeric, 11 chars), try that first
+    let video: VideoListItem | null = null;
+    
+    if (/^[a-zA-Z0-9_-]{11}$/.test(identifier)) {
+      // Looks like a YouTube video ID, try that first
+      video = await getVideoByVideoId(identifier);
+    }
+    
+    // If not found by videoId, try by baseName
+    if (!video) {
+      video = await getVideoByBaseName(identifier);
+    }
+
+    if (!video) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    const baseName = video.baseName;
 
     if (!video?.subtitlePath) {
       return res.status(404).json({ error: 'Subtitle not found' });
@@ -344,17 +367,30 @@ router.get('/:baseName/summary', async (req, res) => {
   }
 });
 
-// GET /api/videos/:baseName/details
-router.get('/:baseName/details', async (req, res) => {
+// GET /api/videos/:identifier/details - supports both baseName and videoId
+router.get('/:identifier/details', async (req, res) => {
   try {
-    const baseName = req.params.baseName;
+    const identifier = req.params.identifier;
 
-    const allVideos = await getVideos(baseName);
-    const video = allVideos.find((v) => v.baseName === baseName);
+    // Try to find by videoId first (YouTube IDs are typically 11 characters)
+    // If it looks like a videoId (alphanumeric, 11 chars), try that first
+    let video: VideoListItem | null = null;
+    
+    if (/^[a-zA-Z0-9_-]{11}$/.test(identifier)) {
+      // Looks like a YouTube video ID, try that first
+      video = await getVideoByVideoId(identifier);
+    }
+    
+    // If not found by videoId, try by baseName
+    if (!video) {
+      video = await getVideoByBaseName(identifier);
+    }
 
     if (!video) {
       return res.status(404).json({ error: 'Video not found' });
     }
+
+    const baseName = video.baseName;
 
     // Use the folder path from the video item
     const infoJsonPath = path.join(video.folderPath, `${baseName}.info.json`);

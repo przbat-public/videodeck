@@ -6,8 +6,8 @@ import VideoComments from '../components/VideoComments';
 import { useVideoDetail } from '../hooks/useVideoDetail';
 
 export default function VideoDetailPage(): JSX.Element {
-  const { baseName } = useParams<{ baseName: string }>();
-  const { state } = useVideoDetail(baseName);
+  const { videoId } = useParams<{ videoId: string }>();
+  const { state } = useVideoDetail(videoId);
 
   if (state.loading) {
     return (
@@ -24,7 +24,7 @@ export default function VideoDetailPage(): JSX.Element {
       <div className="video-detail-page">
         <div className="error-message">
           <p>Error: {state.error || 'Video not found'}</p>
-          <Link to="/" className="back-link">
+          <Link to="/videos" className="back-link">
             ← Back to search
           </Link>
         </div>
@@ -42,7 +42,7 @@ export default function VideoDetailPage(): JSX.Element {
   return (
     <div className="video-detail-page">
       <div className="video-detail-header">
-        <Link to="/" className="back-link">
+        <Link to="/videos" className="back-link">
           ← Back to search
         </Link>
       </div>
@@ -78,8 +78,8 @@ export default function VideoDetailPage(): JSX.Element {
         </div>
 
         <VideoSummary 
-          key={`${baseName}-${state.details?.subtitlePath}`}
-          baseName={baseName} 
+          key={`${videoId}-${state.details?.subtitlePath}`}
+          baseName={videoId} 
           subtitlePath={state.details?.subtitlePath} 
         />
 

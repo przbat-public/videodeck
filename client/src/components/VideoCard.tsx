@@ -49,9 +49,11 @@ const highlightText = (text: string, query?: string): React.ReactNode => {
 export default function VideoCard({ video, searchQuery }: VideoCardProps): JSX.Element {
   const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}`;
 
+  const videoIdentifier = video.videoId || video.baseName;
+  
   return (
     <Link
-      to={`/video/${encodeURIComponent(video.baseName)}`}
+      to={`/video/${encodeURIComponent(videoIdentifier)}`}
       target="_blank"
       className="video-card-link"
     >
