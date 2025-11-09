@@ -121,7 +121,17 @@ export function VideoListSection({ folderPath, listExists }: VideoListSectionPro
       ) : videos.length > 0 ? (
         <div className="videos-list">
           <div className="videos-list-header">
-            <p className="videos-count">Liczba filmów: {videos.length}</p>
+            {(() => {
+              const notDownloadedCount = videos.filter(
+                (video) => !downloadStatuses[video.id] && video.url
+              ).length;
+              return (
+                <p className="videos-count">
+                  Liczba filmów: {videos.length}
+                  {notDownloadedCount > 0 && ` (${notDownloadedCount} nie pobranych)`}
+                </p>
+              );
+            })()}
             {videos.some((video) => !downloadStatuses[video.id] && video.url) && (
               <button
                 className="download-all-button"
