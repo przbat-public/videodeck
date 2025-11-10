@@ -449,7 +449,7 @@ app.post('/api/folder/download-video', async (req, res) => {
     await fs.mkdir(folderPath, { recursive: true });
 
     // Build yt-dlp command
-    const command = `yt-dlp -c -i -o '%(upload_date)s_%(title)s.%(ext)s' --download-archive archive.txt --restrict-filenames -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" --merge-output-format mp4 --write-subs --write-auto-subs --sub-lang en --write-thumbnail --write-description --write-info-json --write-comments "${videoUrl}"`;
+    const command = `yt-dlp -c -i -o '%(upload_date)s_%(title)s.%(ext)s' --restrict-filenames -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" --merge-output-format mp4 --write-subs --write-auto-subs --sub-lang en --write-thumbnail --write-description --write-info-json --write-comments "${videoUrl}"`;
 
     sendEvent({ type: 'start', message: 'Starting download...' });
 
@@ -457,7 +457,6 @@ app.post('/api/folder/download-video', async (req, res) => {
     const childProcess = spawn('yt-dlp', [
       '-c', '-i',
       '-o', '%(upload_date)s_%(title)s.%(ext)s',
-      '--download-archive', 'archive.txt',
       '--restrict-filenames',
       '-f', 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
       '--merge-output-format', 'mp4',
