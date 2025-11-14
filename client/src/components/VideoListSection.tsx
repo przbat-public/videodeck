@@ -9,15 +9,17 @@ interface VideoListSectionProps {
 export function VideoListSection({ folderPath, listExists }: VideoListSectionProps) {
   const [videos, setVideos] = useState<VideoListItem[]>([]);
   const [downloadStatuses, setDownloadStatuses] = useState<Record<string, boolean>>({});
+  const [lastUpdatedDates, setLastUpdatedDates] = useState<Record<string, string>>({});
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [videosError, setVideosError] = useState<string | null>(null);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
   const videoItemRefs = useRef<Map<string, VideoItemHandle>>(new Map());
+  const videosListContainerRef = useRef<HTMLDivElement>(null);
 
   // Load videos from list.json when it exists
   useEffect(() => {
-    if (listExists === true) {
+    if (listExists) {
       const loadVideos = async () => {
         try {
           setIsLoadingVideos(true);
@@ -30,6 +32,7 @@ export function VideoListSection({ folderPath, listExists }: VideoListSectionPro
 
           setVideos(data.videos || []);
           setDownloadStatuses(data.downloadStatuses || {});
+          setLastUpdatedDates(data.lastUpdatedDates || {});
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : 'An error occurred';
           setVideosError(errorMessage);
@@ -42,16 +45,43 @@ export function VideoListSection({ folderPath, listExists }: VideoListSectionPro
     } else {
       setVideos([]);
       setDownloadStatuses({});
+      setLastUpdatedDates({});
       setVideosError(null);
     }
   }, [listExists, folderPath]);
 
-  const handleDownloadComplete = (videoId: string) => {
-    // Update local state instead of fetching from backend
+  const handleDownloadComplete = async (videoId: string) => {
+    // Update local state
     setDownloadStatuses((prev) => ({
       ...prev,
       [videoId]: true,
     }));
+    
+    // Update last updated date locally immediately
+    const currentDate = new Date().toISOString();
+    setLastUpdatedDates((prev) => ({
+      ...prev,
+      [videoId]: currentDate,
+    }));
+    
+    // Optionally refresh from backend to get exact file modification time
+    // (runs in background, doesn't block UI update)
+    try {
+      const response = await fetch(`/api/folder/list?folderPath=${encodeURIComponent(folderPath)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.lastUpdatedDates && data.lastUpdatedDates[videoId]) {
+          // Update with backend value (more accurate - actual file modification time)
+          setLastUpdatedDates((prev) => ({
+            ...prev,
+            [videoId]: data.lastUpdatedDates[videoId],
+          }));
+        }
+      }
+    } catch (err) {
+      // Silently fail - local date is already set, backend date will be updated on next full refresh
+      console.error('Error refreshing last updated date from backend:', err);
+    }
   };
 
   const handleDownloadAll = async () => {
@@ -96,10 +126,24 @@ export function VideoListSection({ folderPath, listExists }: VideoListSectionPro
     setIsDownloadingAll(false);
   };
 
-  const handleUpdateAll = async () => {
-    const videosToUpdate = videos.filter(
-      (video) => downloadStatuses[video.id] && video.url
-    );
+  // Helper function to check if video is older than a month
+  const isVideoOlderThanMonth = (video: VideoListItem): boolean => {
+    if (!downloadStatuses[video.id] || !video.url) return false;
+    const lastUpdated = lastUpdatedDates[video.id];
+    if (!lastUpdated) return true; // No date means not updated
+    try {
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      const updateDate = new Date(lastUpdated);
+      return updateDate < oneMonthAgo;
+    } catch {
+      return true; // Invalid date means not updated
+    }
+  };
+
+  const handleUpdateOld = async () => {
+    // Check for videos not updated in over a month
+    const videosToUpdate = videos.filter(isVideoOlderThanMonth);
 
     if (videosToUpdate.length === 0) {
       return;
@@ -126,7 +170,8 @@ export function VideoListSection({ folderPath, listExists }: VideoListSectionPro
       try {
         // Start update and wait for it to complete
         await ref.startUpdate();
-        // Note: Status remains true after update, no need to update state
+        // Update last updated date after successful update
+        await handleDownloadComplete(video.id);
       } catch (error) {
         console.error(`Error updating video ${video.title}:`, error);
         // Continue with next video even if one fails
@@ -139,6 +184,17 @@ export function VideoListSection({ folderPath, listExists }: VideoListSectionPro
   if (listExists !== true) {
     return null;
   }
+
+  // Calculate counts before render
+  const notDownloadedCount = videos.filter(
+    (video) => !downloadStatuses[video.id] && video.url
+  ).length;
+  const downloadedCount = videos.filter(
+    (video) => downloadStatuses[video.id] && video.url
+  ).length;
+  const notUpdatedCount = videos.filter(isVideoOlderThanMonth).length;
+  const hasOldVideos = videos.some(isVideoOlderThanMonth);
+  const hasNotDownloadedVideos = videos.some((video) => !downloadStatuses[video.id] && video.url);
 
   return (
     <div className="videos-list-section">
@@ -153,46 +209,42 @@ export function VideoListSection({ folderPath, listExists }: VideoListSectionPro
       ) : videos.length > 0 ? (
         <div className="videos-list">
           <div className="videos-list-header">
-            {(() => {
-              const notDownloadedCount = videos.filter(
-                (video) => !downloadStatuses[video.id] && video.url
-              ).length;
-              const downloadedCount = videos.filter(
-                (video) => downloadStatuses[video.id] && video.url
-              ).length;
-              return (
-                <p className="videos-count">
-                  Liczba filmów: {videos.length}
-                  {notDownloadedCount > 0 && ` (${notDownloadedCount} nie pobranych)`}
-                  {downloadedCount > 0 && notDownloadedCount === 0 && ` (wszystkie pobrane)`}
-                </p>
-              );
-            })()}
-            {videos.some((video) => !downloadStatuses[video.id] && video.url) && (
-              <button
-                className="download-all-button"
-                onClick={handleDownloadAll}
-                disabled={isDownloadingAll}
-              >
-                {isDownloadingAll ? 'Pobieranie wszystkich...' : 'Pobierz wszystkie'}
-              </button>
-            )}
-            {videos.some((video) => downloadStatuses[video.id] && video.url) && 
-             !videos.some((video) => !downloadStatuses[video.id] && video.url) && (
-              <button
-                className="update-all-button"
-                onClick={handleUpdateAll}
-                disabled={isUpdatingAll}
-              >
-                {isUpdatingAll ? 'Aktualizowanie wszystkich...' : 'Aktualizuj wszystkie'}
-              </button>
-            )}
+            <p className="videos-count">
+              Liczba filmów: {videos.length}
+              {notDownloadedCount > 0 && ` (${notDownloadedCount} nie pobranych)`}
+              {notUpdatedCount > 0 && ` (${notUpdatedCount} nie zaktualizowanych od ponad miesiąca)`}
+              {downloadedCount > 0 && notDownloadedCount === 0 && notUpdatedCount === 0 && ` (wszystkie pobrane)`}
+            </p>
+            <div className="videos-list-buttons">
+              {hasNotDownloadedVideos && (
+                <button
+                  className="download-all-button"
+                  onClick={handleDownloadAll}
+                  disabled={isDownloadingAll}
+                >
+                  {isDownloadingAll ? 'Pobieranie wszystkich...' : 'Pobierz wszystkie'}
+                </button>
+              )}
+              {hasOldVideos && (
+                <button
+                  className="update-old-button"
+                  onClick={handleUpdateOld}
+                  disabled={isUpdatingAll}
+                >
+                  {isUpdatingAll ? 'Aktualizowanie ...' : 'Aktualizuj'}
+                </button>
+              )}
+            </div>
           </div>
-          <div className="videos-list-items">
+          <div className="videos-list-items" ref={videosListContainerRef}>
             {videos.map((video, index) => {
               const videoId = video.id || `index-${index}`;
+              const videoWithLastUpdated = {
+                ...video,
+                lastUpdated: lastUpdatedDates[video.id]
+              };
               return (
-                <VideoItem 
+                  <VideoItem 
                   key={videoId} 
                   ref={(ref) => {
                     if (ref) {
@@ -201,10 +253,11 @@ export function VideoListSection({ folderPath, listExists }: VideoListSectionPro
                       videoItemRefs.current.delete(videoId);
                     }
                   }}
-                  video={video} 
+                  video={videoWithLastUpdated} 
                   folderPath={folderPath}
                   isDownloaded={downloadStatuses[video.id] || false}
                   onDownloadComplete={() => handleDownloadComplete(video.id)}
+                  scrollContainerRef={videosListContainerRef}
                 />
               );
             })}

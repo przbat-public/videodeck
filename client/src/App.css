@@ -965,6 +965,11 @@
   font-weight: 500;
 }
 
+.videos-list-buttons {
+  display: flex;
+  gap: 8px;
+}
+
 .download-all-button {
   padding: 0.75rem 1.5rem;
   font-size: 0.95rem;
@@ -1008,6 +1013,30 @@
 }
 
 .update-all-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.update-old-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
+  background: #ffc107;
+  color: #333;
+}
+
+.update-old-button:hover:not(:disabled) {
+  background: #e0a800;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(255, 193, 7, 0.3);
+}
+
+.update-old-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;

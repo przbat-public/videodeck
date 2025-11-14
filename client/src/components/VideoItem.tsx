@@ -10,6 +10,7 @@ export interface VideoListItem {
   title: string;
   url: string;
   id: string;
+  lastUpdated?: string;
 }
 
 export interface VideoItemProps {
@@ -18,6 +19,7 @@ export interface VideoItemProps {
   isDownloaded: boolean;
   onDownloadComplete: () => void;
   onDownloadStarted?: () => void;
+  scrollContainerRef?: React.RefObject<HTMLDivElement>;
 }
 
 export interface VideoItemHandle {
@@ -32,7 +34,8 @@ export const VideoItem = forwardRef<VideoItemHandle, VideoItemProps>(({
   folderPath, 
   isDownloaded, 
   onDownloadComplete,
-  onDownloadStarted 
+  onDownloadStarted,
+  scrollContainerRef
 }, ref) => {
   const [downloadState, dispatch] = useReducer(videoDownloadReducer, initialDownloadState);
   const itemRef = useRef<HTMLDivElement>(null);
@@ -62,7 +65,24 @@ export const VideoItem = forwardRef<VideoItemHandle, VideoItemProps>(({
     },
     isDownloading: () => downloadState.isDownloading,
     scrollIntoView: () => {
-      itemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (scrollContainerRef?.current && itemRef.current) {
+        const container = scrollContainerRef.current;
+        const item = itemRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+        
+        // Calculate scroll position relative to container
+        const scrollTop = container.scrollTop + (itemRect.top - containerRect.top);
+        
+        // Smooth scroll within container
+        container.scrollTo({
+          top: scrollTop,
+          behavior: 'smooth'
+        });
+      } else {
+        // Fallback to default behavior if no container ref
+        itemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     },
   }));
 
@@ -176,6 +196,30 @@ export const VideoItem = forwardRef<VideoItemHandle, VideoItemProps>(({
     }
   };
 
+  const videoTitle = video.title || 'Brak tytułu';
+  
+  // Format last updated date
+  const formatLastUpdated = (dateString?: string): string => {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('pl-PL', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return '';
+    }
+  };
+  
+  const lastUpdatedFormatted = formatLastUpdated(video.lastUpdated);
+  const titleWithDate = lastUpdatedFormatted 
+    ? `${videoTitle} (aktualizacja: ${lastUpdatedFormatted})`
+    : videoTitle;
+
   return (
     <div className="video-item" ref={itemRef}>
       <div className="video-item-header">
@@ -184,7 +228,7 @@ export const VideoItem = forwardRef<VideoItemHandle, VideoItemProps>(({
             to={`/video/${encodeURIComponent(video.id)}`}
             className="video-title-link"
           >
-            {video.title || 'Brak tytułu'}
+            {titleWithDate}
           </Link>
         ) : video.url ? (
           <a 
@@ -193,10 +237,10 @@ export const VideoItem = forwardRef<VideoItemHandle, VideoItemProps>(({
             rel="noopener noreferrer"
             className="video-title-link"
           >
-            {video.title || 'Brak tytułu'}
+            {titleWithDate}
           </a>
         ) : (
-          <span className="video-title">{video.title || 'Brak tytułu'}</span>
+          <span className="video-title">{titleWithDate}</span>
         )}
         <div className="video-item-actions">
           {isDownloaded === true ? (

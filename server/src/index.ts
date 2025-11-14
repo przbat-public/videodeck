@@ -190,12 +190,13 @@ app.get('/api/folder/list', async (req, res) => {
 
       // Check download statuses for all videos at once
       const downloadStatuses: Record<string, boolean> = {};
+      const lastUpdatedDates: Record<string, string> = {};
       
       try {
         const files = await fs.readdir(folderPath);
         const infoJsonFiles = files.filter((file) => file.endsWith('.info.json'));
         
-        // Build a map of videoId -> downloaded status
+        // Build a map of videoId -> downloaded status and last updated date
         for (const infoFile of infoJsonFiles) {
           try {
             const infoPath = path.join(folderPath, infoFile);
@@ -212,6 +213,14 @@ app.get('/api/folder/list', async (req, res) => {
               
               if (videoFile) {
                 downloadStatuses[infoJson.id] = true;
+                
+                // Get file modification time
+                try {
+                  const stats = await fs.stat(infoPath);
+                  lastUpdatedDates[infoJson.id] = stats.mtime.toISOString();
+                } catch (statError) {
+                  // If stat fails, skip adding the date
+                }
               }
             }
           } catch (err) {
@@ -224,7 +233,7 @@ app.get('/api/folder/list', async (req, res) => {
         // This is fine, we'll just return empty statuses
       }
       
-      res.json({ videos, downloadStatuses });
+      res.json({ videos, downloadStatuses, lastUpdatedDates });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         return res.status(404).json({
