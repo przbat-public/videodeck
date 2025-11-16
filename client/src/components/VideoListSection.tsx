@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { VideoItem, VideoListItem, VideoItemHandle } from './VideoItem';
 
 interface VideoListSectionProps {
@@ -6,7 +6,12 @@ interface VideoListSectionProps {
   listExists: boolean;
 }
 
-export function VideoListSection({ folderPath, listExists }: VideoListSectionProps) {
+export interface VideoListSectionHandle {
+  loadVideos: () => Promise<void>;
+}
+
+export const VideoListSection = forwardRef<VideoListSectionHandle, VideoListSectionProps>(
+  ({ folderPath, listExists }, ref) => {
   const [videos, setVideos] = useState<VideoListItem[]>([]);
   const [downloadStatuses, setDownloadStatuses] = useState<Record<string, boolean>>({});
   const [lastUpdatedDates, setLastUpdatedDates] = useState<Record<string, string>>({});
@@ -14,41 +19,51 @@ export function VideoListSection({ folderPath, listExists }: VideoListSectionPro
   const [videosError, setVideosError] = useState<string | null>(null);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [isUpdatingAll, setIsUpdatingAll] = useState(false);
+  const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
   const videoItemRefs = useRef<Map<string, VideoItemHandle>>(new Map());
   const videosListContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load videos from list.json when it exists
+  // Reset state when listExists or folderPath changes
   useEffect(() => {
-    if (listExists) {
-      const loadVideos = async () => {
-        try {
-          setIsLoadingVideos(true);
-          setVideosError(null);
-          const response = await fetch(`/api/folder/list?folderPath=${encodeURIComponent(folderPath)}`);
-          if (!response.ok) {
-            throw new Error('Failed to load videos');
-          }
-          const data = await response.json();
-
-          setVideos(data.videos || []);
-          setDownloadStatuses(data.downloadStatuses || {});
-          setLastUpdatedDates(data.lastUpdatedDates || {});
-        } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : 'An error occurred';
-          setVideosError(errorMessage);
-          console.error('Error loading videos:', err);
-        } finally {
-          setIsLoadingVideos(false);
-        }
-      };
-      loadVideos();
-    } else {
-      setVideos([]);
-      setDownloadStatuses({});
-      setLastUpdatedDates({});
-      setVideosError(null);
-    }
+    setVideos([]);
+    setDownloadStatuses({});
+    setLastUpdatedDates({});
+    setVideosError(null);
+    setHasLoadedVideos(false);
   }, [listExists, folderPath]);
+
+  // Function to load videos manually
+  const loadVideos = async () => {
+    if (!listExists) {
+      return;
+    }
+    
+    try {
+      setIsLoadingVideos(true);
+      setVideosError(null);
+      const response = await fetch(`/api/folder/list?folderPath=${encodeURIComponent(folderPath)}`);
+      if (!response.ok) {
+        throw new Error('Failed to load videos');
+      }
+      const data = await response.json();
+
+      setVideos(data.videos || []);
+      setDownloadStatuses(data.downloadStatuses || {});
+      setLastUpdatedDates(data.lastUpdatedDates || {});
+      setHasLoadedVideos(true);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      setVideosError(errorMessage);
+      console.error('Error loading videos:', err);
+    } finally {
+      setIsLoadingVideos(false);
+    }
+  };
+
+  // Expose loadVideos function via ref
+  useImperativeHandle(ref, () => ({
+    loadVideos,
+  }));
 
   const handleDownloadComplete = async (videoId: string) => {
     // Update local state
@@ -181,6 +196,7 @@ export function VideoListSection({ folderPath, listExists }: VideoListSectionPro
     setIsUpdatingAll(false);
   };
 
+  // Don't render anything if list doesn't exist
   if (listExists !== true) {
     return null;
   }
@@ -198,14 +214,13 @@ export function VideoListSection({ folderPath, listExists }: VideoListSectionPro
 
   return (
     <div className="videos-list-section">
-      <h4 className="videos-section-title">Lista filmów z list.json</h4>
       {videosError && (
         <div className="config-error">
           <p>Błąd: {videosError}</p>
         </div>
       )}
       {isLoadingVideos ? (
-        <p>Ładowanie filmów...</p>
+        <p>Ładowanie listy filmów ...</p>
       ) : videos.length > 0 ? (
         <div className="videos-list">
           <div className="videos-list-header">
@@ -263,10 +278,10 @@ export function VideoListSection({ folderPath, listExists }: VideoListSectionPro
             })}
           </div>
         </div>
-      ) : (
+      ) : hasLoadedVideos ? (
         <p>Brak filmów w pliku list.json</p>
-      )}
+      ) : null}
     </div>
   );
-}
+});
 

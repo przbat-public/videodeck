@@ -900,6 +900,12 @@
   font-size: 0.95rem;
 }
 
+.playlist-buttons {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .download-playlist-button {
   padding: 0.75rem 1.5rem;
   font-size: 0.95rem;
@@ -927,6 +933,24 @@
 .download-playlist-button:disabled:hover {
   transform: none;
   box-shadow: none;
+}
+
+.load-videos-list-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
+  background: #28a745;
+  color: white;
+}
+
+.load-videos-list-button:hover {
+  background: #218838;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
 }
 
 /* Videos List Section */

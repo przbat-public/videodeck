@@ -6,13 +6,15 @@ interface PlaylistDownloadSectionProps {
   config: FolderConfig | null;
   listExists: boolean | null;
   onPlaylistDownloaded: () => void;
+  onLoadVideosList?: () => void;
 }
 
 export function PlaylistDownloadSection({ 
   folderPath, 
   config, 
   listExists,
-  onPlaylistDownloaded 
+  onPlaylistDownloaded,
+  onLoadVideosList
 }: PlaylistDownloadSectionProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -72,13 +74,23 @@ export function PlaylistDownloadSection({
         ) : (
           <p>Plik list.json nie istnieje. Kliknij przycisk poniżej, aby utworzyć listę filmów z kanału.</p>
         )}
-        <button
-          className="download-playlist-button"
-          onClick={handleDownloadPlaylist}
-          disabled={isDownloading}
-        >
-          {isDownloading ? 'Pobieranie...' : listExists ? 'Aktualizuj playlistę' : 'Pobierz playlistę'}
-        </button>
+        <div className="playlist-buttons">
+          <button
+            className="download-playlist-button"
+            onClick={handleDownloadPlaylist}
+            disabled={isDownloading}
+          >
+            {isDownloading ? 'Pobieranie...' : listExists ? 'Aktualizuj playlistę' : 'Pobierz playlistę'}
+          </button>
+          {listExists && onLoadVideosList && (
+            <button
+              className="load-videos-list-button"
+              onClick={onLoadVideosList}
+            >
+              Pobierz listę filmów
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

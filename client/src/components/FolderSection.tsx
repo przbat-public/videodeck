@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FolderConfig } from '../reducers/statusReducer';
 import { FolderConfigEditor } from './FolderConfigEditor';
 import { PlaylistDownloadSection } from './PlaylistDownloadSection';
-import { VideoListSection } from './VideoListSection';
+import { VideoListSection, VideoListSectionHandle } from './VideoListSection';
 
 interface FolderSectionProps {
   folderPath: string;
@@ -13,6 +13,7 @@ interface FolderSectionProps {
 export function FolderSection({ folderPath, initialConfig, onConfigUpdate }: FolderSectionProps) {
   const [config, setConfig] = useState<FolderConfig | null>(initialConfig);
   const [listExists, setListExists] = useState<boolean | null>(null);
+  const videoListSectionRef = useRef<VideoListSectionHandle>(null);
 
   // Update local state when initialConfig changes
   useEffect(() => {
@@ -74,9 +75,11 @@ export function FolderSection({ folderPath, initialConfig, onConfigUpdate }: Fol
         config={config}
         listExists={listExists}
         onPlaylistDownloaded={handlePlaylistDownloaded}
+        onLoadVideosList={() => videoListSectionRef.current?.loadVideos()}
       />
 
       <VideoListSection
+        ref={videoListSectionRef}
         folderPath={folderPath}
         listExists={listExists === true}
       />
