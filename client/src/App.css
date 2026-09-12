@@ -747,13 +747,6 @@
   color: #666;
 }
 
-.config-info {
-  background: white;
-  padding: 1rem;
-  border-radius: 6px;
-  border: 1px solid #e0e0e0;
-}
-
 .config-field {
   margin-bottom: 1rem;
 }
@@ -764,22 +757,6 @@
   margin-bottom: 0.5rem;
   color: #333;
   font-size: 0.95rem;
-}
-
-.config-value {
-  margin: 0;
-  padding: 0.75rem;
-  background: #f5f5f5;
-  border-radius: 4px;
-  color: #333;
-  font-family: 'Courier New', monospace;
-  font-size: 0.9rem;
-  word-break: break-all;
-}
-
-.config-value em {
-  color: #999;
-  font-style: italic;
 }
 
 .config-edit {
@@ -804,6 +781,14 @@
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.config-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
 }
 
 .config-actions {
@@ -984,6 +969,7 @@
 
 .videos-count {
   margin: 0;
+  min-width: 0;
   color: #666;
   font-size: 0.95rem;
   font-weight: 500;
@@ -991,7 +977,13 @@
 
 .videos-list-buttons {
   display: flex;
+  align-items: flex-start;
+  flex-shrink: 0;
   gap: 8px;
+}
+
+.videos-list-buttons button {
+  white-space: nowrap;
 }
 
 .download-all-button {
@@ -1188,6 +1180,56 @@
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+.cancel-job-button,
+.cancel-all-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+  background: #6c757d;
+  color: white;
+}
+
+.cancel-job-button:hover,
+.cancel-all-button:hover {
+  background: #5a6268;
+}
+
+.job-status {
+  font-size: 0.85rem;
+  color: #555;
+  white-space: nowrap;
+}
+
+.job-status--running {
+  color: #17a2b8;
+  font-weight: 500;
+}
+
+.job-status--done {
+  color: #28a745;
+}
+
+.job-status--error {
+  color: #dc3545;
+}
+
+.job-status--cancelled {
+  color: #6c757d;
+}
+
+.queue-summary {
+  display: block;
+  color: #17a2b8;
+}
+
+.video-item--active {
+  background-color: #f1fbfd;
 }
 
 .download-output {

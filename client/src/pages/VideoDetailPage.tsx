@@ -32,7 +32,10 @@ export default function VideoDetailPage(): JSX.Element {
     );
   }
 
-  const videoUrl = `/api/videos/file/${encodeURIComponent(state.details.videoPath)}`;
+  const folderQuery = state.details.folderPath
+    ? `?folder=${encodeURIComponent(state.details.folderPath)}`
+    : '';
+  const videoUrl = `/api/videos/file/${encodeURIComponent(state.details.videoPath)}${folderQuery}`;
 
   const formatDate = (dateStr: string): string => {
     if (!dateStr || dateStr.length !== 8) return dateStr;
@@ -77,10 +80,10 @@ export default function VideoDetailPage(): JSX.Element {
           </div>
         </div>
 
-        <VideoSummary 
+        <VideoSummary
           key={`${videoId}-${state.details?.subtitlePath}`}
-          baseName={videoId} 
-          subtitlePath={state.details?.subtitlePath} 
+          baseName={videoId}
+          subtitlePath={state.details?.subtitlePath}
         />
 
         <div className="video-description-full">
@@ -88,11 +91,11 @@ export default function VideoDetailPage(): JSX.Element {
           <p>{state.details?.description}</p>
         </div>
 
-        <VideoComments 
-          comments={state.details.comments || []} 
-          commentCount={state.details.commentCount} 
+        <VideoComments
+          comments={state.details.comments || []}
+          commentCount={state.details.commentCount}
         />
       </div>
     </div>
   );
-};
+}

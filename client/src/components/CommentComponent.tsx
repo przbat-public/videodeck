@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Comment } from '../types';
+import type { CommentWithReplies } from '@shared/api';
 
 const MAX_COMMENT_LENGTH = 250;
 
@@ -36,7 +36,7 @@ const formatCommentDate = (timestamp: number): string => {
 /**
  * Count replies (only one level of nesting supported)
  */
-const countReplies = (comment: Comment): number => {
+const countReplies = (comment: CommentWithReplies): number => {
   if (!comment.replies || comment.replies.length === 0) {
     return 0;
   }
@@ -44,14 +44,17 @@ const countReplies = (comment: Comment): number => {
 };
 
 interface CommentComponentProps {
-  comment: Comment;
+  comment: CommentWithReplies;
   depth?: number;
 }
 
 /**
  * Recursive component for rendering comments with nested replies
  */
-export default function CommentComponent({ comment, depth = 0 }: CommentComponentProps): JSX.Element {
+export default function CommentComponent({
+  comment,
+  depth = 0,
+}: CommentComponentProps): JSX.Element {
   const hasReplies = comment.replies && comment.replies.length > 0;
   const isReply = depth > 0;
   const [isExpanded, setIsExpanded] = useState(false);
@@ -124,4 +127,3 @@ export default function CommentComponent({ comment, depth = 0 }: CommentComponen
     </div>
   );
 }
-

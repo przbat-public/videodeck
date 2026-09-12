@@ -1,36 +1,48 @@
 import { useState, useEffect } from 'react';
-import { FolderConfig } from '../reducers/statusReducer';
+import type {
+  ApiError,
+  DownloadOptions,
+  FolderConfig,
+  SaveFolderConfigResponse,
+} from '@shared/api';
+import type { FormState } from '../utils/folderConfigForm';
+import { MAX_HEIGHT_CHOICES, buildConfig, toFormState } from '../utils/folderConfigForm';
 
 interface FolderConfigEditorProps {
   folderPath: string;
   initialConfig: FolderConfig | null;
+  /** Server-side defaults used when a key is missing from config.json */
+  downloadDefaults: DownloadOptions;
   onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
 }
 
-export function FolderConfigEditor({ 
-  folderPath, 
-  initialConfig, 
-  onConfigUpdate 
+export function FolderConfigEditor({
+  folderPath,
+  initialConfig,
+  downloadDefaults,
+  onConfigUpdate,
 }: FolderConfigEditorProps) {
   const [config, setConfig] = useState<FolderConfig | null>(initialConfig);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [channelUrl, setChannelUrl] = useState(initialConfig?.channelUrl || '');
+  const [form, setForm] = useState<FormState>(() => toFormState(initialConfig, downloadDefaults));
   const [isSaving, setIsSaving] = useState(false);
 
   // Update local state when initialConfig changes
   useEffect(() => {
     setConfig(initialConfig);
-    setChannelUrl(initialConfig?.channelUrl || '');
+    setForm(toFormState(initialConfig, downloadDefaults));
+    // defaults are static for the session; only react to config changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialConfig]);
+
+  const updateForm = (patch: Partial<FormState>) => setForm((prev) => ({ ...prev, ...patch }));
 
   const handleSave = async () => {
     try {
       setError(null);
       setIsSaving(true);
-      const newConfig: FolderConfig = {
-        channelUrl: channelUrl.trim() || undefined,
-      };
+      const newConfig = buildConfig(form, config);
 
       const response = await fetch('/api/folder/config', {
         method: 'PUT',
@@ -44,11 +56,11 @@ export function FolderConfigEditor({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save config');
+        const errorData: ApiError = await response.json();
+        throw new Error(errorData.message || errorData.error || 'Failed to save config');
       }
 
-      const result = await response.json();
+      const result: SaveFolderConfigResponse = await response.json();
       setConfig(result.config);
       onConfigUpdate(folderPath, result.config);
       setIsEditing(false);
@@ -61,10 +73,12 @@ export function FolderConfigEditor({
   };
 
   const handleCancel = () => {
-    setChannelUrl(config?.channelUrl || '');
+    setForm(toFormState(config, downloadDefaults));
     setIsEditing(false);
     setError(null);
   };
+
+  const id = (field: string) => `${field}-${folderPath}`;
 
   return (
     <div className="folder-config">
@@ -78,63 +92,90 @@ export function FolderConfigEditor({
         <div className="config-empty">
           <p>Plik config.json nie istnieje w tym folderze.</p>
           {!isEditing && (
-            <button 
-              className="create-config-button"
-              onClick={() => setIsEditing(true)}
-            >
+            <button className="create-config-button" onClick={() => setIsEditing(true)}>
               Utwórz config.json
             </button>
           )}
         </div>
       ) : (
-        <div>
-          {!isEditing && (
-            <div className="config-info">
-              <div className="config-field">
-                <label>Adres kanału YouTube:</label>
-                <p className="config-value">
-                  {config.channelUrl || <em>Nie ustawiono</em>}
-                </p>
-              </div>
-              <button 
-                className="edit-config-button"
-                onClick={() => setIsEditing(true)}
-              >
-                Edytuj konfigurację
-              </button>
-            </div>
-          )}
-        </div>
+        !isEditing && (
+          <button className="edit-config-button" onClick={() => setIsEditing(true)}>
+            Edytuj konfigurację
+          </button>
+        )
       )}
 
       {isEditing && (
         <div className="config-edit">
           <div className="config-field">
-            <label htmlFor={`channelUrl-${folderPath}`}>
-              Adres kanału YouTube:
-            </label>
+            <label htmlFor={id('channelUrl')}>Adres kanału YouTube:</label>
             <input
-              id={`channelUrl-${folderPath}`}
+              id={id('channelUrl')}
               type="text"
-              value={channelUrl}
-              onChange={(e) => setChannelUrl(e.target.value)}
+              value={form.channelUrl}
+              onChange={(e) => updateForm({ channelUrl: e.target.value })}
               placeholder="https://www.youtube.com/@channel"
               className="config-input"
             />
           </div>
-          <div className="config-actions">
-            <button 
-              className="save-config-button"
-              onClick={handleSave}
-              disabled={isSaving}
+
+          <div className="config-field">
+            <label htmlFor={id('maxHeight')}>Maks. rozdzielczość:</label>
+            <select
+              id={id('maxHeight')}
+              value={form.maxHeight}
+              onChange={(e) => updateForm({ maxHeight: e.target.value })}
+              className="config-input"
             >
+              <option value="">Domyślnie ({downloadDefaults.maxHeight}p)</option>
+              {MAX_HEIGHT_CHOICES.map((height) => (
+                <option key={height} value={String(height)}>
+                  {height}p
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="config-field">
+            <label className="config-checkbox">
+              <input
+                type="checkbox"
+                checked={form.subtitlesEnabled}
+                onChange={(e) => updateForm({ subtitlesEnabled: e.target.checked })}
+              />
+              Pobieraj napisy
+            </label>
+            {form.subtitlesEnabled && (
+              <>
+                <label htmlFor={id('subLangs')}>Języki napisów (po przecinku):</label>
+                <input
+                  id={id('subLangs')}
+                  type="text"
+                  value={form.subLangs}
+                  onChange={(e) => updateForm({ subLangs: e.target.value })}
+                  placeholder={`domyślnie: ${downloadDefaults.subLangs.join(', ') || 'brak'}`}
+                  className="config-input"
+                />
+              </>
+            )}
+          </div>
+
+          <div className="config-field">
+            <label className="config-checkbox">
+              <input
+                type="checkbox"
+                checked={form.writeComments}
+                onChange={(e) => updateForm({ writeComments: e.target.checked })}
+              />
+              Pobieraj komentarze
+            </label>
+          </div>
+
+          <div className="config-actions">
+            <button className="save-config-button" onClick={handleSave} disabled={isSaving}>
               {isSaving ? 'Zapisywanie...' : 'Zapisz'}
             </button>
-            <button 
-              className="cancel-config-button"
-              onClick={handleCancel}
-              disabled={isSaving}
-            >
+            <button className="cancel-config-button" onClick={handleCancel} disabled={isSaving}>
               Anuluj
             </button>
           </div>
@@ -143,4 +184,3 @@ export function FolderConfigEditor({
     </div>
   );
 }
-

@@ -2,7 +2,8 @@ import { useCallback } from 'react';
 import { useVideoSearch } from '../hooks/useVideoSearch';
 import { useCacheRefresh } from '../hooks/useCacheRefresh';
 import { useRecreateIndices } from '../hooks/useRecreateIndices';
-import SearchBar, { SortOption } from '../components/SearchBar';
+import type { SortOption } from '@shared/api';
+import SearchBar from '../components/SearchBar';
 import VideoList from '../components/VideoList';
 
 export default function VideoListPage(): JSX.Element {
@@ -10,13 +11,18 @@ export default function VideoListPage(): JSX.Element {
   const { loading: refreshLoading, refreshCache } = useCacheRefresh();
   const { loading: recreateIndicesLoading, recreateIndices } = useRecreateIndices();
 
-  const handleSearch = useCallback(async (query: string, sort: SortOption): Promise<void> => {
-    await search(query, sort);
-  }, [search]);
+  const handleSearch = useCallback(
+    async (query: string, sort: SortOption): Promise<void> => {
+      await search(query, sort);
+    },
+    [search]
+  );
 
   const handleRefreshCache = useCallback(async (): Promise<void> => {
+    // refreshCache resolves when the server-side reindex is over
     await refreshCache();
-  }, [refreshCache]);
+    await search(query || '', sort);
+  }, [refreshCache, search, query, sort]);
 
   const handleReload = useCallback(async (): Promise<void> => {
     await search(query || '', sort);
@@ -60,8 +66,8 @@ export default function VideoListPage(): JSX.Element {
         </div>
         <div className="toolbar-right">
           <span className="video-count">
-            {videoLoading 
-              ? 'Loading...' 
+            {videoLoading
+              ? 'Loading...'
               : `${videos.length} video${videos.length !== 1 ? 's' : ''}${totalCount > 0 ? ` / ${totalCount} total` : ''}`}
           </span>
         </div>
@@ -78,5 +84,4 @@ export default function VideoListPage(): JSX.Element {
       )}
     </main>
   );
-};
-
+}

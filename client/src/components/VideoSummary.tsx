@@ -5,7 +5,10 @@ interface VideoSummaryProps {
   subtitlePath: string | undefined;
 }
 
-export default function VideoSummary({ baseName, subtitlePath }: VideoSummaryProps): JSX.Element | null {
+export default function VideoSummary({
+  baseName,
+  subtitlePath,
+}: VideoSummaryProps): JSX.Element | null {
   const { state: summaryState } = useVideoSummary(baseName, subtitlePath);
 
   if (!subtitlePath || !summaryState.summary) {
@@ -21,4 +24,3 @@ export default function VideoSummary({ baseName, subtitlePath }: VideoSummaryPro
     </div>
   );
 }
-

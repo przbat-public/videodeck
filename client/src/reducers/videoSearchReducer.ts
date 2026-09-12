@@ -1,5 +1,4 @@
-import { VideoListItem } from '../types';
-import { SortOption } from '../components/SearchBar';
+import type { SortOption, VideoListItem } from '@shared/api';
 
 export interface VideoSearchState {
   videos: VideoListItem[];
@@ -18,7 +17,10 @@ export enum VideoSearchActionType {
 
 export type VideoSearchAction =
   | { type: VideoSearchActionType.SEARCH_START; payload: { query: string; sort: SortOption } }
-  | { type: VideoSearchActionType.SEARCH_SUCCESS; payload: { videos: VideoListItem[]; totalCount: number } }
+  | {
+      type: VideoSearchActionType.SEARCH_SUCCESS;
+      payload: { videos: VideoListItem[]; totalCount: number };
+    }
   | { type: VideoSearchActionType.SEARCH_ERROR; payload: string };
 
 export const initialState: VideoSearchState = {
@@ -62,4 +64,3 @@ export function videoSearchReducer(
       return state;
   }
 }
-

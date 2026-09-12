@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FolderConfig } from '../reducers/statusReducer';
+import type { ApiError, FolderConfig } from '@shared/api';
 
 interface PlaylistDownloadSectionProps {
   folderPath: string;
@@ -9,12 +9,12 @@ interface PlaylistDownloadSectionProps {
   onLoadVideosList?: () => void;
 }
 
-export function PlaylistDownloadSection({ 
-  folderPath, 
-  config, 
+export function PlaylistDownloadSection({
+  folderPath,
+  config,
   listExists,
   onPlaylistDownloaded,
-  onLoadVideosList
+  onLoadVideosList,
 }: PlaylistDownloadSectionProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export function PlaylistDownloadSection({
     try {
       setDownloadError(null);
       setIsDownloading(true);
-      
+
       const response = await fetch('/api/folder/download-playlist', {
         method: 'POST',
         headers: {
@@ -40,7 +40,7 @@ export function PlaylistDownloadSection({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData: ApiError = await response.json();
         throw new Error(errorData.message || 'Failed to download playlist');
       }
 
@@ -70,9 +70,14 @@ export function PlaylistDownloadSection({
         {listExists === null ? (
           <p>Sprawdzanie statusu pliku list.json...</p>
         ) : listExists ? (
-          <p>Plik list.json już istnieje. Kliknij przycisk poniżej, aby zaktualizować listę filmów.</p>
+          <p>
+            Plik list.json już istnieje. Kliknij przycisk poniżej, aby zaktualizować listę filmów.
+          </p>
         ) : (
-          <p>Plik list.json nie istnieje. Kliknij przycisk poniżej, aby utworzyć listę filmów z kanału.</p>
+          <p>
+            Plik list.json nie istnieje. Kliknij przycisk poniżej, aby utworzyć listę filmów z
+            kanału.
+          </p>
         )}
         <div className="playlist-buttons">
           <button
@@ -80,13 +85,14 @@ export function PlaylistDownloadSection({
             onClick={handleDownloadPlaylist}
             disabled={isDownloading}
           >
-            {isDownloading ? 'Pobieranie...' : listExists ? 'Aktualizuj playlistę' : 'Pobierz playlistę'}
+            {isDownloading
+              ? 'Pobieranie...'
+              : listExists
+                ? 'Aktualizuj playlistę'
+                : 'Pobierz playlistę'}
           </button>
           {listExists && onLoadVideosList && (
-            <button
-              className="load-videos-list-button"
-              onClick={onLoadVideosList}
-            >
+            <button className="load-videos-list-button" onClick={onLoadVideosList}>
               Pobierz listę filmów
             </button>
           )}
@@ -95,4 +101,3 @@ export function PlaylistDownloadSection({
     </div>
   );
 }
-

@@ -1,21 +1,22 @@
 import CommentComponent from './CommentComponent';
-import { Comment } from '../types';
+import type { CommentWithReplies } from '@shared/api';
 
 interface VideoCommentsProps {
-  comments: Comment[];
+  comments: CommentWithReplies[];
   commentCount?: number;
 }
 
-export default function VideoComments({ comments, commentCount }: VideoCommentsProps): JSX.Element | null {
+export default function VideoComments({
+  comments,
+  commentCount,
+}: VideoCommentsProps): JSX.Element | null {
   if (!comments || comments.length === 0) {
     return null;
   }
 
   return (
     <div className="video-comments-section">
-      <h2>
-        Comments {commentCount ? `(${commentCount})` : ''}
-      </h2>
+      <h2>Comments {commentCount ? `(${commentCount})` : ''}</h2>
 
       <div className="comments-list">
         {comments.map((comment, index) => (
@@ -25,4 +26,3 @@ export default function VideoComments({ comments, commentCount }: VideoCommentsP
     </div>
   );
 }
-

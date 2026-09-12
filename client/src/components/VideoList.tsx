@@ -1,9 +1,9 @@
-import { VideoListItem } from '../types';
+import type { VideoListItem } from '@shared/api';
 import VideoCard from './VideoCard';
 
 interface VideoListProps {
   videos: VideoListItem[];
-  searchQuery?: string;
+  searchQuery?: string | undefined;
 }
 
 export default function VideoList({ videos, searchQuery }: VideoListProps): JSX.Element {
@@ -22,4 +22,4 @@ export default function VideoList({ videos, searchQuery }: VideoListProps): JSX.
       ))}
     </div>
   );
-};
+}

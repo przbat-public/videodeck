@@ -1,13 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { debounce } from 'lodash';
 
-export type SortOption = 
-  | 'date-desc'
-  | 'date-asc'
-  | 'views-desc'
-  | 'views-asc'
-  | 'likes-desc'
-  | 'likes-asc';
+import type { SortOption } from '@shared/api';
+import { debounce } from '../utils/debounce';
 
 interface SearchBarProps {
   onSearch: (query: string, sort: SortOption) => void;
@@ -21,15 +15,16 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
   const [sort, setSort] = useState<SortOption>('date-desc');
 
   const debouncedSearch = useMemo(
-    () => debounce((searchQuery: string, searchSort: SortOption) => {
-      onSearch(searchQuery, searchSort);
-    }, DEBOUNCE_DELAY),
+    () =>
+      debounce((searchQuery: string, searchSort: SortOption) => {
+        onSearch(searchQuery, searchSort);
+      }, DEBOUNCE_DELAY),
     [onSearch]
   );
 
   useEffect(() => {
     const trimmedQuery = query.trim();
-    
+
     if (trimmedQuery.length >= MIN_SEARCH_LENGTH) {
       debouncedSearch(trimmedQuery, sort);
     } else if (trimmedQuery.length === 0) {
@@ -59,11 +54,7 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
         placeholder="Search videos by description..."
         className="search-input"
       />
-      <select
-        value={sort}
-        onChange={handleSortChange}
-        className="sort-select"
-      >
+      <select value={sort} onChange={handleSortChange} className="sort-select">
         <option value="date-desc">Newest first</option>
         <option value="date-asc">Oldest first</option>
         <option value="views-desc">Most views first</option>
@@ -72,11 +63,7 @@ export default function SearchBar({ onSearch }: SearchBarProps) {
         <option value="likes-asc">Least likes first</option>
       </select>
       {query && (
-        <button
-          type="button"
-          onClick={handleClear}
-          className="clear-button"
-        >
+        <button type="button" onClick={handleClear} className="clear-button">
           Clear
         </button>
       )}

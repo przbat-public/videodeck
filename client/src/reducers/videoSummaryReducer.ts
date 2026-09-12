@@ -53,4 +53,3 @@ export function videoSummaryReducer(
       return state;
   }
 }
-

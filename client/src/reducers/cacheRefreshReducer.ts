@@ -53,4 +53,3 @@ export function cacheRefreshReducer(
       return state;
   }
 }
-

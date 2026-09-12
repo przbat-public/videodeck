@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { DefaultToastOptions, Toaster } from 'react-hot-toast';
+import type { DefaultToastOptions } from 'react-hot-toast';
+import { Toaster } from 'react-hot-toast';
 import StatusPage from './pages/StatusPage';
 import VideoListPage from './pages/VideoListPage';
 import VideoDetailPage from './pages/VideoDetailPage';
@@ -26,15 +27,12 @@ function App() {
         secondary: '#fff',
       },
     },
-  }
-  
+  };
+
   return (
     <Router>
       <div className="app">
-        <Toaster
-          position="bottom-right"
-          toastOptions={toastOptions}
-        />
+        <Toaster position="bottom-right" toastOptions={toastOptions} />
         <Routes>
           <Route path="/" element={<StatusPage />} />
           <Route path="/videos" element={<VideoListPage />} />

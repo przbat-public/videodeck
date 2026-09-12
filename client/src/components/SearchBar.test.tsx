@@ -29,7 +29,7 @@ describe('SearchBar', () => {
     render(<SearchBar onSearch={mockOnSearch} />);
 
     const input = screen.getByPlaceholderText('Search videos by description...');
-    
+
     await act(async () => {
       await user.type(input, 'abc');
     });
@@ -48,7 +48,7 @@ describe('SearchBar', () => {
     render(<SearchBar onSearch={mockOnSearch} />);
 
     const input = screen.getByPlaceholderText('Search videos by description...');
-    
+
     await act(async () => {
       await user.type(input, 'ab');
     });
@@ -67,7 +67,7 @@ describe('SearchBar', () => {
     render(<SearchBar onSearch={mockOnSearch} />);
 
     const input = screen.getByPlaceholderText('Search videos by description...');
-    
+
     await act(async () => {
       await user.type(input, 'abc');
     });
@@ -76,7 +76,7 @@ describe('SearchBar', () => {
     await act(async () => {
       vi.advanceTimersByTime(100);
     });
-    
+
     expect(mockOnSearch).not.toHaveBeenCalled();
 
     // Po pełnym czasie debounce powinno wywołać
@@ -172,7 +172,7 @@ describe('SearchBar', () => {
     render(<SearchBar onSearch={mockOnSearch} />);
 
     const input = screen.getByPlaceholderText('Search videos by description...');
-    
+
     // Wpisz zapytanie
     await act(async () => {
       await user.type(input, 'test query');
@@ -206,7 +206,7 @@ describe('SearchBar', () => {
     render(<SearchBar onSearch={mockOnSearch} />);
 
     const input = screen.getByPlaceholderText('Search videos by description...');
-    
+
     await act(async () => {
       await user.type(input, '  abc  ');
     });
@@ -219,4 +219,3 @@ describe('SearchBar', () => {
     expect(mockOnSearch).toHaveBeenCalledWith('abc', 'date-desc');
   });
 });
-

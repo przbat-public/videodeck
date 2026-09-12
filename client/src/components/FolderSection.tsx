@@ -1,16 +1,23 @@
 import { useState, useEffect, useRef } from 'react';
-import { FolderConfig } from '../reducers/statusReducer';
+import type { DownloadOptions, FolderConfig, ListExistsResponse } from '@shared/api';
 import { FolderConfigEditor } from './FolderConfigEditor';
 import { PlaylistDownloadSection } from './PlaylistDownloadSection';
-import { VideoListSection, VideoListSectionHandle } from './VideoListSection';
+import type { VideoListSectionHandle } from './VideoListSection';
+import { VideoListSection } from './VideoListSection';
 
 interface FolderSectionProps {
   folderPath: string;
   initialConfig: FolderConfig | null;
+  downloadDefaults: DownloadOptions;
   onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
 }
 
-export function FolderSection({ folderPath, initialConfig, onConfigUpdate }: FolderSectionProps) {
+export function FolderSection({
+  folderPath,
+  initialConfig,
+  downloadDefaults,
+  onConfigUpdate,
+}: FolderSectionProps) {
   const [config, setConfig] = useState<FolderConfig | null>(initialConfig);
   const [listExists, setListExists] = useState<boolean | null>(null);
   const videoListSectionRef = useRef<VideoListSectionHandle>(null);
@@ -25,9 +32,11 @@ export function FolderSection({ folderPath, initialConfig, onConfigUpdate }: Fol
     if (config && config.channelUrl) {
       const checkListExists = async () => {
         try {
-          const response = await fetch(`/api/folder/list-exists?folderPath=${encodeURIComponent(folderPath)}`);
+          const response = await fetch(
+            `/api/folder/list-exists?folderPath=${encodeURIComponent(folderPath)}`
+          );
           if (response.ok) {
-            const data = await response.json();
+            const data: ListExistsResponse = await response.json();
             setListExists(data.exists);
           }
         } catch (err) {
@@ -48,9 +57,11 @@ export function FolderSection({ folderPath, initialConfig, onConfigUpdate }: Fol
   const handlePlaylistDownloaded = async () => {
     // Refresh list existence status after playlist download
     try {
-      const response = await fetch(`/api/folder/list-exists?folderPath=${encodeURIComponent(folderPath)}`);
+      const response = await fetch(
+        `/api/folder/list-exists?folderPath=${encodeURIComponent(folderPath)}`
+      );
       if (response.ok) {
-        const data = await response.json();
+        const data: ListExistsResponse = await response.json();
         setListExists(data.exists);
       }
     } catch (err) {
@@ -63,10 +74,11 @@ export function FolderSection({ folderPath, initialConfig, onConfigUpdate }: Fol
       <div className="folder-section-header">
         <h3 className="folder-path">{folderPath}</h3>
       </div>
-      
+
       <FolderConfigEditor
         folderPath={folderPath}
         initialConfig={config}
+        downloadDefaults={downloadDefaults}
         onConfigUpdate={handleConfigUpdate}
       />
 
@@ -86,4 +98,3 @@ export function FolderSection({ folderPath, initialConfig, onConfigUpdate }: Fol
     </div>
   );
 }
-

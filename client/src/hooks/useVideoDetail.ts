@@ -1,8 +1,9 @@
 import { useEffect, useReducer } from 'react';
+import type { VideoDetailsResponse } from '@shared/api';
+import type { VideoDetailState } from '../reducers/videoDetailReducer';
 import {
   videoDetailReducer,
   initialState,
-  VideoDetailState,
   VideoDetailActionType,
 } from '../reducers/videoDetailReducer';
 
@@ -22,12 +23,13 @@ export function useVideoDetail(baseName: string | undefined): UseVideoDetailResu
     const fetchVideoDetail = async () => {
       try {
         dispatch({ type: VideoDetailActionType.FETCH_DETAILS_START });
-        const detailsResponse = await fetch(
-          `/api/videos/${encodeURIComponent(baseName)}/details`
-        );
+        const detailsResponse = await fetch(`/api/videos/${encodeURIComponent(baseName)}/details`);
         if (!detailsResponse.ok) throw new Error('Failed to load video details');
-        const detailsData = await detailsResponse.json();
-        dispatch({ type: VideoDetailActionType.FETCH_DETAILS_SUCCESS, payload: detailsData.details });
+        const detailsData: VideoDetailsResponse = await detailsResponse.json();
+        dispatch({
+          type: VideoDetailActionType.FETCH_DETAILS_SUCCESS,
+          payload: detailsData.details,
+        });
       } catch (err) {
         dispatch({
           type: VideoDetailActionType.FETCH_ERROR,
@@ -41,4 +43,3 @@ export function useVideoDetail(baseName: string | undefined): UseVideoDetailResu
 
   return { state };
 }
-

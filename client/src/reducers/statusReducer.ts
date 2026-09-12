@@ -1,12 +1,7 @@
-export interface FolderConfig {
-  channelUrl?: string;
-}
+import type { StatusResponse } from '@shared/api';
 
-export interface StatusData {
-  videosFolderPath: string[];
-  folderConfigs: Record<string, FolderConfig | null>;
-  status: string;
-}
+/** GET /api/status payload as kept in the reducer */
+export type StatusData = StatusResponse;
 
 export interface StatusState {
   statusData: StatusData | null;
@@ -33,10 +28,7 @@ export const initialState: StatusState = {
   error: null,
 };
 
-export function statusReducer(
-  state: StatusState,
-  action: StatusAction
-): StatusState {
+export function statusReducer(state: StatusState, action: StatusAction): StatusState {
   switch (action.type) {
     case StatusActionType.FETCH_START:
       return {
@@ -63,4 +55,3 @@ export function statusReducer(
       return state;
   }
 }
-

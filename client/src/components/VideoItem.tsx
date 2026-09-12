@@ -1,239 +1,116 @@
-import { useEffect, useReducer, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  videoDownloadReducer,
-  initialDownloadState,
-  VideoDownloadActionType,
-} from '../reducers/videoDownloadReducer';
+import type { ChannelVideo, JobType, QueueJob } from '@shared/api';
 
-export interface VideoListItem {
-  title: string;
-  url: string;
-  id: string;
-  lastUpdated?: string;
+/** A list.json entry plus the local "last updated" date from the folder index */
+export interface ChannelVideoRow extends ChannelVideo {
+  lastUpdated?: string | undefined;
 }
 
 export interface VideoItemProps {
-  video: VideoListItem;
-  folderPath: string;
+  video: ChannelVideoRow;
   isDownloaded: boolean;
-  onDownloadComplete: () => void;
-  onDownloadStarted?: () => void;
+  /** Current queue job for this video (if any) */
+  job?: QueueJob | undefined;
+  onEnqueue: (video: ChannelVideoRow, type: JobType) => void;
+  onCancel: (jobId: string) => void;
   scrollContainerRef?: React.RefObject<HTMLDivElement>;
 }
 
-export interface VideoItemHandle {
-  startDownload: () => Promise<void>;
-  startUpdate: () => Promise<void>;
-  isDownloading: () => boolean;
-  scrollIntoView: () => void;
-}
+const formatLastUpdated = (dateString?: string): string => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('pl-PL', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
-export const VideoItem = forwardRef<VideoItemHandle, VideoItemProps>(({ 
-  video, 
-  folderPath, 
-  isDownloaded, 
-  onDownloadComplete,
-  onDownloadStarted,
-  scrollContainerRef
-}, ref) => {
-  const [downloadState, dispatch] = useReducer(videoDownloadReducer, initialDownloadState);
+const describeJob = (job: QueueJob): string => {
+  const verb = job.type === 'update' ? 'Aktualizacja' : 'Pobieranie';
+  switch (job.status) {
+    case 'queued':
+      return `${verb}: w kolejce`;
+    case 'running':
+      return job.progress !== undefined && job.type === 'download'
+        ? `${verb}: ${Math.round(job.progress)}%`
+        : `${verb}...`;
+    case 'done':
+      return job.type === 'update' ? 'Zaktualizowano' : 'Pobrano';
+    case 'error':
+      return 'Błąd';
+    case 'cancelled':
+      return 'Anulowano';
+    default:
+      return '';
+  }
+};
+
+export function VideoItem({
+  video,
+  isDownloaded,
+  job,
+  onEnqueue,
+  onCancel,
+  scrollContainerRef,
+}: VideoItemProps): JSX.Element {
   const itemRef = useRef<HTMLDivElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
-  const downloadPromiseRef = useRef<{ resolve: () => void; reject: (error: Error) => void } | null>(null);
 
-  useImperativeHandle(ref, () => ({
-    startDownload: () => {
-      return new Promise<void>((resolve, reject) => {
-        if (!isDownloaded && !downloadState.isDownloading && video.url) {
-          downloadPromiseRef.current = { resolve, reject };
-          handleDownload();
-        } else {
-          resolve();
-        }
-      });
-    },
-    startUpdate: () => {
-      return new Promise<void>((resolve, reject) => {
-        if (isDownloaded && !downloadState.isDownloading && video.url) {
-          downloadPromiseRef.current = { resolve, reject };
-          handleDownload();
-        } else {
-          resolve();
-        }
-      });
-    },
-    isDownloading: () => downloadState.isDownloading,
-    scrollIntoView: () => {
-      if (scrollContainerRef?.current && itemRef.current) {
-        const container = scrollContainerRef.current;
-        const item = itemRef.current;
-        const containerRect = container.getBoundingClientRect();
-        const itemRect = item.getBoundingClientRect();
-        
-        // Calculate scroll position relative to container
-        const scrollTop = container.scrollTop + (itemRect.top - containerRect.top);
-        
-        // Smooth scroll within container
-        container.scrollTo({
-          top: scrollTop,
-          behavior: 'smooth'
-        });
-      } else {
-        // Fallback to default behavior if no container ref
-        itemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    },
-  }));
+  const isActive = job?.status === 'queued' || job?.status === 'running';
+  const isRunning = job?.status === 'running';
 
-  // Auto-scroll output to bottom when new output arrives
+  // Bring the item into view when its job starts running
   useEffect(() => {
-    if (downloadState.isDownloading && outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
-  }, [downloadState.downloadOutput, downloadState.isDownloading]);
-
-  const handleDownload = async () => {
-    if (!video.url) {
-      dispatch({ type: VideoDownloadActionType.SET_ERROR, payload: 'Brak URL filmu' });
+    if (!isRunning || !itemRef.current) {
       return;
     }
-
-    dispatch({ type: VideoDownloadActionType.START_DOWNLOAD });
-    onDownloadStarted?.();
-
-    try {
-      // Use fetch with streaming for SSE-like behavior
-      const response = await fetch('/api/folder/download-video', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          folderPath,
-          videoUrl: video.url,
-        }),
+    const item = itemRef.current;
+    const container = scrollContainerRef?.current;
+    if (container && typeof container.scrollTo === 'function') {
+      const containerRect = container.getBoundingClientRect();
+      const itemRect = item.getBoundingClientRect();
+      container.scrollTo({
+        top: container.scrollTop + (itemRect.top - containerRect.top),
+        behavior: 'smooth',
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to start download');
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) {
-        throw new Error('No response body');
-      }
-
-      const readStream = async () => {
-        try {
-          const { done, value } = await reader.read();
-          
-          if (done) {
-            dispatch({ type: VideoDownloadActionType.COMPLETE_DOWNLOAD });
-            // Notify parent to refresh download statuses
-            onDownloadComplete();
-            // Resolve promise
-            if (downloadPromiseRef.current) {
-              downloadPromiseRef.current.resolve();
-              downloadPromiseRef.current = null;
-            }
-            return;
-          }
-
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.substring(6));
-                if (data.type === 'output' && data.message) {
-                  dispatch({ type: VideoDownloadActionType.ADD_OUTPUT, payload: data.message });
-                } else if (data.type === 'error') {
-                  dispatch({ type: VideoDownloadActionType.SET_ERROR, payload: data.error || 'Unknown error' });
-                  // Reject promise on error
-                  if (downloadPromiseRef.current) {
-                    downloadPromiseRef.current.reject(new Error(data.error || 'Unknown error'));
-                    downloadPromiseRef.current = null;
-                  }
-                } else if (data.type === 'done') {
-                  dispatch({ type: VideoDownloadActionType.COMPLETE_DOWNLOAD });
-                  // Notify parent to refresh download statuses
-                  onDownloadComplete();
-                  // Resolve promise
-                  if (downloadPromiseRef.current) {
-                    downloadPromiseRef.current.resolve();
-                    downloadPromiseRef.current = null;
-                  }
-                }
-              } catch (e) {
-                // Ignore parse errors
-              }
-            }
-          }
-
-          readStream();
-        } catch (err) {
-          dispatch({ type: VideoDownloadActionType.SET_ERROR, payload: err instanceof Error ? err.message : 'Unknown error' });
-          // Reject promise on error
-          if (downloadPromiseRef.current) {
-            downloadPromiseRef.current.reject(err instanceof Error ? err : new Error('Unknown error'));
-            downloadPromiseRef.current = null;
-          }
-        }
-      };
-
-      readStream();
-    } catch (err) {
-      dispatch({ type: VideoDownloadActionType.SET_ERROR, payload: err instanceof Error ? err.message : 'Failed to start download' });
-      // Reject promise on error
-      if (downloadPromiseRef.current) {
-        downloadPromiseRef.current.reject(err instanceof Error ? err : new Error('Failed to start download'));
-        downloadPromiseRef.current = null;
-      }
+    } else if (typeof item.scrollIntoView === 'function') {
+      item.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  };
+  }, [isRunning, scrollContainerRef]);
+
+  // Keep the log scrolled to the bottom
+  useEffect(() => {
+    if (isRunning && outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [job?.log, isRunning]);
 
   const videoTitle = video.title || 'Brak tytułu';
-  
-  // Format last updated date
-  const formatLastUpdated = (dateString?: string): string => {
-    if (!dateString) return '';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('pl-PL', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch {
-      return '';
-    }
-  };
-  
   const lastUpdatedFormatted = formatLastUpdated(video.lastUpdated);
-  const titleWithDate = lastUpdatedFormatted 
+  const titleWithDate = lastUpdatedFormatted
     ? `${videoTitle} (aktualizacja: ${lastUpdatedFormatted})`
     : videoTitle;
 
+  const actionType: JobType = isDownloaded ? 'update' : 'download';
+  const actionLabel = isDownloaded ? 'Aktualizuj' : 'Pobierz';
+  const showLog = job && (isRunning || job.status === 'error') && job.log.length > 0;
+
   return (
-    <div className="video-item" ref={itemRef}>
+    <div className={`video-item${isActive ? ' video-item--active' : ''}`} ref={itemRef}>
       <div className="video-item-header">
         {isDownloaded && video.id ? (
-          <Link 
-            to={`/video/${encodeURIComponent(video.id)}`}
-            className="video-title-link"
-          >
+          <Link to={`/video/${encodeURIComponent(video.id)}`} className="video-title-link">
             {titleWithDate}
           </Link>
         ) : video.url ? (
-          <a 
-            href={video.url} 
-            target="_blank" 
+          <a
+            href={video.url}
+            target="_blank"
             rel="noopener noreferrer"
             className="video-title-link"
           >
@@ -243,42 +120,50 @@ export const VideoItem = forwardRef<VideoItemHandle, VideoItemProps>(({
           <span className="video-title">{titleWithDate}</span>
         )}
         <div className="video-item-actions">
-          {isDownloaded === true ? (
+          {job && (
+            <span className={`job-status job-status--${job.status}`} title={job.error}>
+              {describeJob(job)}
+            </span>
+          )}
+          {isActive ? (
             <button
-              className="update-video-button"
-              onClick={handleDownload}
-              disabled={downloadState.isDownloading}
+              className="cancel-job-button"
+              onClick={() => job && onCancel(job.id)}
+              type="button"
             >
-              {downloadState.isDownloading ? 'Aktualizowanie...' : 'Aktualizuj'}
+              Anuluj
             </button>
           ) : (
             <button
-              className="download-video-button"
-              onClick={handleDownload}
-              disabled={downloadState.isDownloading}
+              className={isDownloaded ? 'update-video-button' : 'download-video-button'}
+              onClick={() => onEnqueue(video, actionType)}
+              disabled={!video.url}
+              title={video.url ? undefined : 'Brak URL filmu'}
+              type="button"
             >
-              {downloadState.isDownloading ? 'Pobieranie...' : 'Pobierz'}
+              {actionLabel}
             </button>
           )}
         </div>
       </div>
-      {downloadState.isDownloading && (
+      {showLog && (
         <div className="download-output">
-          {downloadState.downloadError && (
+          {job.status === 'error' && (
             <div className="download-error">
-              <p>Błąd: {downloadState.downloadError}</p>
+              <p>Błąd: {job.error || 'nieznany błąd'}</p>
             </div>
           )}
           <div className="download-output-content" ref={outputRef}>
-            {downloadState.downloadOutput.map((line, index) => (
-              <div key={index} className="output-line">{line}</div>
+            {job.log.map((line, index) => (
+              <div key={index} className="output-line">
+                {line}
+              </div>
             ))}
           </div>
         </div>
       )}
     </div>
   );
-});
+}
 
 VideoItem.displayName = 'VideoItem';
-

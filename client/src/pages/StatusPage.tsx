@@ -1,12 +1,8 @@
 import { useEffect, useReducer } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  statusReducer,
-  initialState,
-  StatusActionType,
-  StatusData,
-  FolderConfig,
-} from '../reducers/statusReducer';
+import type { FolderConfig } from '@shared/api';
+import { statusReducer, initialState, StatusActionType } from '../reducers/statusReducer';
+import type { StatusData } from '../reducers/statusReducer';
 import { FolderSection } from '../components/FolderSection';
 
 export default function StatusPage(): JSX.Element {
@@ -47,7 +43,6 @@ export default function StatusPage(): JSX.Element {
   return (
     <main className="app-main">
       <div className="status-page">
-        
         {state.loading && (
           <div className="loading">
             <p>Ładowanie statusu...</p>
@@ -60,38 +55,39 @@ export default function StatusPage(): JSX.Element {
           </div>
         )}
 
-        {state.statusData && (() => {
-          const statusData = state.statusData;
-          return (
-            <div className="status-content">
-              <div className="status-section">
-                <h2>Konfiguracja folderów wideo</h2>
-                <div className="folder-sections">
-                  {statusData.videosFolderPath.length > 0 ? (
-                    statusData.videosFolderPath.map((path, index) => (
-                      <FolderSection 
-                        key={index} 
-                        folderPath={path}
-                        initialConfig={statusData.folderConfigs[path] || null}
-                        onConfigUpdate={handleConfigUpdate}
-                      />
-                    ))
-                  ) : (
-                    <p>Brak skonfigurowanych ścieżek</p>
-                  )}
+        {state.statusData &&
+          (() => {
+            const statusData = state.statusData;
+            return (
+              <div className="status-content">
+                <div className="status-section">
+                  <h2>Konfiguracja folderów wideo</h2>
+                  <div className="folder-sections">
+                    {statusData.videosFolderPath.length > 0 ? (
+                      statusData.videosFolderPath.map((path, index) => (
+                        <FolderSection
+                          key={index}
+                          folderPath={path}
+                          initialConfig={statusData.folderConfigs[path] || null}
+                          downloadDefaults={statusData.downloadDefaults}
+                          onConfigUpdate={handleConfigUpdate}
+                        />
+                      ))
+                    ) : (
+                      <p>Brak skonfigurowanych ścieżek</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="status-actions">
+                  <Link to="/videos" className="status-link">
+                    Przejdź do listy filmów
+                  </Link>
                 </div>
               </div>
-
-              <div className="status-actions">
-                <Link to="/videos" className="status-link">
-                  Przejdź do listy filmów
-                </Link>
-              </div>
-            </div>
-          );
-        })()}
+            );
+          })()}
       </div>
     </main>
   );
 }
-

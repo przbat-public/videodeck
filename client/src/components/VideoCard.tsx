@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom';
-import { VideoListItem } from '../types';
+import type { VideoListItem } from '@shared/api';
 import React from 'react';
 
 interface VideoCardProps {
   video: VideoListItem;
-  searchQuery?: string;
+  searchQuery?: string | undefined;
 }
 
 const formatVideoDate = (dateStr?: string): string => {
@@ -47,10 +47,10 @@ const highlightText = (text: string, query?: string): React.ReactNode => {
 };
 
 export default function VideoCard({ video, searchQuery }: VideoCardProps): JSX.Element {
-  const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}`;
+  const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}?folder=${encodeURIComponent(video.folderPath)}`;
 
   const videoIdentifier = video.videoId || video.baseName;
-  
+
   return (
     <Link
       to={`/video/${encodeURIComponent(videoIdentifier)}`}
@@ -74,9 +74,7 @@ export default function VideoCard({ video, searchQuery }: VideoCardProps): JSX.E
           </div>
         </div>
         <div className="video-info">
-          {video.channelName && (
-            <div className="video-card-channel">{video.channelName}</div>
-          )}
+          {video.channelName && <div className="video-card-channel">{video.channelName}</div>}
           <div className="video-card-meta">
             {video.uploadDate && (
               <div className="video-card-date">{formatVideoDate(video.uploadDate)}</div>
@@ -90,4 +88,4 @@ export default function VideoCard({ video, searchQuery }: VideoCardProps): JSX.E
       </div>
     </Link>
   );
-};
+}

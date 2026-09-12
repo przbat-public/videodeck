@@ -1,19 +1,20 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { installFetchMock } from '../test/fetchMock';
 import { act } from 'react';
 import { useVideoDetail } from './useVideoDetail';
 
-globalThis.fetch = vi.fn();
+const fetchMock = installFetchMock();
 
 describe('useVideoDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset fetch mock
-    (globalThis.fetch as any).mockClear();
+    fetchMock.mockClear();
   });
 
   it('should initialize with loading state', async () => {
-    (globalThis.fetch as any).mockResolvedValueOnce({
+    fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ details: {} }),
     });
@@ -43,7 +44,7 @@ describe('useVideoDetail', () => {
       thumbnailPath: 'test-video.webp',
     };
 
-    (globalThis.fetch as any).mockResolvedValueOnce({
+    fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ details: mockDetails }),
     });
@@ -84,7 +85,7 @@ describe('useVideoDetail', () => {
   });
 
   it('should handle fetch error', async () => {
-    (globalThis.fetch as any).mockRejectedValueOnce(new Error('Network error'));
+    fetchMock.mockRejectedValueOnce(new Error('Network error'));
 
     const { result } = renderHook(() => useVideoDetail('test-video'));
 
@@ -97,7 +98,7 @@ describe('useVideoDetail', () => {
   });
 
   it('should handle non-ok response', async () => {
-    (globalThis.fetch as any).mockResolvedValueOnce({
+    fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 404,
     });
@@ -113,7 +114,7 @@ describe('useVideoDetail', () => {
   });
 
   it('should handle non-Error exception', async () => {
-    (globalThis.fetch as any).mockRejectedValueOnce('String error');
+    fetchMock.mockRejectedValueOnce('String error');
 
     const { result } = renderHook(() => useVideoDetail('test-video'));
 
@@ -128,7 +129,7 @@ describe('useVideoDetail', () => {
   it('should encode baseName in URL', async () => {
     const baseNameWithSpecialChars = 'video with spaces & special chars';
 
-    (globalThis.fetch as any).mockResolvedValueOnce({
+    fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ details: {} }),
     });
@@ -173,7 +174,7 @@ describe('useVideoDetail', () => {
       thumbnailPath: 'video2.webp',
     };
 
-    (globalThis.fetch as any)
+    fetchMock
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ details: mockDetails1 }),
@@ -225,7 +226,7 @@ describe('useVideoDetail', () => {
       thumbnailPath: 'test-video.webp',
     };
 
-    (globalThis.fetch as any).mockResolvedValueOnce({
+    fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ details: mockDetails }),
     });
@@ -269,7 +270,7 @@ describe('useVideoDetail', () => {
       thumbnailPath: 'test-video.webp',
     };
 
-    (globalThis.fetch as any).mockResolvedValueOnce({
+    fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ details: mockDetails }),
     });
@@ -296,4 +297,3 @@ describe('useVideoDetail', () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 });
-

@@ -1,4 +1,4 @@
-import { VideoListItem, VideoDetails } from '../types';
+import type { VideoDetails, VideoListItem } from '@shared/api';
 
 export interface VideoDetailState {
   video: VideoListItem | null;
@@ -56,4 +56,3 @@ export function videoDetailReducer(
       return state;
   }
 }
-

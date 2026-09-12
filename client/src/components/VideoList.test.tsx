@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import VideoList from './VideoList';
-import { VideoListItem } from '../types';
+import type { VideoListItem } from '@shared/api';
 
 const mockVideos: VideoListItem[] = [
   {
@@ -13,6 +13,7 @@ const mockVideos: VideoListItem[] = [
     thumbnailPath: '20231201_TestVideo1.webp',
     folderPath: '/test/videos',
     uploadDate: '20231201',
+    comments: [],
   },
   {
     baseName: '20231115_TestVideo2',
@@ -22,6 +23,7 @@ const mockVideos: VideoListItem[] = [
     thumbnailPath: '20231115_TestVideo2.webp',
     folderPath: '/test/videos',
     uploadDate: '20231115',
+    comments: [],
   },
 ];
 
@@ -38,9 +40,7 @@ describe('VideoList', () => {
 
   it('should render empty state when no videos', () => {
     renderWithRouter(<VideoList videos={[]} />);
-    expect(
-      screen.getByText('No videos found. Try a different search query.')
-    ).toBeInTheDocument();
+    expect(screen.getByText('No videos found. Try a different search query.')).toBeInTheDocument();
   });
 
   it('should render correct number of video cards', () => {
@@ -49,4 +49,3 @@ describe('VideoList', () => {
     expect(links).toHaveLength(2);
   });
 });
-

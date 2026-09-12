@@ -1,19 +1,20 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { installFetchMock } from '../test/fetchMock';
 import { act } from 'react';
 import { useVideoSearch } from './useVideoSearch';
 
-globalThis.fetch = vi.fn();
+const fetchMock = installFetchMock();
 
 describe('useVideoSearch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset fetch mock
-    (globalThis.fetch as any).mockClear();
+    fetchMock.mockClear();
   });
 
   it('should initialize with empty videos', async () => {
-    (globalThis.fetch as any).mockResolvedValueOnce({
+    fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ videos: [] }),
     });
@@ -22,7 +23,7 @@ describe('useVideoSearch', () => {
 
     // Initially loading should be true because loadAll() is called in useEffect
     expect(result.current.loading).toBe(true);
-    
+
     // Wait for loading to complete
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -44,7 +45,7 @@ describe('useVideoSearch', () => {
       },
     ];
 
-    (globalThis.fetch as any).mockResolvedValueOnce({
+    fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ videos: mockVideos }),
     });
@@ -70,7 +71,7 @@ describe('useVideoSearch', () => {
       },
     ];
 
-    (globalThis.fetch as any)
+    fetchMock
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ videos: [] }),
@@ -98,7 +99,7 @@ describe('useVideoSearch', () => {
   });
 
   it('should handle search error', async () => {
-    (globalThis.fetch as any)
+    fetchMock
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ videos: [] }),
@@ -122,7 +123,7 @@ describe('useVideoSearch', () => {
   });
 
   it('should handle non-ok response', async () => {
-    (globalThis.fetch as any)
+    fetchMock
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ videos: [] }),
@@ -148,7 +149,7 @@ describe('useVideoSearch', () => {
   });
 
   it('should trim query before searching', async () => {
-    (globalThis.fetch as any)
+    fetchMock
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ videos: [] }),
@@ -172,7 +173,7 @@ describe('useVideoSearch', () => {
   });
 
   it('should load all videos when query is empty', async () => {
-    (globalThis.fetch as any)
+    fetchMock
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ videos: [] }),
@@ -196,7 +197,7 @@ describe('useVideoSearch', () => {
   });
 
   it('should load all videos when query is not provided', async () => {
-    (globalThis.fetch as any)
+    fetchMock
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ videos: [] }),
@@ -220,7 +221,7 @@ describe('useVideoSearch', () => {
   });
 
   it('should include sort parameter when searching', async () => {
-    (globalThis.fetch as any)
+    fetchMock
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ videos: [] }),
@@ -243,4 +244,3 @@ describe('useVideoSearch', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?q=test&sort=views-desc');
   });
 });
-

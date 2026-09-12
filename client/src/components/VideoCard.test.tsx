@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import VideoCard from './VideoCard';
-import { VideoListItem } from '../types';
+import type { VideoListItem } from '@shared/api';
 
 const mockVideo: VideoListItem = {
   baseName: '20231201_TestVideo',
@@ -12,6 +12,7 @@ const mockVideo: VideoListItem = {
   thumbnailPath: '20231201_TestVideo.webp',
   folderPath: '/test/videos',
   uploadDate: '20231201',
+  comments: [],
 };
 
 const renderWithRouter = (component: React.ReactElement) => {
@@ -35,7 +36,7 @@ describe('VideoCard', () => {
     expect(img).toBeInTheDocument();
     expect(img).toHaveAttribute(
       'src',
-      '/api/videos/file/20231201_TestVideo.webp'
+      `/api/videos/file/20231201_TestVideo.webp?folder=${encodeURIComponent(mockVideo.folderPath)}`
     );
   });
 
@@ -47,10 +48,7 @@ describe('VideoCard', () => {
   });
 
   it('should not render date if uploadDate is missing', () => {
-    const videoWithoutDate = {
-      ...mockVideo,
-      uploadDate: undefined,
-    };
+    const { uploadDate: _uploadDate, ...videoWithoutDate } = mockVideo;
     renderWithRouter(<VideoCard video={videoWithoutDate} />);
     expect(screen.queryByText(/2023-12-01/)).not.toBeInTheDocument();
   });
@@ -58,13 +56,12 @@ describe('VideoCard', () => {
   it('should handle thumbnail load error gracefully', () => {
     renderWithRouter(<VideoCard video={mockVideo} />);
     const img = screen.getByAltText('Test Video Title');
-    
+
     // Simulate image error
     const errorEvent = new Event('error');
     img.dispatchEvent(errorEvent);
-    
+
     // Image should be hidden (style.display = 'none')
     expect(img).toHaveStyle({ display: 'none' });
   });
 });
-
