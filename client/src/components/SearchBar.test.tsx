@@ -39,7 +39,7 @@ describe('SearchBar', () => {
       vi.runAllTimers();
     });
 
-    expect(mockOnSearch).toHaveBeenCalledWith('abc', 'date-desc');
+    expect(mockOnSearch).toHaveBeenCalledWith('abc', 'date-desc', '');
   });
 
   it('should not call onSearch when query has less than 3 characters', async () => {
@@ -86,7 +86,7 @@ describe('SearchBar', () => {
     });
 
     expect(mockOnSearch).toHaveBeenCalledTimes(1);
-    expect(mockOnSearch).toHaveBeenCalledWith('abc', 'date-desc');
+    expect(mockOnSearch).toHaveBeenCalledWith('abc', 'date-desc', '');
   });
 
   it('should call onSearch with selected sort option when sort changes', async () => {
@@ -107,7 +107,7 @@ describe('SearchBar', () => {
       vi.runAllTimers();
     });
 
-    expect(mockOnSearch).toHaveBeenCalledWith('test', 'date-desc');
+    expect(mockOnSearch).toHaveBeenCalledWith('test', 'date-desc', '');
 
     mockOnSearch.mockClear();
 
@@ -121,7 +121,7 @@ describe('SearchBar', () => {
       vi.runAllTimers();
     });
 
-    expect(mockOnSearch).toHaveBeenCalledWith('test', 'views-desc');
+    expect(mockOnSearch).toHaveBeenCalledWith('test', 'views-desc', '');
   });
 
   it('should show clear button when query is not empty', async () => {
@@ -163,7 +163,7 @@ describe('SearchBar', () => {
     });
 
     expect(input).toHaveValue('');
-    expect(mockOnSearch).toHaveBeenCalledWith('', 'date-desc');
+    expect(mockOnSearch).toHaveBeenCalledWith('', 'date-desc', '');
   });
 
   it('should call onSearch with empty string when query is cleared to empty', async () => {
@@ -183,7 +183,7 @@ describe('SearchBar', () => {
       vi.runAllTimers();
     });
 
-    expect(mockOnSearch).toHaveBeenCalledWith('test query', 'date-desc');
+    expect(mockOnSearch).toHaveBeenCalledWith('test query', 'date-desc', '');
 
     mockOnSearch.mockClear();
 
@@ -197,7 +197,7 @@ describe('SearchBar', () => {
       vi.runAllTimers();
     });
 
-    expect(mockOnSearch).toHaveBeenCalledWith('', 'date-desc');
+    expect(mockOnSearch).toHaveBeenCalledWith('', 'date-desc', '');
   });
 
   it('should trim whitespace from query before searching', async () => {
@@ -216,6 +216,38 @@ describe('SearchBar', () => {
       vi.runAllTimers();
     });
 
-    expect(mockOnSearch).toHaveBeenCalledWith('abc', 'date-desc');
+    expect(mockOnSearch).toHaveBeenCalledWith('abc', 'date-desc', '');
+  });
+
+  it('hides the category filter when the server offers no categories', () => {
+    render(<SearchBar onSearch={vi.fn()} categories={[]} />);
+
+    expect(screen.queryByRole('combobox', { name: 'Category' })).not.toBeInTheDocument();
+  });
+
+  it('searches within the chosen category and back across all of them', async () => {
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+    const mockOnSearch = vi.fn();
+    render(<SearchBar onSearch={mockOnSearch} categories={['fpv', 'psychology']} />);
+
+    const categorySelect = screen.getByRole('combobox', { name: 'Category' });
+
+    await act(async () => {
+      await user.selectOptions(categorySelect, 'psychology');
+    });
+    await act(async () => {
+      vi.runAllTimers();
+    });
+
+    expect(mockOnSearch).toHaveBeenLastCalledWith('', 'date-desc', 'psychology');
+
+    await act(async () => {
+      await user.selectOptions(categorySelect, '');
+    });
+    await act(async () => {
+      vi.runAllTimers();
+    });
+
+    expect(mockOnSearch).toHaveBeenLastCalledWith('', 'date-desc', '');
   });
 });

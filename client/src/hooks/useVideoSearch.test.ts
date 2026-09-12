@@ -243,4 +243,33 @@ describe('useVideoSearch', () => {
 
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?q=test&sort=views-desc');
   });
+
+  it('should include the category and expose it, ignoring a blank one', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ videos: [], totalCount: 0 }),
+    });
+
+    const { result } = renderHook(() => useVideoSearch());
+
+    await waitFor(() => {
+      expect(result.current.category).toBe('');
+    });
+
+    await act(async () => {
+      await result.current.search('test', 'date-desc', '  fpv  ');
+    });
+
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      '/api/videos/search?q=test&sort=date-desc&category=fpv'
+    );
+    expect(result.current.category).toBe('fpv');
+
+    await act(async () => {
+      await result.current.search('test', 'date-desc', '   ');
+    });
+
+    expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/videos/search?q=test&sort=date-desc');
+    expect(result.current.category).toBe('');
+  });
 });

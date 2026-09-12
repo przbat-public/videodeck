@@ -7,6 +7,8 @@ export interface VideoSearchState {
   error: string | null;
   query: string;
   sort: SortOption;
+  /** '' means every category */
+  category: string;
 }
 
 export enum VideoSearchActionType {
@@ -16,7 +18,10 @@ export enum VideoSearchActionType {
 }
 
 export type VideoSearchAction =
-  | { type: VideoSearchActionType.SEARCH_START; payload: { query: string; sort: SortOption } }
+  | {
+      type: VideoSearchActionType.SEARCH_START;
+      payload: { query: string; sort: SortOption; category: string };
+    }
   | {
       type: VideoSearchActionType.SEARCH_SUCCESS;
       payload: { videos: VideoListItem[]; totalCount: number };
@@ -30,6 +35,7 @@ export const initialState: VideoSearchState = {
   error: null,
   query: '',
   sort: 'date-desc',
+  category: '',
 };
 
 export function videoSearchReducer(
@@ -44,6 +50,7 @@ export function videoSearchReducer(
         error: null,
         query: action.payload.query,
         sort: action.payload.sort,
+        category: action.payload.category,
       };
     case VideoSearchActionType.SEARCH_SUCCESS:
       return {

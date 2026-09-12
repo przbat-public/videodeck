@@ -14,18 +14,20 @@ interface UseVideoSearchResult {
   error: string | null;
   query: string;
   sort: SortOption;
-  search: (query?: string, sort?: SortOption) => Promise<void>;
+  category: string;
+  search: (query?: string, sort?: SortOption, category?: string) => Promise<void>;
 }
 
 export function useVideoSearch(): UseVideoSearchResult {
   const [state, dispatch] = useReducer(videoSearchReducer, initialState);
 
   const search = useCallback(
-    async (query?: string, sort: SortOption = 'date-desc'): Promise<void> => {
+    async (query?: string, sort: SortOption = 'date-desc', category = ''): Promise<void> => {
       const trimmedQuery = query?.trim() || '';
+      const trimmedCategory = category.trim();
       dispatch({
         type: VideoSearchActionType.SEARCH_START,
-        payload: { query: trimmedQuery, sort },
+        payload: { query: trimmedQuery, sort, category: trimmedCategory },
       });
 
       try {
@@ -34,6 +36,9 @@ export function useVideoSearch(): UseVideoSearchResult {
           params.set('q', trimmedQuery);
         }
         params.set('sort', sort || 'date-desc');
+        if (trimmedCategory) {
+          params.set('category', trimmedCategory);
+        }
 
         const response = await fetch(`/api/videos/search?${params.toString()}`);
         if (!response.ok) {
@@ -72,6 +77,7 @@ export function useVideoSearch(): UseVideoSearchResult {
     error: state.error,
     query: state.query,
     sort: state.sort,
+    category: state.category,
     search,
   };
 }

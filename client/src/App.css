@@ -146,7 +146,8 @@
   border-color: #667eea;
 }
 
-.sort-select {
+.sort-select,
+.category-select {
   padding: 0.75rem 1rem;
   font-size: 1rem;
   border: 2px solid #e0e0e0;
@@ -157,12 +158,18 @@
   min-width: 200px;
 }
 
-.sort-select:focus {
+.category-select {
+  min-width: 160px;
+}
+
+.sort-select:focus,
+.category-select:focus {
   outline: none;
   border-color: #667eea;
 }
 
-.sort-select:disabled {
+.sort-select:disabled,
+.category-select:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -1305,7 +1312,8 @@
     font-size: 1.2rem;
   }
 
-  .sort-select {
+  .sort-select,
+  .category-select {
     min-width: auto;
     width: 100%;
   }
