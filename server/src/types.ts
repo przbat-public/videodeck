@@ -1,53 +1,12 @@
+import type { VideoComment } from '@shared/api';
+
 /**
- * Video information structure
+ * Server-only types. The HTTP contract (what the client sees) lives in
+ * `shared/api.ts`; this file describes what the server reads from disk.
  */
-export interface VideoListItem {
-  baseName: string;
-  videoId?: string; // YouTube video ID
-  title: string;
-  description: string;
-  videoPath: string;
-  thumbnailPath: string;
-  folderPath: string; // Path to the folder containing this video
-  uploadDate?: string;
-  viewCount?: number;
-  likeCount?: number;
-  channelName?: string;
-  comments: VideoComment[];
-  subtitlePath?: string;
-}
-
-export type SortOption =
-  | 'date-desc'
-  | 'date-asc'
-  | 'views-desc'
-  | 'views-asc'
-  | 'likes-desc'
-  | 'likes-asc';
 
 /**
- * Comment structure from yt-dlp info.json
- */
-export interface VideoComment {
-  id: string;
-  parent?: string | 'root';
-  text: string;
-  like_count?: number;
-  author_id?: string;
-  author?: string;
-  author_thumbnail?: string;
-  author_is_uploader?: boolean;
-  author_is_verified?: boolean;
-  author_url?: string;
-  is_favorited?: boolean;
-  _time_text?: string;
-  timestamp?: number;
-  is_pinned?: boolean;
-}
-
-/**
- * Type for yt-dlp info.json file structure
- * This represents the metadata file downloaded by yt-dlp
+ * yt-dlp `.info.json` metadata file.
  */
 export interface VideoInfoJson {
   id?: string;
@@ -86,44 +45,6 @@ export interface VideoInfoJson {
   playable_in_embed?: boolean;
   automatic_captions?: Record<string, unknown[]>;
   subtitles?: Record<string, unknown[]>;
-  [key: string]: unknown; // Allow additional fields from yt-dlp
-}
-
-/**
- * Comment structure with nested replies (recursive)
- * Used for building comment trees from flat comment arrays
- */
-export interface CommentWithReplies {
-  id?: string;
-  author?: string;
-  author_id?: string;
-  text?: string;
-  like_count?: number;
-  timestamp?: number;
-  time_text?: string;
-  _time_text?: string;
-  is_favorited?: boolean;
-  author_thumbnail?: string;
-  author_is_uploader?: boolean;
-  replies?: CommentWithReplies[];
-  reply_count?: number;
+  /** yt-dlp writes many more fields than we model */
   [key: string]: unknown;
-}
-
-/**
- * Video details structure returned by the API
- */
-export interface VideoDetails {
-  title: string;
-  description: string;
-  uploadDate: string;
-  duration: string;
-  viewCount: number;
-  likeCount: number;
-  channelName: string;
-  comments: CommentWithReplies[];
-  commentCount: number;
-  videoPath: string;
-  thumbnailPath: string;
-  subtitlePath?: string;
 }

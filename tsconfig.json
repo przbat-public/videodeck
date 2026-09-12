@@ -1,19 +1,7 @@
 {
-  "compilerOptions": {
-    "target": "ES2020",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
-    "rootDir": ".",
-    "outDir": "dist",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true
-  },
-  "include": [
-    "**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  // Solution-style config: owns no files itself, so the editor resolves every
+  // file through the nearest project (server/ or client/) with its own
+  // node_modules/@types (jest, vitest, node, ...).
+  "files": [],
+  "references": [{ "path": "./server" }, { "path": "./client" }]
 }

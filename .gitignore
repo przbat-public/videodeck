@@ -7,3 +7,6 @@ dist/
 coverage/
 .nyc_output/
 *.lcov
+
+# TypeScript incremental build state
+*.tsbuildinfo
