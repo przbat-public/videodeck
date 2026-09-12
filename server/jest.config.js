@@ -15,6 +15,16 @@ module.exports = {
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
+  // Set just under the current numbers: a ratchet against regressions,
+  // not a target. Raise them as coverage grows.
+  coverageThreshold: {
+    global: {
+      statements: 85,
+      branches: 75,
+      functions: 86,
+      lines: 86,
+    },
+  },
   moduleFileExtensions: ['ts', 'js', 'json'],
   testTimeout: 10000,
   setupFilesAfterEnv: [],

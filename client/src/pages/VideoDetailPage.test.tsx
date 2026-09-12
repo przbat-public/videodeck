@@ -1,0 +1,123 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import type { VideoDetails } from '@shared/api';
+import VideoDetailPage from './VideoDetailPage';
+import type { FetchMock, MockResponse } from '../test/fetchMock';
+
+vi.mock('react-hot-toast', () => ({
+  default: { success: vi.fn(), error: vi.fn(), loading: vi.fn(() => 'toast-id') },
+}));
+
+// The real player pulls in media APIs jsdom does not implement
+vi.mock('react-player', () => ({
+  default: ({ src }: { src: string }) => <div data-testid="player" data-src={src} />,
+}));
+
+const details: VideoDetails = {
+  title: 'A talk about hedgehogs',
+  description: 'Everything about hedgehogs',
+  uploadDate: '20240615',
+  duration: '10:30',
+  viewCount: 1234,
+  likeCount: 56,
+  channelName: 'Nature',
+  comments: [],
+  commentCount: 0,
+  videoPath: 'hedgehogs.mp4',
+  thumbnailPath: 'hedgehogs.webp',
+  folderPath: '/videos/a',
+};
+
+const json = (body: unknown, status = 200): MockResponse => ({
+  ok: status < 400,
+  status,
+  json: async () => body,
+});
+
+function installFetch(handlers: { details?: () => MockResponse } = {}): FetchMock {
+  const fetchMock: FetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/details')) {
+      return handlers.details?.() ?? json({ details });
+    }
+    if (url.endsWith('/summary')) {
+      return json({ summary: 'Hedgehogs are nocturnal.' });
+    }
+    throw new Error(`Unexpected fetch: ${init?.method ?? 'GET'} ${url}`);
+  });
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  return fetchMock;
+}
+
+const renderPage = () =>
+  render(
+    <MemoryRouter initialEntries={['/video/hedgehogs']}>
+      <Routes>
+        <Route path="/video/:videoId" element={<VideoDetailPage />} />
+      </Routes>
+    </MemoryRouter>
+  );
+
+describe('VideoDetailPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    installFetch();
+  });
+
+  it('shows a spinner while loading', () => {
+    renderPage();
+
+    expect(screen.getByText('Loading video...')).toBeInTheDocument();
+  });
+
+  it('renders the title, metadata and description', async () => {
+    renderPage();
+
+    expect(await screen.findByText('A talk about hedgehogs')).toBeInTheDocument();
+    expect(screen.getByText('1,234 views')).toBeInTheDocument();
+    expect(screen.getByText('56 likes')).toBeInTheDocument();
+    expect(screen.getByText('2024-06-15')).toBeInTheDocument();
+    expect(screen.getByText('Everything about hedgehogs')).toBeInTheDocument();
+  });
+
+  it('points the player at the file endpoint, folder included', async () => {
+    renderPage();
+
+    const player = await screen.findByTestId('player');
+    expect(player).toHaveAttribute(
+      'data-src',
+      `/api/videos/file/hedgehogs.mp4?folder=${encodeURIComponent('/videos/a')}`
+    );
+  });
+
+  it('hides counters that are zero', async () => {
+    installFetch({
+      details: () => json({ details: { ...details, viewCount: 0, likeCount: 0 } }),
+    });
+    renderPage();
+
+    await screen.findByText('A talk about hedgehogs');
+    expect(screen.queryByText(/views/)).toBeNull();
+    expect(screen.queryByText(/likes/)).toBeNull();
+  });
+
+  it('shows the summary once it arrives', async () => {
+    installFetch({
+      details: () => json({ details: { ...details, subtitlePath: 'hedgehogs.vtt' } }),
+    });
+    renderPage();
+
+    expect(await screen.findByText('Hedgehogs are nocturnal.')).toBeInTheDocument();
+  });
+
+  it('shows an error with a way back when the request fails', async () => {
+    installFetch({ details: () => json({ error: 'nope' }, 500) });
+    renderPage();
+
+    expect(await screen.findByText(/^Error:/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '← Back to search' })).toHaveAttribute(
+      'href',
+      '/videos'
+    );
+  });
+});
