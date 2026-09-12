@@ -339,6 +339,7 @@ video-search-app/
   - Po dacie (najnowsze/najstarsze)
   - Po liczbie wyświetleń (malejąco/rosnąco)
   - Po liczbie polubień (malejąco/rosnąco)
+- **Filtrowanie po kategorii** - każdy kanał ma w swoim `config.json` kategorię (np. `fpv`, `lego`, `psychology`); wybór kategorii zawęża wyszukiwanie do jej kanałów
 - **Responsywny design** - dostosowanie do różnych rozmiarów ekranów
 
 ## API Endpoints
@@ -402,6 +403,7 @@ Wyszukuje filmy po frazie w nazwie pliku (`baseName^4`), tytule (`^3`), opisie (
   - `views-asc` - po liczbie wyświetleń, rosnąco
   - `likes-desc` - po liczbie polubień, malejąco
   - `likes-asc` - po liczbie polubień, rosnąco
+- `category` (opcjonalny) - zawęża wyszukiwanie do kanałów z tą kategorią (porównanie bez względu na wielkość liter). `totalCount` dotyczy wtedy samej kategorii. Kategoria, której nie ma w żadnym `config.json`, zwraca zero wyników - nigdy całości.
 
 **Odpowiedź:**
 ```json
@@ -423,6 +425,15 @@ Wyszukuje filmy po frazie w nazwie pliku (`baseName^4`), tytule (`^3`), opisie (
   ]
 }
 ```
+
+### GET /api/videos/categories
+Kategorie zadeklarowane w plikach `config.json` skonfigurowanych folderów - posortowane, bez duplikatów (warianty różniące się wielkością liter są scalane). Zasila listę wyboru w wyszukiwaniu.
+
+```json
+{ "categories": ["fpv", "lego", "psychology"] }
+```
+
+Kategoria **nie trafia do Elasticsearcha**. Każdy folder ma własny alias indeksu, więc filtr po prostu zawęża listę przeszukiwanych aliasów do folderów z daną kategorią. Dzięki temu `config.json` jest jedynym źródłem prawdy, zmiana kategorii działa od razu i **nie wymaga reindeksu**.
 
 ### GET /api/videos/file/:filename?folder=<ścieżka>
 Serwuje pliki video (.mp4) i miniaturki (.webp).
@@ -473,7 +484,7 @@ Endpointy do zarządzania folderem kanału (wszystkie wymagają `folderPath` z l
 | Endpoint | Opis |
 | --- | --- |
 | `GET /api/status` | Lista folderów i ich `config.json` |
-| `PUT /api/folder/config` | Zapis `config.json` (`{ folderPath, config: { channelUrl } }`) |
+| `PUT /api/folder/config` | Zapis `config.json` (`{ folderPath, config: { channelUrl, category, ... } }`) |
 | `POST /api/folder/download-playlist` | `yt-dlp --flat-playlist -j` → `list.json` |
 | `GET /api/folder/list-exists?folderPath=` | Czy `list.json` istnieje |
 | `GET /api/folder/list?folderPath=` | Zawartość `list.json` + statusy pobrania (z indeksu folderu) |
@@ -511,11 +522,12 @@ folder/
 
 Aplikacja automatycznie skanuje wszystkie podane foldery i indeksuje pliki spełniające powyższe kryteria.
 
-### config.json - opcje pobierania per folder
+### config.json - konfiguracja kanału i opcje pobierania per folder
 
 ```json
 {
   "channelUrl": "https://www.youtube.com/@kanal",
+  "category": "fpv",
   "maxHeight": 1080,
   "subLangs": ["pl", "en"],
   "writeComments": false
@@ -525,6 +537,7 @@ Aplikacja automatycznie skanuje wszystkie podane foldery i indeksuje pliki speł
 | Klucz | Domyślnie | Znaczenie |
 | --- | --- | --- |
 | `channelUrl` | - | Adres kanału; z niego powstaje `list.json` |
+| `category` | - | Kategoria kanału (max 64 znaki, jedna linia); pozwala zawężyć wyszukiwanie do jednego tematu |
 | `maxHeight` | `2160` | Maksymalna wysokość wideo (144-4320). Preferowany h264/aac w mp4, potem dowolny kodek |
 | `subLangs` | `["en"]` | Języki napisów dla `--sub-lang` (`pl`, `en`, `en.*`, `all`). Pusta tablica wyłącza napisy |
 | `writeComments` | `true` | Czy pobierać komentarze (`--write-comments`) - są indeksowane do wyszukiwania |
