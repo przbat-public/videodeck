@@ -13,6 +13,8 @@ interface FolderConfigEditorProps {
   initialConfig: FolderConfig | null;
   /** Server-side defaults used when a key is missing from config.json */
   downloadDefaults: DownloadOptions;
+  /** Categories used by other folders, offered as input suggestions */
+  knownCategories?: string[];
   onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
 }
 
@@ -20,6 +22,7 @@ export function FolderConfigEditor({
   folderPath,
   initialConfig,
   downloadDefaults,
+  knownCategories = [],
   onConfigUpdate,
 }: FolderConfigEditorProps) {
   const [config, setConfig] = useState<FolderConfig | null>(initialConfig);
@@ -117,6 +120,24 @@ export function FolderConfigEditor({
               placeholder="https://www.youtube.com/@channel"
               className="config-input"
             />
+          </div>
+
+          <div className="config-field">
+            <label htmlFor={id('category')}>Kategoria kanału:</label>
+            <input
+              id={id('category')}
+              type="text"
+              list={id('categories')}
+              value={form.category}
+              onChange={(e) => updateForm({ category: e.target.value })}
+              placeholder="np. fpv — pozwala filtrować wyszukiwanie"
+              className="config-input"
+            />
+            <datalist id={id('categories')}>
+              {knownCategories.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </div>
 
           <div className="config-field">

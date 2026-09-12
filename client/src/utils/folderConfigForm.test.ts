@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildConfig, parseSubLangs, toFormState } from './folderConfigForm';
+import { buildConfig, collectCategories, parseSubLangs, toFormState } from './folderConfigForm';
 import type { DownloadOptions } from '@shared/api';
 
 const defaults: DownloadOptions = { maxHeight: 2160, subLangs: ['en'], writeComments: true };
@@ -16,6 +16,7 @@ describe('toFormState', () => {
   it('uses defaults for a missing config', () => {
     expect(toFormState(null, defaults)).toEqual({
       channelUrl: '',
+      category: '',
       maxHeight: '',
       subtitlesEnabled: true,
       subLangs: '',
@@ -28,6 +29,7 @@ describe('toFormState', () => {
       toFormState(
         {
           channelUrl: 'https://yt/@a',
+          category: 'fpv',
           maxHeight: 1080,
           subLangs: ['pl', 'en'],
           writeComments: false,
@@ -36,6 +38,7 @@ describe('toFormState', () => {
       )
     ).toEqual({
       channelUrl: 'https://yt/@a',
+      category: 'fpv',
       maxHeight: '1080',
       subtitlesEnabled: true,
       subLangs: 'pl, en',
@@ -53,6 +56,7 @@ describe('buildConfig', () => {
     const config = buildConfig(
       {
         channelUrl: '  ',
+        category: '   ',
         maxHeight: '',
         subtitlesEnabled: true,
         subLangs: '',
@@ -67,6 +71,7 @@ describe('buildConfig', () => {
     const config = buildConfig(
       {
         channelUrl: ' https://yt/@a ',
+        category: '  fpv  ',
         maxHeight: '1080',
         subtitlesEnabled: true,
         subLangs: 'pl, en',
@@ -76,6 +81,7 @@ describe('buildConfig', () => {
     );
     expect(config).toEqual({
       channelUrl: 'https://yt/@a',
+      category: 'fpv',
       maxHeight: 1080,
       subLangs: ['pl', 'en'],
       writeComments: false,
@@ -86,6 +92,7 @@ describe('buildConfig', () => {
     const config = buildConfig(
       {
         channelUrl: '',
+        category: '',
         maxHeight: '',
         subtitlesEnabled: false,
         subLangs: 'pl',
@@ -97,12 +104,48 @@ describe('buildConfig', () => {
   });
 
   it('preserves unknown keys and removes cleared ones', () => {
-    const existing = { channelUrl: 'https://yt/@a', maxHeight: 720, custom: 'keep' };
+    const existing = {
+      channelUrl: 'https://yt/@a',
+      category: 'fpv',
+      maxHeight: 720,
+      custom: 'keep',
+    };
     const config = buildConfig(
-      { channelUrl: '', maxHeight: '', subtitlesEnabled: true, subLangs: '', writeComments: true },
+      {
+        channelUrl: '',
+        category: '',
+        maxHeight: '',
+        subtitlesEnabled: true,
+        subLangs: '',
+        writeComments: true,
+      },
       existing
     );
     expect(config).toEqual({ custom: 'keep', writeComments: true });
     expect(existing.maxHeight).toBe(720); // input not mutated
+    expect(existing.category).toBe('fpv');
+  });
+});
+
+describe('collectCategories', () => {
+  it('returns sorted distinct categories and ignores folders without one', () => {
+    expect(
+      collectCategories({
+        '/a': { category: 'psychology' },
+        '/b': { category: 'fpv' },
+        '/c': { channelUrl: 'https://yt/@a' },
+        '/d': null,
+      })
+    ).toEqual(['fpv', 'psychology']);
+  });
+
+  it('collapses case variants and trims, keeping the first spelling', () => {
+    expect(
+      collectCategories({
+        '/a': { category: ' FPV ' },
+        '/b': { category: 'fpv' },
+        '/c': { category: '   ' },
+      })
+    ).toEqual(['FPV']);
   });
 });

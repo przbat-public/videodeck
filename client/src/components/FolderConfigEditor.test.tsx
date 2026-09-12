@@ -8,13 +8,14 @@ import type { FetchMock } from '../test/fetchMock';
 const FOLDER = '/videos/channel-a';
 const defaults: DownloadOptions = { maxHeight: 2160, subLangs: ['en'], writeComments: true };
 
-const renderEditor = (config: FolderConfig | null) => {
+const renderEditor = (config: FolderConfig | null, knownCategories: string[] = []) => {
   const onConfigUpdate = vi.fn();
   render(
     <FolderConfigEditor
       folderPath={FOLDER}
       initialConfig={config}
       downloadDefaults={defaults}
+      knownCategories={knownCategories}
       onConfigUpdate={onConfigUpdate}
     />
   );
@@ -141,6 +142,49 @@ describe('FolderConfigEditor', () => {
     expect(
       await screen.findByText('Błąd: maxHeight must be an integer between 144 and 4320')
     ).toBeInTheDocument();
+  });
+
+  it('saves the category and suggests the ones other folders use', async () => {
+    fetchMock.mockImplementation(async (_url, init) => ({
+      ok: true,
+      json: async () => ({ success: true, config: JSON.parse(String(init?.body)).config }),
+    }));
+    renderEditor({ channelUrl: 'https://yt/@a', category: 'fpv' }, ['fpv', 'psychology']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    const input = screen.getByLabelText('Kategoria kanału:');
+    expect(input).toHaveValue('fpv');
+    // datalist options carry no accessible role, so read them off the DOM
+    const suggestions = [...document.querySelectorAll('datalist option')].map((option) =>
+      option.getAttribute('value')
+    );
+    expect(suggestions).toEqual(['fpv', 'psychology']);
+    expect(input).toHaveAttribute('list', `categories-${FOLDER}`);
+
+    fireEvent.change(input, { target: { value: '  lego  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Zapisz' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(lastPutBody(fetchMock).config).toEqual({
+      channelUrl: 'https://yt/@a',
+      category: 'lego',
+      writeComments: true,
+    });
+  });
+
+  it('clearing the category drops it from config.json', async () => {
+    fetchMock.mockImplementation(async (_url, init) => ({
+      ok: true,
+      json: async () => ({ success: true, config: JSON.parse(String(init?.body)).config }),
+    }));
+    renderEditor({ channelUrl: 'https://yt/@a', category: 'fpv' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    fireEvent.change(screen.getByLabelText('Kategoria kanału:'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Zapisz' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(lastPutBody(fetchMock).config).not.toHaveProperty('category');
   });
 
   it('cancel restores the previous values', () => {

@@ -9,8 +9,25 @@ export const parseSubLangs = (value: string): string[] =>
     .map((lang) => lang.trim())
     .filter((lang) => lang.length > 0);
 
+/**
+ * Distinct categories already used across the folders, sorted — offered as
+ * suggestions so the same topic does not end up spelled three ways.
+ */
+export const collectCategories = (configs: Record<string, FolderConfig | null>): string[] => {
+  const byLowercase = new Map<string, string>();
+  for (const config of Object.values(configs)) {
+    const category = config?.category?.trim();
+    if (category && !byLowercase.has(category.toLowerCase())) {
+      byLowercase.set(category.toLowerCase(), category);
+    }
+  }
+  return [...byLowercase.values()].sort((a, b) => a.localeCompare(b));
+};
+
 export interface FormState {
   channelUrl: string;
+  /** '' removes the category from config.json */
+  category: string;
   /** '' means "use default" */
   maxHeight: string;
   subtitlesEnabled: boolean;
@@ -21,6 +38,7 @@ export interface FormState {
 
 export const toFormState = (config: FolderConfig | null, defaults: DownloadOptions): FormState => ({
   channelUrl: config?.channelUrl || '',
+  category: config?.category || '',
   maxHeight: config?.maxHeight !== undefined ? String(config.maxHeight) : '',
   subtitlesEnabled: config?.subLangs ? config.subLangs.length > 0 : defaults.subLangs.length > 0,
   subLangs: config?.subLangs ? config.subLangs.join(', ') : '',
@@ -40,6 +58,13 @@ export const buildConfig = (form: FormState, existing: FolderConfig | null): Fol
     next.channelUrl = channelUrl;
   } else {
     delete next.channelUrl;
+  }
+
+  const category = form.category.trim();
+  if (category) {
+    next.category = category;
+  } else {
+    delete next.category;
   }
 
   if (form.maxHeight) {

@@ -4,6 +4,7 @@ import type { FolderConfig } from '@shared/api';
 import { statusReducer, initialState, StatusActionType } from '../reducers/statusReducer';
 import type { StatusData } from '../reducers/statusReducer';
 import { FolderSection } from '../components/FolderSection';
+import { collectCategories } from '../utils/folderConfigForm';
 
 export default function StatusPage(): JSX.Element {
   const [state, dispatch] = useReducer(statusReducer, initialState);
@@ -58,6 +59,7 @@ export default function StatusPage(): JSX.Element {
         {state.statusData &&
           (() => {
             const statusData = state.statusData;
+            const knownCategories = collectCategories(statusData.folderConfigs);
             return (
               <div className="status-content">
                 <div className="status-section">
@@ -70,6 +72,7 @@ export default function StatusPage(): JSX.Element {
                           folderPath={path}
                           initialConfig={statusData.folderConfigs[path] || null}
                           downloadDefaults={statusData.downloadDefaults}
+                          knownCategories={knownCategories}
                           onConfigUpdate={handleConfigUpdate}
                         />
                       ))

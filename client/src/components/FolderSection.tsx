@@ -9,6 +9,8 @@ interface FolderSectionProps {
   folderPath: string;
   initialConfig: FolderConfig | null;
   downloadDefaults: DownloadOptions;
+  /** Categories used by other folders, offered as input suggestions */
+  knownCategories?: string[];
   onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
 }
 
@@ -16,6 +18,7 @@ export function FolderSection({
   folderPath,
   initialConfig,
   downloadDefaults,
+  knownCategories = [],
   onConfigUpdate,
 }: FolderSectionProps) {
   const [config, setConfig] = useState<FolderConfig | null>(initialConfig);
@@ -79,6 +82,7 @@ export function FolderSection({
         folderPath={folderPath}
         initialConfig={config}
         downloadDefaults={downloadDefaults}
+        knownCategories={knownCategories}
         onConfigUpdate={handleConfigUpdate}
       />
 
