@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { VideoListItem } from '@shared/api';
 import VideoListPage from './VideoListPage';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
@@ -9,7 +9,7 @@ vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn(), loading: vi.fn(() => 'toast-id') },
 }));
 
-const SEARCH_URL = '/api/videos/search?sort=date-desc';
+const CATEGORIES = ['fpv', 'lego'];
 
 const video = (baseName: string, title: string): VideoListItem => ({
   baseName,
@@ -27,11 +27,21 @@ const json = (body: unknown, status = 200): MockResponse => ({
   json: async () => body,
 });
 
-/** Route fetch by URL so tests can describe server state declaratively */
-function installFetch(handlers: { search?: () => unknown } = {}): FetchMock {
+/**
+ * Route fetch by URL so tests can describe server state declaratively.
+ * The search handler sees the query string the page built, so a test can
+ * answer differently per category or phrase.
+ */
+function installFetch(
+  handlers: { search?: (params: URLSearchParams) => unknown; categories?: string[] } = {}
+): FetchMock {
   const fetchMock: FetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url.startsWith('/api/videos/search')) {
-      return json(handlers.search?.() ?? { videos: [video('v1', 'First')], totalCount: 1 });
+    if (url.startsWith('/api/videos/search?')) {
+      const params = new URLSearchParams(url.slice(url.indexOf('?') + 1));
+      return json(handlers.search?.(params) ?? { videos: [video('v1', 'First')], totalCount: 1 });
+    }
+    if (url === '/api/videos/categories') {
+      return json({ categories: handlers.categories ?? CATEGORIES });
     }
     if (url === '/api/videos/recreateIndices' && init?.method === 'POST') {
       return json({ message: 'Recreation started' }, 202);
@@ -42,12 +52,49 @@ function installFetch(handlers: { search?: () => unknown } = {}): FetchMock {
   return fetchMock;
 }
 
-const renderPage = () =>
+/** Exposes the router's view of the URL and a way to navigate from outside the page */
+function RouterProbe() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <div>
+      <output data-testid="url">{`${location.pathname}${location.search}`}</output>
+      <button type="button" onClick={() => navigate('/videos?category=fpv&sort=likes-desc')}>
+        go-elsewhere
+      </button>
+      <button type="button" onClick={() => navigate(-1)}>
+        back
+      </button>
+    </div>
+  );
+}
+
+const renderAt = (url: string) =>
   render(
-    <MemoryRouter>
-      <VideoListPage />
+    <MemoryRouter initialEntries={[url]}>
+      <Routes>
+        <Route
+          path="/videos"
+          element={
+            <>
+              <VideoListPage />
+              <RouterProbe />
+            </>
+          }
+        />
+      </Routes>
     </MemoryRouter>
   );
+
+const currentUrl = () => screen.getByTestId('url').textContent;
+const searchInput = () => screen.getByPlaceholderText('Search videos by description...');
+const sortSelect = () => screen.getByRole('combobox', { name: 'Sort' });
+const categorySelect = () => screen.findByRole('combobox', { name: 'Category' });
+
+const searchUrls = (fetchMock: FetchMock): string[] =>
+  fetchMock.mock.calls.map(([url]) => url).filter((url) => url.startsWith('/api/videos/search'));
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('VideoListPage', () => {
   let fetchMock: FetchMock;
@@ -57,52 +104,258 @@ describe('VideoListPage', () => {
     fetchMock = installFetch();
   });
 
-  it('searches on mount and shows the result count', async () => {
-    renderPage();
+  describe('opening a URL', () => {
+    it('searches exactly once with the defaults on the bare /videos URL', async () => {
+      renderAt('/videos');
 
-    expect(await screen.findByText('First')).toBeInTheDocument();
-    expect(screen.getByText('1 video / 1 total')).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(SEARCH_URL);
-  });
+      expect(await screen.findByText('First')).toBeInTheDocument();
+      expect(screen.getByText('1 video / 1 total')).toBeInTheDocument();
+      await screen.findByRole('combobox', { name: 'Category' }); // categories loaded too
+      await sleep(350); // past the search bar's debounce: nothing else may fire
 
-  it('pluralises the count for several videos', async () => {
-    fetchMock = installFetch({
-      search: () => ({ videos: [video('v1', 'First'), video('v2', 'Second')], totalCount: 5 }),
+      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?sort=date-desc']);
+      expect(currentUrl()).toBe('/videos');
     });
-    renderPage();
 
-    expect(await screen.findByText('2 videos / 5 total')).toBeInTheDocument();
+    it('fills the form and runs the search from the URL parameters', async () => {
+      fetchMock = installFetch({
+        search: (params) =>
+          params.get('category') === 'lego' && params.get('q') === 'robot arm'
+            ? {
+                videos: [video('l1', 'Lego robot arm'), video('l2', 'Robot arm v2')],
+                totalCount: 7,
+              }
+            : { videos: [], totalCount: 0 },
+      });
+      renderAt('/videos?q=robot+arm&sort=views-desc&category=lego');
+
+      expect(await screen.findByText('2 videos / 7 total')).toBeInTheDocument();
+      expect(searchUrls(fetchMock)).toEqual([
+        '/api/videos/search?q=robot+arm&sort=views-desc&category=lego',
+      ]);
+
+      expect(searchInput()).toHaveValue('robot arm');
+      expect(sortSelect()).toHaveValue('views-desc');
+      expect(await categorySelect()).toHaveValue('lego');
+    });
+
+    it('highlights the phrase from the URL in the results', async () => {
+      fetchMock = installFetch({
+        search: () => ({ videos: [video('v1', 'A robot in the garden')], totalCount: 1 }),
+      });
+      renderAt('/videos?q=robot');
+
+      const title = await screen.findByText(
+        (_, element) =>
+          element?.className === 'video-title' && element.textContent === 'A robot in the garden'
+      );
+      expect(within(title).getByText('robot')).toHaveClass('search-highlight');
+    });
+
+    it('falls back to the default sort for an unknown one and keeps the rest', async () => {
+      renderAt('/videos?q=drone&sort=bogus&category=fpv');
+
+      await screen.findByText('First');
+
+      expect(searchUrls(fetchMock)).toEqual([
+        '/api/videos/search?q=drone&sort=date-desc&category=fpv',
+      ]);
+      expect(sortSelect()).toHaveValue('date-desc');
+      expect(searchInput()).toHaveValue('drone');
+    });
+
+    it('trusts a category the server does not list, and shows it in the filter', async () => {
+      fetchMock = installFetch({ search: () => ({ videos: [], totalCount: 0 }) });
+      renderAt('/videos?category=archive');
+
+      expect(
+        await screen.findByText('No videos found. Try a different search query.')
+      ).toBeInTheDocument();
+      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?sort=date-desc&category=archive']);
+      expect(await categorySelect()).toHaveValue('archive');
+    });
+
+    it('keeps the URL filter visible when the category list fails to load', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const base = installFetch();
+      fetchMock = vi.fn(async (url: string, init?: RequestInit) =>
+        url === '/api/videos/categories' ? json({ error: 'boom' }, 500) : base(url, init)
+      );
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      renderAt('/videos?category=lego');
+
+      await screen.findByText('First');
+
+      expect(await categorySelect()).toHaveValue('lego');
+      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?sort=date-desc&category=lego']);
+    });
   });
 
-  it('shows the empty-list message when nothing matches', async () => {
-    fetchMock = installFetch({ search: () => ({ videos: [], totalCount: 0 }) });
-    renderPage();
+  describe('changing the form', () => {
+    it('writes the chosen category to the URL and searches with it', async () => {
+      renderAt('/videos');
+      await screen.findByText('First');
 
-    expect(
-      await screen.findByText('No videos found. Try a different search query.')
-    ).toBeInTheDocument();
+      fireEvent.change(await categorySelect(), { target: { value: 'lego' } });
+
+      await waitFor(() => expect(currentUrl()).toBe('/videos?category=lego'));
+      await waitFor(() =>
+        expect(searchUrls(fetchMock)).toEqual([
+          '/api/videos/search?sort=date-desc',
+          '/api/videos/search?sort=date-desc&category=lego',
+        ])
+      );
+    });
+
+    it('writes the chosen sort to the URL and drops it again when back at the default', async () => {
+      renderAt('/videos?q=drone');
+      await screen.findByText('First');
+
+      fireEvent.change(sortSelect(), { target: { value: 'likes-asc' } });
+      await waitFor(() => expect(currentUrl()).toBe('/videos?q=drone&sort=likes-asc'));
+
+      fireEvent.change(sortSelect(), { target: { value: 'date-desc' } });
+      await waitFor(() => expect(currentUrl()).toBe('/videos?q=drone'));
+
+      expect(searchUrls(fetchMock)).toEqual([
+        '/api/videos/search?q=drone&sort=date-desc',
+        '/api/videos/search?q=drone&sort=likes-asc',
+        '/api/videos/search?q=drone&sort=date-desc',
+      ]);
+    });
+
+    it('writes a typed phrase to the URL after the pause and searches once', async () => {
+      renderAt('/videos?category=fpv');
+      await screen.findByText('First');
+
+      fireEvent.change(searchInput(), { target: { value: 'moto' } });
+      fireEvent.change(searchInput(), { target: { value: 'motor' } });
+
+      await waitFor(() => expect(currentUrl()).toBe('/videos?q=motor&category=fpv'));
+      await waitFor(() =>
+        expect(searchUrls(fetchMock)).toEqual([
+          '/api/videos/search?sort=date-desc&category=fpv',
+          '/api/videos/search?q=motor&sort=date-desc&category=fpv',
+        ])
+      );
+    });
+
+    it('leaves the URL and the results alone while the phrase is too short', async () => {
+      renderAt('/videos?q=drone');
+      await screen.findByText('First');
+
+      fireEvent.change(searchInput(), { target: { value: 'dr' } });
+      await sleep(350);
+
+      expect(searchInput()).toHaveValue('dr');
+      expect(currentUrl()).toBe('/videos?q=drone');
+      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?q=drone&sort=date-desc']);
+    });
+
+    it('returns to the bare URL when everything is cleared', async () => {
+      renderAt('/videos?q=drone&sort=views-desc&category=lego');
+      await screen.findByText('First');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+      fireEvent.change(sortSelect(), { target: { value: 'date-desc' } });
+      fireEvent.change(await categorySelect(), { target: { value: '' } });
+
+      await waitFor(() => expect(currentUrl()).toBe('/videos'));
+      await waitFor(() =>
+        expect(searchUrls(fetchMock).at(-1)).toBe('/api/videos/search?sort=date-desc')
+      );
+    });
   });
 
-  it('Reload runs the search again', async () => {
-    renderPage();
-    await screen.findByText('First');
-    const searchCalls = () =>
-      fetchMock.mock.calls.filter(([url]) => url.startsWith('/api/videos/search')).length;
-    const before = searchCalls();
+  describe('the URL changing from outside the form', () => {
+    it('replaces its own history entry, so Back leaves the page instead of undoing filters', async () => {
+      renderAt('/videos');
+      await screen.findByText('First');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+      fireEvent.change(await categorySelect(), { target: { value: 'lego' } });
+      await waitFor(() => expect(currentUrl()).toBe('/videos?category=lego'));
+      fireEvent.change(sortSelect(), { target: { value: 'views-desc' } });
+      await waitFor(() => expect(currentUrl()).toBe('/videos?sort=views-desc&category=lego'));
 
-    await waitFor(() => expect(searchCalls()).toBe(before + 1));
+      // A real push, then Back: the page's entry must hold the latest filters…
+      fireEvent.click(screen.getByRole('button', { name: 'go-elsewhere' }));
+      await waitFor(() => expect(currentUrl()).toBe('/videos?category=fpv&sort=likes-desc'));
+      fireEvent.click(screen.getByRole('button', { name: 'back' }));
+      await waitFor(() => expect(currentUrl()).toBe('/videos?sort=views-desc&category=lego'));
+      await waitFor(() =>
+        expect(searchUrls(fetchMock).at(-1)).toBe(
+          '/api/videos/search?sort=views-desc&category=lego'
+        )
+      );
+      expect(sortSelect()).toHaveValue('views-desc');
+      expect(await categorySelect()).toHaveValue('lego');
+
+      // …and be the only one: another Back has nowhere earlier to go.
+      fireEvent.click(screen.getByRole('button', { name: 'back' }));
+      expect(currentUrl()).toBe('/videos?sort=views-desc&category=lego');
+    });
+
+    it('re-runs the search and updates the form when navigation lands on new parameters', async () => {
+      renderAt('/videos?q=drone');
+      await screen.findByText('First');
+      expect(searchInput()).toHaveValue('drone');
+
+      fireEvent.click(screen.getByRole('button', { name: 'go-elsewhere' }));
+
+      await waitFor(() =>
+        expect(searchUrls(fetchMock).at(-1)).toBe('/api/videos/search?sort=likes-desc&category=fpv')
+      );
+      expect(searchInput()).toHaveValue('');
+      expect(sortSelect()).toHaveValue('likes-desc');
+      expect(await categorySelect()).toHaveValue('fpv');
+      expect(currentUrl()).toBe('/videos?category=fpv&sort=likes-desc');
+    });
   });
 
-  it('Recreate Indices posts to the reindex endpoint', async () => {
-    renderPage();
-    await screen.findByText('First');
+  describe('toolbar', () => {
+    it('Reload repeats the search the URL describes', async () => {
+      renderAt('/videos?q=drone&category=lego');
+      await screen.findByText('First');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Recreate Indices' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
 
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith('/api/videos/recreateIndices', { method: 'POST' })
-    );
+      await waitFor(() =>
+        expect(searchUrls(fetchMock)).toEqual([
+          '/api/videos/search?q=drone&sort=date-desc&category=lego',
+          '/api/videos/search?q=drone&sort=date-desc&category=lego',
+        ])
+      );
+    });
+
+    it('Recreate Indices posts to the reindex endpoint', async () => {
+      renderAt('/videos');
+      await screen.findByText('First');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Recreate Indices' }));
+
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith('/api/videos/recreateIndices', { method: 'POST' })
+      );
+    });
+  });
+
+  describe('result summary', () => {
+    it('pluralises the count for several videos', async () => {
+      fetchMock = installFetch({
+        search: () => ({ videos: [video('v1', 'First'), video('v2', 'Second')], totalCount: 5 }),
+      });
+      renderAt('/videos');
+
+      expect(await screen.findByText('2 videos / 5 total')).toBeInTheDocument();
+    });
+
+    it('shows the empty-list message when nothing matches', async () => {
+      fetchMock = installFetch({ search: () => ({ videos: [], totalCount: 0 }) });
+      renderAt('/videos');
+
+      expect(
+        await screen.findByText('No videos found. Try a different search query.')
+      ).toBeInTheDocument();
+    });
   });
 });

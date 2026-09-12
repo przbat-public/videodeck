@@ -1,8 +1,88 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { Mock } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { act } from 'react';
+import { act, useState } from 'react';
 import userEvent from '@testing-library/user-event';
+import type { SearchState } from '../utils/searchUrlState';
+import { DEFAULT_SEARCH_STATE, SORT_OPTIONS } from '../utils/searchUrlState';
 import SearchBar from './SearchBar';
+
+const CATEGORIES = ['fpv', 'lego', 'psychology'];
+
+const input = () => screen.getByPlaceholderText('Search videos by description...');
+const sortSelect = () => screen.getByRole('combobox', { name: 'Sort' });
+const categorySelect = () => screen.getByRole('combobox', { name: 'Category' });
+const clearButton = () => screen.getByRole('button', { name: 'Clear' });
+
+const setupUser = () => userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+
+const advance = async (ms: number) => {
+  await act(async () => {
+    vi.advanceTimersByTime(ms);
+  });
+};
+
+const flushTimers = async () => {
+  await act(async () => {
+    vi.runAllTimers();
+  });
+};
+
+/** The bar with a parent that ignores commits — props change only when the test says so */
+function renderBar(
+  state: Partial<SearchState> = {},
+  categories: string[] = CATEGORIES
+): { onChange: Mock<(next: SearchState) => void>; update: (patch: Partial<SearchState>) => void } {
+  const onChange = vi.fn<(next: SearchState) => void>();
+  let current: SearchState = { ...DEFAULT_SEARCH_STATE, ...state };
+  const element = () => <SearchBar {...current} categories={categories} onChange={onChange} />;
+  const { rerender } = render(element());
+  return {
+    onChange,
+    update: (patch) => {
+      current = { ...current, ...patch };
+      rerender(element());
+    },
+  };
+}
+
+/** The bar under a parent that behaves like the page: every commit comes back as props */
+function Parent({
+  initial,
+  categories,
+  onChange,
+}: {
+  initial: SearchState;
+  categories: string[];
+  onChange: (next: SearchState) => void;
+}) {
+  const [state, setState] = useState(initial);
+  return (
+    <SearchBar
+      {...state}
+      categories={categories}
+      onChange={(next) => {
+        onChange(next);
+        setState(next);
+      }}
+    />
+  );
+}
+
+function renderWithParent(
+  state: Partial<SearchState> = {},
+  categories: string[] = CATEGORIES
+): { onChange: Mock<(next: SearchState) => void> } {
+  const onChange = vi.fn<(next: SearchState) => void>();
+  render(
+    <Parent
+      initial={{ ...DEFAULT_SEARCH_STATE, ...state }}
+      categories={categories}
+      onChange={onChange}
+    />
+  );
+  return { onChange };
+}
 
 describe('SearchBar', () => {
   beforeEach(() => {
@@ -14,240 +94,282 @@ describe('SearchBar', () => {
     vi.useRealTimers();
   });
 
-  it('should render search input and sort select', () => {
-    const mockOnSearch = vi.fn();
-    render(<SearchBar onSearch={mockOnSearch} />);
+  describe('rendering the committed state', () => {
+    it('shows the query, sort and category it is given', () => {
+      renderBar({ query: 'robot arm', sort: 'views-desc', category: 'lego' });
 
-    expect(screen.getByPlaceholderText('Search videos by description...')).toBeInTheDocument();
-    expect(screen.getByRole('combobox')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /search/i })).not.toBeInTheDocument();
+      expect(input()).toHaveValue('robot arm');
+      expect(sortSelect()).toHaveValue('views-desc');
+      expect(categorySelect()).toHaveValue('lego');
+      expect(clearButton()).toBeInTheDocument();
+    });
+
+    it('offers every sort option in order', () => {
+      renderBar();
+
+      const options = Array.from(sortSelect().querySelectorAll('option'));
+      expect(options.map((option) => option.value)).toEqual(SORT_OPTIONS.map((o) => o.value));
+      expect(options.map((option) => option.textContent)).toEqual(SORT_OPTIONS.map((o) => o.label));
+    });
+
+    it('hides the category filter when there is nothing to pick from', () => {
+      renderBar({}, []);
+
+      expect(screen.queryByRole('combobox', { name: 'Category' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+    });
+
+    it('lists "All categories" first, then the categories it is given', () => {
+      renderBar();
+
+      const options = Array.from(categorySelect().querySelectorAll('option'));
+      expect(options.map((option) => option.value)).toEqual(['', ...CATEGORIES]);
+      expect(options[0]?.textContent).toBe('All categories');
+    });
+
+    it('keeps a category from the URL selectable even when the server list lacks it', () => {
+      renderBar({ category: 'archive' }, ['fpv']);
+
+      expect(categorySelect()).toHaveValue('archive');
+      expect(Array.from(categorySelect().querySelectorAll('option')).map((o) => o.value)).toEqual([
+        '',
+        'fpv',
+        'archive',
+      ]);
+    });
+
+    it('shows the filter for a URL category even before any categories have loaded', () => {
+      renderBar({ category: 'lego' }, []);
+
+      expect(categorySelect()).toHaveValue('lego');
+    });
   });
 
-  it('should call onSearch automatically when query has at least 3 characters', async () => {
-    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
-    const mockOnSearch = vi.fn();
-    render(<SearchBar onSearch={mockOnSearch} />);
+  describe('committing the typed phrase', () => {
+    it('does not commit on mount, whatever it was given', async () => {
+      const { onChange } = renderBar({ query: 'robot', sort: 'likes-asc', category: 'lego' });
 
-    const input = screen.getByPlaceholderText('Search videos by description...');
+      await flushTimers();
 
-    await act(async () => {
-      await user.type(input, 'abc');
+      expect(onChange).not.toHaveBeenCalled();
     });
 
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-      vi.runAllTimers();
+    it('commits a phrase of three or more characters once the typing pauses', async () => {
+      const user = setupUser();
+      const { onChange } = renderBar({ sort: 'views-desc', category: 'fpv' });
+
+      await act(() => user.type(input(), 'abc'));
+      await advance(299);
+      expect(onChange).not.toHaveBeenCalled();
+
+      await advance(1);
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith({ query: 'abc', sort: 'views-desc', category: 'fpv' });
     });
 
-    expect(mockOnSearch).toHaveBeenCalledWith('abc', 'date-desc', '');
+    it('never commits one or two characters', async () => {
+      const user = setupUser();
+      const { onChange } = renderBar();
+
+      await act(() => user.type(input(), 'ab'));
+      await flushTimers();
+
+      expect(onChange).not.toHaveBeenCalled();
+      expect(input()).toHaveValue('ab');
+    });
+
+    it('restarts the pause with every keystroke and commits the final phrase only', async () => {
+      const user = setupUser();
+      const { onChange } = renderBar();
+
+      await act(() => user.type(input(), 'abc'));
+      await advance(200);
+      await act(() => user.type(input(), 'd'));
+      await advance(200);
+      expect(onChange).not.toHaveBeenCalled();
+
+      await advance(100);
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SEARCH_STATE, query: 'abcd' });
+    });
+
+    it('trims the phrase it commits', async () => {
+      const user = setupUser();
+      const { onChange } = renderBar();
+
+      await act(() => user.type(input(), '  robot  '));
+      await flushTimers();
+
+      expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SEARCH_STATE, query: 'robot' });
+    });
+
+    it('does not treat whitespace alone as a new search', async () => {
+      const user = setupUser();
+      const { onChange } = renderBar();
+
+      await act(() => user.type(input(), '   '));
+      await flushTimers();
+
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('commits the empty phrase when the text is deleted', async () => {
+      const user = setupUser();
+      const { onChange } = renderWithParent({ query: 'robot', category: 'lego' });
+
+      await act(() => user.clear(input()));
+      expect(onChange).not.toHaveBeenCalled();
+
+      await advance(300);
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith({ query: '', sort: 'date-desc', category: 'lego' });
+    });
+
+    it('does not commit again when the parent echoes the phrase back', async () => {
+      const user = setupUser();
+      const { onChange } = renderWithParent();
+
+      await act(() => user.type(input(), 'robot'));
+      await flushTimers();
+      await flushTimers();
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves a trailing space alone when its own commit comes back', async () => {
+      const user = setupUser();
+      const { onChange } = renderWithParent();
+
+      await act(() => user.type(input(), 'robot '));
+      await flushTimers();
+
+      expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SEARCH_STATE, query: 'robot' });
+      expect(input()).toHaveValue('robot ');
+    });
   });
 
-  it('should not call onSearch when query has less than 3 characters', async () => {
-    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
-    const mockOnSearch = vi.fn();
-    render(<SearchBar onSearch={mockOnSearch} />);
+  describe('following the committed state from outside', () => {
+    it('shows a query that arrives from the URL without committing it back', async () => {
+      const { onChange, update } = renderBar({ query: 'old' });
 
-    const input = screen.getByPlaceholderText('Search videos by description...');
+      update({ query: 'brand new' });
+      await flushTimers();
 
-    await act(async () => {
-      await user.type(input, 'ab');
+      expect(input()).toHaveValue('brand new');
+      expect(onChange).not.toHaveBeenCalled();
     });
 
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-      vi.runAllTimers();
+    it('replaces a half-typed phrase when the committed query changes underneath it', async () => {
+      const user = setupUser();
+      const { onChange, update } = renderBar({ query: 'robot' });
+
+      await act(() => user.clear(input()));
+      await act(() => user.type(input(), 'ar'));
+      expect(input()).toHaveValue('ar');
+
+      update({ query: 'drone' });
+      await flushTimers();
+
+      expect(input()).toHaveValue('drone');
+      expect(onChange).not.toHaveBeenCalled();
     });
 
-    expect(mockOnSearch).not.toHaveBeenCalled();
+    it('updates the selects when sort and category change from outside', () => {
+      const { update } = renderBar();
+
+      update({ sort: 'likes-desc', category: 'psychology' });
+
+      expect(sortSelect()).toHaveValue('likes-desc');
+      expect(categorySelect()).toHaveValue('psychology');
+    });
   });
 
-  it('should debounce search calls when typing', async () => {
-    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
-    const mockOnSearch = vi.fn();
-    render(<SearchBar onSearch={mockOnSearch} />);
+  describe('selects and the clear button', () => {
+    it('commits a sort change at once, keeping the committed query', async () => {
+      const user = setupUser();
+      const { onChange } = renderBar({ query: 'robot', category: 'lego' });
 
-    const input = screen.getByPlaceholderText('Search videos by description...');
+      await act(() => user.selectOptions(sortSelect(), 'views-desc'));
 
-    await act(async () => {
-      await user.type(input, 'abc');
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith({
+        query: 'robot',
+        sort: 'views-desc',
+        category: 'lego',
+      });
     });
 
-    // Nie powinno jeszcze wywołać wyszukiwania
-    await act(async () => {
-      vi.advanceTimersByTime(100);
+    it('commits a category change at once and "All categories" as an empty category', async () => {
+      const user = setupUser();
+      const { onChange } = renderWithParent({ query: 'robot' });
+
+      await act(() => user.selectOptions(categorySelect(), 'psychology'));
+      expect(onChange).toHaveBeenLastCalledWith({
+        query: 'robot',
+        sort: 'date-desc',
+        category: 'psychology',
+      });
+
+      await act(() => user.selectOptions(categorySelect(), ''));
+      expect(onChange).toHaveBeenLastCalledWith({
+        query: 'robot',
+        sort: 'date-desc',
+        category: '',
+      });
+      expect(onChange).toHaveBeenCalledTimes(2);
     });
 
-    expect(mockOnSearch).not.toHaveBeenCalled();
+    it('takes a searchable phrase along with a sort change instead of waiting for the pause', async () => {
+      const user = setupUser();
+      const { onChange } = renderWithParent();
 
-    // Po pełnym czasie debounce powinno wywołać
-    await act(async () => {
-      vi.advanceTimersByTime(200);
-      vi.runAllTimers();
+      await act(() => user.type(input(), 'lego'));
+      await act(() => user.selectOptions(sortSelect(), 'likes-desc'));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith({ query: 'lego', sort: 'likes-desc', category: '' });
+
+      await flushTimers();
+      expect(onChange).toHaveBeenCalledTimes(1);
     });
 
-    expect(mockOnSearch).toHaveBeenCalledTimes(1);
-    expect(mockOnSearch).toHaveBeenCalledWith('abc', 'date-desc', '');
-  });
+    it('keeps the committed query when the phrase is still too short to search', async () => {
+      const user = setupUser();
+      const { onChange } = renderWithParent({ query: 'robot' });
 
-  it('should call onSearch with selected sort option when sort changes', async () => {
-    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
-    const mockOnSearch = vi.fn();
-    render(<SearchBar onSearch={mockOnSearch} />);
+      await act(() => user.clear(input()));
+      await act(() => user.type(input(), 'ro'));
+      await act(() => user.selectOptions(categorySelect(), 'fpv'));
 
-    const input = screen.getByPlaceholderText('Search videos by description...');
-    const select = screen.getByRole('combobox');
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith({ query: 'robot', sort: 'date-desc', category: 'fpv' });
+      expect(input()).toHaveValue('ro');
 
-    // Wpisz zapytanie (min 3 znaki)
-    await act(async () => {
-      await user.type(input, 'test');
+      await flushTimers();
+      expect(onChange).toHaveBeenCalledTimes(1);
     });
 
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-      vi.runAllTimers();
+    it('Clear empties the input and commits the empty phrase at once, exactly once', async () => {
+      const user = setupUser();
+      const { onChange } = renderWithParent({ query: 'robot', sort: 'views-asc', category: 'fpv' });
+
+      await act(() => user.click(clearButton()));
+
+      expect(input()).toHaveValue('');
+      expect(onChange).toHaveBeenCalledWith({ query: '', sort: 'views-asc', category: 'fpv' });
+      expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+
+      await flushTimers();
+      expect(onChange).toHaveBeenCalledTimes(1);
     });
 
-    expect(mockOnSearch).toHaveBeenCalledWith('test', 'date-desc', '');
+    it('shows Clear for text that has not been committed yet', async () => {
+      const user = setupUser();
+      renderBar();
 
-    mockOnSearch.mockClear();
+      await act(() => user.type(input(), 'a'));
 
-    // Zmień sortowanie
-    await act(async () => {
-      await user.selectOptions(select, 'views-desc');
+      expect(clearButton()).toBeInTheDocument();
     });
-
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-      vi.runAllTimers();
-    });
-
-    expect(mockOnSearch).toHaveBeenCalledWith('test', 'views-desc', '');
-  });
-
-  it('should show clear button when query is not empty', async () => {
-    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
-    const mockOnSearch = vi.fn();
-    render(<SearchBar onSearch={mockOnSearch} />);
-
-    const input = screen.getByPlaceholderText('Search videos by description...');
-    await act(async () => {
-      await user.type(input, 'test');
-    });
-
-    expect(screen.getByRole('button', { name: /clear/i })).toBeInTheDocument();
-  });
-
-  it('should clear input and call onSearch with empty string when clear is clicked', async () => {
-    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
-    const mockOnSearch = vi.fn();
-    render(<SearchBar onSearch={mockOnSearch} />);
-
-    const input = screen.getByPlaceholderText('Search videos by description...');
-    await act(async () => {
-      await user.type(input, 'test');
-    });
-
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-      vi.runAllTimers();
-    });
-
-    const clearButton = screen.getByRole('button', { name: /clear/i });
-    await act(async () => {
-      await user.click(clearButton);
-    });
-
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-      vi.runAllTimers();
-    });
-
-    expect(input).toHaveValue('');
-    expect(mockOnSearch).toHaveBeenCalledWith('', 'date-desc', '');
-  });
-
-  it('should call onSearch with empty string when query is cleared to empty', async () => {
-    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
-    const mockOnSearch = vi.fn();
-    render(<SearchBar onSearch={mockOnSearch} />);
-
-    const input = screen.getByPlaceholderText('Search videos by description...');
-
-    // Wpisz zapytanie
-    await act(async () => {
-      await user.type(input, 'test query');
-    });
-
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-      vi.runAllTimers();
-    });
-
-    expect(mockOnSearch).toHaveBeenCalledWith('test query', 'date-desc', '');
-
-    mockOnSearch.mockClear();
-
-    // Wyczyść zapytanie
-    await act(async () => {
-      await user.clear(input);
-    });
-
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-      vi.runAllTimers();
-    });
-
-    expect(mockOnSearch).toHaveBeenCalledWith('', 'date-desc', '');
-  });
-
-  it('should trim whitespace from query before searching', async () => {
-    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
-    const mockOnSearch = vi.fn();
-    render(<SearchBar onSearch={mockOnSearch} />);
-
-    const input = screen.getByPlaceholderText('Search videos by description...');
-
-    await act(async () => {
-      await user.type(input, '  abc  ');
-    });
-
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-      vi.runAllTimers();
-    });
-
-    expect(mockOnSearch).toHaveBeenCalledWith('abc', 'date-desc', '');
-  });
-
-  it('hides the category filter when the server offers no categories', () => {
-    render(<SearchBar onSearch={vi.fn()} categories={[]} />);
-
-    expect(screen.queryByRole('combobox', { name: 'Category' })).not.toBeInTheDocument();
-  });
-
-  it('searches within the chosen category and back across all of them', async () => {
-    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
-    const mockOnSearch = vi.fn();
-    render(<SearchBar onSearch={mockOnSearch} categories={['fpv', 'psychology']} />);
-
-    const categorySelect = screen.getByRole('combobox', { name: 'Category' });
-
-    await act(async () => {
-      await user.selectOptions(categorySelect, 'psychology');
-    });
-    await act(async () => {
-      vi.runAllTimers();
-    });
-
-    expect(mockOnSearch).toHaveBeenLastCalledWith('', 'date-desc', 'psychology');
-
-    await act(async () => {
-      await user.selectOptions(categorySelect, '');
-    });
-    await act(async () => {
-      vi.runAllTimers();
-    });
-
-    expect(mockOnSearch).toHaveBeenLastCalledWith('', 'date-desc', '');
   });
 });

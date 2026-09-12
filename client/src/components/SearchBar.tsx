@@ -1,86 +1,115 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { SortOption } from '@shared/api';
-import { debounce } from '../utils/debounce';
+import type { SearchState } from '../utils/searchUrlState';
+import { SORT_OPTIONS } from '../utils/searchUrlState';
 
 interface SearchBarProps {
-  onSearch: (query: string, sort: SortOption, category: string) => void;
-  /** Categories offered by the server; empty hides the filter */
+  /** The committed search — what the URL and the results currently reflect */
+  query: string;
+  sort: SortOption;
+  category: string;
+  /** Categories offered by the server; the filter hides when there is nothing to pick */
   categories?: string[];
+  onChange: (next: SearchState) => void;
 }
 
 const MIN_SEARCH_LENGTH = 3;
 const DEBOUNCE_DELAY = 300;
 
-export default function SearchBar({ onSearch, categories = [] }: SearchBarProps) {
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<SortOption>('date-desc');
-  const [category, setCategory] = useState('');
+/** A phrase worth searching for: nothing at all, or enough to be selective */
+const isSearchable = (trimmed: string): boolean =>
+  trimmed.length === 0 || trimmed.length >= MIN_SEARCH_LENGTH;
 
-  const debouncedSearch = useMemo(
-    () =>
-      debounce((searchQuery: string, searchSort: SortOption, searchCategory: string) => {
-        onSearch(searchQuery, searchSort, searchCategory);
-      }, DEBOUNCE_DELAY),
-    [onSearch]
-  );
+export default function SearchBar({
+  query,
+  sort,
+  category,
+  categories = [],
+  onChange,
+}: SearchBarProps) {
+  // The input is typed into faster than we want to search, so it keeps its
+  // own text and commits it to `onChange` after a pause. `query` is the
+  // committed value; the two only differ while the user is typing.
+  const [text, setText] = useState(query);
+  const [seenQuery, setSeenQuery] = useState(query);
+  if (query !== seenQuery) {
+    // The committed query changed outside the input (deep link, history
+    // navigation): show it. Surrounding whitespace is the one difference
+    // we tolerate, otherwise our own commit would eat a space being typed.
+    setSeenQuery(query);
+    if (query !== text.trim()) {
+      setText(query);
+    }
+  }
 
   useEffect(() => {
-    const trimmedQuery = query.trim();
-
-    if (trimmedQuery.length >= MIN_SEARCH_LENGTH) {
-      debouncedSearch(trimmedQuery, sort, category);
-    } else if (trimmedQuery.length === 0) {
-      debouncedSearch('', sort, category);
+    const trimmed = text.trim();
+    if (trimmed === query || !isSearchable(trimmed)) {
+      return undefined;
     }
+    const handle = window.setTimeout(() => {
+      onChange({ query: trimmed, sort, category });
+    }, DEBOUNCE_DELAY);
+    return () => window.clearTimeout(handle);
+  }, [text, query, sort, category, onChange]);
 
-    return () => {
-      debouncedSearch.cancel();
-    };
-  }, [query, sort, category, debouncedSearch]);
-
-  const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newSort = e.target.value as SortOption;
-    setSort(newSort);
+  /**
+   * Selects commit right away. A phrase still too short to search stays in
+   * the input, and the commit keeps the query the results already show.
+   */
+  const commitWith = (patch: Partial<SearchState>) => {
+    const trimmed = text.trim();
+    onChange({ query: isSearchable(trimmed) ? trimmed : query, sort, category, ...patch });
   };
 
   const handleClear = () => {
-    setQuery('');
+    setText('');
+    commitWith({ query: '' });
   };
+
+  const categoryOptions =
+    category.length > 0 && !categories.includes(category)
+      ? [...categories, category] // a URL may name a category the list does not (yet) know
+      : categories;
 
   return (
     <div className="search-bar">
       <input
         type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
         placeholder="Search videos by description..."
         className="search-input"
       />
-      {categories.length > 0 && (
+      {categoryOptions.length > 0 && (
         <select
           value={category}
-          onChange={(e) => setCategory(e.target.value)}
+          onChange={(e) => commitWith({ category: e.target.value })}
           className="category-select"
           aria-label="Category"
         >
           <option value="">All categories</option>
-          {categories.map((name) => (
+          {categoryOptions.map((name) => (
             <option key={name} value={name}>
               {name}
             </option>
           ))}
         </select>
       )}
-      <select value={sort} onChange={handleSortChange} className="sort-select">
-        <option value="date-desc">Newest first</option>
-        <option value="date-asc">Oldest first</option>
-        <option value="views-desc">Most views first</option>
-        <option value="views-asc">Least views first</option>
-        <option value="likes-desc">Most likes first</option>
-        <option value="likes-asc">Least likes first</option>
+      <select
+        value={sort}
+        onChange={(e) => commitWith({ sort: e.target.value as SortOption })}
+        className="sort-select"
+        aria-label="Sort"
+      >
+        {SORT_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
       </select>
-      {query && (
+      {text && (
         <button type="button" onClick={handleClear} className="clear-button">
           Clear
         </button>

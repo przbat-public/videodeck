@@ -1,275 +1,231 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { installFetchMock } from '../test/fetchMock';
 import { act } from 'react';
+import toast from 'react-hot-toast';
+import type { VideoListItem } from '@shared/api';
+import type { SearchState } from '../utils/searchUrlState';
+import { installFetchMock, jsonResponse } from '../test/fetchMock';
+import type { MockResponse } from '../test/fetchMock';
 import { useVideoSearch } from './useVideoSearch';
 
+vi.mock('react-hot-toast', () => ({
+  default: { error: vi.fn(), success: vi.fn() },
+}));
+
 const fetchMock = installFetchMock();
+
+const video = (baseName: string): VideoListItem => ({
+  baseName,
+  title: `Title ${baseName}`,
+  description: 'Description',
+  videoPath: `${baseName}.mp4`,
+  thumbnailPath: `${baseName}.webp`,
+  folderPath: '/videos',
+  comments: [],
+});
+
+const state = (overrides: Partial<SearchState> = {}): SearchState => ({
+  query: '',
+  sort: 'date-desc',
+  category: '',
+  ...overrides,
+});
+
+/** A response the test resolves by hand, to control the order replies arrive in */
+function deferred(): { promise: Promise<MockResponse>; resolve: (body: unknown) => void } {
+  let resolve!: (body: unknown) => void;
+  const promise = new Promise<MockResponse>((res) => {
+    resolve = (body) => res(jsonResponse(body));
+  });
+  return { promise, resolve };
+}
 
 describe('useVideoSearch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset fetch mock
     fetchMock.mockClear();
   });
 
-  it('should initialize with empty videos', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ videos: [] }),
-    });
-
+  it('starts idle and fetches nothing until asked', () => {
     const { result } = renderHook(() => useVideoSearch());
 
-    // Initially loading should be true because loadAll() is called in useEffect
+    expect(result.current).toMatchObject({
+      videos: [],
+      totalCount: 0,
+      loading: false,
+      error: null,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  describe('request URL', () => {
+    it.each<[string, SearchState, string]>([
+      ['the defaults', state(), '/api/videos/search?sort=date-desc'],
+      ['a query', state({ query: 'drone' }), '/api/videos/search?q=drone&sort=date-desc'],
+      ['a sort', state({ sort: 'views-desc' }), '/api/videos/search?sort=views-desc'],
+      ['a category', state({ category: 'fpv' }), '/api/videos/search?sort=date-desc&category=fpv'],
+      [
+        'everything at once',
+        state({ query: 'drone motor', sort: 'likes-asc', category: 'fpv' }),
+        '/api/videos/search?q=drone+motor&sort=likes-asc&category=fpv',
+      ],
+      [
+        'whitespace-padded values (trimmed)',
+        state({ query: '  drone ', category: ' fpv ' }),
+        '/api/videos/search?q=drone&sort=date-desc&category=fpv',
+      ],
+      [
+        'whitespace-only values (dropped)',
+        state({ query: '   ', category: '  ' }),
+        '/api/videos/search?sort=date-desc',
+      ],
+    ])('encodes %s', async (_label, input, expectedUrl) => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ videos: [], totalCount: 0 }));
+      const { result } = renderHook(() => useVideoSearch());
+
+      await act(() => result.current.search(input));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(expectedUrl);
+    });
+  });
+
+  it('exposes the videos and the total, with loading toggled around the request', async () => {
+    const reply = deferred();
+    fetchMock.mockReturnValueOnce(reply.promise);
+    const { result } = renderHook(() => useVideoSearch());
+
+    let pending: Promise<void>;
+    act(() => {
+      pending = result.current.search(state({ query: 'drone' }));
+    });
     expect(result.current.loading).toBe(true);
 
-    // Wait for loading to complete
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
+    reply.resolve({ videos: [video('a'), video('b')], totalCount: 42 });
+    await act(() => pending);
 
-    expect(result.current.videos).toEqual([]);
-    expect(result.current.error).toBeNull();
+    expect(result.current).toMatchObject({
+      videos: [video('a'), video('b')],
+      totalCount: 42,
+      loading: false,
+      error: null,
+    });
   });
 
-  it('should load all videos on mount', async () => {
-    const mockVideos = [
-      {
-        baseName: 'test1',
-        title: 'Test Video 1',
-        description: 'Description 1',
-        videoPath: 'test1.mp4',
-        thumbnailPath: 'test1.webp',
-        folderPath: '/test/videos',
-      },
-    ];
-
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ videos: mockVideos }),
-    });
-
+  it('tolerates a response without videos or a total', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}));
     const { result } = renderHook(() => useVideoSearch());
 
-    await waitFor(() => {
-      expect(result.current.videos).toEqual(mockVideos);
-    });
+    await act(() => result.current.search(state()));
 
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?sort=date-desc');
+    expect(result.current).toMatchObject({ videos: [], totalCount: 0, loading: false });
   });
 
-  it('should search videos with query', async () => {
-    const mockVideos = [
-      {
-        baseName: 'test1',
-        title: 'Test Video 1',
-        description: 'Test description',
-        videoPath: 'test1.mp4',
-        thumbnailPath: 'test1.webp',
-        folderPath: '/test/videos',
-      },
-    ];
-
+  it('reports a failed request and clears the previous results', async () => {
     fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ videos: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ videos: mockVideos }),
-      });
-
-    const { result } = renderHook(() => useVideoSearch());
-
-    await waitFor(() => {
-      expect(result.current.videos).toEqual([]);
-    });
-
-    await act(async () => {
-      await result.current.search('test');
-    });
-
-    await waitFor(() => {
-      expect(result.current.videos).toEqual(mockVideos);
-    });
-
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?q=test&sort=date-desc');
-  });
-
-  it('should handle search error', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ videos: [] }),
-      })
+      .mockResolvedValueOnce(jsonResponse({ videos: [video('a')], totalCount: 1 }))
       .mockRejectedValueOnce(new Error('Network error'));
-
     const { result } = renderHook(() => useVideoSearch());
 
-    await waitFor(() => {
-      expect(result.current.videos).toEqual([]);
-    });
+    await act(() => result.current.search(state()));
+    expect(result.current.videos).toHaveLength(1);
 
-    await act(async () => {
-      await result.current.search('test');
-    });
+    await act(() => result.current.search(state({ query: 'drone' })));
 
-    await waitFor(() => {
-      expect(result.current.error).toBe('Network error');
-      expect(result.current.videos).toEqual([]);
-    });
+    expect(result.current).toMatchObject({ videos: [], totalCount: 0, error: 'Network error' });
+    expect(toast.error).toHaveBeenCalledWith('Failed to search videos: Network error');
   });
 
-  it('should handle non-ok response', async () => {
+  it('treats a non-2xx response as a failure', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
+    const { result } = renderHook(() => useVideoSearch());
+
+    await act(() => result.current.search(state()));
+
+    expect(result.current.error).toBe('Failed to search videos');
+  });
+
+  it('recovers from an error on the next successful search', async () => {
     fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ videos: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 500,
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockResolvedValueOnce(jsonResponse({ videos: [video('a')], totalCount: 1 }));
+    const { result } = renderHook(() => useVideoSearch());
+
+    await act(() => result.current.search(state()));
+    await act(() => result.current.search(state()));
+
+    expect(result.current).toMatchObject({ videos: [video('a')], totalCount: 1, error: null });
+  });
+
+  describe('overlapping searches', () => {
+    it('lets only the newest search write the results, however late the older reply is', async () => {
+      const first = deferred();
+      const second = deferred();
+      fetchMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+      const { result } = renderHook(() => useVideoSearch());
+
+      let firstDone: Promise<void>;
+      let secondDone: Promise<void>;
+      act(() => {
+        firstDone = result.current.search(state({ category: 'lego' }));
+        secondDone = result.current.search(state({ category: 'fpv' }));
       });
 
-    const { result } = renderHook(() => useVideoSearch());
-
-    await waitFor(() => {
-      expect(result.current.videos).toEqual([]);
-    });
-
-    await act(async () => {
-      await result.current.search('test');
-    });
-
-    await waitFor(() => {
-      expect(result.current.error).toBe('Failed to search videos');
-    });
-  });
-
-  it('should trim query before searching', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ videos: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ videos: [] }),
+      second.resolve({ videos: [video('fpv')], totalCount: 1 });
+      await act(() => secondDone);
+      expect(result.current).toMatchObject({
+        videos: [video('fpv')],
+        totalCount: 1,
+        loading: false,
       });
 
-    const { result } = renderHook(() => useVideoSearch());
+      first.resolve({ videos: [video('lego-1'), video('lego-2')], totalCount: 2 });
+      await act(() => firstDone);
 
-    await waitFor(() => {
-      expect(result.current.videos).toEqual([]);
+      expect(result.current).toMatchObject({
+        videos: [video('fpv')],
+        totalCount: 1,
+        loading: false,
+      });
     });
 
-    await act(async () => {
-      await result.current.search('  test  ');
-    });
+    it('ignores a failure of a search that has already been superseded', async () => {
+      fetchMock
+        .mockRejectedValueOnce(new Error('slow one died'))
+        .mockResolvedValueOnce(jsonResponse({ videos: [video('fresh')], totalCount: 1 }));
+      const { result } = renderHook(() => useVideoSearch());
 
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?q=test&sort=date-desc');
-  });
-
-  it('should load all videos when query is empty', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ videos: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ videos: [] }),
+      await act(async () => {
+        const stale = result.current.search(state({ query: 'old' }));
+        const fresh = result.current.search(state({ query: 'new' }));
+        await Promise.all([stale, fresh]);
       });
 
-    const { result } = renderHook(() => useVideoSearch());
-
-    await waitFor(() => {
-      expect(result.current.videos).toEqual([]);
+      expect(result.current).toMatchObject({ videos: [video('fresh')], error: null });
+      expect(toast.error).not.toHaveBeenCalled();
     });
 
-    await act(async () => {
-      await result.current.search('');
-    });
+    it('keeps loading until the newest search settles, even after an older one has', async () => {
+      const first = deferred();
+      const second = deferred();
+      fetchMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+      const { result } = renderHook(() => useVideoSearch());
 
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?sort=date-desc');
-  });
-
-  it('should load all videos when query is not provided', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ videos: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ videos: [] }),
+      let firstDone: Promise<void>;
+      act(() => {
+        firstDone = result.current.search(state());
+        void result.current.search(state({ sort: 'views-desc' }));
       });
 
-    const { result } = renderHook(() => useVideoSearch());
+      first.resolve({ videos: [video('old')], totalCount: 1 });
+      await act(() => firstDone);
 
-    await waitFor(() => {
+      expect(result.current.loading).toBe(true);
       expect(result.current.videos).toEqual([]);
+
+      second.resolve({ videos: [video('new')], totalCount: 1 });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.videos).toEqual([video('new')]);
     });
-
-    await act(async () => {
-      await result.current.search();
-    });
-
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?sort=date-desc');
-  });
-
-  it('should include sort parameter when searching', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ videos: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ videos: [] }),
-      });
-
-    const { result } = renderHook(() => useVideoSearch());
-
-    await waitFor(() => {
-      expect(result.current.videos).toEqual([]);
-    });
-
-    await act(async () => {
-      await result.current.search('test', 'views-desc');
-    });
-
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/search?q=test&sort=views-desc');
-  });
-
-  it('should include the category and expose it, ignoring a blank one', async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({ videos: [], totalCount: 0 }),
-    });
-
-    const { result } = renderHook(() => useVideoSearch());
-
-    await waitFor(() => {
-      expect(result.current.category).toBe('');
-    });
-
-    await act(async () => {
-      await result.current.search('test', 'date-desc', '  fpv  ');
-    });
-
-    expect(globalThis.fetch).toHaveBeenLastCalledWith(
-      '/api/videos/search?q=test&sort=date-desc&category=fpv'
-    );
-    expect(result.current.category).toBe('fpv');
-
-    await act(async () => {
-      await result.current.search('test', 'date-desc', '   ');
-    });
-
-    expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/videos/search?q=test&sort=date-desc');
-    expect(result.current.category).toBe('');
   });
 });

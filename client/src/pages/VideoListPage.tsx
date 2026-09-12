@@ -1,41 +1,34 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useVideoSearch } from '../hooks/useVideoSearch';
 import { useCacheRefresh } from '../hooks/useCacheRefresh';
 import { useCategories } from '../hooks/useCategories';
 import { useRecreateIndices } from '../hooks/useRecreateIndices';
-import type { SortOption } from '@shared/api';
+import { useSearchUrlState } from '../hooks/useSearchUrlState';
 import SearchBar from '../components/SearchBar';
 import VideoList from '../components/VideoList';
 
 export default function VideoListPage(): JSX.Element {
-  const {
-    videos,
-    totalCount,
-    loading: videoLoading,
-    query,
-    sort,
-    category,
-    search,
-  } = useVideoSearch();
+  const { searchState, setSearchState } = useSearchUrlState();
+  const { query, sort, category } = searchState;
+  const { videos, totalCount, loading: videoLoading, search } = useVideoSearch();
   const { loading: refreshLoading, refreshCache } = useCacheRefresh();
   const { categories } = useCategories();
   const { loading: recreateIndicesLoading, recreateIndices } = useRecreateIndices();
 
-  const handleSearch = useCallback(
-    async (query: string, sort: SortOption, category: string): Promise<void> => {
-      await search(query, sort, category);
-    },
-    [search]
-  );
+  // The URL drives the results: a deep link, a reload and a change made in
+  // the search bar all arrive here the same way.
+  useEffect(() => {
+    void search({ query, sort, category });
+  }, [search, query, sort, category]);
 
   const handleRefreshCache = useCallback(async (): Promise<void> => {
     // refreshCache resolves when the server-side reindex is over
     await refreshCache();
-    await search(query || '', sort, category);
+    await search({ query, sort, category });
   }, [refreshCache, search, query, sort, category]);
 
   const handleReload = useCallback(async (): Promise<void> => {
-    await search(query || '', sort, category);
+    await search({ query, sort, category });
   }, [search, query, sort, category]);
 
   const handleRecreateIndices = useCallback(async (): Promise<void> => {
@@ -83,7 +76,13 @@ export default function VideoListPage(): JSX.Element {
         </div>
       </div>
 
-      <SearchBar onSearch={handleSearch} categories={categories} />
+      <SearchBar
+        query={query}
+        sort={sort}
+        category={category}
+        categories={categories}
+        onChange={setSearchState}
+      />
 
       {videoLoading && videos.length === 0 ? (
         <div className="loading">
