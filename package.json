@@ -9,10 +9,11 @@
     "dev:client": "cd client && npm run dev",
     "build:server": "cd server && npm run build",
     "build:client": "cd client && npm run build",
-    "lint": "cd server && npm run lint && cd ../client && npm run lint",
-    "lint:fix": "cd server && npm run lint:fix && cd ../client && npm run lint:fix",
-    "format": "cd server && npm run format && cd ../client && npm run format",
-    "format:check": "cd server && npm run format:check && cd ../client && npm run format:check",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"{client/src,server/src,shared,chrome-extension}/**/*.{ts,tsx,js,json,css}\"",
+    "format:check": "prettier --check \"{client/src,server/src,shared,chrome-extension}/**/*.{ts,tsx,js,json,css}\"",
+    "typecheck": "cd server && npm run typecheck && cd ../client && npm run typecheck",
     "test": "cd server && npm run test && cd ../client && npm run test:run",
     "test:watch": "cd server && npm run test:watch",
     "test:coverage": "cd server && npm run test:coverage && cd ../client && npm run test:coverage"
@@ -21,6 +22,17 @@
     "node": "22.x"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@eslint-react/eslint-plugin": "^5.19.0",
+    "@eslint/js": "^10.0.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.6",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0"
   }
 }
