@@ -340,6 +340,7 @@ video-search-app/
   - Po liczbie wyświetleń (malejąco/rosnąco)
   - Po liczbie polubień (malejąco/rosnąco)
 - **Filtrowanie po kategorii** - każdy kanał ma w swoim `config.json` kategorię (np. `fpv`, `lego`, `psychology`); wybór kategorii zawęża wyszukiwanie do jej kanałów
+- **Wyszukiwanie w URL** - fraza, sortowanie i kategoria siedzą w adresie strony listy, np. `/videos?q=motor&sort=views-desc&category=fpv`. Taki link można zapisać albo wysłać: po otwarciu formularz i wyniki odzwierciedlają parametry. Wartości domyślne (brak frazy, `date-desc`, wszystkie kategorie) nie trafiają do adresu, a nieznany `sort` wraca do domyślnego. Strona podmienia swój wpis w historii zamiast dokładać nowe, więc "wstecz" wychodzi z listy, a nie cofa filtry.
 - **Responsywny design** - dostosowanie do różnych rozmiarów ekranów
 
 ## API Endpoints
