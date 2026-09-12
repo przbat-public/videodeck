@@ -8,8 +8,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const videoUrl = document.getElementById('videoUrl');
   const status = document.getElementById('status');
   const progressContainer = document.getElementById('progressContainer');
-  const progressFill = document.getElementById('progressFill');
-  const progressText = document.getElementById('progressText');
   const configWarning = document.getElementById('configWarning');
   const optionsLink = document.getElementById('optionsLink');
   const noVideo = document.getElementById('noVideo');
@@ -92,7 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           serverUrl: config.serverUrl,
           folderPath: config.folderPath,
         },
-        (response) => {
+        () => {
           if (chrome.runtime.lastError) {
             showStatus('error', chrome.runtime.lastError.message);
           } else {
@@ -119,9 +117,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Listen for download progress updates
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((message) => {
     if (message.action === 'downloadStart') {
-      addDownloadToUI(message.downloadId, message.videoTitle || 'Wideo');
       loadActiveDownloads();
     } else if (message.action === 'downloadProgress') {
       updateDownloadProgress(message.downloadId, message.progress, message.message);
@@ -221,12 +218,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     return item;
   }
 
-  function addDownloadToUI(downloadId, videoTitle) {
-    // This will be called when a new download starts
-    // The actual rendering happens in loadActiveDownloads
-    loadActiveDownloads();
-  }
-
   function updateDownloadProgress(downloadId, progress, message) {
     const download = popupDownloads.get(downloadId);
     if (download) {
@@ -256,23 +247,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     status.className = `status ${type}`;
     status.textContent = message;
     status.style.display = 'block';
-  }
-
-  let currentProgress = 0;
-
-  function updateProgress(percent, message) {
-    // Only update progress if percent is provided
-    if (percent !== undefined && percent !== null) {
-      currentProgress = Math.min(100, Math.max(0, percent));
-      progressFill.style.width = `${currentProgress}%`;
-    }
-
-    // Update text with message or current progress
-    if (message) {
-      progressText.textContent = message;
-      showStatus('info', message);
-    } else if (percent !== undefined && percent !== null) {
-      progressText.textContent = `${currentProgress}%`;
-    }
   }
 });

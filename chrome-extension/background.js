@@ -21,21 +21,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     updateBadge();
     notifyDownloadUpdate(downloadId, 'start', { videoTitle });
 
-    downloadVideo(
-      downloadId,
-      message.videoUrl,
-      message.serverUrl,
-      message.folderPath,
-      videoTitle
-    ).catch((error) => {
-      activeDownloads.delete(downloadId);
-      updateBadge();
-      chrome.runtime.sendMessage({
-        action: 'downloadError',
-        downloadId: downloadId,
-        error: error.message,
-      });
-    });
+    downloadVideo(downloadId, message.videoUrl, message.serverUrl, message.folderPath).catch(
+      (error) => {
+        activeDownloads.delete(downloadId);
+        updateBadge();
+        chrome.runtime.sendMessage({
+          action: 'downloadError',
+          downloadId: downloadId,
+          error: error.message,
+        });
+      }
+    );
     return true; // Keep channel open for async response
   } else if (message.action === 'getActiveDownloads') {
     sendResponse({
@@ -60,7 +56,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-async function downloadVideo(downloadId, videoUrl, serverUrl, folderPath, videoTitle) {
+async function downloadVideo(downloadId, videoUrl, serverUrl, folderPath) {
   const apiUrl = `${serverUrl}/api/folder/download-video`;
 
   // Check if download was cancelled
