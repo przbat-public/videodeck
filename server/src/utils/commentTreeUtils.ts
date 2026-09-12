@@ -1,17 +1,21 @@
-import { VideoComment, CommentWithReplies } from '../types';
+import type { CommentWithReplies, VideoComment } from '@shared/api';
 
 /**
  * Reconstructs nested comment structure from flat array.
  * Comments may be stored flat with 'parent' field instead of nested 'replies'.
- * 
+ *
  * @param comments - Array of comments (either flat with 'parent' field or already nested with 'replies')
  * @returns Array of root comments with nested replies, sorted by like_count (descending)
  */
-export const buildCommentTree = (comments: (VideoComment | CommentWithReplies)[]): CommentWithReplies[] => {
+export const buildCommentTree = (
+  comments: (VideoComment | CommentWithReplies)[]
+): CommentWithReplies[] => {
   if (!comments || comments.length === 0) return [];
 
   // Check if comments already have nested structure
-  const hasNestedReplies = comments.some((c) => 'replies' in c && c.replies && Array.isArray(c.replies));
+  const hasNestedReplies = comments.some(
+    (c) => 'replies' in c && c.replies && Array.isArray(c.replies)
+  );
   if (hasNestedReplies) {
     // Sort root comments by like_count (descending - most likes first)
     const sorted = [...comments].sort((a, b) => {
@@ -29,7 +33,7 @@ export const buildCommentTree = (comments: (VideoComment | CommentWithReplies)[]
   // First pass: create map and prepare comments
   comments.forEach((comment) => {
     if (!comment.id) return; // Skip comments without id
-    
+
     const processed: CommentWithReplies = {
       ...comment,
       replies: [],
@@ -41,7 +45,7 @@ export const buildCommentTree = (comments: (VideoComment | CommentWithReplies)[]
   // Second pass: build tree structure
   comments.forEach((comment) => {
     if (!comment.id) return; // Skip comments without id
-    
+
     const processed = commentMap.get(comment.id);
     if (!processed) return;
 
@@ -72,4 +76,3 @@ export const buildCommentTree = (comments: (VideoComment | CommentWithReplies)[]
 
   return rootComments;
 };
-

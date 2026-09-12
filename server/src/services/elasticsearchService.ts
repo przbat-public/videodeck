@@ -1,33 +1,58 @@
 import { Client } from '@elastic/elasticsearch';
-import { VideoListItem, SortOption } from '../types';
+import type { estypes } from '@elastic/elasticsearch';
+import type { SortOption, VideoListItem } from '@shared/api';
 import { getVideosFolderPaths, ELASTICSEARCH_URL } from '../config';
 import { createHash } from 'crypto';
 
+/**
+ * Index layout
+ *
+ * Every folder is searched through an alias `videos_<hash>` that points at
+ * exactly one physical index `videos_<hash>_<timestamp>`. A reindex writes
+ * into a brand-new physical index and swaps the alias atomically when it is
+ * done, so search keeps working during the (long) scan and a crash half-way
+ * leaves the previous index untouched.
+ *
+ * Comments are stored as one `commentsText` field for full-text search only;
+ * the comment tree is read from `.info.json` on demand by the details endpoint.
+ */
+
 const INDEX_PREFIX = 'videos';
+
+/** Shape of a document stored in Elasticsearch */
+export type VideoDocument = Omit<VideoListItem, 'comments'> & {
+  commentsText?: string;
+};
 
 let client: Client | null = null;
 
 /**
- * Generate a safe index name from folder path using hash
- * Uses SHA-256 hash to create a consistent, safe index name
+ * Alias name for a folder (stable, derived from the folder path)
  */
 export function getIndexNameFromFolderPath(folderPath: string): string {
-  // Create SHA-256 hash of the folder path
   const hash = createHash('sha256').update(folderPath).digest('hex').substring(0, 16);
   return `${INDEX_PREFIX}_${hash}`;
 }
 
 /**
- * Get index names for searching across currently configured folders
+ * Name for a new physical index behind the folder alias
+ */
+export function buildIndexVersionName(folderPath: string, now: Date = new Date()): string {
+  const stamp = now
+    .toISOString()
+    .replace(/[-:.TZ]/g, '')
+    .slice(0, 17);
+  return `${getIndexNameFromFolderPath(folderPath)}_${stamp}`;
+}
+
+/**
+ * Alias names for searching across currently configured folders
  */
 function getIndexPattern(): string | string[] {
   const folderPaths = getVideosFolderPaths();
   return folderPaths.map((folderPath) => getIndexNameFromFolderPath(folderPath));
 }
 
-/**
- * Initialize Elasticsearch client
- */
 export const getElasticsearchClient = (): Client => {
   if (!client) {
     client = new Client({
@@ -37,210 +62,337 @@ export const getElasticsearchClient = (): Client => {
   return client;
 };
 
+/** Convert a scanned video into the stored document */
+export function toDocument(video: VideoListItem): VideoDocument {
+  const { comments, ...rest } = video;
+  const commentsText = (comments ?? [])
+    .map((comment) => comment.text)
+    .filter((text): text is string => typeof text === 'string' && text.length > 0)
+    .join('\n');
+  return commentsText.length > 0 ? { ...rest, commentsText } : rest;
+}
+
+/** Convert a stored document back into the API shape */
+export function fromDocument(document: VideoDocument): VideoListItem {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { commentsText, ...rest } = document;
+  return { ...rest, comments: [] };
+}
+
+const INDEX_MAPPINGS = {
+  properties: {
+    baseName: { type: 'keyword' },
+    videoId: { type: 'keyword' },
+    title: {
+      type: 'text',
+      analyzer: 'standard',
+      fields: {
+        keyword: { type: 'keyword' },
+      },
+    },
+    description: {
+      type: 'text',
+      analyzer: 'standard',
+    },
+    videoPath: { type: 'keyword' },
+    thumbnailPath: { type: 'keyword' },
+    subtitlePath: { type: 'keyword' },
+    folderPath: { type: 'keyword' },
+    uploadDate: { type: 'keyword' },
+    viewCount: { type: 'integer' },
+    likeCount: { type: 'integer' },
+    channelName: {
+      type: 'text',
+      fields: {
+        keyword: { type: 'keyword' },
+      },
+    },
+    commentsText: {
+      type: 'text',
+      analyzer: 'standard',
+    },
+  },
+} as const;
+
+// ---------------------------------------------------------------------------
+// Index versions and aliases
+// ---------------------------------------------------------------------------
+
 /**
- * Create the videos index for a specific folder path
+ * Create a fresh, empty physical index for the folder (not yet visible
+ * through the alias). Returns its name.
  */
-export async function createIndex(folderPath: string): Promise<void> {
+export async function createIndexVersion(folderPath: string): Promise<string> {
   const esClient = getElasticsearchClient();
-  const indexName = getIndexNameFromFolderPath(folderPath);
-
-  const indexExists = await esClient.indices.exists({ index: indexName });
-
-  if (indexExists) {
-    console.log(`Index ${indexName} already exists`);
-    return;
-  }
+  const indexName = buildIndexVersionName(folderPath);
 
   await esClient.indices.create({
     index: indexName,
     settings: {
       index: {
-        mapping: {
-          nested_objects: {
-            limit: 100000, // Increase limit for videos with many comments
-          },
-        },
+        number_of_replicas: 0,
       },
     },
-    mappings: {
-      properties: {
-        baseName: { type: 'keyword' },
-        title: {
-          type: 'text',
-          analyzer: 'standard',
-          fields: {
-            keyword: { type: 'keyword' },
-          },
-        },
-        description: {
-          type: 'text',
-          analyzer: 'standard',
-        },
-        videoPath: { type: 'keyword' },
-        thumbnailPath: { type: 'keyword' },
-        folderPath: { type: 'keyword' },
-        uploadDate: { type: 'keyword' },
-        viewCount: { type: 'integer' },
-        likeCount: { type: 'integer' },
-        channelName: {
-          type: 'text',
-          fields: {
-            keyword: { type: 'keyword' },
-          },
-        },
-        comments: {
-          type: 'nested',
-          properties: {
-            id: { type: 'keyword' },
-            parent: { type: 'keyword' },
-            text: { type: 'text', analyzer: 'standard' },
-            like_count: { type: 'integer' },
-            author_id: { type: 'keyword' },
-            author: { type: 'text' },
-            author_thumbnail: { type: 'keyword' },
-            author_is_uploader: { type: 'boolean' },
-            author_is_verified: { type: 'boolean' },
-            author_url: { type: 'keyword' },
-            is_favorited: { type: 'boolean' },
-            _time_text: { type: 'keyword' },
-            timestamp: { type: 'long' },
-            is_pinned: { type: 'boolean' },
-          },
-        },
-      },
-    },
+    mappings: INDEX_MAPPINGS,
   });
 
-  console.log(`Index ${indexName} created successfully for folder: ${folderPath}`);
+  console.log(`Index ${indexName} created for folder: ${folderPath}`);
+  return indexName;
 }
 
 /**
- * Create indices for all configured folders
+ * Physical indices currently behind the folder alias (empty when none).
  */
-export async function createAllIndices(): Promise<void> {
-  const folderPaths = getVideosFolderPaths();
-  
-  for (const folderPath of folderPaths) {
-    await createIndex(folderPath);
+export async function getIndexVersions(folderPath: string): Promise<string[]> {
+  const esClient = getElasticsearchClient();
+  const alias = getIndexNameFromFolderPath(folderPath);
+  try {
+    const response = await esClient.indices.getAlias({ name: alias });
+    return Object.keys(response);
+  } catch (error) {
+    if ((error as { meta?: { statusCode?: number } }).meta?.statusCode === 404) {
+      return [];
+    }
+    throw error;
   }
 }
 
 /**
- * Index a single video
+ * Every physical index created for the folder — behind the alias or orphaned
+ * by a reindex that died before promoting/discarding it.
  */
-export async function indexVideo(video: VideoListItem): Promise<void> {
+export async function listAllIndexVersions(folderPath: string): Promise<string[]> {
   const esClient = getElasticsearchClient();
-  const indexName = getIndexNameFromFolderPath(video.folderPath);
-
-  // Use videoId as ID if available, otherwise fallback to baseName
-  const documentId = video.videoId || video.baseName;
-
-  await esClient.index({
-    index: indexName,
-    id: documentId,
-    document: video,
+  const response = await esClient.indices.get({
+    index: `${getIndexNameFromFolderPath(folderPath)}_*`,
+    ignore_unavailable: true,
+    allow_no_indices: true,
+    features: ['aliases'],
   });
+  return Object.keys(response);
 }
 
 /**
- * Bulk index videos (videos are grouped by folderPath and indexed to appropriate indices)
+ * Point the folder alias at `indexName` and drop every other physical index
+ * of the folder (the previous version and any orphans). Also migrates the
+ * legacy layout where a concrete index carried the alias name.
  */
-export async function bulkIndexVideos(videos: VideoListItem[]): Promise<void> {
+export async function promoteIndexVersion(folderPath: string, indexName: string): Promise<void> {
   const esClient = getElasticsearchClient();
+  const alias = getIndexNameFromFolderPath(folderPath);
 
-  if (videos.length === 0) {
+  await esClient.indices.refresh({ index: indexName });
+
+  const previous = (await getIndexVersions(folderPath)).filter((name) => name !== indexName);
+
+  const legacyIndexExists =
+    previous.length === 0 &&
+    (await esClient.indices.exists({ index: alias })) &&
+    !(await esClient.indices.existsAlias({ name: alias }));
+  if (legacyIndexExists) {
+    console.log(`Removing legacy index ${alias} to make room for the alias`);
+    await esClient.indices.delete({ index: alias });
+  }
+
+  await esClient.indices.updateAliases({
+    actions: [
+      ...previous.map((index) => ({ remove: { index, alias } })),
+      { add: { index: indexName, alias } },
+    ],
+  });
+
+  const stale = new Set([
+    ...previous,
+    ...(await listAllIndexVersions(folderPath)).filter((name) => name !== indexName),
+  ]);
+  for (const index of stale) {
+    await esClient.indices.delete({ index, ignore_unavailable: true });
+    console.log(`Index ${index} deleted`);
+  }
+
+  console.log(`Alias ${alias} now points at ${indexName} for folder: ${folderPath}`);
+}
+
+/**
+ * Delete a physical index that never got promoted (failed reindex).
+ */
+export async function discardIndexVersion(indexName: string): Promise<void> {
+  const esClient = getElasticsearchClient();
+  await esClient.indices.delete({ index: indexName, ignore_unavailable: true });
+  console.log(`Index ${indexName} discarded`);
+}
+
+/**
+ * Make sure the folder has a searchable (possibly empty) index behind its
+ * alias. No-op when the alias already exists.
+ */
+export async function createIndex(folderPath: string): Promise<void> {
+  const esClient = getElasticsearchClient();
+  const alias = getIndexNameFromFolderPath(folderPath);
+
+  if (await esClient.indices.existsAlias({ name: alias })) {
     return;
   }
 
-  // Group videos by folderPath
-  const videosByFolder = new Map<string, VideoListItem[]>();
-  for (const video of videos) {
-    const folderVideos = videosByFolder.get(video.folderPath) || [];
-    folderVideos.push(video);
-    videosByFolder.set(video.folderPath, folderVideos);
+  const indexName = await createIndexVersion(folderPath);
+  await promoteIndexVersion(folderPath, indexName);
+}
+
+export async function createAllIndices(): Promise<void> {
+  for (const folderPath of getVideosFolderPaths()) {
+    await createIndex(folderPath);
+  }
+}
+
+/**
+ * Drop the folder's alias and every physical index behind it (including a
+ * legacy concrete index with the alias name).
+ */
+export async function deleteIndex(folderPath: string): Promise<void> {
+  const esClient = getElasticsearchClient();
+  const alias = getIndexNameFromFolderPath(folderPath);
+
+  const versions = await getIndexVersions(folderPath);
+  for (const index of versions) {
+    await esClient.indices.delete({ index, ignore_unavailable: true });
+    console.log(`Index ${index} deleted`);
+  }
+  if (versions.length === 0 && (await esClient.indices.exists({ index: alias }))) {
+    await esClient.indices.delete({ index: alias });
+    console.log(`Legacy index ${alias} deleted`);
+  }
+}
+
+/**
+ * Replace the folder's index with a fresh empty one (current mapping).
+ * Documents are lost — run a reindex afterwards.
+ */
+export async function recreateIndex(folderPath: string): Promise<void> {
+  const indexName = await createIndexVersion(folderPath);
+  await promoteIndexVersion(folderPath, indexName);
+  console.log(`Index recreated for folder: ${folderPath}`);
+}
+
+export async function deleteAllIndices(): Promise<void> {
+  for (const folderPath of getVideosFolderPaths()) {
+    await deleteIndex(folderPath);
+  }
+}
+
+export async function recreateAllIndices(): Promise<void> {
+  for (const folderPath of getVideosFolderPaths()) {
+    await recreateIndex(folderPath);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Writing documents
+// ---------------------------------------------------------------------------
+
+export interface BulkIndexOptions {
+  /** Physical index to write into; defaults to each video's folder alias */
+  index?: string;
+  /** Refresh the target after writing (default true) */
+  refresh?: boolean;
+}
+
+/**
+ * Index a single video through its folder alias (upsert by video id).
+ */
+export async function indexVideo(video: VideoListItem): Promise<void> {
+  const esClient = getElasticsearchClient();
+  await createIndex(video.folderPath);
+
+  await esClient.index({
+    index: getIndexNameFromFolderPath(video.folderPath),
+    id: video.videoId || video.baseName,
+    document: toDocument(video),
+    refresh: true,
+  });
+}
+
+/**
+ * Bulk index videos. With `options.index` everything goes into that physical
+ * index (used by reindex); otherwise videos are grouped by folder and written
+ * through the folder aliases.
+ */
+export async function bulkIndexVideos(
+  videos: VideoListItem[],
+  options: BulkIndexOptions = {}
+): Promise<void> {
+  if (videos.length === 0) {
+    return;
+  }
+  const refresh = options.refresh ?? true;
+
+  const targets = new Map<string, VideoListItem[]>();
+  if (options.index) {
+    targets.set(options.index, videos);
+  } else {
+    for (const video of videos) {
+      const indexName = getIndexNameFromFolderPath(video.folderPath);
+      const group = targets.get(indexName) || [];
+      group.push(video);
+      targets.set(indexName, group);
+    }
+    for (const video of videos) {
+      await createIndex(video.folderPath);
+    }
   }
 
-  // Index each folder's videos separately
-  for (const [folderPath, folderVideos] of videosByFolder) {
-    const indexName = getIndexNameFromFolderPath(folderPath);
-    
-    // Ensure index exists before indexing
-    await createIndex(folderPath);
-    
-    const operations = folderVideos.flatMap((video) => [
-      { index: { _index: indexName, _id: video.videoId || video.baseName } },
-      video,
-    ]);
+  for (const [indexName, group] of targets) {
+    await bulkIndexDocuments(indexName, group.map(toDocument), refresh);
+  }
+}
 
-    const response = await esClient.bulk({ operations });
+/**
+ * Write already-flattened documents into one index with a single `_bulk`
+ * request. Callers are responsible for keeping the batch under
+ * Elasticsearch's `http.max_content_length` (100 MB by default).
+ */
+export async function bulkIndexDocuments(
+  indexName: string,
+  documents: VideoDocument[],
+  refresh = true
+): Promise<void> {
+  if (documents.length === 0) {
+    return;
+  }
+  const esClient = getElasticsearchClient();
 
-    if (response.errors) {
-      const errors = response.items
-        .filter((item: any) => item.index?.error)
-        .map((item: any) => item.index?.error);
-      console.error(`Some videos failed to index in ${indexName}:`, errors);
-    } else {
-      console.log(`Successfully indexed ${folderVideos.length} videos to ${indexName}`);
-    }
+  const operations = documents.flatMap((document) => [
+    { index: { _index: indexName, _id: document.videoId || document.baseName } },
+    document,
+  ]);
 
-    // Refresh the index to make documents searchable immediately
+  const response = await esClient.bulk({ operations });
+
+  if (response.errors) {
+    const errors = response.items
+      .filter((item) => item.index?.error)
+      .map((item) => `${item.index?._id}: ${item.index?.error?.reason ?? 'unknown error'}`);
+    console.error(`${errors.length} videos failed to index in ${indexName}:`, errors.slice(0, 5));
+    throw new Error(`Bulk indexing failed for ${errors.length} of ${documents.length} videos`);
+  }
+
+  if (refresh) {
     await esClient.indices.refresh({ index: indexName });
   }
 }
 
 /**
- * Delete the videos index for a specific folder (useful for reindexing)
+ * Rough size of the serialized document — used to keep bulk requests small
+ * without serializing twice.
  */
-export async function deleteIndex(folderPath: string): Promise<void> {
-  const esClient = getElasticsearchClient();
-  const indexName = getIndexNameFromFolderPath(folderPath);
-
-  const indexExists = await esClient.indices.exists({ index: indexName });
-
-  if (indexExists) {
-    await esClient.indices.delete({ index: indexName });
-    console.log(`Index ${indexName} deleted successfully`);
-  }
+export function estimateDocumentBytes(document: VideoDocument): number {
+  return (
+    (document.commentsText?.length ?? 0) +
+    (document.description?.length ?? 0) +
+    (document.title?.length ?? 0) +
+    512
+  );
 }
 
-/**
- * Recreate an index with updated settings (deletes and recreates)
- * Useful when index settings need to be updated (e.g., nested_objects.limit)
- * Note: This will delete all documents in the index - reindexing is required after calling this
- */
-export async function recreateIndex(folderPath: string): Promise<void> {
-  await deleteIndex(folderPath);
-  await createIndex(folderPath);
-  console.log(`Index recreated for folder: ${folderPath}`);
-}
-
-/**
- * Delete all video indices (useful for reindexing)
- */
-export async function deleteAllIndices(): Promise<void> {
-  const folderPaths = getVideosFolderPaths();
-  
-  for (const folderPath of folderPaths) {
-    await deleteIndex(folderPath);
-  }
-}
-
-/**
- * Recreate all indices with updated settings (deletes and recreates)
- * Useful when index settings need to be updated (e.g., nested_objects.limit)
- * Note: This will delete all documents in all indices - reindexing is required after calling this
- */
-export async function recreateAllIndices(): Promise<void> {
-  const folderPaths = getVideosFolderPaths();
-  
-  for (const folderPath of folderPaths) {
-    await recreateIndex(folderPath);
-  }
-}
-
-/**
- * Delete all videos from a specific folder's index
- */
 export async function deleteAllVideosFromFolder(folderPath: string): Promise<void> {
   const esClient = getElasticsearchClient();
   const indexName = getIndexNameFromFolderPath(folderPath);
@@ -255,21 +407,17 @@ export async function deleteAllVideosFromFolder(folderPath: string): Promise<voi
   await esClient.indices.refresh({ index: indexName });
 }
 
-/**
- * Delete all videos from all indices
- */
 export async function deleteAllVideos(): Promise<void> {
-  const folderPaths = getVideosFolderPaths();
-  
-  for (const folderPath of folderPaths) {
+  for (const folderPath of getVideosFolderPaths()) {
     await deleteAllVideosFromFolder(folderPath);
   }
 }
 
-/**
- * Build Elasticsearch sort options from SortOption
- */
-function buildSortOptions(sortOption: SortOption): any[] {
+// ---------------------------------------------------------------------------
+// Reading
+// ---------------------------------------------------------------------------
+
+function buildSortOptions(sortOption: SortOption): estypes.SortCombinations[] {
   switch (sortOption) {
     case 'date-desc':
       return [{ uploadDate: { order: 'desc', missing: '_last' } }];
@@ -288,6 +436,8 @@ function buildSortOptions(sortOption: SortOption): any[] {
   }
 }
 
+export const SEARCH_FIELDS = ['baseName^4', 'title^3', 'description^2', 'commentsText'];
+
 /**
  * Search videos with query and sorting across all folders
  */
@@ -297,54 +447,28 @@ export async function searchVideos(
 ): Promise<VideoListItem[]> {
   const esClient = getElasticsearchClient();
 
-  // Build search query
-  let searchQuery: any = { match_all: {} };
+  let searchQuery: Record<string, unknown> = { match_all: {} };
 
   if (query && query.trim().length > 0) {
-    const searchTerm = query.trim();
     searchQuery = {
-      bool: {
-        should: [
-          // Search in non-nested fields
-          {
-            multi_match: {
-              query: searchTerm,
-              fields: ['baseName^4', 'title^3', 'description^2'],
-              type: 'best_fields',
-              fuzziness: 'AUTO',
-            },
-          },
-          // Search in nested comments
-          {
-            nested: {
-              path: 'comments',
-              query: {
-                match: {
-                  'comments.text': {
-                    query: searchTerm,
-                    fuzziness: 'AUTO',
-                  },
-                },
-              },
-              score_mode: 'sum',
-            },
-          },
-        ],
-        minimum_should_match: 1,
+      multi_match: {
+        query: query.trim(),
+        fields: SEARCH_FIELDS,
+        type: 'best_fields',
+        fuzziness: 'AUTO',
       },
     };
   }
 
-  // Search across all video indices
-  // Exclude comments from search results to save memory - they're only needed for individual video details
-  // Limit results to prevent memory issues (consider adding pagination for larger result sets)
-  const response = await esClient.search<VideoListItem>({
+  // commentsText is search-only; it would dominate the payload otherwise
+  const response = await esClient.search<VideoDocument>({
     index: getIndexPattern(),
+    ignore_unavailable: true,
     query: searchQuery,
     sort: buildSortOptions(sortOption),
     size: 100,
     _source: {
-      excludes: ['comments'],
+      excludes: ['commentsText'],
     },
   });
 
@@ -352,110 +476,75 @@ export async function searchVideos(
     if (!hit._source) {
       throw new Error(`Video document ${hit._id} has no _source field`);
     }
-    // Ensure comments field is empty array for search results
-    const video = hit._source as VideoListItem;
-    return {
-      ...video,
-      comments: [],
-    };
+    return fromDocument(hit._source);
   });
 }
 
-/**
- * Get all videos (without search query)
- */
 export async function getAllVideos(sortOption: SortOption = 'date-desc'): Promise<VideoListItem[]> {
   return searchVideos(undefined, sortOption);
 }
 
+async function findOne(query: Record<string, unknown>): Promise<VideoListItem | null> {
+  const esClient = getElasticsearchClient();
+  const response = await esClient.search<VideoDocument>({
+    index: getIndexPattern(),
+    ignore_unavailable: true,
+    query,
+    size: 1,
+    _source: {
+      excludes: ['commentsText'],
+    },
+  });
+  const hit = response.hits.hits[0];
+  return hit?._source ? fromDocument(hit._source) : null;
+}
+
 /**
- * Get a single video by videoId (YouTube ID) (searches across all indices)
- * Uses document ID lookup for better performance
+ * Get a single video by videoId (document id) across all folders
  */
 export async function getVideoByVideoId(videoId: string): Promise<VideoListItem | null> {
-  const esClient = getElasticsearchClient();
-
-  // Try to get document by ID across all indices
-  // Since we don't know which index contains the document, we search by IDs query
-  const response = await esClient.search<VideoListItem>({
-    index: getIndexPattern(),
-    query: {
-      ids: {
-        values: [videoId],
-      },
-    },
-    size: 1,
-  });
-
-  if (response.hits.hits.length === 0) {
-    return null;
-  }
-
-  const hit = response.hits.hits[0];
-  if (!hit._source) {
-    return null;
-  }
-
-  return hit._source as VideoListItem;
+  return findOne({ ids: { values: [videoId] } });
 }
 
 /**
- * Get a single video by baseName (searches across all indices)
+ * Get a single video by baseName across all folders
  */
 export async function getVideoByBaseName(baseName: string): Promise<VideoListItem | null> {
-  const esClient = getElasticsearchClient();
-
-  // Search across all indices
-  const response = await esClient.search<VideoListItem>({
-    index: getIndexPattern(),
-    query: {
-      term: {
-        baseName: baseName,
-      },
-    },
-    size: 1,
-  });
-
-  if (response.hits.hits.length === 0) {
-    return null;
-  }
-
-  const hit = response.hits.hits[0];
-  if (!hit._source) {
-    return null;
-  }
-
-  return hit._source as VideoListItem;
+  return findOne({ term: { baseName } });
 }
 
 /**
- * Refresh index for a specific folder
+ * Get a single video by its video or thumbnail file name (exact match across
+ * all folders). Used to resolve which folder a requested file lives in.
  */
+export async function getVideoByFilePath(fileName: string): Promise<VideoListItem | null> {
+  return findOne({
+    bool: {
+      should: [{ term: { videoPath: fileName } }, { term: { thumbnailPath: fileName } }],
+      minimum_should_match: 1,
+    },
+  });
+}
+
 export async function refreshIndex(folderPath: string): Promise<void> {
   const esClient = getElasticsearchClient();
-  const indexName = getIndexNameFromFolderPath(folderPath);
-  await esClient.indices.refresh({ index: indexName });
+  await esClient.indices.refresh({ index: getIndexNameFromFolderPath(folderPath) });
 }
 
-/**
- * Get total count of all indexed videos across all indices
- */
 export async function getTotalVideoCount(): Promise<number> {
   const esClient = getElasticsearchClient();
-  
+
   const response = await esClient.count({
     index: getIndexPattern(),
+    ignore_unavailable: true,
     query: {
       match_all: {},
     },
   });
-  
+
   return response.count;
 }
 
-/**
- * Check if Elasticsearch is available
- */
 export async function checkElasticsearchConnection(): Promise<boolean> {
   try {
     const esClient = getElasticsearchClient();
@@ -466,5 +555,3 @@ export async function checkElasticsearchConnection(): Promise<boolean> {
     return false;
   }
 }
-
-

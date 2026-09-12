@@ -1,152 +1,264 @@
 import fs from 'fs/promises';
 import path from 'path';
+import type { ReindexStatus, SortOption, VideoListItem } from '@shared/api';
 import { getVideosFolderPaths } from '../config';
-import { VideoListItem, SortOption, VideoInfoJson } from '../types';
+import type { VideoInfoJson } from '../types';
+import { stripUndefined } from '../utils/objectUtils';
 import {
-  indexVideo,
-  searchVideos,
-  deleteAllVideosFromFolder,
-  createIndex,
+  bulkIndexDocuments,
   checkElasticsearchConnection,
+  createIndexVersion,
+  discardIndexVersion,
+  estimateDocumentBytes,
+  indexVideo,
+  promoteIndexVersion,
+  searchVideos,
+  toDocument,
 } from './elasticsearchService';
+import type { VideoDocument } from './elasticsearchService';
 
+/** Max documents per bulk request */
+export const REINDEX_BATCH_SIZE = 50;
 /**
- * Extract base name from filename (remove extension)
+ * Max (estimated) payload per bulk request. Comment-heavy channels have
+ * multi-MB `commentsText` per video; Elasticsearch rejects requests above
+ * `http.max_content_length` (100 MB) with an empty 413.
  */
+export const REINDEX_BATCH_BYTES = 16 * 1024 * 1024;
+
+// ---------------------------------------------------------------------------
+// Reindex status (single process-wide job; shape: ReindexStatus in shared/api.ts)
+// ---------------------------------------------------------------------------
+
+const MAX_STATUS_ERRORS = 20;
+
+const idleStatus = (): ReindexStatus => ({
+  running: false,
+  foldersDone: 0,
+  foldersTotal: 0,
+  filesDone: 0,
+  filesTotal: 0,
+  indexed: 0,
+  skipped: 0,
+  errors: [],
+});
+
+let reindexStatus: ReindexStatus = idleStatus();
+
+export function getReindexStatus(): ReindexStatus {
+  return { ...reindexStatus, errors: [...reindexStatus.errors] };
+}
+
+export function isReindexRunning(): boolean {
+  return reindexStatus.running;
+}
+
+function recordError(message: string): void {
+  reindexStatus.lastError = message;
+  if (reindexStatus.errors.length < MAX_STATUS_ERRORS) {
+    reindexStatus.errors.push(message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Building documents from files
+// ---------------------------------------------------------------------------
+
 function getBaseName(filename: string): string {
   return path.parse(filename).name;
 }
 
 /**
  * Extract upload date from baseName (format: YYYYMMDD_title)
- * Returns date string in YYYYMMDD format or undefined if not found
  */
 function extractUploadDate(baseName: string): string | undefined {
-  const match = baseName.match(/^(\d{8})_/);
-  return match ? match[1] : undefined;
+  return /^(\d{8})_/.exec(baseName)?.[1];
+}
+
+/** Sidecar files of one base name; `undefined` when the file is missing */
+export interface FolderFiles {
+  videoFile: string | undefined;
+  thumbnailFile: string | undefined;
+  subtitleFile: string | undefined;
 }
 
 /**
- * Scan a single folder for .info.json files and extract video information
- * Indexes videos to Elasticsearch on the fly
+ * Locate the sidecar files that belong to a base name.
+ */
+export function findVideoFiles(baseName: string, visibleFiles: string[]): FolderFiles {
+  const videoFile = visibleFiles.find(
+    (f) => (f.endsWith('.mp4') || f.endsWith('.mkv')) && getBaseName(f) === baseName
+  );
+  const thumbnailFile = visibleFiles.find(
+    (f) => (f.endsWith('.webp') || f.endsWith('.jpg')) && getBaseName(f) === baseName
+  );
+  const subtitleFile = visibleFiles.find(
+    (f) => f.endsWith('.en.vtt') && getBaseName(f) === `${baseName}.en`
+  );
+  return { videoFile, thumbnailFile, subtitleFile };
+}
+
+export type BuildResult =
+  { status: 'ok'; video: VideoListItem } | { status: 'skipped'; reason: string };
+
+/**
+ * Read `<baseName>.info.json` and build the document for it. Returns a
+ * `skipped` result (with reason) when the video/thumbnail is missing or the
+ * JSON is unreadable, so callers can count and log without throwing.
+ */
+export async function buildVideoItem(
+  folderPath: string,
+  baseName: string,
+  visibleFiles: string[]
+): Promise<BuildResult> {
+  const { videoFile, thumbnailFile, subtitleFile } = findVideoFiles(baseName, visibleFiles);
+
+  if (!videoFile || !thumbnailFile) {
+    const missing = [
+      !videoFile ? 'video file (.mp4 or .mkv)' : null,
+      !thumbnailFile ? 'thumbnail file (.webp or .jpg)' : null,
+    ]
+      .filter(Boolean)
+      .join(' and ');
+    return { status: 'skipped', reason: `${baseName}: missing ${missing}` };
+  }
+
+  const infoJsonPath = path.join(folderPath, `${baseName}.info.json`);
+  let infoJson: VideoInfoJson;
+  try {
+    infoJson = JSON.parse(await fs.readFile(infoJsonPath, 'utf-8')) as VideoInfoJson;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { status: 'skipped', reason: `${baseName}: cannot read info.json (${detail})` };
+  }
+
+  const title = infoJson.title || infoJson.fulltitle || '';
+
+  return {
+    status: 'ok',
+    video: stripUndefined<VideoListItem>({
+      baseName,
+      videoId: infoJson.id,
+      title: title || baseName.replace(/^\d{8}_/, '').replace(/_/g, ' '),
+      description: infoJson.description || title,
+      videoPath: videoFile,
+      thumbnailPath: thumbnailFile,
+      folderPath,
+      uploadDate: infoJson.upload_date || extractUploadDate(baseName),
+      viewCount: infoJson.view_count,
+      likeCount: infoJson.like_count,
+      channelName: infoJson.channel || infoJson.uploader,
+      comments: infoJson.comments || [],
+      subtitlePath: subtitleFile,
+    }),
+  };
+}
+
+async function listVisibleFiles(folderPath: string): Promise<string[]> {
+  const files = await fs.readdir(folderPath);
+  return files.filter((file) => !file.startsWith('.'));
+}
+
+// ---------------------------------------------------------------------------
+// Full reindex of a folder (new index version + alias swap)
+// ---------------------------------------------------------------------------
+
+/**
+ * Rebuild the folder's index from disk. Documents go into a fresh physical
+ * index; the alias is switched only when everything was written, so search
+ * keeps serving the previous version meanwhile.
  */
 async function scanFolder(folderPath: string): Promise<void> {
-  const files = await fs.readdir(folderPath);
+  const visibleFiles = await listVisibleFiles(folderPath);
+  const baseNames = visibleFiles
+    .filter((file) => file.endsWith('.info.json'))
+    .map((file) => file.replace(/\.info\.json$/, ''));
 
-  // Filter out system files (starting with dot)
-  const visibleFiles = files.filter((file) => !file.startsWith('.'));
+  reindexStatus.currentFolder = folderPath;
+  reindexStatus.filesDone = 0;
+  reindexStatus.filesTotal = baseNames.length;
 
-  const infoJsonFiles = visibleFiles.filter((file) => file.endsWith('.info.json'));
+  const indexName = await createIndexVersion(folderPath);
 
-  await createIndex(folderPath);
-  await deleteAllVideosFromFolder(folderPath);
+  try {
+    // Only flattened documents are kept between flushes: the parsed comment
+    // arrays (the bulk of a big info.json) become garbage right away.
+    let batch: VideoDocument[] = [];
+    let batchBytes = 0;
+    const flush = async () => {
+      if (batch.length === 0) return;
+      await bulkIndexDocuments(indexName, batch, false);
+      reindexStatus.indexed += batch.length;
+      batch = [];
+      batchBytes = 0;
+    };
 
-  for (const infoFile of infoJsonFiles) {
-    // Remove .info.json extension to get base name for matching video/webp files
-    // Example: "20230520_File.info.json" -> "20230520_File"
-    const baseName = infoFile.replace(/\.info\.json$/, '');
-
-    // Find corresponding .mp4 and .webp files (only from visible files)
-    // Match by base name without extension
-    const videoFile = visibleFiles.find((f) => {
-      if (f.endsWith('.mp4') || f.endsWith('.mkv')) {
-        return getBaseName(f) === baseName;
-      }
-
-      return false;
-    });
-
-    const thumbnailFile = visibleFiles.find((f) => {
-      if (f.endsWith('.webp') || f.endsWith('.jpg')) {
-        return getBaseName(f) === baseName;
-      }
-
-      return false;
-    });
-
-    const subtitleFile = visibleFiles.find((f) => {
-      if (f.endsWith('.en.vtt')) {
-        return  getBaseName(f) === `${baseName}.en`;
-      }
-
-      return false;
-    });
-
-    if (videoFile && thumbnailFile) {
-      try {
-        const infoJsonPath = path.join(folderPath, infoFile);
-        const infoJsonContent = await fs.readFile(infoJsonPath, 'utf-8');
-
-        let infoJson: VideoInfoJson;
-        try {
-          infoJson = JSON.parse(infoJsonContent);
-        } catch (parseError) {
-          if (parseError instanceof SyntaxError) {
-            console.error(`Invalid JSON format in ${infoFile}:`, parseError.message);
-          } else {
-            console.error(`Error parsing JSON in ${infoFile}:`, parseError);
-          }
-          // Skip this file and continue with others
-          continue;
+    for (const baseName of baseNames) {
+      const result = await buildVideoItem(folderPath, baseName, visibleFiles);
+      if (result.status === 'ok') {
+        const document = toDocument(result.video);
+        batch.push(document);
+        batchBytes += estimateDocumentBytes(document);
+        if (batch.length >= REINDEX_BATCH_SIZE || batchBytes >= REINDEX_BATCH_BYTES) {
+          await flush();
         }
-
-        const title = infoJson.title || infoJson.fulltitle || '';
-
-        const video: VideoListItem = {
-          baseName,
-          videoId: infoJson.id,
-          title: title || baseName.replace(/_/g, ' ').replace(/^\d{8}_/, ''),
-          description: infoJson.description || title,
-          videoPath: videoFile,
-          thumbnailPath: thumbnailFile,
-          folderPath,
-          uploadDate: infoJson.upload_date || extractUploadDate(baseName),
-          viewCount: infoJson.view_count,
-          likeCount: infoJson.like_count,
-          channelName: infoJson.channel || infoJson.uploader,
-          comments: infoJson.comments || [],
-          subtitlePath: subtitleFile,
-        };
-
-        try {
-          await indexVideo(video);
-        } catch (error) {
-          console.error(`Failed to index video ${baseName}:`, error);
-        }
-      } catch (error) {
-        // Handle file read errors (not JSON parsing errors)
-        console.error(`Error reading info.json file ${infoFile}:`, error);
+      } else {
+        reindexStatus.skipped += 1;
+        console.error(`Skipping ${result.reason}`);
       }
-    } else {
-      // File .info.json doesn't have matching .mp4 (or .mkv) or .webp (or .jpg)
-      if (!videoFile && !thumbnailFile) {
-        console.error(
-          `\nSkipping ${infoFile}: missing both video (.mp4 or .mkv) and thumbnail (.webp or .jpg) files`
-        );
-      } else if (!videoFile) {
-        console.error(`\nSkipping ${infoFile}: missing video file (.mp4 or .mkv)`);
-      } else if (!thumbnailFile) {
-        console.error(`\nSkipping ${infoFile}: missing thumbnail file (.webp or .jpg)`);
-      }
+      reindexStatus.filesDone += 1;
     }
+    await flush();
+
+    await promoteIndexVersion(folderPath, indexName);
+  } catch (error) {
+    await discardIndexVersion(indexName).catch((discardError) => {
+      console.error(`Failed to discard index ${indexName}:`, discardError);
+    });
+    throw error;
   }
 }
 
-const scanVideosFromDisk = async (): Promise<void> => {
+async function scanVideosFromDisk(): Promise<void> {
   const folderPaths = getVideosFolderPaths();
+  reindexStatus.foldersTotal = folderPaths.length;
 
   for (const folderPath of folderPaths) {
     try {
       await scanFolder(folderPath);
     } catch (error) {
-      console.error(`Error scanning folder ${folderPath}:`, error);
+      const message = `Error scanning folder ${folderPath}: ${describeError(error)}`;
+      console.error(message, error);
+      recordError(message);
     }
+    reindexStatus.foldersDone += 1;
   }
 }
 
+/**
+ * Human-readable error, including the HTTP status of Elasticsearch
+ * ResponseErrors (whose message is empty for e.g. 413 replies).
+ */
+export function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    const statusCode = (error as { meta?: { statusCode?: number } }).meta?.statusCode;
+    const base = error.message || error.name || 'Error';
+    return statusCode ? `${base} (HTTP ${statusCode})` : base;
+  }
+  return String(error);
+}
+
+/**
+ * Rebuild the indices of all configured folders. Only one run at a time;
+ * a second call while running is rejected.
+ */
 export async function loadVideosCache(): Promise<void> {
+  if (reindexStatus.running) {
+    throw new Error('Reindex is already running');
+  }
+  reindexStatus = { ...idleStatus(), running: true, startedAt: new Date().toISOString() };
+
   try {
-    // Check Elasticsearch connection
     const isConnected = await checkElasticsearchConnection();
     if (!isConnected) {
       throw new Error('Elasticsearch is not available. Please ensure Elasticsearch is running.');
@@ -154,9 +266,17 @@ export async function loadVideosCache(): Promise<void> {
 
     console.log('Loading videos cache from disk...');
     await scanVideosFromDisk();
+    console.log(
+      `Reindex finished: ${reindexStatus.indexed} indexed, ${reindexStatus.skipped} skipped, ${reindexStatus.errors.length} folder errors`
+    );
   } catch (error) {
+    recordError(describeError(error));
     console.error('Failed to load videos cache:', error);
     throw error;
+  } finally {
+    reindexStatus.running = false;
+    delete reindexStatus.currentFolder;
+    reindexStatus.finishedAt = new Date().toISOString();
   }
 }
 
@@ -164,11 +284,49 @@ export async function refreshVideosCache(): Promise<void> {
   await loadVideosCache();
 }
 
+// ---------------------------------------------------------------------------
+// Incremental indexing (after a download/update job)
+// ---------------------------------------------------------------------------
+
+/**
+ * Index (or re-index) videos of one folder by base name, through the folder
+ * alias. Failures are logged, never thrown — this runs after downloads and
+ * must not fail them. Returns how many documents were written.
+ */
+export async function indexVideosFromDisk(
+  folderPath: string,
+  baseNames: string[]
+): Promise<number> {
+  if (baseNames.length === 0) {
+    return 0;
+  }
+  let indexed = 0;
+  let visibleFiles: string[];
+  try {
+    visibleFiles = await listVisibleFiles(folderPath);
+  } catch (error) {
+    console.error(`Cannot list ${folderPath} for indexing:`, error);
+    return 0;
+  }
+  for (const baseName of baseNames) {
+    try {
+      const result = await buildVideoItem(folderPath, baseName, visibleFiles);
+      if (result.status !== 'ok') {
+        console.error(`Not indexing ${result.reason}`);
+        continue;
+      }
+      await indexVideo(result.video);
+      indexed += 1;
+    } catch (error) {
+      console.error(`Failed to index ${baseName} from ${folderPath}:`, error);
+    }
+  }
+  return indexed;
+}
+
 export const getVideos = async (
   query?: string,
   sortOption: SortOption = 'date-desc'
 ): Promise<VideoListItem[]> => {
-  // Use Elasticsearch for search and sorting
-  // Videos are always available from Elasticsearch (indexed on the fly)
   return searchVideos(query, sortOption);
 };

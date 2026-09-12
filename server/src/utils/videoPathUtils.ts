@@ -17,7 +17,9 @@ export async function validateVideosFolder(): Promise<void> {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         errors.push(`${folderPath} does not exist`);
       } else {
-        errors.push(`Error accessing ${folderPath}: ${error instanceof Error ? error.message : String(error)}`);
+        errors.push(
+          `Error accessing ${folderPath}: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     }
   }
@@ -84,18 +86,16 @@ export function sanitizeFilename(filename: string): string {
 // Get full path to a file in videos folder
 export function getVideoFilePath(filename: string, folderPath?: string): string {
   const sanitized = sanitizeFilename(filename);
-  
+
   if (folderPath) {
     // Use provided folder path (from video item)
     return path.join(folderPath, sanitized);
   }
-  
-  // Fallback: try to find file in any of the configured folders
-  // This maintains backwards compatibility but is less efficient
-  const folderPaths = getVideosFolderPaths();
-  if (folderPaths.length > 0) {
-    return path.join(folderPaths[0], sanitized);
+
+  // Fallback: the first configured folder (kept for files that are not indexed)
+  const [firstFolder] = getVideosFolderPaths();
+  if (firstFolder === undefined) {
+    throw new Error('No video folders configured');
   }
-  
-  throw new Error('No video folders configured');
+  return path.join(firstFolder, sanitized);
 }

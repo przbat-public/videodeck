@@ -1,0 +1,726 @@
+import request from 'supertest';
+import express from 'express';
+import { EventEmitter } from 'events';
+import type { IncomingMessage } from 'http';
+import * as fs from 'fs/promises';
+import { spawn } from 'child_process';
+import folderRouter, { extractYoutubeVideoId } from './folder';
+import { createApp as createRealApp } from '../app';
+import { getVideosFolderPaths } from '../config';
+import { findEntryByVideoId, getDownloadStatuses, rebuildIndex } from '../services/folderIndex';
+import { downloadQueue } from '../services/downloadQueue';
+import type { SpawnedProcess } from '../services/downloadQueue';
+import {
+  DEFAULT_DOWNLOAD_OPTIONS,
+  loadDownloadOptions,
+  readFolderConfig,
+} from '../services/folderConfig';
+import { at } from '../test-utils';
+
+jest.mock('fs/promises');
+jest.mock('child_process');
+jest.mock('../config');
+jest.mock('../services/folderIndex');
+jest.mock('../services/folderConfig', () => {
+  const actual = jest.requireActual('../services/folderConfig');
+  return {
+    ...actual,
+    readFolderConfig: jest.fn(),
+    loadDownloadOptions: jest.fn(),
+  };
+});
+
+/** yt-dlp process handed to the queue by the fake spawn below (a `SpawnedProcess`) */
+interface FakeSpawnedProcess extends EventEmitter {
+  stdout: EventEmitter;
+  stderr: EventEmitter;
+  kill: jest.Mock<boolean, [signal?: NodeJS.Signals]>;
+}
+
+interface SpawnCall {
+  args: string[];
+  cwd: string;
+  process: FakeSpawnedProcess;
+}
+
+// Real queue with a fake spawn so that route <-> queue integration is exercised.
+jest.mock('../services/downloadQueue', () => {
+  const actual = jest.requireActual<typeof import('../services/downloadQueue')>(
+    '../services/downloadQueue'
+  );
+  const { EventEmitter: EE } = jest.requireActual<typeof import('events')>('events');
+  const calls: SpawnCall[] = [];
+  const spawnFn = (_cmd: string, args: string[], options: { cwd: string }): SpawnedProcess => {
+    const proc: FakeSpawnedProcess = Object.assign(new EE(), {
+      stdout: new EE(),
+      stderr: new EE(),
+      kill: jest.fn(() => {
+        setImmediate(() => proc.emit('close', null));
+        return true;
+      }),
+    });
+    calls.push({ args, cwd: options.cwd, process: proc });
+    return proc;
+  };
+  return {
+    ...actual,
+    downloadQueue: new actual.DownloadQueue({
+      maxConcurrent: 2,
+      spawnFn,
+      afterJob: async () => {},
+    }),
+    __spawnCalls: calls,
+  };
+});
+
+const { __spawnCalls: spawnCalls } = jest.requireMock<{ __spawnCalls: SpawnCall[] }>(
+  '../services/downloadQueue'
+);
+
+const mockedFs = fs as jest.Mocked<typeof fs>;
+const mockedSpawn = spawn as jest.MockedFunction<typeof spawn>;
+const mockedGetVideosFolderPaths = getVideosFolderPaths as jest.MockedFunction<
+  typeof getVideosFolderPaths
+>;
+const mockedFindEntry = findEntryByVideoId as jest.MockedFunction<typeof findEntryByVideoId>;
+const mockedGetDownloadStatuses = getDownloadStatuses as jest.MockedFunction<
+  typeof getDownloadStatuses
+>;
+const mockedRebuildIndex = rebuildIndex as jest.MockedFunction<typeof rebuildIndex>;
+const mockedReadFolderConfig = readFolderConfig as jest.MockedFunction<typeof readFolderConfig>;
+const mockedLoadDownloadOptions = loadDownloadOptions as jest.MockedFunction<
+  typeof loadDownloadOptions
+>;
+
+const FOLDER = '/videos/channel-a';
+const OTHER_FOLDER = '/videos/channel-b';
+
+const enoent = () => Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+function createApp() {
+  const app = express();
+  app.use(express.json());
+  app.use('/api', folderRouter);
+  return app;
+}
+
+describe('extractYoutubeVideoId', () => {
+  it('handles watch, short, shorts and embed URLs', () => {
+    expect(extractYoutubeVideoId('https://www.youtube.com/watch?v=abc123&t=10')).toBe('abc123');
+    expect(extractYoutubeVideoId('https://youtu.be/abc123?si=x')).toBe('abc123');
+    expect(extractYoutubeVideoId('https://www.youtube.com/shorts/abc123')).toBe('abc123');
+    expect(extractYoutubeVideoId('https://www.youtube.com/embed/abc123')).toBe('abc123');
+  });
+
+  it('returns null for unknown shapes', () => {
+    expect(extractYoutubeVideoId('https://www.youtube.com/@channel/videos')).toBeNull();
+    expect(extractYoutubeVideoId('not a url')).toBeNull();
+  });
+});
+
+describe('folder router', () => {
+  let app: express.Application;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockedGetVideosFolderPaths.mockReturnValue([FOLDER, OTHER_FOLDER]);
+    mockedFs.mkdir.mockResolvedValue(undefined);
+    mockedFs.writeFile.mockResolvedValue(undefined);
+    mockedReadFolderConfig.mockResolvedValue(null);
+    mockedLoadDownloadOptions.mockResolvedValue({ ...DEFAULT_DOWNLOAD_OPTIONS });
+    downloadQueue.clear();
+    spawnCalls.length = 0;
+    app = createApp();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  describe('GET /api/status', () => {
+    it('returns folders with their configs (null when config.json is missing) and defaults', async () => {
+      mockedReadFolderConfig.mockImplementation(async (folder) =>
+        folder === FOLDER ? { channelUrl: 'https://yt/@a', maxHeight: 1080 } : null
+      );
+
+      const response = await request(app).get('/api/status');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        videosFolderPath: [FOLDER, OTHER_FOLDER],
+        folderConfigs: {
+          [FOLDER]: { channelUrl: 'https://yt/@a', maxHeight: 1080 },
+          [OTHER_FOLDER]: null,
+        },
+        downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
+        status: 'ok',
+      });
+    });
+  });
+
+  describe('PUT /api/folder/config', () => {
+    it('validates input', async () => {
+      expect((await request(app).put('/api/folder/config').send({ config: {} })).status).toBe(400);
+      expect(
+        (await request(app).put('/api/folder/config').send({ folderPath: FOLDER })).status
+      ).toBe(400);
+      expect(
+        (await request(app).put('/api/folder/config').send({ folderPath: '/nope', config: {} }))
+          .status
+      ).toBe(403);
+      expect(
+        (
+          await request(app)
+            .put('/api/folder/config')
+            .send({ folderPath: FOLDER, config: { channelUrl: 42 } })
+        ).status
+      ).toBe(400);
+    });
+
+    it('validates download options', async () => {
+      const put = (config: unknown) =>
+        request(app).put('/api/folder/config').send({ folderPath: FOLDER, config });
+
+      expect((await put({ maxHeight: 100 })).body.error).toMatch(/maxHeight/);
+      expect((await put({ subLangs: 'en' })).body.error).toMatch(/subLangs/);
+      expect((await put({ writeComments: 'yes' })).body.error).toMatch(/writeComments/);
+      expect(mockedFs.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('writes config.json with download options', async () => {
+      const config = {
+        channelUrl: 'https://yt/@a',
+        maxHeight: 1080,
+        subLangs: ['pl', 'en'],
+        writeComments: false,
+      };
+
+      const response = await request(app)
+        .put('/api/folder/config')
+        .send({ folderPath: FOLDER, config });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, config });
+      expect(mockedFs.writeFile).toHaveBeenCalledWith(
+        `${FOLDER}/config.json`,
+        JSON.stringify(config, null, 2),
+        'utf-8'
+      );
+    });
+
+    it('writes config.json', async () => {
+      const config = { channelUrl: 'https://yt/@a' };
+
+      const response = await request(app)
+        .put('/api/folder/config')
+        .send({ folderPath: FOLDER, config });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ success: true, config });
+      expect(mockedFs.writeFile).toHaveBeenCalledWith(
+        `${FOLDER}/config.json`,
+        JSON.stringify(config, null, 2),
+        'utf-8'
+      );
+    });
+  });
+
+  describe('GET /api/folder/list-exists', () => {
+    it('reports whether list.json exists', async () => {
+      mockedFs.access.mockResolvedValueOnce(undefined);
+      expect(
+        (await request(app).get('/api/folder/list-exists').query({ folderPath: FOLDER })).body
+      ).toEqual({
+        exists: true,
+      });
+
+      mockedFs.access.mockRejectedValueOnce(enoent());
+      expect(
+        (await request(app).get('/api/folder/list-exists').query({ folderPath: FOLDER })).body
+      ).toEqual({
+        exists: false,
+      });
+    });
+
+    it('rejects missing or disallowed folders', async () => {
+      expect((await request(app).get('/api/folder/list-exists')).status).toBe(400);
+      expect(
+        (await request(app).get('/api/folder/list-exists').query({ folderPath: '/x' })).status
+      ).toBe(403);
+    });
+  });
+
+  describe('GET /api/folder/list', () => {
+    const list = [
+      { id: 'v1', title: 'One', url: 'https://yt/watch?v=v1' },
+      { id: 'v2', title: 'Two', webpage_url: 'https://yt/watch?v=v2' },
+    ];
+
+    it('returns videos with statuses coming from the folder index', async () => {
+      mockedFs.readFile.mockResolvedValue(JSON.stringify(list));
+      mockedGetDownloadStatuses.mockResolvedValue({
+        downloadStatuses: { v1: true },
+        lastUpdatedDates: { v1: '2024-01-01T00:00:00.000Z' },
+      });
+
+      const response = await request(app).get('/api/folder/list').query({ folderPath: FOLDER });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        videos: [
+          { id: 'v1', title: 'One', url: 'https://yt/watch?v=v1' },
+          { id: 'v2', title: 'Two', url: 'https://yt/watch?v=v2' },
+        ],
+        downloadStatuses: { v1: true },
+        lastUpdatedDates: { v1: '2024-01-01T00:00:00.000Z' },
+      });
+      expect(mockedGetDownloadStatuses).toHaveBeenCalledWith(FOLDER);
+    });
+
+    it('returns 404 when list.json does not exist', async () => {
+      mockedFs.readFile.mockRejectedValue(enoent());
+
+      const response = await request(app).get('/api/folder/list').query({ folderPath: FOLDER });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe('list.json not found');
+    });
+
+    it('returns 400 when list.json is not an array', async () => {
+      mockedFs.readFile.mockResolvedValue(JSON.stringify({ nope: true }));
+
+      const response = await request(app).get('/api/folder/list').query({ folderPath: FOLDER });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('degrades to empty statuses when the index cannot be built', async () => {
+      mockedFs.readFile.mockResolvedValue(JSON.stringify(list));
+      mockedGetDownloadStatuses.mockRejectedValue(new Error('disk gone'));
+
+      const response = await request(app).get('/api/folder/list').query({ folderPath: FOLDER });
+
+      expect(response.status).toBe(200);
+      expect(response.body.downloadStatuses).toEqual({});
+      expect(response.body.lastUpdatedDates).toEqual({});
+    });
+  });
+
+  describe('POST /api/folder/rebuild-index', () => {
+    it('rebuilds and reports the entry count', async () => {
+      mockedRebuildIndex.mockResolvedValue({
+        version: 1,
+        builtAt: '2024-01-01T00:00:00.000Z',
+        entries: { a: { baseName: 'a', videoFile: 'a.mp4', infoMtime: 'x' } },
+      });
+
+      const response = await request(app)
+        .post('/api/folder/rebuild-index')
+        .send({ folderPath: FOLDER });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        success: true,
+        count: 1,
+        builtAt: '2024-01-01T00:00:00.000Z',
+      });
+      expect(mockedRebuildIndex).toHaveBeenCalledWith(FOLDER);
+    });
+  });
+
+  describe('POST /api/folder/download-playlist', () => {
+    function fakeYtDlp(stdout: string, code = 0) {
+      mockedSpawn.mockImplementation((() => {
+        const proc = Object.assign(new EventEmitter(), {
+          stdout: new EventEmitter(),
+          stderr: new EventEmitter(),
+        });
+        // emit after the caller attached its listeners
+        setImmediate(() => {
+          if (stdout) proc.stdout.emit('data', Buffer.from(stdout));
+          if (code !== 0) proc.stderr.emit('data', Buffer.from('boom'));
+          proc.emit('close', code);
+        });
+        return proc;
+      }) as unknown as typeof spawn);
+    }
+
+    it('returns 404 when config.json is missing', async () => {
+      mockedReadFolderConfig.mockResolvedValue(null);
+
+      const response = await request(app)
+        .post('/api/folder/download-playlist')
+        .send({ folderPath: FOLDER });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('returns 400 when channelUrl is not configured', async () => {
+      mockedReadFolderConfig.mockResolvedValue({});
+
+      const response = await request(app)
+        .post('/api/folder/download-playlist')
+        .send({ folderPath: FOLDER });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('runs yt-dlp without a shell, appends /videos and stores NDJSON as an array', async () => {
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
+      fakeYtDlp('{"id":"v1","title":"One"}\n{"id":"v2","title":"Two"}\n');
+
+      const response = await request(app)
+        .post('/api/folder/download-playlist')
+        .send({ folderPath: FOLDER });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        success: true,
+        videoCount: 2,
+        listPath: `${FOLDER}/list.json`,
+      });
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        'yt-dlp',
+        ['--flat-playlist', '-j', 'https://www.youtube.com/@a/videos'],
+        { cwd: FOLDER }
+      );
+      expect(mockedFs.writeFile).toHaveBeenCalledWith(
+        `${FOLDER}/list.json`,
+        JSON.stringify(
+          [
+            { id: 'v1', title: 'One' },
+            { id: 'v2', title: 'Two' },
+          ],
+          null,
+          2
+        ),
+        'utf-8'
+      );
+    });
+
+    it('returns 500 when yt-dlp fails', async () => {
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a/videos' });
+      fakeYtDlp('', 1);
+
+      const response = await request(app)
+        .post('/api/folder/download-playlist')
+        .send({ folderPath: FOLDER });
+
+      expect(response.status).toBe(500);
+      expect(response.body.message).toMatch(/exited with code 1/);
+      expect(mockedFs.writeFile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /api/folder/video-downloaded', () => {
+    it('answers from the folder index', async () => {
+      mockedFindEntry.mockResolvedValueOnce({ baseName: 'x', videoFile: 'x.mp4', infoMtime: 'm' });
+      expect(
+        (
+          await request(app)
+            .get('/api/folder/video-downloaded')
+            .query({ folderPath: FOLDER, videoId: 'v1' })
+        ).body
+      ).toEqual({ downloaded: true });
+
+      mockedFindEntry.mockResolvedValueOnce(null);
+      expect(
+        (
+          await request(app)
+            .get('/api/folder/video-downloaded')
+            .query({ folderPath: FOLDER, videoId: 'v2' })
+        ).body
+      ).toEqual({ downloaded: false });
+    });
+
+    it('requires videoId', async () => {
+      const response = await request(app)
+        .get('/api/folder/video-downloaded')
+        .query({ folderPath: FOLDER });
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('queue endpoints', () => {
+    it('validates enqueue input', async () => {
+      expect(
+        (
+          await request(app)
+            .post('/api/folder/queue')
+            .send({ folderPath: '/x', type: 'download', videos: [] })
+        ).status
+      ).toBe(403);
+      expect(
+        (
+          await request(app)
+            .post('/api/folder/queue')
+            .send({ folderPath: FOLDER, type: 'nope', videos: [{}] })
+        ).status
+      ).toBe(400);
+      expect(
+        (
+          await request(app)
+            .post('/api/folder/queue')
+            .send({ folderPath: FOLDER, type: 'download', videos: [] })
+        ).status
+      ).toBe(400);
+    });
+
+    it('enqueues download jobs, deriving ids and urls when needed', async () => {
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({
+          folderPath: FOLDER,
+          type: 'download',
+          videos: [
+            { videoId: 'v1', title: 'One' },
+            { url: 'https://www.youtube.com/watch?v=v2' },
+            { title: 'no id' },
+          ],
+        });
+
+      expect(response.status).toBe(202);
+      expect(response.body.jobs).toHaveLength(2);
+      expect(response.body.jobs[0]).toMatchObject({
+        videoId: 'v1',
+        videoUrl: 'https://www.youtube.com/watch?v=v1',
+        type: 'download',
+        status: 'running',
+        folderPath: FOLDER,
+      });
+      expect(response.body.jobs[1]).toMatchObject({ videoId: 'v2', status: 'queued' });
+      expect(response.body.skipped).toEqual([
+        { videoId: '', reason: 'videoId or videoUrl is required' },
+      ]);
+      expect(at(spawnCalls, 0).cwd).toBe(FOLDER);
+      expect(at(spawnCalls, 0).args).toContain('--download-archive');
+    });
+
+    it('applies the folder download options to enqueued jobs', async () => {
+      mockedLoadDownloadOptions.mockResolvedValue({
+        maxHeight: 1080,
+        subLangs: ['pl'],
+        writeComments: false,
+      });
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: 'v1' }] });
+
+      expect(response.status).toBe(202);
+      expect(mockedLoadDownloadOptions).toHaveBeenCalledWith(FOLDER);
+      expect(response.body.jobs[0].options).toEqual({
+        maxHeight: 1080,
+        subLangs: ['pl'],
+        writeComments: false,
+      });
+      const args = at(spawnCalls, 0).args;
+      expect(args[args.indexOf('-f') + 1]).toContain('height<=1080');
+      expect(args[args.indexOf('--sub-lang') + 1]).toBe('pl');
+      expect(args).not.toContain('--write-comments');
+    });
+
+    it('enqueues update jobs pinned to the existing stem and skips non-downloaded videos', async () => {
+      mockedFindEntry.mockImplementation(async (_folder, videoId) =>
+        videoId === 'v1'
+          ? { baseName: '20240101_Old_Name', videoFile: 'x.mp4', infoMtime: 'm' }
+          : null
+      );
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({
+          folderPath: FOLDER,
+          type: 'update',
+          videos: [{ videoId: 'v1' }, { videoId: 'v9' }],
+        });
+
+      expect(response.status).toBe(202);
+      expect(response.body.jobs).toHaveLength(1);
+      expect(response.body.jobs[0]).toMatchObject({
+        videoId: 'v1',
+        type: 'update',
+        baseName: '20240101_Old_Name',
+      });
+      expect(response.body.skipped).toEqual([{ videoId: 'v9', reason: 'not downloaded' }]);
+      expect(at(spawnCalls, 0).args).toContain('--skip-download');
+      expect(at(spawnCalls, 0).args).toContain('20240101_Old_Name.%(ext)s');
+    });
+
+    it('lists jobs, optionally filtered by folder', async () => {
+      await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: 'v1' }] });
+      await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: OTHER_FOLDER, type: 'download', videos: [{ videoId: 'v2' }] });
+
+      const all = await request(app).get('/api/folder/queue');
+      expect(all.body.jobs.map((j: { videoId: string }) => j.videoId)).toEqual(['v1', 'v2']);
+
+      const filtered = await request(app)
+        .get('/api/folder/queue')
+        .query({ folderPath: OTHER_FOLDER });
+      expect(filtered.body.jobs.map((j: { videoId: string }) => j.videoId)).toEqual(['v2']);
+    });
+
+    it('cancels a single job and all jobs of a folder', async () => {
+      const enqueued = await request(app)
+        .post('/api/folder/queue')
+        .send({
+          folderPath: FOLDER,
+          type: 'download',
+          videos: [{ videoId: 'v1' }, { videoId: 'v2' }, { videoId: 'v3' }],
+        });
+      const [running, queued] = enqueued.body.jobs;
+
+      const single = await request(app).delete(`/api/folder/queue/${queued.id}`);
+      expect(single.status).toBe(200);
+      expect(single.body).toMatchObject({ cancelled: true, job: { status: 'cancelled' } });
+
+      expect((await request(app).delete('/api/folder/queue/unknown')).status).toBe(404);
+
+      const all = await request(app).delete('/api/folder/queue').query({ folderPath: FOLDER });
+      expect(all.body).toEqual({ cancelled: 2 });
+      expect(at(spawnCalls, 0).process.kill).toHaveBeenCalled();
+      await flush();
+      expect(downloadQueue.get(running.id)?.status).toBe('cancelled');
+    });
+  });
+
+  describe('POST /api/folder/download-video (SSE)', () => {
+    const collectStream = (
+      res: request.Response,
+      callback: (err: Error | null, body: string) => void
+    ) => {
+      // superagent hands custom parsers the raw http.IncomingMessage
+      const stream = res as unknown as IncomingMessage;
+      let data = '';
+      stream.on('data', (chunk: Buffer) => {
+        data += chunk.toString();
+      });
+      stream.on('end', () => callback(null, data));
+    };
+
+    /** supertest requests are lazy — start it and wait until yt-dlp was spawned */
+    const startRequest = (test: request.Test) =>
+      new Promise<request.Response>((resolve, reject) => {
+        test.end((err, res) => (err ? reject(err) : resolve(res)));
+      });
+    const waitForSpawn = async () => {
+      const deadline = Date.now() + 2000;
+      while (spawnCalls.length === 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    };
+
+    const parseEvents = (body: string) =>
+      body
+        .split('\n\n')
+        .filter((chunk) => chunk.startsWith('data: '))
+        .map((chunk) => JSON.parse(chunk.slice('data: '.length)));
+
+    it('validates input before opening the stream', async () => {
+      expect(
+        (await request(app).post('/api/folder/download-video').send({ folderPath: FOLDER })).status
+      ).toBe(400);
+      expect(
+        (
+          await request(app)
+            .post('/api/folder/download-video')
+            .send({ folderPath: '/x', videoUrl: 'u' })
+        ).status
+      ).toBe(403);
+    });
+
+    it('streams start/output/done events for a queued job', async () => {
+      const pending = startRequest(
+        request(app)
+          .post('/api/folder/download-video')
+          .send({ folderPath: FOLDER, videoUrl: 'https://www.youtube.com/watch?v=v1' })
+          .buffer(true)
+          .parse(collectStream)
+      );
+      await waitForSpawn();
+
+      expect(spawnCalls).toHaveLength(1);
+      const { args, process } = at(spawnCalls, 0);
+      expect(args).toContain('https://www.youtube.com/watch?v=v1');
+      process.stdout.emit('data', Buffer.from('[download] 50.0% of 1MiB\n'));
+      process.stdout.emit('data', Buffer.from('[download] 100% of 1MiB\n'));
+      process.emit('close', 0);
+
+      const response = await pending;
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toMatch(/text\/event-stream/);
+      const events = parseEvents(response.body as string);
+      expect(events[0]).toEqual({ type: 'start', message: 'Starting download...' });
+      expect(events.filter((e) => e.type === 'output').map((e) => e.message)).toEqual([
+        '[download] 50.0% of 1MiB\n',
+        '[download] 100% of 1MiB\n',
+      ]);
+      expect(events[events.length - 1]).toEqual({
+        type: 'done',
+        message: 'Download completed successfully',
+        done: true,
+      });
+    });
+
+    it('reports an error event when yt-dlp fails', async () => {
+      const pending = startRequest(
+        request(app)
+          .post('/api/folder/download-video')
+          .send({ folderPath: FOLDER, videoUrl: 'https://youtu.be/v2' })
+          .buffer(true)
+          .parse(collectStream)
+      );
+      await waitForSpawn();
+
+      expect(spawnCalls).toHaveLength(1);
+      at(spawnCalls, 0).process.emit('close', 1);
+
+      const response = await pending;
+      const events = parseEvents(response.body as string);
+
+      expect(events[events.length - 1]).toEqual({
+        type: 'error',
+        error: 'yt-dlp exited with code 1',
+        done: true,
+      });
+    });
+  });
+});
+
+describe('createApp (full app with body limit)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+    mockedFs.mkdir.mockResolvedValue(undefined);
+    mockedLoadDownloadOptions.mockResolvedValue({ ...DEFAULT_DOWNLOAD_OPTIONS });
+    downloadQueue.clear();
+    spawnCalls.length = 0;
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('accepts a bulk enqueue for a channel with thousands of videos', async () => {
+    const videos = Array.from({ length: 4000 }, (_, i) => ({
+      videoId: `video-${String(i).padStart(6, '0')}`,
+    }));
+    const body = { folderPath: FOLDER, type: 'download', videos };
+    // body-parser's default limit is 100 kB — make sure we are well above it
+    expect(Buffer.byteLength(JSON.stringify(body))).toBeGreaterThan(100 * 1024);
+
+    const response = await request(createRealApp()).post('/api/folder/queue').send(body);
+
+    expect(response.status).toBe(202);
+    expect(response.body.jobs).toHaveLength(4000);
+    expect(response.body.skipped).toEqual([]);
+  });
+});
