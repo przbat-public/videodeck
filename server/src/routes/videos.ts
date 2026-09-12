@@ -1,18 +1,42 @@
 import express from 'express';
-import { getVideos, refreshVideosCache } from '../services/videoScanner';
 import fs from 'fs/promises';
 import path from 'path';
 import OpenAI from 'openai';
-import { SortOption, VideoInfoJson, VideoDetails, VideoListItem } from '../types';
+import type {
+  AcceptedResponse,
+  ReindexConflictResponse,
+  ReindexStatus,
+  SearchResponse,
+  SortOption,
+  VideoDetails,
+  VideoDetailsResponse,
+  VideoListItem,
+  VideoSummaryResponse,
+} from '@shared/api';
+import type { VideoInfoJson } from '../types';
+import {
+  getVideos,
+  getReindexStatus,
+  isReindexRunning,
+  refreshVideosCache,
+} from '../services/videoScanner';
 import { getVideoFilePath } from '../utils/videoPathUtils';
 import { buildCommentTree } from '../utils/commentTreeUtils';
+import { stripUndefined } from '../utils/objectUtils';
 import {
   getVideoByBaseName,
   getVideoByVideoId,
+  getVideoByFilePath,
   getTotalVideoCount,
   recreateAllIndices,
 } from '../services/elasticsearchService';
-import { OPENAI_API_KEY } from '../config';
+import { OPENAI_API_KEY, getVideosFolderPaths } from '../config';
+import { readString, sendError } from './http';
+import type { NoParams, RouteHandler } from './http';
+
+// ---------------------------------------------------------------------------
+// Subtitle text helpers (summary generation)
+// ---------------------------------------------------------------------------
 
 /**
  * Extracts plain text from VTT subtitle file by removing timestamps and metadata
@@ -21,35 +45,35 @@ import { OPENAI_API_KEY } from '../config';
 function extractTextFromVttSubtitles(vttContent: string): string {
   const lines = vttContent.split('\n');
   const textLines: string[] = [];
-  
+
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    
+    const line = (lines[i] ?? '').trim();
+
     // Skip empty lines
     if (!line) continue;
-    
+
     // Skip WEBVTT header
     if (line === 'WEBVTT' || line.startsWith('WEBVTT')) continue;
-    
+
     // Skip timestamp lines (format: 00:00:01.000 --> 00:00:04.000)
     if (line.includes('-->')) continue;
-    
+
     // Skip cue identifiers (numeric lines that appear before timestamps)
     if (/^\d+$/.test(line)) continue;
-    
+
     // Skip style/note blocks
     if (line.startsWith('NOTE') || line.startsWith('STYLE')) {
       // Skip until empty line
-      while (i < lines.length - 1 && lines[i + 1].trim()) {
+      while (i < lines.length - 1 && (lines[i + 1] ?? '').trim()) {
         i++;
       }
       continue;
     }
-    
+
     // This is actual subtitle text
     textLines.push(line);
   }
-  
+
   // Join lines with spaces, removing excessive whitespace
   // Multiple consecutive lines from same cue become one paragraph
   return textLines
@@ -74,14 +98,14 @@ function estimateTokenCount(text: string): number {
  */
 function truncateTextToTokenLimit(text: string, maxTokens: number): string {
   const estimatedTokens = estimateTokenCount(text);
-  
+
   if (estimatedTokens <= maxTokens) {
     return text;
   }
-  
+
   // Calculate max characters based on token limit
   const maxChars = maxTokens * 4;
-  
+
   // Try to truncate at sentence boundary
   const truncated = text.substring(0, maxChars);
   const lastSentenceEnd = Math.max(
@@ -90,71 +114,126 @@ function truncateTextToTokenLimit(text: string, maxTokens: number): string {
     truncated.lastIndexOf('?'),
     truncated.lastIndexOf('\n')
   );
-  
+
   // If we found a sentence boundary in the last 20% of text, use it
   if (lastSentenceEnd > maxChars * 0.8) {
     return text.substring(0, lastSentenceEnd + 1).trim();
   }
-  
+
   // Otherwise, just truncate at character limit
   return truncated.trim();
 }
 
-const router = express.Router();
+/** HTTP 429 from the OpenAI SDK (`APIError.status`) or a wrapped response */
+function isRateLimitError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const { status, response } = error as { status?: unknown; response?: { status?: unknown } };
+  return status === 429 || response?.status === 429;
+}
+
+// ---------------------------------------------------------------------------
+// Request parsing
+// ---------------------------------------------------------------------------
+
+const SORT_OPTIONS: readonly SortOption[] = [
+  'date-desc',
+  'date-asc',
+  'views-desc',
+  'views-asc',
+  'likes-desc',
+  'likes-asc',
+];
+
+function isSortOption(value: string): value is SortOption {
+  return (SORT_OPTIONS as readonly string[]).includes(value);
+}
+
+/** `?sort=` value; unknown or missing values fall back to the default */
+export function parseSortOption(value: unknown): SortOption {
+  return typeof value === 'string' && isSortOption(value) ? value : 'date-desc';
+}
+
+const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
+
+/**
+ * Look a video up by YouTube id (when the identifier looks like one) and
+ * fall back to the file base name.
+ */
+async function findVideo(identifier: string): Promise<VideoListItem | null> {
+  const byId = YOUTUBE_ID_RE.test(identifier) ? await getVideoByVideoId(identifier) : null;
+  return byId ?? getVideoByBaseName(identifier);
+}
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
+// GET /api/videos/refreshCache/status - Progress of the running/last reindex
+const getRefreshStatus: RouteHandler<NoParams, ReindexStatus> = (_req, res) => {
+  res.json(getReindexStatus());
+};
 
 // GET /api/videos/refreshCache - Refresh/reindex videos cache
-router.get('/refreshCache', async (req, res) => {
+const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictResponse> = (
+  _req,
+  res
+) => {
   try {
+    if (isReindexRunning()) {
+      res.status(409).json({
+        error: 'Reindex already running',
+        message: 'A reindex is already in progress',
+        status: getReindexStatus(),
+      });
+      return;
+    }
+
     console.log('Cache refresh requested...');
-    
+
     // Start the refresh process asynchronously (fire and forget)
-    refreshVideosCache().catch((error) => {
+    refreshVideosCache().catch((error: unknown) => {
       console.error('Error refreshing cache in background:', error);
     });
-    
+
     // Return immediately
-    res.status(200).json({ 
+    res.status(200).json({
       message: 'Cache refresh process started',
-      status: 'ok'
+      status: 'ok',
     });
   } catch (error) {
     console.error('Error starting cache refresh:', error);
-    res.status(500).json({
-      error: 'Failed to start cache refresh',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    sendError(res, 500, 'Failed to start cache refresh', error);
   }
-});
+};
 
 // POST /api/videos/recreateIndices - Recreate all Elasticsearch indices
-router.post('/recreateIndices', async (req, res) => {
+const recreateIndices: RouteHandler<NoParams, AcceptedResponse> = (_req, res) => {
   try {
     console.log('Recreate indices requested...');
-    
+
     // Start the recreate process asynchronously (fire and forget)
-    recreateAllIndices().catch((error) => {
+    recreateAllIndices().catch((error: unknown) => {
       console.error('Error recreating indices in background:', error);
     });
-    
+
     // Return immediately
-    res.status(200).json({ 
+    res.status(200).json({
       message: 'Indices recreation process started',
-      status: 'ok'
+      status: 'ok',
     });
   } catch (error) {
     console.error('Error starting indices recreation:', error);
-    res.status(500).json({
-      error: 'Failed to start indices recreation',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    sendError(res, 500, 'Failed to start indices recreation', error);
   }
-});
+};
 
 // GET /api/videos/search?q={query}&sort={sortOption}
-router.get('/search', async (req, res) => {
+const search: RouteHandler<NoParams, SearchResponse> = async (req, res) => {
   try {
-    const query = req.query.q as string | undefined;
-    const sort = (req.query.sort as SortOption) || 'date-desc';
+    const query = readString(req.query.q);
+    const sort = parseSortOption(req.query.sort);
 
     const videos = await getVideos(query, sort);
     const totalCount = await getTotalVideoCount();
@@ -162,35 +241,43 @@ router.get('/search', async (req, res) => {
     res.json({ videos, totalCount });
   } catch (error) {
     console.error('Error searching videos:', error);
-    res.status(500).json({
-      error: 'Failed to search videos',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    sendError(res, 500, 'Failed to search videos', error);
   }
-});
+};
 
-// GET /api/videos/file/:filename - Must be before /:baseName routes to avoid route conflicts
-router.get('/file/:filename', async (req, res) => {
+// GET /api/videos/file/:filename?folder=<folderPath>
+// The folder is taken from the `folder` query param (must be one of the
+// configured folders); without it we look the file name up in Elasticsearch.
+const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) => {
   try {
-    const filename = req.params.filename;
-    // Log the received filename for debugging
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Received filename:', filename);
+    const { filename } = req.params;
+    const folderParam = req.query.folder;
+
+    let folderPath: string | undefined;
+    if (folderParam !== undefined) {
+      if (typeof folderParam !== 'string' || !getVideosFolderPaths().includes(folderParam)) {
+        res.status(403).json({ error: 'Folder path is not in the allowed list' });
+        return;
+      }
+      folderPath = folderParam;
+    } else {
+      try {
+        const video = await getVideoByFilePath(filename);
+        folderPath = video?.folderPath;
+      } catch (lookupError) {
+        console.error('Error looking up file in Elasticsearch:', lookupError);
+      }
     }
 
-    // Try to find the video in cache to get its folder path
-    const allVideos = await getVideos();
-    const video = allVideos.find(
-      (video) => video.videoPath === filename || video.thumbnailPath === filename
-    );
-
-    const filePath = getVideoFilePath(filename, video?.folderPath);
+    // Falls back to the first configured folder when the file is not indexed
+    const filePath = getVideoFilePath(filename, folderPath);
 
     // Check if file exists
     try {
       await fs.access(filePath);
     } catch {
-      return res.status(404).json({ error: 'File not found' });
+      res.status(404).json({ error: 'File not found' });
+      return;
     }
 
     // Determine content type
@@ -207,93 +294,77 @@ router.get('/file/:filename', async (req, res) => {
     res.sendFile(path.resolve(filePath));
   } catch (error) {
     console.error('Error serving file:', error);
-    res.status(400).json({
-      error: 'Failed to serve file',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    sendError(res, 400, 'Failed to serve file', error);
   }
-});
+};
+
+// Models in order of preference (higher TPM limits first)
+const SUMMARY_MODELS = ['gpt-4o', 'gpt-4-turbo', 'gpt-4o-mini', 'gpt-4'];
+
+// Reserve tokens for: system prompt (~50), user prompt (~100), response (2000), and buffer
+// TPM limit is 30000, but we want to be safe with ~25000 tokens for input
+const SUMMARY_MAX_INPUT_TOKENS = 25000;
 
 // GET /api/videos/:identifier/summary - supports both baseName and videoId
-router.get('/:identifier/summary', async (req, res) => {
+const getSummary: RouteHandler<{ identifier: string }, VideoSummaryResponse> = async (req, res) => {
   try {
-    const identifier = req.params.identifier;
-
-    // Try to find by videoId first (YouTube IDs are typically 11 characters)
-    // If it looks like a videoId (alphanumeric, 11 chars), try that first
-    let video: VideoListItem | null = null;
-    
-    if (/^[a-zA-Z0-9_-]{11}$/.test(identifier)) {
-      // Looks like a YouTube video ID, try that first
-      video = await getVideoByVideoId(identifier);
-    }
-    
-    // If not found by videoId, try by baseName
-    if (!video) {
-      video = await getVideoByBaseName(identifier);
-    }
+    const video = await findVideo(req.params.identifier);
 
     if (!video) {
-      return res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found' });
+      return;
     }
 
-    const baseName = video.baseName;
-
-    if (!video?.subtitlePath) {
-      return res.status(404).json({ error: 'Subtitle not found' });
+    if (!video.subtitlePath) {
+      res.status(404).json({ error: 'Subtitle not found' });
+      return;
     }
 
     // Check if summary file already exists
-    const summaryFilePath = path.join(video.folderPath, `${baseName}.summary.txt`);
-    
+    const summaryFilePath = path.join(video.folderPath, `${video.baseName}.summary.txt`);
+
     try {
       // Try to read existing summary
       const existingSummary = await fs.readFile(summaryFilePath, 'utf-8');
       if (existingSummary.trim()) {
-        return res.json({ summary: existingSummary.trim() });
+        res.json({ summary: existingSummary.trim() });
+        return;
       }
     } catch {
       // File doesn't exist, continue to generate new summary
     }
 
     if (!OPENAI_API_KEY) {
-      return res.status(500).json({
+      res.status(500).json({
         error: 'OpenAI API key not configured',
         message: 'OPENAI_API_KEY environment variable is required',
       });
+      return;
     }
 
     const subtitleFilePath = path.join(video.folderPath, video.subtitlePath);
     const subtitleFileContent = await fs.readFile(subtitleFilePath, 'utf-8');
-    
+
     // Extract only text content from VTT, removing timestamps and metadata
     // This significantly reduces token count for OpenAI API
     let subtitleText = extractTextFromVttSubtitles(subtitleFileContent);
 
-    // Truncate text to fit within token limits
-    // Reserve tokens for: system prompt (~50), user prompt (~100), response (2000), and buffer
-    // TPM limit is 30000, but we want to be safe with ~25000 tokens for input
-    const maxInputTokens = 25000;
     const estimatedTokens = estimateTokenCount(subtitleText);
-    const wasTruncated = estimatedTokens > maxInputTokens;
-    
+    const wasTruncated = estimatedTokens > SUMMARY_MAX_INPUT_TOKENS;
+
     if (wasTruncated) {
-      console.warn(`Subtitle text is too long (estimated ${estimatedTokens} tokens). Truncating to ${maxInputTokens} tokens.`);
-      subtitleText = truncateTextToTokenLimit(subtitleText, maxInputTokens);
+      console.warn(
+        `Subtitle text is too long (estimated ${estimatedTokens} tokens). Truncating to ${SUMMARY_MAX_INPUT_TOKENS} tokens.`
+      );
+      subtitleText = truncateTextToTokenLimit(subtitleText, SUMMARY_MAX_INPUT_TOKENS);
     }
 
-    // Initialize OpenAI client
-    const openai = new OpenAI({
-      apiKey: OPENAI_API_KEY,
-    });
+    const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
-    // Try models in order of preference (higher TPM limits first)
-    // Note: gpt-4.1 might be a custom model name, so we include it as fallback
-    const models = ['gpt-4o', 'gpt-4-turbo', 'gpt-4o-mini', 'gpt-4'];
-    let completion;
-    let lastError: Error | null = null;
+    let completion: OpenAI.Chat.Completions.ChatCompletion | undefined;
+    let lastError: unknown;
 
-    for (const model of models) {
+    for (const model of SUMMARY_MODELS) {
       try {
         // Call OpenAI API to generate summary in Polish
         completion = await openai.chat.completions.create({
@@ -301,7 +372,8 @@ router.get('/:identifier/summary', async (req, res) => {
           messages: [
             {
               role: 'system',
-              content: 'Jesteś pomocnym asystentem, który tworzy zwięzłe podsumowania napisów filmowych w języku polskim.',
+              content:
+                'Jesteś pomocnym asystentem, który tworzy zwięzłe podsumowania napisów filmowych w języku polskim.',
             },
             {
               role: 'user',
@@ -312,38 +384,44 @@ router.get('/:identifier/summary', async (req, res) => {
           max_tokens: 2000,
         });
         break; // Success, exit loop
-      } catch (error: any) {
+      } catch (error) {
         lastError = error;
-        // If it's a 429 error (rate limit), try next model
-        // If it's another error, also try next model
-        if (error?.status === 429 || error?.response?.status === 429) {
-          console.warn(`Rate limit hit for model ${model}, trying next model...`);
-          if (model === models[models.length - 1]) {
-            // Last model failed, wait a bit and retry
-            await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 60 seconds
-            throw new Error(`Rate limit exceeded for all models. Please try again later. Original error: ${error.message}`);
-          }
-          continue;
+        if (!isRateLimitError(error)) {
+          // For other errors, rethrow immediately
+          throw error;
         }
-        // For other errors, rethrow immediately
-        throw error;
+        console.warn(`Rate limit hit for model ${model}, trying next model...`);
+        if (model === SUMMARY_MODELS[SUMMARY_MODELS.length - 1]) {
+          // Every model is rate limited — fail fast, the client decides when to retry
+          const detail = error instanceof Error ? error.message : String(error);
+          throw new Error(
+            `Rate limit exceeded for all models. Please try again later. Original error: ${detail}`,
+            { cause: error }
+          );
+        }
       }
     }
 
     if (!completion) {
-      return res.status(500).json({
+      res.status(500).json({
         error: 'Failed to generate summary',
-        message: lastError?.message || 'OpenAI API did not return a response',
+        message:
+          lastError instanceof Error && lastError.message
+            ? lastError.message
+            : 'OpenAI API did not return a response',
       });
+      return;
     }
 
+    // Defensive `?.` on message: the API has returned choices without one
     const summary = completion.choices[0]?.message?.content;
 
     if (!summary) {
-      return res.status(500).json({
+      res.status(500).json({
         error: 'Failed to generate summary',
         message: 'OpenAI API did not return a summary',
       });
+      return;
     }
 
     // Save summary to disk for future use
@@ -354,66 +432,50 @@ router.get('/:identifier/summary', async (req, res) => {
       // Continue even if save fails - still return the summary
     }
 
-    res.json({ 
-      summary,
-      truncated: wasTruncated ? true : undefined, // Only include if true
-    });
+    // `truncated` is only present when true
+    res.json(
+      stripUndefined<VideoSummaryResponse>({ summary, truncated: wasTruncated ? true : undefined })
+    );
   } catch (error) {
     console.error('Error getting video summary:', error);
-    res.status(500).json({
-      error: 'Failed to get video summary',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    sendError(res, 500, 'Failed to get video summary', error);
   }
-});
+};
 
 // GET /api/videos/:identifier/details - supports both baseName and videoId
-router.get('/:identifier/details', async (req, res) => {
+const getDetails: RouteHandler<{ identifier: string }, VideoDetailsResponse> = async (req, res) => {
   try {
-    const identifier = req.params.identifier;
-
-    // Try to find by videoId first (YouTube IDs are typically 11 characters)
-    // If it looks like a videoId (alphanumeric, 11 chars), try that first
-    let video: VideoListItem | null = null;
-    
-    if (/^[a-zA-Z0-9_-]{11}$/.test(identifier)) {
-      // Looks like a YouTube video ID, try that first
-      video = await getVideoByVideoId(identifier);
-    }
-    
-    // If not found by videoId, try by baseName
-    if (!video) {
-      video = await getVideoByBaseName(identifier);
-    }
+    const video = await findVideo(req.params.identifier);
 
     if (!video) {
-      return res.status(404).json({ error: 'Video not found' });
+      res.status(404).json({ error: 'Video not found' });
+      return;
     }
-
-    const baseName = video.baseName;
 
     // Use the folder path from the video item
-    const infoJsonPath = path.join(video.folderPath, `${baseName}.info.json`);
+    const infoJsonPath = path.join(video.folderPath, `${video.baseName}.info.json`);
 
     // Check if video file details exist
     try {
       await fs.access(infoJsonPath);
     } catch {
-      return res.status(404).json({ error: 'Video details not found' });
+      res.status(404).json({ error: 'Video details not found' });
+      return;
     }
 
     // Read and parse info.json
     let infoJson: VideoInfoJson;
     try {
       const infoJsonContent = await fs.readFile(infoJsonPath, 'utf-8');
-      infoJson = JSON.parse(infoJsonContent);
+      infoJson = JSON.parse(infoJsonContent) as VideoInfoJson;
     } catch (parseError) {
       console.error(`Error reading or parsing info.json file ${infoJsonPath}:`, parseError);
       if (parseError instanceof SyntaxError) {
-        return res.status(500).json({
+        res.status(500).json({
           error: 'Invalid JSON format in video metadata',
           message: 'The video metadata file is corrupted or invalid',
         });
+        return;
       }
       // Re-throw file read errors to be caught by outer catch
       throw parseError;
@@ -421,7 +483,7 @@ router.get('/:identifier/details', async (req, res) => {
 
     const comments = buildCommentTree(infoJson.comments || []);
 
-    const details: VideoDetails = {
+    const details = stripUndefined<VideoDetails>({
       title: infoJson.title || infoJson.fulltitle || '',
       description: infoJson.description || infoJson.title || infoJson.fulltitle || '',
       uploadDate: infoJson.upload_date || '',
@@ -429,21 +491,33 @@ router.get('/:identifier/details', async (req, res) => {
       viewCount: infoJson.view_count || 0,
       likeCount: infoJson.like_count || 0,
       channelName: infoJson.channel || infoJson.uploader || '',
-      comments: buildCommentTree(infoJson.comments || []),
-      commentCount: infoJson.comment_count || comments.length || 0,
+      comments,
+      commentCount: infoJson.comment_count || comments.length,
       videoPath: video.videoPath,
       thumbnailPath: video.thumbnailPath,
       subtitlePath: video.subtitlePath,
-    };
+      folderPath: video.folderPath,
+    });
 
     res.json({ details });
   } catch (error) {
     console.error('Error loading video details:', error);
-    res.status(500).json({
-      error: 'Failed to load video details',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    sendError(res, 500, 'Failed to load video details', error);
   }
-});
+};
+
+// ---------------------------------------------------------------------------
+// Routes (order matters: /file/:filename before the /:identifier routes)
+// ---------------------------------------------------------------------------
+
+const router = express.Router();
+
+router.get('/refreshCache/status', getRefreshStatus);
+router.get('/refreshCache', startRefresh);
+router.post('/recreateIndices', recreateIndices);
+router.get('/search', search);
+router.get('/file/:filename', serveFile);
+router.get('/:identifier/summary', getSummary);
+router.get('/:identifier/details', getDetails);
 
 export default router;
