@@ -435,6 +435,8 @@ Kategorie zadeklarowane w plikach `config.json` skonfigurowanych folderów - pos
 
 Kategoria **nie trafia do Elasticsearcha**. Każdy folder ma własny alias indeksu, więc filtr po prostu zawęża listę przeszukiwanych aliasów do folderów z daną kategorią. Dzięki temu `config.json` jest jedynym źródłem prawdy, zmiana kategorii działa od razu i **nie wymaga reindeksu**.
 
+Pliki `config.json` są czytane równolegle, a mapa folder → kategoria jest trzymana w pamięci przez 5 s (`CATEGORY_CACHE_TTL_MS`), bo na zewnętrznym dysku sekwencyjny odczyt 56 plików przy każdym wyszukiwaniu kosztował 0,7–3 s. Zapis przez `PUT /api/folder/config` czyści cache od razu; plik zmieniony ręcznie na dysku jest widoczny po najwyżej 5 s.
+
 ### GET /api/videos/file/:filename?folder=<ścieżka>
 Serwuje pliki video (.mp4) i miniaturki (.webp).
 

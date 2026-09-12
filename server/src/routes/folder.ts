@@ -30,6 +30,7 @@ import { downloadQueue } from '../services/downloadQueue';
 import type { EnqueueRequest } from '../services/downloadQueue';
 import {
   DEFAULT_DOWNLOAD_OPTIONS,
+  invalidateCategoryCache,
   loadDownloadOptions,
   readFolderConfig,
   validateFolderConfig,
@@ -188,7 +189,11 @@ const saveFolderConfig: RouteHandler<NoParams, SaveFolderConfigResponse> = async
       return;
     }
     // validateFolderConfig accepted it, so `config` is a plain object
-    const validConfig = config as FolderConfig;
+    const validConfig: FolderConfig = { ...(config as FolderConfig) };
+    if (typeof validConfig.category === 'string') {
+      // Stored trimmed so the file matches what search compares against
+      validConfig.category = validConfig.category.trim();
+    }
     const folderPath = requireAllowedFolder(rawFolderPath, res);
     if (!folderPath) return;
 
@@ -198,6 +203,7 @@ const saveFolderConfig: RouteHandler<NoParams, SaveFolderConfigResponse> = async
       JSON.stringify(validConfig, null, 2),
       'utf-8'
     );
+    invalidateCategoryCache();
     res.json({ success: true, config: validConfig });
   } catch (error) {
     sendError(res, 500, 'Failed to save folder config', error);

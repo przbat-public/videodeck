@@ -161,15 +161,53 @@ export function resolveCategory(config: FolderConfig | null | undefined): string
   return category.length > 0 ? category : undefined;
 }
 
+/**
+ * Categories are resolved on every filtered search, and the folders live on
+ * an external disk where reading 56 config files one after another measured
+ * 0.7–3 s. So the files are read in parallel and the result is kept for a few
+ * seconds: long enough to absorb a burst of search-as-you-type requests,
+ * short enough that a hand-edited config.json shows up without a restart.
+ * Saving through the API invalidates the cache immediately.
+ */
+export const CATEGORY_CACHE_TTL_MS = 5_000;
+
+interface CategoryCache {
+  /** Configured folders the entry was built for (they can differ in tests) */
+  key: string;
+  readAt: number;
+  categories: Map<string, string>;
+}
+
+let categoryCache: CategoryCache | null = null;
+
+/** Drop the cached categories — call after writing a config.json */
+export function invalidateCategoryCache(): void {
+  categoryCache = null;
+}
+
 /** folderPath → category, for every configured folder that declares one */
 async function readCategories(): Promise<Map<string, string>> {
+  const folderPaths = getVideosFolderPaths();
+  const key = folderPaths.join('\n');
+  const now = Date.now();
+  if (
+    categoryCache !== null &&
+    categoryCache.key === key &&
+    now - categoryCache.readAt < CATEGORY_CACHE_TTL_MS
+  ) {
+    return categoryCache.categories;
+  }
+
+  const configs = await Promise.all(folderPaths.map((folderPath) => readFolderConfig(folderPath)));
   const categories = new Map<string, string>();
-  for (const folderPath of getVideosFolderPaths()) {
-    const category = resolveCategory(await readFolderConfig(folderPath));
+  folderPaths.forEach((folderPath, index) => {
+    const category = resolveCategory(configs[index]);
     if (category) {
       categories.set(folderPath, category);
     }
-  }
+  });
+
+  categoryCache = { key, readAt: now, categories };
   return categories;
 }
 

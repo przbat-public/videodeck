@@ -2,8 +2,10 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import {
+  CATEGORY_CACHE_TTL_MS,
   DEFAULT_DOWNLOAD_OPTIONS,
   getFolderPathsForCategory,
+  invalidateCategoryCache,
   listCategories,
   loadDownloadOptions,
   readFolderConfig,
@@ -12,6 +14,7 @@ import {
   validateFolderConfig,
 } from './folderConfig';
 import { getVideosFolderPaths } from '../config';
+import { at } from '../test-utils';
 
 jest.mock('../config');
 
@@ -179,15 +182,16 @@ describe('folderConfig', () => {
         fs.writeFile(path.join(dir, 'config.json'), JSON.stringify(config), 'utf-8');
 
       beforeEach(async () => {
+        invalidateCategoryCache();
         folders = await Promise.all(
           [0, 1, 2, 3].map(() => fs.mkdtemp(path.join(os.tmpdir(), 'folder-category-')))
         );
         mockedGetVideosFolderPaths.mockReturnValue(folders);
         // Folder names deliberately say nothing about the category
-        await writeConfig(folders[0] as string, { category: 'fpv' });
-        await writeConfig(folders[1] as string, { category: 'psychology' });
-        await writeConfig(folders[2] as string, { category: ' FPV ' });
-        await writeConfig(folders[3] as string, { channelUrl: 'https://yt/@a' });
+        await writeConfig(at(folders, 0), { category: 'fpv' });
+        await writeConfig(at(folders, 1), { category: 'psychology' });
+        await writeConfig(at(folders, 2), { category: ' FPV ' });
+        await writeConfig(at(folders, 3), { channelUrl: 'https://yt/@a' });
       });
 
       afterEach(async () => {
@@ -200,13 +204,47 @@ describe('folderConfig', () => {
       });
 
       it('matches folders case-insensitively and ignores those without a category', async () => {
-        expect(await getFolderPathsForCategory('FpV')).toEqual([folders[0], folders[2]]);
-        expect(await getFolderPathsForCategory(' psychology ')).toEqual([folders[1]]);
+        expect(await getFolderPathsForCategory('FpV')).toEqual([at(folders, 0), at(folders, 2)]);
+        expect(await getFolderPathsForCategory(' psychology ')).toEqual([at(folders, 1)]);
       });
 
       it('returns no folders for an unknown or blank category', async () => {
         expect(await getFolderPathsForCategory('lego')).toEqual([]);
         expect(await getFolderPathsForCategory('   ')).toEqual([]);
+      });
+
+      it('reads every config once per TTL window, in parallel', async () => {
+        const readFile = jest.spyOn(fs, 'readFile');
+
+        await listCategories();
+        await getFolderPathsForCategory('fpv');
+        await listCategories();
+
+        // one read per folder for the whole burst, not one per call
+        expect(readFile).toHaveBeenCalledTimes(folders.length);
+      });
+
+      it('picks up an edited config.json after the TTL or on invalidation', async () => {
+        expect(await getFolderPathsForCategory('lego')).toEqual([]);
+        await writeConfig(at(folders, 3), { category: 'lego' });
+
+        // still cached
+        expect(await getFolderPathsForCategory('lego')).toEqual([]);
+
+        invalidateCategoryCache();
+        expect(await getFolderPathsForCategory('lego')).toEqual([at(folders, 3)]);
+
+        await writeConfig(at(folders, 3), { category: 'robotics' });
+        const later = Date.now() + CATEGORY_CACHE_TTL_MS + 1;
+        jest.spyOn(Date, 'now').mockReturnValue(later);
+        expect(await getFolderPathsForCategory('robotics')).toEqual([at(folders, 3)]);
+      });
+
+      it('does not serve one folder set from the cache built for another', async () => {
+        expect(await listCategories()).toEqual(['fpv', 'psychology']);
+
+        mockedGetVideosFolderPaths.mockReturnValue([at(folders, 1)]);
+        expect(await listCategories()).toEqual(['psychology']);
       });
     });
   });

@@ -12,6 +12,7 @@ import { downloadQueue } from '../services/downloadQueue';
 import type { SpawnedProcess } from '../services/downloadQueue';
 import {
   DEFAULT_DOWNLOAD_OPTIONS,
+  invalidateCategoryCache,
   loadDownloadOptions,
   readFolderConfig,
 } from '../services/folderConfig';
@@ -27,6 +28,7 @@ jest.mock('../services/folderConfig', () => {
     ...actual,
     readFolderConfig: jest.fn(),
     loadDownloadOptions: jest.fn(),
+    invalidateCategoryCache: jest.fn(),
   };
 });
 
@@ -208,6 +210,32 @@ describe('folder router', () => {
         JSON.stringify(config, null, 2),
         'utf-8'
       );
+    });
+
+    it('stores the category trimmed and drops the category cache', async () => {
+      const response = await request(app)
+        .put('/api/folder/config')
+        .send({ folderPath: FOLDER, config: { channelUrl: 'https://yt/@a', category: '  fpv ' } });
+
+      expect(response.status).toBe(200);
+      expect(response.body.config).toEqual({ channelUrl: 'https://yt/@a', category: 'fpv' });
+      expect(mockedFs.writeFile).toHaveBeenCalledWith(
+        `${FOLDER}/config.json`,
+        JSON.stringify({ channelUrl: 'https://yt/@a', category: 'fpv' }, null, 2),
+        'utf-8'
+      );
+      expect(invalidateCategoryCache).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an invalid category before touching the disk', async () => {
+      const response = await request(app)
+        .put('/api/folder/config')
+        .send({ folderPath: FOLDER, config: { category: '   ' } });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/category/);
+      expect(mockedFs.writeFile).not.toHaveBeenCalled();
+      expect(invalidateCategoryCache).not.toHaveBeenCalled();
     });
 
     it('writes config.json', async () => {
