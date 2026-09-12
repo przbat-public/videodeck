@@ -46,10 +46,13 @@ export function buildIndexVersionName(folderPath: string, now: Date = new Date()
 }
 
 /**
- * Alias names for searching across currently configured folders
+ * Alias names to search: the given folders, or every configured folder.
+ *
+ * Never call this with an empty `folderPaths` array — Elasticsearch reads an
+ * empty index list as "all indices", which would silently widen the search
+ * instead of narrowing it. Callers filtering by category must short-circuit.
  */
-function getIndexPattern(): string | string[] {
-  const folderPaths = getVideosFolderPaths();
+function getIndexPattern(folderPaths: string[] = getVideosFolderPaths()): string | string[] {
   return folderPaths.map((folderPath) => getIndexNameFromFolderPath(folderPath));
 }
 
@@ -439,12 +442,18 @@ function buildSortOptions(sortOption: SortOption): estypes.SortCombinations[] {
 export const SEARCH_FIELDS = ['baseName^4', 'title^3', 'description^2', 'commentsText'];
 
 /**
- * Search videos with query and sorting across all folders
+ * Search videos with query and sorting. `folderPaths` narrows the search to
+ * those folders' indices (used by the category filter); an empty array means
+ * "no folder qualifies" and yields no results.
  */
 export async function searchVideos(
   query?: string,
-  sortOption: SortOption = 'date-desc'
+  sortOption: SortOption = 'date-desc',
+  folderPaths?: string[]
 ): Promise<VideoListItem[]> {
+  if (folderPaths?.length === 0) {
+    return [];
+  }
   const esClient = getElasticsearchClient();
 
   let searchQuery: Record<string, unknown> = { match_all: {} };
@@ -462,7 +471,7 @@ export async function searchVideos(
 
   // commentsText is search-only; it would dominate the payload otherwise
   const response = await esClient.search<VideoDocument>({
-    index: getIndexPattern(),
+    index: getIndexPattern(folderPaths),
     ignore_unavailable: true,
     query: searchQuery,
     sort: buildSortOptions(sortOption),
@@ -531,11 +540,15 @@ export async function refreshIndex(folderPath: string): Promise<void> {
   await esClient.indices.refresh({ index: getIndexNameFromFolderPath(folderPath) });
 }
 
-export async function getTotalVideoCount(): Promise<number> {
+/** Documents indexed for the given folders, or for all of them */
+export async function getTotalVideoCount(folderPaths?: string[]): Promise<number> {
+  if (folderPaths?.length === 0) {
+    return 0;
+  }
   const esClient = getElasticsearchClient();
 
   const response = await esClient.count({
-    index: getIndexPattern(),
+    index: getIndexPattern(folderPaths),
     ignore_unavailable: true,
     query: {
       match_all: {},

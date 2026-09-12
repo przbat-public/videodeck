@@ -326,7 +326,8 @@ export async function indexVideosFromDisk(
 
 export const getVideos = async (
   query?: string,
-  sortOption: SortOption = 'date-desc'
+  sortOption: SortOption = 'date-desc',
+  folderPaths?: string[]
 ): Promise<VideoListItem[]> => {
-  return searchVideos(query, sortOption);
+  return searchVideos(query, sortOption, folderPaths);
 };

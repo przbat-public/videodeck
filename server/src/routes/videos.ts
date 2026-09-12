@@ -4,6 +4,7 @@ import path from 'path';
 import OpenAI from 'openai';
 import type {
   AcceptedResponse,
+  CategoriesResponse,
   ReindexConflictResponse,
   ReindexStatus,
   SearchResponse,
@@ -30,6 +31,7 @@ import {
   getTotalVideoCount,
   recreateAllIndices,
 } from '../services/elasticsearchService';
+import { getFolderPathsForCategory, listCategories } from '../services/folderConfig';
 import { OPENAI_API_KEY, getVideosFolderPaths } from '../config';
 import { readString, sendError } from './http';
 import type { NoParams, RouteHandler } from './http';
@@ -229,19 +231,34 @@ const recreateIndices: RouteHandler<NoParams, AcceptedResponse> = (_req, res) =>
   }
 };
 
-// GET /api/videos/search?q={query}&sort={sortOption}
+// GET /api/videos/search?q={query}&sort={sortOption}&category={category}
+// The category is read from each folder's config.json and narrows the search
+// to that category's folders; an unknown category matches no folder at all.
 const search: RouteHandler<NoParams, SearchResponse> = async (req, res) => {
   try {
     const query = readString(req.query.q);
     const sort = parseSortOption(req.query.sort);
+    const category = readString(req.query.category)?.trim();
 
-    const videos = await getVideos(query, sort);
-    const totalCount = await getTotalVideoCount();
+    const folderPaths = category ? await getFolderPathsForCategory(category) : undefined;
+
+    const videos = await getVideos(query, sort, folderPaths);
+    const totalCount = await getTotalVideoCount(folderPaths);
 
     res.json({ videos, totalCount });
   } catch (error) {
     console.error('Error searching videos:', error);
     sendError(res, 500, 'Failed to search videos', error);
+  }
+};
+
+// GET /api/videos/categories
+const getCategories: RouteHandler<NoParams, CategoriesResponse> = async (_req, res) => {
+  try {
+    res.json({ categories: await listCategories() });
+  } catch (error) {
+    console.error('Error listing categories:', error);
+    sendError(res, 500, 'Failed to list categories', error);
   }
 };
 
@@ -516,6 +533,7 @@ router.get('/refreshCache/status', getRefreshStatus);
 router.get('/refreshCache', startRefresh);
 router.post('/recreateIndices', recreateIndices);
 router.get('/search', search);
+router.get('/categories', getCategories);
 router.get('/file/:filename', serveFile);
 router.get('/:identifier/summary', getSummary);
 router.get('/:identifier/details', getDetails);

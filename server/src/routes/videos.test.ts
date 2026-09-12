@@ -20,6 +20,7 @@ import {
   getVideoByVideoId,
   getVideoByFilePath,
 } from '../services/elasticsearchService';
+import { getFolderPathsForCategory, listCategories } from '../services/folderConfig';
 import OpenAI from 'openai';
 
 jest.mock('../services/videoScanner');
@@ -27,6 +28,7 @@ jest.mock('../utils/videoPathUtils');
 jest.mock('../utils/commentTreeUtils');
 jest.mock('fs/promises');
 jest.mock('../services/elasticsearchService');
+jest.mock('../services/folderConfig');
 jest.mock('openai');
 jest.mock('../config', () => ({
   OPENAI_API_KEY: 'test-api-key',
@@ -55,6 +57,10 @@ const mockedGetVideoByVideoId = getVideoByVideoId as jest.MockedFunction<typeof 
 const mockedGetVideoByFilePath = getVideoByFilePath as jest.MockedFunction<
   typeof getVideoByFilePath
 >;
+const mockedGetFolderPathsForCategory = getFolderPathsForCategory as jest.MockedFunction<
+  typeof getFolderPathsForCategory
+>;
+const mockedListCategories = listCategories as jest.MockedFunction<typeof listCategories>;
 const MockedOpenAI = OpenAI as jest.MockedClass<typeof OpenAI>;
 
 describe('videos router', () => {
@@ -96,7 +102,7 @@ describe('videos router', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ videos: mockVideos, totalCount: 100 });
-      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc');
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined);
       expect(mockedGetTotalVideoCount).toHaveBeenCalled();
     });
 
@@ -108,7 +114,7 @@ describe('videos router', () => {
       const response = await request(app).get('/api/videos/search?q=test');
 
       expect(response.status).toBe(200);
-      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc');
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined);
       expect(mockedGetTotalVideoCount).toHaveBeenCalled();
     });
 
@@ -120,7 +126,7 @@ describe('videos router', () => {
       const response = await request(app).get('/api/videos/search?q=test&sort=views-desc');
 
       expect(response.status).toBe(200);
-      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'views-desc');
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'views-desc', undefined);
       expect(mockedGetTotalVideoCount).toHaveBeenCalled();
     });
 
@@ -129,10 +135,10 @@ describe('videos router', () => {
       mockedGetTotalVideoCount.mockResolvedValue(0);
 
       await request(app).get('/api/videos/search?q=test&sort=title-asc');
-      expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc');
+      expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc', undefined);
 
       await request(app).get('/api/videos/search?q=test&sort=views-desc&sort=likes-asc');
-      expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc');
+      expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc', undefined);
     });
 
     it('should handle empty query', async () => {
@@ -144,7 +150,7 @@ describe('videos router', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ videos: mockVideos, totalCount: 0 });
-      expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc');
+      expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', undefined);
       expect(mockedGetTotalVideoCount).toHaveBeenCalled();
     });
 
@@ -186,6 +192,62 @@ describe('videos router', () => {
         error: 'Failed to search videos',
         message: 'Unknown error',
       });
+    });
+
+    it('limits the search to the folders of the requested category', async () => {
+      mockedGetVideos.mockResolvedValue([]);
+      mockedGetTotalVideoCount.mockResolvedValue(12);
+      mockedGetFolderPathsForCategory.mockResolvedValue(['/test/videos']);
+
+      const response = await request(app).get('/api/videos/search?q=test&category=%20fpv%20');
+
+      expect(response.status).toBe(200);
+      expect(mockedGetFolderPathsForCategory).toHaveBeenCalledWith('fpv');
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', ['/test/videos']);
+      expect(mockedGetTotalVideoCount).toHaveBeenCalledWith(['/test/videos']);
+      expect(response.body.totalCount).toBe(12);
+    });
+
+    it('returns nothing for a category no folder declares', async () => {
+      mockedGetVideos.mockResolvedValue([]);
+      mockedGetTotalVideoCount.mockResolvedValue(0);
+      mockedGetFolderPathsForCategory.mockResolvedValue([]);
+
+      const response = await request(app).get('/api/videos/search?category=nope');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ videos: [], totalCount: 0 });
+      expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', []);
+    });
+
+    it('ignores a blank category instead of matching nothing', async () => {
+      mockedGetVideos.mockResolvedValue([]);
+      mockedGetTotalVideoCount.mockResolvedValue(5);
+
+      await request(app).get('/api/videos/search?category=%20%20');
+
+      expect(mockedGetFolderPathsForCategory).not.toHaveBeenCalled();
+      expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', undefined);
+    });
+  });
+
+  describe('GET /api/videos/categories', () => {
+    it('returns the categories declared in the folder configs', async () => {
+      mockedListCategories.mockResolvedValue(['fpv', 'psychology']);
+
+      const response = await request(app).get('/api/videos/categories');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ categories: ['fpv', 'psychology'] });
+    });
+
+    it('reports failures as 500', async () => {
+      mockedListCategories.mockRejectedValue(new Error('disk gone'));
+
+      const response = await request(app).get('/api/videos/categories');
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Failed to list categories', message: 'disk gone' });
     });
   });
 

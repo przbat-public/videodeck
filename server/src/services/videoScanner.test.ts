@@ -89,14 +89,17 @@ describe('videoScanner', () => {
       expect(result.length).toBe(1);
       expect(at(result, 0).title).toBe('Test Video 1');
       expect(at(result, 0).folderPath).toBe(FOLDER);
-      expect(mockedEs.searchVideos).toHaveBeenCalledWith('', 'date-desc');
+      expect(mockedEs.searchVideos).toHaveBeenCalledWith('', 'date-desc', undefined);
     });
 
     it('should pass query and sort option through', async () => {
       mockedEs.searchVideos.mockResolvedValue([]);
 
       await getVideos('test', 'views-desc');
-      expect(mockedEs.searchVideos).toHaveBeenCalledWith('test', 'views-desc');
+      expect(mockedEs.searchVideos).toHaveBeenCalledWith('test', 'views-desc', undefined);
+
+      await getVideos('test', 'views-desc', ['/videos/a']);
+      expect(mockedEs.searchVideos).toHaveBeenLastCalledWith('test', 'views-desc', ['/videos/a']);
     });
   });
 

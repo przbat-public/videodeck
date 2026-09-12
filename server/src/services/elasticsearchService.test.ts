@@ -518,6 +518,18 @@ describe('elasticsearchService', () => {
       mockClient.search.mockResolvedValue({ hits: { hits: [{ _id: 'x' }] } });
       await expect(searchVideos('q')).rejects.toThrow('has no _source');
     });
+
+    it('narrows the search to the given folders', async () => {
+      await searchVideos('q', 'date-desc', [FOLDER_B]);
+
+      expect(mockClient.search.mock.calls[0][0].index).toEqual([ALIAS_B]);
+    });
+
+    it('returns nothing without querying when no folder qualifies', async () => {
+      // An empty index list would make Elasticsearch search *every* index
+      expect(await searchVideos('q', 'date-desc', [])).toEqual([]);
+      expect(mockClient.search).not.toHaveBeenCalled();
+    });
   });
 
   describe('single-document lookups', () => {
@@ -569,6 +581,16 @@ describe('elasticsearchService', () => {
         ignore_unavailable: true,
         query: { match_all: {} },
       });
+    });
+
+    it('getTotalVideoCount counts only the given folders, and nothing for none', async () => {
+      mockClient.count.mockResolvedValue({ count: 7 });
+
+      expect(await getTotalVideoCount([FOLDER_A])).toBe(7);
+      expect(mockClient.count.mock.calls[0][0].index).toEqual([ALIAS_A]);
+
+      expect(await getTotalVideoCount([])).toBe(0);
+      expect(mockClient.count).toHaveBeenCalledTimes(1);
     });
 
     it('checkElasticsearchConnection reflects ping', async () => {
