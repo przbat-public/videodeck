@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Video Downloader",
+  "version": "1.0.0",
+  "description": "Pobieraj wideo z przeglądarki używając endpointu z projektu video-search-app",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["http://localhost/*", "https://*/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

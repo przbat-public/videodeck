@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Create Icons</title>
+</head>
+<body>
+  <h1>Icon Generator</h1>
+  <p>Otwórz konsolę przeglądarki (F12) i uruchom:</p>
+  <pre>
+const canvas = document.createElement('canvas');
+const sizes = [16, 48, 128];
+sizes.forEach(size => {
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  
+  // Background
+  ctx.fillStyle = '#1976d2';
+  ctx.fillRect(0, 0, size, size);
+  
+  // Play icon
+  ctx.fillStyle = 'white';
+  ctx.beginPath();
+  const margin = size * 0.2;
+  ctx.moveTo(margin, margin);
+  ctx.lineTo(size - margin, size / 2);
+  ctx.lineTo(margin, size - margin);
+  ctx.closePath();
+  ctx.fill();
+  
+  // Download
+  const link = document.createElement('a');
+  link.download = `icon${size}.png`;
+  link.href = canvas.toDataURL();
+  link.click();
+});
+  </pre>
+  
+  <script>
+    // Auto-run the icon generation
+    window.addEventListener('load', () => {
+      const canvas = document.createElement('canvas');
+      const sizes = [16, 48, 128];
+      sizes.forEach(size => {
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        
+        // Background gradient
+        const gradient = ctx.createLinearGradient(0, 0, size, size);
+        gradient.addColorStop(0, '#1976d2');
+        gradient.addColorStop(1, '#1565c0');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size, size);
+        
+        // Play icon
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        const margin = size * 0.25;
+        ctx.moveTo(margin, margin);
+        ctx.lineTo(size - margin, size / 2);
+        ctx.lineTo(margin, size - margin);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Download
+        setTimeout(() => {
+          const link = document.createElement('a');
+          link.download = `icon${size}.png`;
+          link.href = canvas.toDataURL();
+          link.click();
+        }, size * 10);
+      });
+      
+      document.body.innerHTML += '<p style="color: green; margin-top: 20px;">Ikony zostały wygenerowane! Sprawdź folder Pobrane.</p>';
+    });
+  </script>
+</body>
+</html>
+
