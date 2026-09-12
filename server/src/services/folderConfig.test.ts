@@ -3,11 +3,21 @@ import os from 'os';
 import path from 'path';
 import {
   DEFAULT_DOWNLOAD_OPTIONS,
+  getFolderPathsForCategory,
+  listCategories,
   loadDownloadOptions,
   readFolderConfig,
+  resolveCategory,
   resolveDownloadOptions,
   validateFolderConfig,
 } from './folderConfig';
+import { getVideosFolderPaths } from '../config';
+
+jest.mock('../config');
+
+const mockedGetVideosFolderPaths = getVideosFolderPaths as jest.MockedFunction<
+  typeof getVideosFolderPaths
+>;
 
 describe('folderConfig', () => {
   describe('validateFolderConfig', () => {
@@ -54,6 +64,15 @@ describe('folderConfig', () => {
       expect(validateFolderConfig({ writeComments: 'yes' })).toBe(
         'writeComments must be a boolean'
       );
+    });
+
+    it('validates category', () => {
+      expect(validateFolderConfig({ category: 'fpv' })).toBeNull();
+      expect(validateFolderConfig({ category: 'Zdrowie i sport' })).toBeNull();
+      expect(validateFolderConfig({ category: 42 })).toBe('category must be a string');
+      expect(validateFolderConfig({ category: '  ' })).toMatch(/must not be empty/);
+      expect(validateFolderConfig({ category: 'x'.repeat(65) })).toMatch(/at most 64/);
+      expect(validateFolderConfig({ category: 'a\nb' })).toMatch(/single line/);
     });
   });
 
@@ -141,6 +160,54 @@ describe('folderConfig', () => {
 
       await fs.writeFile(path.join(dir, 'config.json'), '[1,2]', 'utf-8');
       expect(await readFolderConfig(dir)).toBeNull();
+    });
+  });
+
+  describe('categories', () => {
+    it('resolveCategory trims and treats a blank or missing value as absent', () => {
+      expect(resolveCategory({ category: '  fpv  ' })).toBe('fpv');
+      expect(resolveCategory({ category: '   ' })).toBeUndefined();
+      expect(resolveCategory({ channelUrl: 'https://yt/@a' })).toBeUndefined();
+      expect(resolveCategory(null)).toBeUndefined();
+      expect(resolveCategory({ category: 42 as unknown as string })).toBeUndefined();
+    });
+
+    describe('across configured folders', () => {
+      let folders: string[];
+
+      const writeConfig = (dir: string, config: unknown) =>
+        fs.writeFile(path.join(dir, 'config.json'), JSON.stringify(config), 'utf-8');
+
+      beforeEach(async () => {
+        folders = await Promise.all(
+          [0, 1, 2, 3].map(() => fs.mkdtemp(path.join(os.tmpdir(), 'folder-category-')))
+        );
+        mockedGetVideosFolderPaths.mockReturnValue(folders);
+        // Folder names deliberately say nothing about the category
+        await writeConfig(folders[0] as string, { category: 'fpv' });
+        await writeConfig(folders[1] as string, { category: 'psychology' });
+        await writeConfig(folders[2] as string, { category: ' FPV ' });
+        await writeConfig(folders[3] as string, { channelUrl: 'https://yt/@a' });
+      });
+
+      afterEach(async () => {
+        jest.restoreAllMocks();
+        await Promise.all(folders.map((dir) => fs.rm(dir, { recursive: true, force: true })));
+      });
+
+      it('lists distinct categories sorted, collapsing case variants', async () => {
+        expect(await listCategories()).toEqual(['fpv', 'psychology']);
+      });
+
+      it('matches folders case-insensitively and ignores those without a category', async () => {
+        expect(await getFolderPathsForCategory('FpV')).toEqual([folders[0], folders[2]]);
+        expect(await getFolderPathsForCategory(' psychology ')).toEqual([folders[1]]);
+      });
+
+      it('returns no folders for an unknown or blank category', async () => {
+        expect(await getFolderPathsForCategory('lego')).toEqual([]);
+        expect(await getFolderPathsForCategory('   ')).toEqual([]);
+      });
     });
   });
 });

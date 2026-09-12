@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import type { DownloadOptions, FolderConfig } from '@shared/api';
+import { getVideosFolderPaths } from '../config';
 
 /**
  * Per-folder `config.json` (shape: `FolderConfig` in shared/api.ts).
@@ -18,6 +19,8 @@ export const DEFAULT_DOWNLOAD_OPTIONS: DownloadOptions = {
 
 export const MIN_MAX_HEIGHT = 144;
 export const MAX_MAX_HEIGHT = 4320;
+
+export const MAX_CATEGORY_LENGTH = 64;
 
 /** yt-dlp language selectors: `en`, `pl`, `en-US`, `en.*`, `all`, `-live_chat` */
 const SUB_LANG_RE = /^-?[A-Za-z0-9._*-]+$/;
@@ -60,6 +63,22 @@ export function validateFolderConfig(config: unknown): string | null {
 
   if (c.writeComments !== undefined && typeof c.writeComments !== 'boolean') {
     return 'writeComments must be a boolean';
+  }
+
+  if (c.category !== undefined) {
+    if (typeof c.category !== 'string') {
+      return 'category must be a string';
+    }
+    const category = c.category.trim();
+    if (category.length === 0) {
+      return 'category must not be empty (omit the key instead)';
+    }
+    if (category.length > MAX_CATEGORY_LENGTH) {
+      return `category must be at most ${MAX_CATEGORY_LENGTH} characters`;
+    }
+    if (/[\r\n]/.test(category)) {
+      return 'category must be a single line';
+    }
   }
 
   return null;
@@ -126,4 +145,64 @@ export async function readFolderConfig(folderPath: string): Promise<FolderConfig
  */
 export async function loadDownloadOptions(folderPath: string): Promise<DownloadOptions> {
   return resolveDownloadOptions(await readFolderConfig(folderPath));
+}
+
+// ---------------------------------------------------------------------------
+// Categories
+// ---------------------------------------------------------------------------
+
+/**
+ * The folder's category exactly as config.json declares it (trimmed), or
+ * undefined when it declares none. Never guessed from the folder name — a
+ * folder called `drone-joyplanes` may well be an aviation channel.
+ */
+export function resolveCategory(config: FolderConfig | null | undefined): string | undefined {
+  const category = typeof config?.category === 'string' ? config.category.trim() : '';
+  return category.length > 0 ? category : undefined;
+}
+
+/** folderPath → category, for every configured folder that declares one */
+async function readCategories(): Promise<Map<string, string>> {
+  const categories = new Map<string, string>();
+  for (const folderPath of getVideosFolderPaths()) {
+    const category = resolveCategory(await readFolderConfig(folderPath));
+    if (category) {
+      categories.set(folderPath, category);
+    }
+  }
+  return categories;
+}
+
+/**
+ * Distinct categories across all configured folders, sorted. Spellings that
+ * differ only in case collapse into the first one found.
+ */
+export async function listCategories(): Promise<string[]> {
+  const byLowercase = new Map<string, string>();
+  for (const category of (await readCategories()).values()) {
+    const key = category.toLowerCase();
+    if (!byLowercase.has(key)) {
+      byLowercase.set(key, category);
+    }
+  }
+  return [...byLowercase.values()].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Folders that config.json puts in `category` (compared case-insensitively).
+ * An empty result means nothing matched; callers must then return no videos
+ * rather than falling back to searching every folder.
+ */
+export async function getFolderPathsForCategory(category: string): Promise<string[]> {
+  const wanted = category.trim().toLowerCase();
+  if (wanted.length === 0) {
+    return [];
+  }
+  const folderPaths: string[] = [];
+  for (const [folderPath, folderCategory] of await readCategories()) {
+    if (folderCategory.toLowerCase() === wanted) {
+      folderPaths.push(folderPath);
+    }
+  }
+  return folderPaths;
 }

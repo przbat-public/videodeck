@@ -110,10 +110,16 @@ export interface VideoDetails {
   folderPath: string;
 }
 
-/** GET /api/videos/search?q=&sort= */
+/** GET /api/videos/search?q=&sort=&category= */
 export interface SearchResponse {
   videos: VideoListItem[];
+  /** Videos indexed in the searched scope (the whole category when filtered) */
   totalCount: number;
+}
+
+/** GET /api/videos/categories — every category set in a folder's config.json */
+export interface CategoriesResponse {
+  categories: string[];
 }
 
 /** GET /api/videos/:identifier/details */
@@ -168,6 +174,12 @@ export interface DownloadOptions {
 /** Per-folder `config.json` */
 export interface FolderConfig extends Partial<DownloadOptions> {
   channelUrl?: string;
+  /**
+   * Topic the channel belongs to, used to narrow search to a subset of
+   * folders. Free-form and matched case-insensitively; never derived from the
+   * folder name.
+   */
+  category?: string;
   /** Other keys are preserved as-is */
   [key: string]: unknown;
 }
