@@ -54,7 +54,7 @@ export type SpawnFn = (command: string, args: string[], options: { cwd: string }
 export interface DownloadQueueOptions {
   /** Running `download` jobs at once (default 2) */
   maxConcurrent?: number;
-  /** Running `update` jobs at once (default 10) */
+  /** Running `update` jobs at once (default 2) */
   maxConcurrentUpdates?: number;
   logTail?: number;
   /** Keep finished jobs for this long before pruning (ms) */
@@ -172,7 +172,7 @@ export class DownloadQueue extends EventEmitter {
   constructor(options: DownloadQueueOptions = {}) {
     super();
     this.maxConcurrent = Math.max(1, options.maxConcurrent ?? 2);
-    this.maxConcurrentUpdates = Math.max(1, options.maxConcurrentUpdates ?? 10);
+    this.maxConcurrentUpdates = Math.max(1, options.maxConcurrentUpdates ?? 2);
     this.logTail = options.logTail ?? 40;
     this.retainFinishedMs = options.retainFinishedMs ?? 60 * 60 * 1000;
     this.spawnFn = options.spawnFn ?? nodeSpawn;
@@ -441,5 +441,5 @@ export function readConcurrency(value: string | undefined, fallback: number): nu
 /** Application-wide queue instance */
 export const downloadQueue = new DownloadQueue({
   maxConcurrent: readConcurrency(process.env.DOWNLOAD_CONCURRENCY, 2),
-  maxConcurrentUpdates: readConcurrency(process.env.UPDATE_CONCURRENCY, 10),
+  maxConcurrentUpdates: readConcurrency(process.env.UPDATE_CONCURRENCY, 2),
 });

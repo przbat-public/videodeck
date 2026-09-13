@@ -385,6 +385,17 @@ describe('DownloadQueue', () => {
       expect(spawned(3).args).toContain('https://www.youtube.com/watch?v=d');
     });
 
+    it('runs two updates at once by default', () => {
+      queue = new DownloadQueue({ spawnFn: spawn.spawnFn, afterJob });
+      queue.enqueue([update('a'), update('b'), update('c')]);
+
+      expect(statuses()).toEqual([
+        ['a', 'running'],
+        ['b', 'running'],
+        ['c', 'queued'],
+      ]);
+    });
+
     it('treats the update limit as at least one', () => {
       queue = new DownloadQueue({ maxConcurrentUpdates: 0, spawnFn: spawn.spawnFn, afterJob });
       queue.enqueue([update('a'), update('b')]);

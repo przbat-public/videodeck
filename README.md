@@ -98,7 +98,7 @@ ELASTICSEARCH_URL=http://localhost:9200
 Opcjonalne zmienne:
 ```
 DOWNLOAD_CONCURRENCY=2   # maks. liczba równoległych pobrań yt-dlp (domyślnie 2, najwyżej jedno na folder)
-UPDATE_CONCURRENCY=10    # maks. liczba równoległych aktualizacji metadanych (domyślnie 10, bez limitu na folder)
+UPDATE_CONCURRENCY=2     # maks. liczba równoległych aktualizacji metadanych (domyślnie 2, bez limitu na folder)
 ```
 
 **Uwaga:** 
@@ -500,7 +500,7 @@ Endpointy do zarządzania folderem kanału (wszystkie wymagają `folderPath` z l
 | `DELETE /api/folder/queue?folderPath=` | Anulowanie wszystkich zadań folderu |
 | `POST /api/folder/download-video` | Pojedyncze pobranie ze strumieniem SSE (używane przez rozszerzenie Chrome); zadanie i tak trafia do kolejki, zamknięcie połączenia nie przerywa pobierania |
 
-**Kolejka pobierań** działa po stronie serwera (`server/src/services/downloadQueue.ts`): zadania nie są związane z żądaniem HTTP, więc zamknięcie karty nie przerywa `yt-dlp`. Pobrania i aktualizacje mają osobne limity. Pobrań działa równolegle najwyżej `DOWNLOAD_CONCURRENCY` (domyślnie 2) i tylko jedno na folder, bo każde dopisuje do `archive.txt` w tym folderze. Aktualizacji metadanych — najwyżej `UPDATE_CONCURRENCY` (domyślnie 10), także w jednym folderze: każda pisze wyłącznie pod własnym stemem pliku, a odświeżenie indeksu folderu po zadaniu idzie w kolejce per folder, więc równoległe zadania nie nadpisują sobie `.videos-index.json`. Dziesięć procesów `yt-dlp` z jednego adresu IP to sporo żądań do YouTube — jeśli aktualizacje zaczną kończyć się błędami 429 albo prośbą o zalogowanie, zmniejsz `UPDATE_CONCURRENCY`. Klient odpytuje `GET /api/folder/queue` co 1,5 s, tylko gdy coś jest w kolejce. Kolejka jest trzymana w pamięci — restart serwera ją czyści.
+**Kolejka pobierań** działa po stronie serwera (`server/src/services/downloadQueue.ts`): zadania nie są związane z żądaniem HTTP, więc zamknięcie karty nie przerywa `yt-dlp`. Pobrania i aktualizacje mają osobne limity. Pobrań działa równolegle najwyżej `DOWNLOAD_CONCURRENCY` (domyślnie 2) i tylko jedno na folder, bo każde dopisuje do `archive.txt` w tym folderze. Aktualizacji metadanych — najwyżej `UPDATE_CONCURRENCY` (domyślnie 2), także w jednym folderze: każda pisze wyłącznie pod własnym stemem pliku, a odświeżenie indeksu folderu po zadaniu idzie w kolejce per folder, więc równoległe zadania nie nadpisują sobie `.videos-index.json`. Podnosząc ten limit pamiętaj, że każdy proces `yt-dlp` (zwłaszcza z `--write-comments`) to wiele żądań do YouTube z jednego adresu IP; błędy 429 albo prośba o zalogowanie to sygnał, żeby wrócić do mniejszej wartości. Klient odpytuje `GET /api/folder/queue` co 1,5 s, tylko gdy coś jest w kolejce. Kolejka jest trzymana w pamięci — restart serwera ją czyści.
 
 **Dwa rodzaje zadań:**
 - `download` - pełne pobranie z `--download-archive archive.txt`; film, którego id jest już w `archive.txt`, nie zostanie pobrany drugi raz nawet jeśli zmienił tytuł na YouTube.
