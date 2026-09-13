@@ -6,6 +6,7 @@ import {
   buildYtDlpArgs,
   escapeOutputTemplate,
   indexChangedVideos,
+  readConcurrency,
 } from './downloadQueue';
 import type { EnqueueRequest, SpawnedProcess } from './downloadQueue';
 import { refreshIndex } from './folderIndex';
@@ -228,8 +229,19 @@ describe('DownloadQueue', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     spawn = createFakeSpawn();
     afterJob = jest.fn().mockResolvedValue(undefined);
-    queue = new DownloadQueue({ maxConcurrent: 2, logTail: 5, spawnFn: spawn.spawnFn, afterJob });
+    queue = new DownloadQueue({
+      maxConcurrent: 2,
+      maxConcurrentUpdates: 3,
+      logTail: 5,
+      spawnFn: spawn.spawnFn,
+      afterJob,
+    });
   });
+
+  const update = (videoId: string, overrides: Partial<EnqueueRequest> = {}): EnqueueRequest =>
+    request(videoId, { type: 'update', baseName: `20240101_${videoId}`, ...overrides });
+
+  const statuses = () => queue.list().map((job) => [job.videoId, job.status]);
 
   afterEach(() => {
     jest.restoreAllMocks();
@@ -281,7 +293,7 @@ describe('DownloadQueue', () => {
     expect(spawned().args).toContain('20240101_A.%(ext)s');
   });
 
-  it('runs at most one job per folder and respects the global limit', () => {
+  it('runs at most one download per folder and respects the download limit', () => {
     queue.enqueue([
       request('a'),
       request('b'),
@@ -289,13 +301,217 @@ describe('DownloadQueue', () => {
       request('d', { folderPath: '/videos/channel-c' }),
     ]);
 
-    const statuses = queue.list().map((job) => [job.videoId, job.status]);
-    expect(statuses).toEqual([
+    expect(statuses()).toEqual([
       ['a', 'running'],
       ['b', 'queued'], // same folder as a
       ['c', 'running'],
-      ['d', 'queued'], // global limit of 2 reached
+      ['d', 'queued'], // download limit of 2 reached
     ]);
+  });
+
+  describe('updates run in parallel', () => {
+    it('runs several updates of one folder at once, up to the update limit', () => {
+      queue.enqueue([update('a'), update('b'), update('c'), update('d')]);
+
+      expect(statuses()).toEqual([
+        ['a', 'running'],
+        ['b', 'running'],
+        ['c', 'running'],
+        ['d', 'queued'], // update limit of 3 reached
+      ]);
+      expect(spawn.calls.map((call) => call.cwd)).toEqual(Array(3).fill('/videos/channel-a'));
+      for (const call of spawn.calls) {
+        expect(call.args).toContain('--skip-download');
+      }
+    });
+
+    it('counts updates and downloads against separate limits', () => {
+      queue.enqueue([
+        request('d1', { folderPath: '/videos/channel-b' }),
+        request('d2', { folderPath: '/videos/channel-c' }),
+        request('d3', { folderPath: '/videos/channel-d' }),
+        update('u1'),
+        update('u2'),
+        update('u3'),
+        update('u4'),
+      ]);
+
+      expect(statuses()).toEqual([
+        ['d1', 'running'],
+        ['d2', 'running'],
+        ['d3', 'queued'], // download limit, untouched by the updates
+        ['u1', 'running'],
+        ['u2', 'running'],
+        ['u3', 'running'],
+        ['u4', 'queued'], // update limit, untouched by the downloads
+      ]);
+    });
+
+    it('lets a download and updates share a folder, but never two downloads', () => {
+      queue.enqueue([update('u1'), update('u2'), request('d1'), request('d2')]);
+
+      expect(statuses()).toEqual([
+        ['u1', 'running'],
+        ['u2', 'running'],
+        ['d1', 'running'], // updates do not hold the folder for downloads
+        ['d2', 'queued'], // d1 does: archive.txt
+      ]);
+    });
+
+    it('does not let a queued download in a busy folder hold up updates behind it', () => {
+      queue.enqueue([request('d1'), request('d2'), update('u1')]);
+
+      expect(statuses()).toEqual([
+        ['d1', 'running'],
+        ['d2', 'queued'],
+        ['u1', 'running'],
+      ]);
+    });
+
+    it('starts the next update as soon as one finishes', async () => {
+      queue.enqueue([update('a'), update('b'), update('c'), update('d')]);
+      expect(spawn.calls).toHaveLength(3);
+
+      spawned(1).process.exit(0);
+      await flush();
+      await flush();
+
+      expect(statuses()).toEqual([
+        ['a', 'running'],
+        ['b', 'done'],
+        ['c', 'running'],
+        ['d', 'running'],
+      ]);
+      expect(spawned(3).args).toContain('https://www.youtube.com/watch?v=d');
+    });
+
+    it('treats the update limit as at least one', () => {
+      queue = new DownloadQueue({ maxConcurrentUpdates: 0, spawnFn: spawn.spawnFn, afterJob });
+      queue.enqueue([update('a'), update('b')]);
+
+      expect(statuses()).toEqual([
+        ['a', 'running'],
+        ['b', 'queued'],
+      ]);
+    });
+  });
+
+  describe('post-job hooks per folder', () => {
+    /** afterJob that only completes when the test says so */
+    const gate = () => {
+      const release = new Map<string, () => void>();
+      afterJob.mockImplementation(
+        (job) =>
+          new Promise<void>((resolve) => {
+            release.set(job.videoId, resolve);
+          })
+      );
+      return async (videoId: string) => {
+        release.get(videoId)?.();
+        await flush();
+        await flush();
+      };
+    };
+
+    it('runs one hook at a time per folder, in the order the jobs finished', async () => {
+      const release = gate();
+      queue.enqueue([update('a'), update('b'), update('c')]);
+
+      spawned(1).process.exit(0);
+      spawned(0).process.exit(0);
+      spawned(2).process.exit(0);
+      await flush();
+
+      // all three processes are gone, but only the first finisher's hook runs
+      expect(afterJob).toHaveBeenCalledTimes(1);
+      expect(afterJob).toHaveBeenCalledWith(expect.objectContaining({ videoId: 'b' }));
+      expect(statuses().map(([, status]) => status)).toEqual(['running', 'running', 'running']);
+
+      await release('b');
+      expect(afterJob).toHaveBeenCalledTimes(2);
+      expect(afterJob).toHaveBeenLastCalledWith(expect.objectContaining({ videoId: 'a' }));
+      expect(statuses()).toEqual([
+        ['a', 'running'],
+        ['b', 'done'],
+        ['c', 'running'],
+      ]);
+
+      await release('a');
+      expect(afterJob).toHaveBeenCalledTimes(3);
+      expect(afterJob).toHaveBeenLastCalledWith(expect.objectContaining({ videoId: 'c' }));
+
+      await release('c');
+      expect(statuses().map(([, status]) => status)).toEqual(['done', 'done', 'done']);
+    });
+
+    it('does not make one folder wait for the hooks of another', async () => {
+      const release = gate();
+      queue.enqueue([update('a'), update('b', { folderPath: '/videos/channel-b' })]);
+
+      spawned(0).process.exit(0);
+      spawned(1).process.exit(0);
+      await flush();
+
+      expect(afterJob).toHaveBeenCalledTimes(2);
+
+      await release('b');
+      expect(statuses()).toEqual([
+        ['a', 'running'], // its own hook is still pending
+        ['b', 'done'],
+      ]);
+    });
+
+    it('lets the next hook in the folder run after one fails', async () => {
+      afterJob.mockRejectedValueOnce(new Error('index broken')).mockResolvedValueOnce(undefined);
+      queue.enqueue([update('a'), update('b')]);
+
+      spawned(0).process.exit(0);
+      spawned(1).process.exit(0);
+      await flush();
+      await flush();
+      await flush();
+
+      expect(afterJob).toHaveBeenCalledTimes(2);
+      expect(statuses().map(([, status]) => status)).toEqual(['done', 'done']);
+      expect(console.error).toHaveBeenCalledWith(
+        'downloadQueue: afterJob failed for a:',
+        expect.any(Error)
+      );
+    });
+
+    it('survives a hook that throws instead of rejecting', async () => {
+      afterJob.mockImplementationOnce(() => {
+        throw new Error('sync boom');
+      });
+      const job = at(queue.enqueue([update('a')]), 0);
+
+      spawned().process.exit(0);
+      await flush();
+      await flush();
+
+      expect(queue.get(job.id)?.status).toBe('done');
+      expect(console.error).toHaveBeenCalled();
+    });
+
+    it('frees the folder slot once its last hook is done, so a later job starts a fresh chain', async () => {
+      queue.enqueue([update('a')]);
+      spawned().process.exit(0);
+      await flush();
+      await flush();
+      expect(statuses()).toEqual([['a', 'done']]);
+
+      const release = gate();
+      queue.enqueue([update('b')]);
+      spawned(1).process.exit(0);
+      await flush();
+
+      expect(afterJob).toHaveBeenCalledTimes(2);
+      await release('b');
+      expect(statuses()).toEqual([
+        ['a', 'done'],
+        ['b', 'done'],
+      ]);
+    });
   });
 
   it('starts the next job when one finishes', async () => {
@@ -476,5 +692,20 @@ describe('DownloadQueue', () => {
 
     shortQueue.prune(Date.now() + 5000);
     expect(shortQueue.get(job.id)).toBeUndefined();
+  });
+});
+
+describe('readConcurrency', () => {
+  it.each([
+    ['an unset variable', undefined, 2],
+    ['an empty string', '', 2],
+    ['a positive integer', '10', 10],
+    ['a number with trailing garbage', '4x', 4],
+    ['zero', '0', 2],
+    ['a negative number', '-3', 2],
+    ['a fraction below one', '0.5', 2],
+    ['text', 'many', 2],
+  ])('reads %s (%p) as %i', (_label, value, expected) => {
+    expect(readConcurrency(value, 2)).toBe(expected);
   });
 });

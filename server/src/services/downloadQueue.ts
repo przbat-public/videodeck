@@ -11,15 +11,21 @@ import { stripUndefined } from '../utils/objectUtils';
  * Server-side yt-dlp job queue.
  *
  * Jobs live and run independently of HTTP requests: closing a browser tab no
- * longer kills a half-finished download. Concurrency is limited globally and
- * to one running job per folder (yt-dlp appends to archive.txt in the folder).
+ * longer kills a half-finished download.
  *
- * Two job types:
+ * Two job types, each with its own concurrency limit:
  *  - `download`: full download with `--download-archive archive.txt`, so a
- *    video whose title changed on YouTube is never downloaded twice.
+ *    video whose title changed on YouTube is never downloaded twice. At most
+ *    `maxConcurrent` at a time and only one per folder, because every
+ *    download appends to that folder's archive.txt.
  *  - `update`: metadata-only refresh (`--skip-download`) written under the
  *    *existing* file stem, so info.json / subtitles / thumbnail are overwritten
  *    in place instead of creating a second set of files under a new title.
+ *    At most `maxConcurrentUpdates` at a time, any number per folder: each
+ *    one touches only its own files.
+ *
+ * The hook that runs after a job rewrites the folder index, so hooks run one
+ * at a time per folder whatever the number of yt-dlp processes.
  *
  * `QueueJob` (the snapshot sent to clients) is defined in shared/api.ts.
  */
@@ -46,7 +52,10 @@ export interface SpawnedProcess {
 export type SpawnFn = (command: string, args: string[], options: { cwd: string }) => SpawnedProcess;
 
 export interface DownloadQueueOptions {
+  /** Running `download` jobs at once (default 2) */
   maxConcurrent?: number;
+  /** Running `update` jobs at once (default 10) */
+  maxConcurrentUpdates?: number;
   logTail?: number;
   /** Keep finished jobs for this long before pruning (ms) */
   retainFinishedMs?: number;
@@ -150,7 +159,10 @@ export async function indexChangedVideos(job: QueueJob): Promise<void> {
 export class DownloadQueue extends EventEmitter {
   private readonly jobs = new Map<string, QueueJob>();
   private readonly processes = new Map<string, SpawnedProcess>();
+  /** Tail of the afterJob chain per folder; absent when no hook is pending */
+  private readonly folderHooks = new Map<string, Promise<void>>();
   private readonly maxConcurrent: number;
+  private readonly maxConcurrentUpdates: number;
   private readonly logTail: number;
   private readonly retainFinishedMs: number;
   private readonly spawnFn: SpawnFn;
@@ -160,6 +172,7 @@ export class DownloadQueue extends EventEmitter {
   constructor(options: DownloadQueueOptions = {}) {
     super();
     this.maxConcurrent = Math.max(1, options.maxConcurrent ?? 2);
+    this.maxConcurrentUpdates = Math.max(1, options.maxConcurrentUpdates ?? 10);
     this.logTail = options.logTail ?? 40;
     this.retainFinishedMs = options.retainFinishedMs ?? 60 * 60 * 1000;
     this.spawnFn = options.spawnFn ?? nodeSpawn;
@@ -283,34 +296,34 @@ export class DownloadQueue extends EventEmitter {
     return undefined;
   }
 
-  private runningCount(): number {
-    let count = 0;
-    for (const job of this.jobs.values()) {
-      if (job.status === 'running') {
-        count += 1;
-      }
-    }
-    return count;
+  private running(type: JobType): QueueJob[] {
+    return Array.from(this.jobs.values()).filter(
+      (job) => job.status === 'running' && job.type === type
+    );
   }
 
-  private folderBusy(folderPath: string): boolean {
-    for (const job of this.jobs.values()) {
-      if (job.status === 'running' && job.folderPath === folderPath) {
-        return true;
-      }
+  /**
+   * Whether a queued job may start now. Downloads and updates are counted
+   * against separate limits; only downloads are exclusive within a folder,
+   * because only they append to the folder's archive.txt.
+   */
+  private canStart(job: QueueJob): boolean {
+    if (job.type === 'update') {
+      return this.running('update').length < this.maxConcurrentUpdates;
     }
-    return false;
+    const downloads = this.running('download');
+    return (
+      downloads.length < this.maxConcurrent &&
+      !downloads.some((running) => running.folderPath === job.folderPath)
+    );
   }
 
+  /** Start every queued job that may run, oldest first; a blocked job does not hold up the ones behind it */
   private pump(): void {
-    while (this.runningCount() < this.maxConcurrent) {
-      const next = Array.from(this.jobs.values()).find(
-        (job) => job.status === 'queued' && !this.folderBusy(job.folderPath)
-      );
-      if (!next) {
-        return;
+    for (const job of this.jobs.values()) {
+      if (job.status === 'queued' && this.canStart(job)) {
+        this.start(job);
       }
-      this.start(next);
     }
   }
 
@@ -349,15 +362,33 @@ export class DownloadQueue extends EventEmitter {
       }
       if (code === 0) {
         job.progress = 100;
-        void this.afterJob(job)
-          .catch((error) => {
-            console.error(`downloadQueue: afterJob failed for ${job.videoId}:`, error);
-          })
-          .finally(() => this.finish(job, 'done', undefined, code));
+        void this.runAfterJob(job).then(() => this.finish(job, 'done', undefined, code));
       } else {
         this.finish(job, 'error', `yt-dlp exited with code ${code}`, code);
       }
     });
+  }
+
+  /**
+   * Runs the post-job hook after every hook already pending for the same
+   * folder. The hook rewrites the folder's index file, and two rewrites at
+   * once would lose each other's changes. Never rejects: a failed hook is
+   * logged and does not hold up the hooks queued behind it.
+   */
+  private runAfterJob(job: QueueJob): Promise<void> {
+    const previous = this.folderHooks.get(job.folderPath) ?? Promise.resolve();
+    const current = previous
+      .then(() => this.afterJob(job))
+      .catch((error: unknown) => {
+        console.error(`downloadQueue: afterJob failed for ${job.videoId}:`, error);
+      })
+      .finally(() => {
+        if (this.folderHooks.get(job.folderPath) === current) {
+          this.folderHooks.delete(job.folderPath);
+        }
+      });
+    this.folderHooks.set(job.folderPath, current);
+    return current;
   }
 
   private finish(job: QueueJob, status: JobStatus, error: string | undefined, code: number | null) {
@@ -401,10 +432,14 @@ export class DownloadQueue extends EventEmitter {
   }
 }
 
-const concurrencyFromEnv = parseInt(process.env.DOWNLOAD_CONCURRENCY || '', 10);
+/** A positive integer from the environment, or the fallback for anything else */
+export function readConcurrency(value: string | undefined, fallback: number): number {
+  const parsed = parseInt(value ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 /** Application-wide queue instance */
 export const downloadQueue = new DownloadQueue({
-  maxConcurrent:
-    Number.isFinite(concurrencyFromEnv) && concurrencyFromEnv > 0 ? concurrencyFromEnv : 2,
+  maxConcurrent: readConcurrency(process.env.DOWNLOAD_CONCURRENCY, 2),
+  maxConcurrentUpdates: readConcurrency(process.env.UPDATE_CONCURRENCY, 10),
 });
