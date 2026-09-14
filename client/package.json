@@ -50,5 +50,9 @@
       "react": "$react",
       "react-dom": "$react-dom"
     }
+  },
+  "private": true,
+  "engines": {
+    "node": "22.x"
   }
 }

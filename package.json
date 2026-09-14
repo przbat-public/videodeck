@@ -19,12 +19,13 @@
     "test:watch": "cd server && npm run test:watch",
     "test:coverage": "cd server && npm run test:coverage && cd ../client && npm run test:coverage",
     "test:e2e": "cd client && npm run test:e2e",
-    "prepare": "husky"
+    "prepare": "husky",
+    "install:ci": "npm ci && npm ci --prefix server && npm ci --prefix client && npm ci --prefix chrome-extension"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
       "prettier --write",
-      "eslint --max-warnings 0"
+      "eslint --max-warnings 0 --no-warn-ignored"
     ],
     "*.{json,css,md}": [
       "prettier --write"
@@ -51,5 +52,6 @@
     "prettier": "^3.9.6",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.0"
-  }
+  },
+  "private": true
 }

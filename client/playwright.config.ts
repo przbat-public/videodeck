@@ -11,6 +11,8 @@ export default defineConfig({
   timeout: 30_000,
   retries: 0,
   reporter: [['list']],
+  // CI: one worker at a time keeps the e2e run deterministic
+  workers: process.env.CI ? 1 : undefined,
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'retain-on-failure',
@@ -18,7 +20,8 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev -- --port 3000 --strictPort',
     port: 3000,
-    reuseExistingServer: true,
+    // Never attach to a stray :3000 server on CI runners
+    reuseExistingServer: !process.env.CI,
     timeout: 30_000,
   },
 });

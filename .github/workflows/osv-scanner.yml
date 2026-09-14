@@ -1,0 +1,27 @@
+name: OSV Scanner
+
+on:
+  schedule:
+    - cron: '0 8 * * 1' # weekly
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '**/package-lock.json'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run OSV-Scanner
+        uses: google/osv-scanner-action@v2
+        with:
+          args: --recursive .
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif

@@ -1,0 +1,172 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LICENSE'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LICENSE'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            client/package-lock.json
+            chrome-extension/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+
+  format:
+    name: Format check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            client/package-lock.json
+            chrome-extension/package-lock.json
+      - run: npm ci
+      - run: npm run format:check
+
+  typecheck:
+    name: Typecheck (server + client + extension)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            client/package-lock.json
+            chrome-extension/package-lock.json
+      - run: npm ci --prefix server && npm ci --prefix client && npm ci --prefix chrome-extension
+      - run: npm run typecheck
+
+  unit-tests:
+    name: Unit tests (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: server
+            dir: server
+            run: npm test
+          - package: client
+            dir: client
+            run: npm run test:run
+          - package: chrome-extension
+            dir: chrome-extension
+            run: npm test
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            client/package-lock.json
+            chrome-extension/package-lock.json
+      - run: npm ci --prefix ${{ matrix.dir }}
+      - name: Run tests
+        working-directory: ${{ matrix.dir }}
+        run: ${{ matrix.run }}
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [lint, format, typecheck, unit-tests]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            client/package-lock.json
+            chrome-extension/package-lock.json
+      - run: npm ci && npm ci --prefix server && npm ci --prefix client && npm ci --prefix chrome-extension
+      - run: npm run build:server && npm run build:client && npm run build:extension
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist/
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chrome-extension-build
+          path: |
+            chrome-extension/manifest.json
+            chrome-extension/background.js
+            chrome-extension/content.js
+            chrome-extension/popup.js
+            chrome-extension/options.js
+          retention-days: 14
+
+  e2e:
+    name: Playwright E2E (mocked API)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+      - name: Install Playwright browsers + OS deps
+        working-directory: client
+        run: npx playwright install --with-deps
+      - name: Run Playwright tests
+        working-directory: client
+        run: npm run test:e2e
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: client/playwright-report/
+          retention-days: 14
