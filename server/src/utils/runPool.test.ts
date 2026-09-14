@@ -24,7 +24,11 @@ describe('runPool', () => {
 
   it('never exceeds the concurrency limit', async () => {
     const { worker, maxActive } = makeWorker();
-    await runPool(Array.from({ length: 12 }, (_, i) => i), 3, worker);
+    await runPool(
+      Array.from({ length: 12 }, (_, i) => i),
+      3,
+      worker
+    );
     expect(maxActive()).toBeLessThanOrEqual(3);
     expect(maxActive()).toBeGreaterThan(1);
   });

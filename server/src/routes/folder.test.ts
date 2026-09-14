@@ -8,7 +8,12 @@ import folderRouter, { extractYoutubeVideoId } from './folder';
 import { errorHandler } from '../app';
 import { createApp as createRealApp } from '../app';
 import { getVideosFolderPaths } from '../config';
-import { findEntryByVideoId, getDownloadStatuses, loadIndex, rebuildIndex } from '../services/folderIndex';
+import {
+  findEntryByVideoId,
+  getDownloadStatuses,
+  loadIndex,
+  rebuildIndex,
+} from '../services/folderIndex';
 import { downloadQueue } from '../services/downloadQueue';
 import type { SpawnedProcess } from '../services/downloadQueue';
 import {

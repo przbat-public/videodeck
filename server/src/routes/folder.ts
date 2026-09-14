@@ -25,7 +25,12 @@ import type {
   VideoDownloadedResponse,
 } from '@shared/api';
 import { getVideosFolderPaths } from '../config';
-import { findEntryByVideoId, getDownloadStatuses, loadIndex, rebuildIndex } from '../services/folderIndex';
+import {
+  findEntryByVideoId,
+  getDownloadStatuses,
+  loadIndex,
+  rebuildIndex,
+} from '../services/folderIndex';
 import { downloadQueue } from '../services/downloadQueue';
 import type { EnqueueRequest } from '../services/downloadQueue';
 import {
