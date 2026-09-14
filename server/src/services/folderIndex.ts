@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../utils/logger';
+import { listVisibleFiles as sharedListVisibleFiles } from '../utils/fsUtils';
 
 /**
  * Per-folder index of downloaded videos.
@@ -86,8 +87,8 @@ function findVideoFile(baseName: string, files: Set<string>): string | undefined
 }
 
 async function listVisibleFiles(folderPath: string): Promise<Set<string>> {
-  const files = await fs.readdir(folderPath);
-  return new Set(files.filter((f) => !f.startsWith('.')));
+  const files = await sharedListVisibleFiles(folderPath);
+  return new Set(files);
 }
 
 async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {

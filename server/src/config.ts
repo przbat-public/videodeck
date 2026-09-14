@@ -2,12 +2,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const VIDEOS_FOLDER_PATH = process.env.VIDEOS_FOLDER_PATH as string;
-
-if (!VIDEOS_FOLDER_PATH) {
-  throw new Error('VIDEOS_FOLDER_PATH environment variable is required');
-}
-
 export const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL || 'http://localhost:9200';
 
 /** Lazily read OpenAI key (env may change in tests; only summaries need it) */
@@ -32,13 +26,16 @@ export const API_TOKEN = process.env.API_TOKEN;
 export const CORS_ORIGINS = process.env.CORS_ORIGINS;
 
 /**
- * Get all video folder paths from environment variable
- * Supports multiple paths separated by semicolon (;) or comma (,)
- * @returns Array of folder paths
+ * Get all video folder paths from environment variable.
+ * Supports multiple paths separated by semicolon (;) or comma (,).
+ *
+ * Read lazily so importing this module never throws: the server validates at
+ * startup (validateVideosFolder) and tests can set/clear the env at will.
  */
 export function getVideosFolderPaths(): string[] {
   // Support both semicolon and comma as separators
-  const paths = VIDEOS_FOLDER_PATH.split(/[;,]/)
+  const paths = (process.env.VIDEOS_FOLDER_PATH ?? '')
+    .split(/[;,]/)
     .map((path) => path.trim())
     .filter((path) => path.length > 0);
 

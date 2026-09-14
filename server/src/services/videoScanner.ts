@@ -4,6 +4,7 @@ import type { ReindexStatus, SortOption, VideoListItem } from '@shared/api';
 import { getVideosFolderPaths } from '../config';
 import type { VideoInfoJson } from '../types';
 import { stripUndefined } from '../utils/objectUtils';
+import { listVisibleFiles } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import {
   bulkIndexDocuments,
@@ -153,11 +154,6 @@ export async function buildVideoItem(
       subtitlePath: subtitleFile,
     }),
   };
-}
-
-async function listVisibleFiles(folderPath: string): Promise<string[]> {
-  const files = await fs.readdir(folderPath);
-  return files.filter((file) => !file.startsWith('.'));
 }
 
 // ---------------------------------------------------------------------------

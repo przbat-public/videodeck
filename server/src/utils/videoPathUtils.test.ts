@@ -1,25 +1,16 @@
 import { sanitizeFilename, getVideoFilePath } from './videoPathUtils';
 
 describe('sanitizeFilename', () => {
-  beforeEach(() => {
-    // Mock console.error to suppress output during tests
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    // Restore original console methods
-    jest.restoreAllMocks();
-  });
-
   it('should return valid filename as-is', () => {
     expect(sanitizeFilename('video.mp4')).toBe('video.mp4');
     expect(sanitizeFilename('test.webp')).toBe('test.webp');
     expect(sanitizeFilename('my-video-file.mp4')).toBe('my-video-file.mp4');
   });
 
-  it('should decode URL-encoded filenames', () => {
-    expect(sanitizeFilename('video%20with%20spaces.mp4')).toBe('video with spaces.mp4');
-    expect(sanitizeFilename('test%2Ffile.mp4')).toBe('file.mp4'); // path separator removed
+  it('leaves URL encoding alone — Express decodes route params before this runs', () => {
+    expect(sanitizeFilename('video%20with%20spaces.mp4')).toBe('video%20with%20spaces.mp4');
+    // An encoded separator is a literal percent string, not a path component
+    expect(sanitizeFilename('test%2Ffile.mp4')).toBe('test%2Ffile.mp4');
   });
 
   it('should remove path components using basename', () => {
@@ -56,32 +47,31 @@ describe('sanitizeFilename', () => {
   });
 
   it('should remove path separators using basename', () => {
-    // basename removes forward slashes (Unix/URL paths)
     expect(sanitizeFilename('file/name.mp4')).toBe('name.mp4');
     expect(sanitizeFilename('path/to/file.mp4')).toBe('file.mp4');
 
-    // On Unix/Mac, backslash is not a path separator, so it's treated as regular char
-    // On Windows, basename would remove it
-    // The sanitization check will catch it if basename didn't remove it
     const forwardSlashResult = sanitizeFilename('dir/file.mp4');
     expect(forwardSlashResult).toBe('file.mp4');
     expect(forwardSlashResult).not.toContain('/');
   });
 });
 
-// Note: getVideoFilePath tests require VIDEOS_FOLDER_PATH to be set at module load time
-// These tests are skipped if the env var causes issues, as the function depends on it
-describe.skip('getVideoFilePath', () => {
-  // These tests require VIDEOS_FOLDER_PATH environment variable to be properly set
-  // They are skipped by default to avoid issues in test environments
-  it('should return path with sanitized filename', () => {
-    const result = getVideoFilePath('test-video.mp4');
-    expect(result).toContain('test-video.mp4');
-    expect(result).not.toContain('/../');
+describe('getVideoFilePath', () => {
+  beforeEach(() => {
+    process.env.VIDEOS_FOLDER_PATH = '/videos/a;/videos/b';
   });
 
-  it('should sanitize filename before creating path', () => {
-    expect(() => getVideoFilePath('../etc/passwd')).toThrow();
-    expect(() => getVideoFilePath('')).toThrow();
+  it('should return path with sanitized filename', () => {
+    const result = getVideoFilePath('test-video.mp4');
+    expect(result).toBe('/videos/a/test-video.mp4');
+  });
+
+  it('should join a provided folder path', () => {
+    expect(getVideoFilePath('x.mp4', '/videos/b')).toBe('/videos/b/x.mp4');
+  });
+
+  it('should strip traversal attempts instead of letting them escape', () => {
+    expect(getVideoFilePath('../etc/passwd')).toBe('/videos/a/passwd');
+    expect(() => getVideoFilePath('')).toThrow('Invalid filename: empty filename');
   });
 });

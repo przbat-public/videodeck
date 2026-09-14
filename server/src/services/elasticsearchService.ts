@@ -66,6 +66,14 @@ export const getElasticsearchClient = (): Client => {
   return client;
 };
 
+/**
+ * Injection point: replace the client (tests, custom transport setup). Pass
+ * null to fall back to the lazy default built from ELASTICSEARCH_URL.
+ */
+export function setElasticsearchClient(override: Client | null): void {
+  client = override;
+}
+
 /** Convert a scanned video into the stored document */
 export function toDocument(video: VideoListItem): VideoDocument {
   const { comments, ...rest } = video;
