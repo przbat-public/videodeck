@@ -106,6 +106,8 @@ Opcjonalne zmienne:
 ```
 DOWNLOAD_CONCURRENCY=2   # maks. liczba równoległych pobrań yt-dlp (domyślnie 2, najwyżej jedno na folder)
 UPDATE_CONCURRENCY=2     # maks. liczba równoległych aktualizacji metadanych (domyślnie 2, bez limitu na folder)
+DOWNLOAD_MAX_ATTEMPTS=3  # ile razy powtórzyć nieudany yt-dlp (backoff 30 s; 429 YouTube itp.)
+LOG_LEVEL=info           # poziom logów: info (domyślny), warn, error, silent
 OPENAI_API_KEY=sk-REPLACE-ME    # klucz dla AI streszczeń (GET /api/videos/:id/summary)
 HOST=127.0.0.1           # adres bindowania serwera (domyślnie loopback)
 API_TOKEN=sekret         # bearer token chroniący /api (patrz Bezpieczeństwo niżej)
@@ -257,9 +259,18 @@ cd chrome-extension && npm run test:watch  # Tryb watch
 ```
 
 **Testy integracyjne z prawdziwym Elasticsearchem** (przepływ reindeksu z
-przełączaniem aliasów, składanie diakrytyków — pomijane w zwykłym `npm test`):
+przełączaniem aliasów, składanie diakrytyków, wyszukiwanie po transkryptach —
+pomijane w zwykłym `npm test`):
 ```bash
 cd server && npm run test:integration  # wymaga działającego ES (ELASTICSEARCH_URL)
+```
+
+**Testy end-to-end (Playwright)** — prawdziwa aplikacja (Vite) z zamockowanym
+API na poziomie przeglądarki; bez backendu i Elasticsearcha. Scenariusze:
+wyszukiwanie sterowane URL, paginacja „Pokaż więcej", strona szczegółów z
+odtwarzaczem i napisami, strona statusu:
+```bash
+npm run test:e2e  # pierwszy raz: cd client && npx playwright install chromium
 ```
 
 ### Pokrycie testami
@@ -402,12 +413,12 @@ cd chrome-extension && npm run typecheck
 
 ## Funkcjonalności
 
-- **Wyszukiwanie filmów** - wyszukiwanie pełnotekstowe po nazwie pliku, tytule, opisie i komentarzach z wykorzystaniem Elasticsearch; polskie znaki działają bez diakrytyków (`srodek` = `środek`), wyniki są stronicowane („Pokaż więcej")
+- **Wyszukiwanie filmów** - wyszukiwanie pełnotekstowe po nazwie pliku, tytule, opisie, transkrypcie napisów i komentarzach z wykorzystaniem Elasticsearch; polskie znaki działają bez diakrytyków (`srodek` = `środek`), sortowanie po trafności lub po polach, wyniki stronicowane („Pokaż więcej")
 - **Wsparcie dla wielu folderów** - możliwość skanowania filmów z wielu katalogów jednocześnie
 - **Odświeżanie cache** - przycisk "Refresh Cache" do ręcznego reindeksu filmów z dysku, z postępem w toaście; wyszukiwanie działa w trakcie na poprzedniej wersji indeksu
 - **Przeładowanie listy** - przycisk "Reload" do przeładowania aktualnie wyświetlanych filmów
 - **Lista filmów** - wyświetlanie filmów z miniaturkami (`.webp`)
-- **Odtwarzacz wideo** - odtwarzanie filmów w przeglądarce (HTML5 video)
+- **Odtwarzacz wideo** - odtwarzanie filmów w przeglądarce (HTML5 video) z napisami (`<track>` z pobranych `.vtt`)
 - **Szczegóły filmu** - wyświetlanie szczegółowych informacji o filmie:
   - Tytuł i opis
   - Liczba wyświetleń i polubień
@@ -427,6 +438,12 @@ cd chrome-extension && npm run typecheck
 - **Rozszerzenie Chrome** - dodawanie filmów do kolejki pobierania wprost z YouTube: wykrywanie wideo na stronie, postęp na żywo (SSE), licznik aktywnych pobrań na ikonie rozszerzenia (szczegóły w [chrome-extension/README.md](chrome-extension/README.md))
 
 ## API Endpoints
+
+### GET /health (publiczne)
+Readiness probe: pinguje Elasticsearch i zwraca `200 { status: 'ok', elasticsearch: 'ok' }`, a gdy ES nie odpowiada — `503 { status: 'degraded', elasticsearch: 'down' }`. Rozszerzenie Chrome używa go w „Test połączenia".
+
+### GET /metrics (publiczne)
+Prometheus: `http_requests_total`, `http_request_duration_ms` (z etykietami method/route/status) i `download_queue_size`.
 
 ### GET /api/videos/refreshCache
 Odświeża i reindeksuje wszystkie filmy z skonfigurowanych folderów do Elasticsearch.
@@ -481,11 +498,12 @@ wprowadzenie `polish_folded`), uruchom `GET /api/videos/refreshCache` — nowe
 indeksy dostaną nowy analizator, a aliasy przełączą się atomowo.
 
 ### GET /api/videos/search
-Wyszukuje filmy po frazie w nazwie pliku (`baseName.text^4`), tytule (`^3`), opisie (`^2`) i komentarzach (`commentsText`). Tekst jest analizowany z **składaniem znaków diakrytycznych** (customowy analizator `polish_folded`: `standard` + `lowercase` + `asciifolding`), więc `srodek` znajduje `środek` bez wpisywania polskich znaków. Polskie stemming/stopwordy wymagałyby pluginu `analysis-stempel` (nie ma go w domyślnym obrazie Dockera), więc analizator używa wyłącznie wbudowanych komponentów.
+Wyszukuje filmy po frazie w nazwie pliku (`baseName.text^4`), tytule (`^3`), opisie (`^2`), transkrypcie napisów (`transcriptText^2`) i komentarzach (`commentsText`). Tekst jest analizowany z **składaniem znaków diakrytycznych** (customowy analizator `polish_folded`: `standard` + `lowercase` + `asciifolding`), więc `srodek` znajduje `środek` bez wpisywania polskich znaków. Polskie stemming/stopwordy wymagałyby pluginu `analysis-stempel` (nie ma go w domyślnym obrazie Dockera), więc analizator używa wyłącznie wbudowanych komponentów. Transkrypty i komentarze to pola wyłącznie wyszukiwawcze — nigdy nie wracają w odpowiedziach.
 
 **Parametry zapytania:**
 - `q` (opcjonalny) - fraza do wyszukania
 - `sort` (opcjonalny) - sposób sortowania:
+  - `relevance` - po trafności (domyślne zachowanie Elasticsearch, `_score`; sensowne tylko z frazą)
   - `date-desc` - po dacie, najnowsze pierwsze (domyślne)
   - `date-asc` - po dacie, najstarsze pierwsze
   - `views-desc` - po liczbie wyświetleń, malejąco
