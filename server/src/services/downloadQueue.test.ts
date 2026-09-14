@@ -663,6 +663,24 @@ describe('DownloadQueue', () => {
     expect(afterJob).not.toHaveBeenCalled();
   });
 
+  it('treats a members-only failure that exits 0 as an error, not a success', async () => {
+    const job = at(queue.enqueue([request('a')]), 0);
+
+    spawned().process.output(
+      "ERROR: [youtube] a: This video is available to this channel's members. Join this channel to get access to members-only content.\n"
+    );
+    spawned().process.exit(0);
+    await flush();
+    await flush();
+
+    expect(queue.get(job.id)).toMatchObject({
+      status: 'error',
+      exitCode: 0,
+      error: 'Video jest dostępne tylko dla członków kanału (members-only)',
+    });
+    expect(afterJob).not.toHaveBeenCalled();
+  });
+
   describe('retries', () => {
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -726,6 +744,25 @@ describe('DownloadQueue', () => {
 
       expect(spawn.calls).toHaveLength(1);
       expect(retryQueue.get(job.id)?.status).toBe('cancelled');
+    });
+
+    it('fails a members-only video at once instead of waiting out the backoff', async () => {
+      const job = at(retryQueue.enqueue([request('a')]), 0);
+
+      spawned(0).process.output(
+        "ERROR: [youtube] obNLctxL3_c: This video is available to this channel's members on level: Supporter (or any higher level). Join this channel to get access to members-only content and other exclusive perks.\n"
+      );
+      spawned(0).process.exit(1);
+      await flush();
+      await sleep(15);
+      await flush();
+
+      expect(spawn.calls).toHaveLength(1); // no second attempt
+      expect(retryQueue.get(job.id)).toMatchObject({
+        status: 'error',
+        exitCode: 1,
+        error: 'Video jest dostępne tylko dla członków kanału (members-only)',
+      });
     });
   });
 

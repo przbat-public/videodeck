@@ -8,6 +8,7 @@ import { stripUndefined } from '../utils/objectUtils';
 import { removePartialDownloads } from '../utils/fsUtils';
 import { extractYtDlpProgress } from '@shared/progress';
 import { buildYtDlpArgs } from './ytdlp';
+import { detectPermanentFailure } from './ytdlpFailures';
 import { logger } from '../utils/logger';
 
 /**
@@ -354,8 +355,26 @@ export class DownloadQueue extends EventEmitter {
         return;
       }
       if (code === 0) {
+        // With -i, yt-dlp exits 0 even for extractor errors (members-only,
+        // private, removed) — detect them from the log so such videos are
+        // never marked as downloaded.
+        const permanent = detectPermanentFailure(job.log);
+        if (permanent) {
+          this.appendLog(job, permanent);
+          this.finish(job, 'error', permanent, code);
+          return;
+        }
         job.progress = 100;
         void this.runAfterJob(job).then(() => this.finish(job, 'done', undefined, code));
+        return;
+      }
+
+      // Videos that can never succeed (members-only, private, removed) skip
+      // the retry backoff entirely — waiting would only waste time.
+      const permanent = detectPermanentFailure(job.log);
+      if (permanent) {
+        this.appendLog(job, permanent);
+        this.finish(job, 'error', permanent, code);
         return;
       }
 
