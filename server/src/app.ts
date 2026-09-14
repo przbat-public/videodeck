@@ -1,9 +1,11 @@
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import cors from 'cors';
 import videosRouter from './routes/videos';
-import folderRouter from './routes/folder';
-import { CORS_ORIGINS } from './config';
+import { createFolderRouter } from './routes/folder';
+import type { DownloadQueueLike } from './routes/folder';
+import { getCorsOrigins } from './config';
 import { createAuthMiddleware, isAllowedCorsOrigin } from './routes/http';
 import { logger } from './utils/logger';
 import { metricsBody, metricsRegistry, recordRequest } from './metrics';
@@ -20,16 +22,24 @@ export const JSON_BODY_LIMIT = '1mb';
 export interface CreateAppOptions {
   /** Bearer token guarding /api; undefined means the API is open */
   apiToken?: string;
+  /** Download queue to back /api/folder/queue* (defaults to the app instance) */
+  downloadQueue?: DownloadQueueLike;
 }
 
 /** One log line and one metrics sample per finished request */
 function requestLogger(req: Request, res: Response, next: NextFunction): void {
+  const requestId = randomUUID();
+  res.locals.requestId = requestId;
+  res.setHeader('X-Request-Id', requestId);
+
   const start = Date.now();
   res.on('finish', () => {
     const durationMs = Date.now() - start;
     const route = req.route?.path ?? req.path;
     recordRequest(req.method, route, res.statusCode, durationMs);
-    logger.info(`${req.method} ${req.originalUrl} → ${res.statusCode} (${durationMs}ms)`);
+    logger.info(
+      `${req.method} ${req.originalUrl} → ${res.statusCode} (${durationMs}ms) [${requestId}]`
+    );
   });
   next();
 }
@@ -50,7 +60,10 @@ export function errorHandler(
     next(error); // streaming response (SSE, sendFile) — let Express tear it down
     return;
   }
-  logger.error(`Unhandled error in ${req.method} ${req.originalUrl}:`, error);
+  logger.error(
+    `Unhandled error in ${req.method} ${req.originalUrl} [${String(res.locals.requestId)}]:`,
+    error
+  );
   const body: ApiError = {
     error: 'Internal server error',
     message: error instanceof Error ? error.message : 'Unknown error',
@@ -61,10 +74,7 @@ export function errorHandler(
 export function createApp(options: CreateAppOptions = {}): express.Express {
   const app = express();
 
-  const extraCorsOrigins = (CORS_ORIGINS ?? '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0);
+  const extraCorsOrigins = getCorsOrigins();
 
   // Only browsers are subject to CORS; requests without an Origin header
   // (curl, the server itself) go through untouched.
@@ -84,7 +94,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
 
   app.use('/api/videos', videosRouter);
   // /api/status, /api/folder/* (config, list.json, download queue)
-  app.use('/api', folderRouter);
+  app.use('/api', createFolderRouter(options.downloadQueue));
 
   // Readiness probe: also tells the extension's "Test połączenia" whether
   // the whole stack (Elasticsearch included) is healthy

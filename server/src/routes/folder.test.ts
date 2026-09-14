@@ -4,7 +4,7 @@ import { EventEmitter } from 'events';
 import type { IncomingMessage } from 'http';
 import * as fs from 'fs/promises';
 import { spawn } from 'child_process';
-import folderRouter, { extractYoutubeVideoId } from './folder';
+import { createFolderRouter, extractYoutubeVideoId } from './folder';
 import { errorHandler } from '../app';
 import { createApp as createRealApp } from '../app';
 import { getVideosFolderPaths } from '../config';
@@ -113,7 +113,7 @@ const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 function createApp() {
   const app = express();
   app.use(express.json());
-  app.use('/api', folderRouter);
+  app.use('/api', createFolderRouter());
   app.use(errorHandler);
   return app;
 }

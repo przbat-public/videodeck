@@ -1,4 +1,10 @@
-import { getVideosFolderPaths, getOpenAiApiKey } from './config';
+import {
+  getApiToken,
+  getCorsOrigins,
+  getHost,
+  getOpenAiApiKey,
+  getVideosFolderPaths,
+} from './config';
 
 describe('getVideosFolderPaths', () => {
   afterEach(() => {
@@ -39,5 +45,34 @@ describe('getOpenAiApiKey', () => {
 
     process.env.OPENAI_API_KEY = 'sk-test';
     expect(getOpenAiApiKey()).toBe('sk-test');
+  });
+});
+
+describe('lazy server settings', () => {
+  afterEach(() => {
+    delete process.env.HOST;
+    delete process.env.API_TOKEN;
+    delete process.env.CORS_ORIGINS;
+  });
+
+  it('getHost defaults to loopback', () => {
+    delete process.env.HOST;
+    expect(getHost()).toBe('127.0.0.1');
+    process.env.HOST = '0.0.0.0';
+    expect(getHost()).toBe('0.0.0.0');
+  });
+
+  it('getApiToken reads the env lazily', () => {
+    delete process.env.API_TOKEN;
+    expect(getApiToken()).toBeUndefined();
+    process.env.API_TOKEN = 'sekret';
+    expect(getApiToken()).toBe('sekret');
+  });
+
+  it('getCorsOrigins splits and trims the list', () => {
+    delete process.env.CORS_ORIGINS;
+    expect(getCorsOrigins()).toEqual([]);
+    process.env.CORS_ORIGINS = ' https://a.example , https://b.example ';
+    expect(getCorsOrigins()).toEqual(['https://a.example', 'https://b.example']);
   });
 });

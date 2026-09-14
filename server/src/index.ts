@@ -1,7 +1,9 @@
 import dotenv from 'dotenv';
 import { validateVideosFolder } from './utils/videoPathUtils';
 import { createApp } from './app';
-import { API_TOKEN, HOST } from './config';
+import { getApiToken, getHost } from './config';
+import { downloadQueue } from './services/downloadQueue';
+import { installShutdownHandlers } from './shutdown';
 import { logger } from './utils/logger';
 
 dotenv.config();
@@ -15,14 +17,22 @@ async function startServer() {
     logger.info('Videos folder(s) validated');
     logger.info('Server ready. Use GET /api/videos/refreshCache to index videos.');
 
-    const app = createApp(API_TOKEN ? { apiToken: API_TOKEN } : {});
-    app.listen(PORT, HOST, () => {
-      logger.info(`Server running on http://${HOST}:${PORT}`);
-      if (!API_TOKEN) {
+    const apiToken = getApiToken();
+    const host = getHost();
+    const app = createApp(apiToken ? { apiToken } : {});
+    const server = app.listen(PORT, host, () => {
+      logger.info(`Server running on http://${host}:${PORT}`);
+      if (!apiToken) {
         logger.warn(
           'API_TOKEN is not set — the API is unauthenticated and reachable by every local process and browser tab. Set it in .env and in the Chrome extension options.'
         );
       }
+    });
+
+    // Ctrl+C / docker stop: cancel yt-dlp jobs and close cleanly
+    installShutdownHandlers({
+      server,
+      cancelJobs: () => downloadQueue.cancelAll(),
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

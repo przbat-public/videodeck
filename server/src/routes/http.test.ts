@@ -122,6 +122,33 @@ describe('createApp auth wiring', () => {
     expect(response.text).toContain('http_requests_total');
     expect(response.text).toContain('download_queue_size');
   });
+
+  it('stamps every response with an X-Request-Id', async () => {
+    const response = await request(createApp()).get('/health');
+
+    expect(response.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('accepts an injected download queue', async () => {
+    const fakeQueue = {
+      enqueue: jest.fn(),
+      list: jest.fn(() => []),
+      get: jest.fn(),
+      cancel: jest.fn(),
+      cancelAll: jest.fn(() => 0),
+      on: jest.fn(),
+      off: jest.fn(),
+    };
+    const app = createApp({ downloadQueue: fakeQueue });
+
+    const response = await request(app)
+      .get('/api/folder/queue')
+      .query({ folderPath: '/test/videos' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ jobs: [] });
+    expect(fakeQueue.list).toHaveBeenCalledWith('/test/videos');
+  });
 });
 
 describe('isAllowedCorsOrigin', () => {
