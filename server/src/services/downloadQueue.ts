@@ -6,6 +6,7 @@ import { refreshIndex } from './folderIndex';
 import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 import { indexVideosFromDisk } from './videoScanner';
 import { stripUndefined } from '../utils/objectUtils';
+import { logger } from '../utils/logger';
 
 /**
  * Server-side yt-dlp job queue.
@@ -151,7 +152,7 @@ export async function indexChangedVideos(job: QueueJob): Promise<void> {
     return;
   }
   const indexed = await indexVideosFromDisk(job.folderPath, baseNames);
-  console.log(
+  logger.info(
     `Job ${job.id}: indexed ${indexed}/${baseNames.length} changed videos in Elasticsearch`
   );
 }
@@ -380,7 +381,7 @@ export class DownloadQueue extends EventEmitter {
     const current = previous
       .then(() => this.afterJob(job))
       .catch((error: unknown) => {
-        console.error(`downloadQueue: afterJob failed for ${job.videoId}:`, error);
+        logger.error(`downloadQueue: afterJob failed for ${job.videoId}:`, error);
       })
       .finally(() => {
         if (this.folderHooks.get(job.folderPath) === current) {

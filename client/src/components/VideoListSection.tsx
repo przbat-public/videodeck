@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
+import { useState, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import type { ChannelVideo, FolderListResponse, JobType, QueueJob } from '@shared/api';
 import { VideoItem } from './VideoItem';
@@ -74,14 +74,19 @@ export const VideoListSection = forwardRef<VideoListSectionHandle, VideoListSect
       onQueueDrained: handleQueueDrained,
     });
 
-    // Reset state when listExists or folderPath changes
-    useEffect(() => {
+    // Reset per-folder state when the folder or the existence of list.json
+    // changes. Adjusted during render (React docs pattern) instead of in an
+    // effect, so no extra render pass and no lint suppression is needed.
+    const [resetKey, setResetKey] = useState(`${folderPath}:${listExists}`);
+    const currentResetKey = `${folderPath}:${listExists}`;
+    if (currentResetKey !== resetKey) {
+      setResetKey(currentResetKey);
       setVideos([]);
       setDownloadStatuses({});
       setLastUpdatedDates({});
       setVideosError(null);
       setHasLoadedVideos(false);
-    }, [listExists, folderPath]);
+    }
 
     useImperativeHandle(ref, () => ({ loadVideos }), [loadVideos]);
 

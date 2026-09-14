@@ -1,0 +1,19 @@
+{
+  "name": "video-search-chrome-extension",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rozszerzenie Chrome (MV3) dla video-search-app: pobieranie wideo z przeglądarki przez kolejkę pobierania serwera (SSE)",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/background.ts src/content.ts src/popup.ts src/options.ts --tsconfig=tsconfig.json --bundle --format=iife --target=chrome88 --outdir=.",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "esbuild": "^0.28.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.0"
+  }
+}

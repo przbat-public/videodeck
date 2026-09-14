@@ -66,9 +66,9 @@ export default function StatusPage(): JSX.Element {
                   <h2>Konfiguracja folderów wideo</h2>
                   <div className="folder-sections">
                     {statusData.videosFolderPath.length > 0 ? (
-                      statusData.videosFolderPath.map((path, index) => (
+                      statusData.videosFolderPath.map((path) => (
                         <FolderSection
-                          key={index}
+                          key={path}
                           folderPath={path}
                           initialConfig={statusData.folderConfigs[path] || null}
                           downloadDefaults={statusData.downloadDefaults}

@@ -1,6 +1,19 @@
-// Content script to detect video on the page
+import { getYouTubeVideoId } from './lib/youtube';
+import type { RuntimeMessage, VideoInfo } from './lib/messages';
 
-function getVideoInfo() {
+/**
+ * Content script: detects the video on the current page (YouTube or a direct
+ * video URL) and answers the popup's `getVideoInfo` messages.
+ */
+
+const YOUTUBE_TITLE_SELECTORS = [
+  'h1.ytd-watch-metadata yt-formatted-string',
+  'h1.title yt-formatted-string',
+  'h1.ytd-watch-metadata',
+  'h1.title',
+] as const;
+
+function getVideoInfo(): VideoInfo | null {
   try {
     const url = window.location.href;
 
@@ -11,29 +24,22 @@ function getVideoInfo() {
         return null;
       }
 
-      // Try multiple selectors for YouTube title
-      const titleSelectors = [
-        'h1.ytd-watch-metadata yt-formatted-string',
-        'h1.title yt-formatted-string',
-        'h1.ytd-watch-metadata',
-        'h1.title',
-      ];
-
-      let title = null;
-      for (const selector of titleSelectors) {
+      let title: string | null = null;
+      for (const selector of YOUTUBE_TITLE_SELECTORS) {
         const element = document.querySelector(selector);
-        if (element) {
-          title = element.textContent?.trim() || element.innerText?.trim();
-          if (title && title !== 'YouTube' && title.length > 0) {
-            break;
-          }
+        const text =
+          element?.textContent?.trim() ||
+          (element instanceof HTMLElement ? element.innerText.trim() : '');
+        if (text && text !== 'YouTube' && text.length > 0) {
+          title = text;
+          break;
         }
       }
 
-      // Fallback to meta tag or document title
+      // Fallback to the meta tag or the document title
       if (!title || title === 'YouTube') {
         const metaTitle = document.querySelector('meta[property="og:title"]');
-        if (metaTitle && metaTitle.content) {
+        if (metaTitle instanceof HTMLMetaElement && metaTitle.content) {
           title = metaTitle.content;
         } else {
           title = document.title.replace(' - YouTube', '').trim() || 'YouTube Video';
@@ -43,7 +49,7 @@ function getVideoInfo() {
       return {
         videoUrl: url,
         videoTitle: title || 'YouTube Video',
-        videoId: videoId,
+        videoId,
         platform: 'youtube',
       };
     }
@@ -58,7 +64,7 @@ function getVideoInfo() {
       };
     }
 
-    // Check for common video URL patterns
+    // Common direct video URL patterns
     if (url.match(/\.(mp4|webm|ogg|mov|avi|mkv)(\?|$)/i)) {
       return {
         videoUrl: url,
@@ -74,49 +80,29 @@ function getVideoInfo() {
   }
 }
 
-function getYouTubeVideoId(url) {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
-    /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/,
-  ];
-
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match && match[1]) {
-      return match[1];
-    }
-  }
-
-  return null;
-}
-
-// Listen for messages from popup - this is the main way popup gets video info
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'getVideoInfo') {
-    const videoInfo = getVideoInfo();
-    sendResponse(videoInfo);
+// Answer the popup's requests - the main way the popup gets video info
+chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
+  if (message.action === 'getVideoInfo') {
+    sendResponse(getVideoInfo());
     return true;
   }
   return false;
 });
 
-// Watch for URL changes (for SPA navigation like YouTube)
+// Watch for URL changes (SPA navigation on YouTube)
 let lastUrl = window.location.href;
-let lastVideoId = null;
+let lastVideoId: string | null = null;
 
-function checkForVideoChange() {
+function checkForVideoChange(): boolean {
   const currentUrl = window.location.href;
   const currentVideoId = getYouTubeVideoId(currentUrl);
 
-  // Check if URL changed
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
     lastVideoId = currentVideoId;
     return true;
   }
 
-  // Check if video ID changed (for YouTube)
   if (currentVideoId && currentVideoId !== lastVideoId) {
     lastVideoId = currentVideoId;
     return true;
@@ -126,51 +112,50 @@ function checkForVideoChange() {
 }
 
 // Simple observer for DOM changes (debounced)
-let observerTimeout = null;
+let observerTimeout: number | null = null;
 const observer = new MutationObserver(() => {
-  clearTimeout(observerTimeout);
+  if (observerTimeout !== null) {
+    clearTimeout(observerTimeout);
+  }
   observerTimeout = setTimeout(() => {
-    // Just check if video info is available now
+    // Just remember whether video info is available now
     const videoInfo = getVideoInfo();
-    if (videoInfo && videoInfo.videoId !== lastVideoId) {
+    if (videoInfo?.videoId && videoInfo.videoId !== lastVideoId) {
       lastVideoId = videoInfo.videoId;
     }
   }, 500);
 });
 
-// Watch for URL changes
-function setupUrlWatcher() {
-  // Check periodically
+function setupUrlWatcher(): void {
+  // Poll periodically
   setInterval(() => {
     checkForVideoChange();
   }, 1000);
 
-  // Listen to navigation events
+  // React to navigation events
   window.addEventListener('popstate', () => {
     setTimeout(() => checkForVideoChange(), 100);
   });
 
-  // Override history methods
-  const originalPushState = history.pushState;
-  const originalReplaceState = history.replaceState;
+  // Override history methods (SPA routers change the URL this way)
+  const originalPushState = history.pushState.bind(history);
+  const originalReplaceState = history.replaceState.bind(history);
 
-  history.pushState = function (...args) {
-    originalPushState.apply(history, args);
+  history.pushState = function (...args: Parameters<History['pushState']>) {
+    originalPushState(...args);
     setTimeout(() => checkForVideoChange(), 100);
   };
-
-  history.replaceState = function (...args) {
-    originalReplaceState.apply(history, args);
+  history.replaceState = function (...args: Parameters<History['replaceState']>) {
+    originalReplaceState(...args);
     setTimeout(() => checkForVideoChange(), 100);
   };
 }
 
-// Initialize
-function init() {
+function init(): void {
   try {
     // Initial check
     const initialInfo = getVideoInfo();
-    if (initialInfo && initialInfo.videoId) {
+    if (initialInfo?.videoId) {
       lastVideoId = initialInfo.videoId;
     }
 
@@ -182,7 +167,6 @@ function init() {
       });
     }
 
-    // Setup URL watcher
     setupUrlWatcher();
   } catch (error) {
     console.error('Error initializing content script:', error);

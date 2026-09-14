@@ -281,7 +281,10 @@ describe('videos router', () => {
 
       // Wait a bit for the catch handler to execute
       await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(console.error).toHaveBeenCalledWith('Error refreshing cache in background:', error);
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('Error refreshing cache in background:'),
+        error
+      );
     });
 
     it('returns 409 with the current status when a reindex is already running', async () => {
@@ -359,7 +362,10 @@ describe('videos router', () => {
 
       // Wait a bit for the catch handler to execute
       await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(console.error).toHaveBeenCalledWith('Error recreating indices in background:', error);
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('Error recreating indices in background:'),
+        error
+      );
     });
   });
 

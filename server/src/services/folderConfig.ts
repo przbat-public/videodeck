@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { DownloadOptions, FolderConfig } from '@shared/api';
 import { getVideosFolderPaths } from '../config';
+import { logger } from '../utils/logger';
 
 /**
  * Per-folder `config.json` (shape: `FolderConfig` in shared/api.ts).
@@ -134,7 +135,7 @@ export async function readFolderConfig(folderPath: string): Promise<FolderConfig
     return parsed as FolderConfig;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.error(`Error reading config for ${folderPath}:`, error);
+      logger.error(`Error reading config for ${folderPath}:`, error);
     }
     return null;
   }

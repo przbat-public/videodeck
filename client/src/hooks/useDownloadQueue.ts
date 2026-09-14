@@ -95,11 +95,18 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
     await refresh();
   }, [folderPath, refresh]);
 
-  // Reset per-folder tracking and load the current state
-  useEffect(() => {
+  // Reset per-folder tracking when the folder changes (adjusted during
+  // render instead of in an effect — React docs pattern for resetting state).
+  const [jobsFolder, setJobsFolder] = useState(folderPath);
+  if (jobsFolder !== folderPath) {
+    setJobsFolder(folderPath);
     seenFinishedRef.current = new Set();
     wasActiveRef.current = false;
     setJobs([]);
+  }
+
+  // Load the current state
+  useEffect(() => {
     void refresh();
   }, [refresh]);
 

@@ -115,13 +115,11 @@ export default function CommentComponent({
       </div>
       {hasReplies && isRepliesExpanded && (
         <div className="comment-replies">
-          {comment.replies!.map((reply, index) => (
-            <CommentComponent
-              key={reply.id || `reply-${index}`}
-              comment={reply}
-              depth={depth + 1}
-            />
-          ))}
+          {comment
+            .replies!.map((reply, index) => ({ reply, key: reply.id ?? `reply-${index}` }))
+            .map(({ reply, key }) => (
+              <CommentComponent key={key} comment={reply} depth={depth + 1} />
+            ))}
         </div>
       )}
     </div>

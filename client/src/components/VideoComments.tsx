@@ -19,9 +19,11 @@ export default function VideoComments({
       <h2>Comments {commentCount ? `(${commentCount})` : ''}</h2>
 
       <div className="comments-list">
-        {comments.map((comment, index) => (
-          <CommentComponent key={comment.id || index} comment={comment} />
-        ))}
+        {comments
+          .map((comment, index) => ({ comment, key: comment.id ?? `comment-${index}` }))
+          .map(({ comment, key }) => (
+            <CommentComponent key={key} comment={comment} />
+          ))}
       </div>
     </div>
   );

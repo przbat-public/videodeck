@@ -3,6 +3,7 @@ import type { estypes } from '@elastic/elasticsearch';
 import type { SortOption, VideoListItem } from '@shared/api';
 import { getVideosFolderPaths, ELASTICSEARCH_URL } from '../config';
 import { createHash } from 'crypto';
+import { logger } from '../utils/logger';
 
 /**
  * Index layout
@@ -139,7 +140,7 @@ export async function createIndexVersion(folderPath: string): Promise<string> {
     mappings: INDEX_MAPPINGS,
   });
 
-  console.log(`Index ${indexName} created for folder: ${folderPath}`);
+  logger.info(`Index ${indexName} created for folder: ${folderPath}`);
   return indexName;
 }
 
@@ -193,7 +194,7 @@ export async function promoteIndexVersion(folderPath: string, indexName: string)
     (await esClient.indices.exists({ index: alias })) &&
     !(await esClient.indices.existsAlias({ name: alias }));
   if (legacyIndexExists) {
-    console.log(`Removing legacy index ${alias} to make room for the alias`);
+    logger.info(`Removing legacy index ${alias} to make room for the alias`);
     await esClient.indices.delete({ index: alias });
   }
 
@@ -210,10 +211,10 @@ export async function promoteIndexVersion(folderPath: string, indexName: string)
   ]);
   for (const index of stale) {
     await esClient.indices.delete({ index, ignore_unavailable: true });
-    console.log(`Index ${index} deleted`);
+    logger.info(`Index ${index} deleted`);
   }
 
-  console.log(`Alias ${alias} now points at ${indexName} for folder: ${folderPath}`);
+  logger.info(`Alias ${alias} now points at ${indexName} for folder: ${folderPath}`);
 }
 
 /**
@@ -222,7 +223,7 @@ export async function promoteIndexVersion(folderPath: string, indexName: string)
 export async function discardIndexVersion(indexName: string): Promise<void> {
   const esClient = getElasticsearchClient();
   await esClient.indices.delete({ index: indexName, ignore_unavailable: true });
-  console.log(`Index ${indexName} discarded`);
+  logger.info(`Index ${indexName} discarded`);
 }
 
 /**
@@ -258,11 +259,11 @@ export async function deleteIndex(folderPath: string): Promise<void> {
   const versions = await getIndexVersions(folderPath);
   for (const index of versions) {
     await esClient.indices.delete({ index, ignore_unavailable: true });
-    console.log(`Index ${index} deleted`);
+    logger.info(`Index ${index} deleted`);
   }
   if (versions.length === 0 && (await esClient.indices.exists({ index: alias }))) {
     await esClient.indices.delete({ index: alias });
-    console.log(`Legacy index ${alias} deleted`);
+    logger.info(`Legacy index ${alias} deleted`);
   }
 }
 
@@ -273,7 +274,7 @@ export async function deleteIndex(folderPath: string): Promise<void> {
 export async function recreateIndex(folderPath: string): Promise<void> {
   const indexName = await createIndexVersion(folderPath);
   await promoteIndexVersion(folderPath, indexName);
-  console.log(`Index recreated for folder: ${folderPath}`);
+  logger.info(`Index recreated for folder: ${folderPath}`);
 }
 
 export async function deleteAllIndices(): Promise<void> {
@@ -374,7 +375,7 @@ export async function bulkIndexDocuments(
     const errors = response.items
       .filter((item) => item.index?.error)
       .map((item) => `${item.index?._id}: ${item.index?.error?.reason ?? 'unknown error'}`);
-    console.error(`${errors.length} videos failed to index in ${indexName}:`, errors.slice(0, 5));
+    logger.error(`${errors.length} videos failed to index in ${indexName}:`, errors.slice(0, 5));
     throw new Error(`Bulk indexing failed for ${errors.length} of ${documents.length} videos`);
   }
 
@@ -564,7 +565,7 @@ export async function checkElasticsearchConnection(): Promise<boolean> {
     await esClient.ping();
     return true;
   } catch (error) {
-    console.error('Elasticsearch connection failed:', error);
+    logger.error('Elasticsearch connection failed:', error);
     return false;
   }
 }

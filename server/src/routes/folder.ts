@@ -38,6 +38,7 @@ import {
 import { stripUndefined } from '../utils/objectUtils';
 import { errnoCode, isRecord, readBody, readString, sendError } from './http';
 import type { NoParams, RouteHandler } from './http';
+import { logger } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -161,10 +162,14 @@ function isQueueVideoInput(value: unknown): value is QueueVideoInput {
 const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, res) => {
   try {
     const videosFolderPaths = getVideosFolderPaths();
+    // Configs live on an external disk: 56 folders read one after another
+    // cost up to 3 s (the same reason categories are read in parallel).
+    // readFolderConfig never throws, so the whole list is always built.
+    const configs = await Promise.all(videosFolderPaths.map(readFolderConfig));
     const folderConfigs: Record<string, FolderConfig | null> = {};
-    for (const folderPath of videosFolderPaths) {
-      folderConfigs[folderPath] = await readFolderConfig(folderPath);
-    }
+    videosFolderPaths.forEach((folderPath, index) => {
+      folderConfigs[folderPath] = configs[index] ?? null;
+    });
     res.json({
       videosFolderPath: videosFolderPaths,
       folderConfigs,
@@ -264,7 +269,7 @@ const getFolderList: RouteHandler<NoParams, FolderListResponse> = async (req, re
       ({ downloadStatuses, lastUpdatedDates } = await getDownloadStatuses(folderPath));
     } catch (error) {
       // Folder unreadable — treat everything as not downloaded
-      console.error(`Error loading folder index for ${folderPath}:`, error);
+      logger.error(`Error loading folder index for ${folderPath}:`, error);
     }
 
     res.json({ videos, downloadStatuses, lastUpdatedDates });
@@ -320,7 +325,7 @@ const downloadPlaylist: RouteHandler<NoParams, DownloadPlaylistResponse> = async
     try {
       stdout = await runYtDlp(['--flat-playlist', '-j', channelUrl], folderPath);
     } catch (execError) {
-      console.error('Error executing yt-dlp:', execError);
+      logger.error('Error executing yt-dlp:', execError);
       sendError(res, 500, 'Failed to download playlist', execError);
       return;
     }
@@ -332,7 +337,7 @@ const downloadPlaylist: RouteHandler<NoParams, DownloadPlaylistResponse> = async
         try {
           return JSON.parse(line);
         } catch (parseError) {
-          console.error('Error parsing JSON line:', line.substring(0, 100));
+          logger.error('Error parsing JSON line:', line.substring(0, 100));
           throw new Error(
             `Failed to parse JSON line: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
             { cause: parseError }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type {
   ApiError,
   DownloadOptions,
@@ -26,18 +26,20 @@ export function FolderConfigEditor({
   onConfigUpdate,
 }: FolderConfigEditorProps) {
   const [config, setConfig] = useState<FolderConfig | null>(initialConfig);
+  const [previousInitialConfig, setPreviousInitialConfig] = useState(initialConfig);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState<FormState>(() => toFormState(initialConfig, downloadDefaults));
   const [isSaving, setIsSaving] = useState(false);
 
-  // Update local state when initialConfig changes
-  useEffect(() => {
+  // Reset local state when the parent replaces the config (e.g. after a save
+  // or an external change). Adjusted during render instead of in an effect —
+  // React docs: "adjusting state when a prop changes".
+  if (initialConfig !== previousInitialConfig) {
+    setPreviousInitialConfig(initialConfig);
     setConfig(initialConfig);
     setForm(toFormState(initialConfig, downloadDefaults));
-    // defaults are static for the session; only react to config changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialConfig]);
+  }
 
   const updateForm = (patch: Partial<FormState>) => setForm((prev) => ({ ...prev, ...patch }));
 

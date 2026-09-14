@@ -4,6 +4,7 @@ import type { ReindexStatus, SortOption, VideoListItem } from '@shared/api';
 import { getVideosFolderPaths } from '../config';
 import type { VideoInfoJson } from '../types';
 import { stripUndefined } from '../utils/objectUtils';
+import { logger } from '../utils/logger';
 import {
   bulkIndexDocuments,
   checkElasticsearchConnection,
@@ -204,7 +205,7 @@ async function scanFolder(folderPath: string): Promise<void> {
         }
       } else {
         reindexStatus.skipped += 1;
-        console.error(`Skipping ${result.reason}`);
+        logger.error(`Skipping ${result.reason}`);
       }
       reindexStatus.filesDone += 1;
     }
@@ -213,7 +214,7 @@ async function scanFolder(folderPath: string): Promise<void> {
     await promoteIndexVersion(folderPath, indexName);
   } catch (error) {
     await discardIndexVersion(indexName).catch((discardError) => {
-      console.error(`Failed to discard index ${indexName}:`, discardError);
+      logger.error(`Failed to discard index ${indexName}:`, discardError);
     });
     throw error;
   }
@@ -228,7 +229,7 @@ async function scanVideosFromDisk(): Promise<void> {
       await scanFolder(folderPath);
     } catch (error) {
       const message = `Error scanning folder ${folderPath}: ${describeError(error)}`;
-      console.error(message, error);
+      logger.error(message, error);
       recordError(message);
     }
     reindexStatus.foldersDone += 1;
@@ -264,14 +265,14 @@ export async function loadVideosCache(): Promise<void> {
       throw new Error('Elasticsearch is not available. Please ensure Elasticsearch is running.');
     }
 
-    console.log('Loading videos cache from disk...');
+    logger.info('Loading videos cache from disk...');
     await scanVideosFromDisk();
-    console.log(
+    logger.info(
       `Reindex finished: ${reindexStatus.indexed} indexed, ${reindexStatus.skipped} skipped, ${reindexStatus.errors.length} folder errors`
     );
   } catch (error) {
     recordError(describeError(error));
-    console.error('Failed to load videos cache:', error);
+    logger.error('Failed to load videos cache:', error);
     throw error;
   } finally {
     reindexStatus.running = false;
@@ -305,20 +306,20 @@ export async function indexVideosFromDisk(
   try {
     visibleFiles = await listVisibleFiles(folderPath);
   } catch (error) {
-    console.error(`Cannot list ${folderPath} for indexing:`, error);
+    logger.error(`Cannot list ${folderPath} for indexing:`, error);
     return 0;
   }
   for (const baseName of baseNames) {
     try {
       const result = await buildVideoItem(folderPath, baseName, visibleFiles);
       if (result.status !== 'ok') {
-        console.error(`Not indexing ${result.reason}`);
+        logger.error(`Not indexing ${result.reason}`);
         continue;
       }
       await indexVideo(result.video);
       indexed += 1;
     } catch (error) {
-      console.error(`Failed to index ${baseName} from ${folderPath}:`, error);
+      logger.error(`Failed to index ${baseName} from ${folderPath}:`, error);
     }
   }
   return indexed;

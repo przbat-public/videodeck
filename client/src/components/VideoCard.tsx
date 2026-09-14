@@ -33,17 +33,19 @@ const highlightText = (text: string, query?: string): React.ReactNode => {
   const regex = new RegExp(`(${escapedTerm})`, 'gi');
   const parts = text.split(regex);
 
-  return parts.map((part, index) => {
-    // Check if this part matches the search term (case-insensitive)
-    if (part.toLowerCase() === searchTerm.toLowerCase()) {
-      return (
-        <mark key={index} className="search-highlight">
-          {part}
-        </mark>
-      );
-    }
-    return <React.Fragment key={index}>{part}</React.Fragment>;
-  });
+  // Position is a stable identity here: the array is rebuilt from the same
+  // split on every render and React never reorders it.
+  return parts.map((part, index) =>
+    part.toLowerCase() === searchTerm.toLowerCase() ? (
+      // eslint-disable-next-line @eslint-react/no-array-index-key
+      <mark key={index} className="search-highlight">
+        {part}
+      </mark>
+    ) : (
+      // eslint-disable-next-line @eslint-react/no-array-index-key
+      <React.Fragment key={index}>{part}</React.Fragment>
+    )
+  );
 };
 
 export default function VideoCard({ video, searchQuery }: VideoCardProps): JSX.Element {

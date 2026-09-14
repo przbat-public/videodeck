@@ -69,10 +69,10 @@ export default function VideoDetailPage(): JSX.Element {
             {state.details && (
               <div className="video-meta">
                 {state.details.viewCount > 0 && (
-                  <span>{state.details.viewCount.toLocaleString()} views</span>
+                  <span>{state.details.viewCount.toLocaleString('en-US')} views</span>
                 )}
                 {state.details.likeCount > 0 && (
-                  <span>{state.details.likeCount.toLocaleString()} likes</span>
+                  <span>{state.details.likeCount.toLocaleString('en-US')} likes</span>
                 )}
                 {state.details.uploadDate && <span>{formatDate(state.details.uploadDate)}</span>}
               </div>

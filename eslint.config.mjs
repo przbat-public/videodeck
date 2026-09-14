@@ -52,6 +52,8 @@ export default defineConfig([
     '**/coverage/**',
     '**/*.config.js',
     '**/*.config.ts',
+    // Build output of the extension (npm run build in chrome-extension/)
+    'chrome-extension/*.js',
   ]),
 
   // Server and the shared type-only module: Node globals
@@ -82,6 +84,9 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    // The project is on React 18; without an explicit version the plugin
+    // assumes 19 and flags patterns that are still required here (forwardRef).
+    settings: { 'react-x': { version: '18.2.0' } },
     // react-hooks 7 still ships its presets in eslintrc shape, so the plugin is
     // registered by hand. Its `recommended-latest` adds the whole React
     // Compiler rule set — enable that as a separate, deliberate change.
@@ -94,17 +99,28 @@ export default defineConfig([
     },
   },
 
-  // Chrome extension: plain browser JS talking to the extension APIs
+  // The logger is the single module that may talk to the console directly.
   {
-    files: ['chrome-extension/**/*.js'],
-    extends: [js.configs.recommended],
+    files: ['server/src/utils/logger.ts'],
+    rules: { 'no-console': 'off' },
+  },
+
+  // Chrome extension: browser + WebExtension globals. The generated *.js at
+  // the extension root (build output) is ignored above; only src/*.ts is
+  // linted.
+  {
+    files: ['chrome-extension/src/**/*.ts'],
+    extends: [js.configs.recommended, tseslint.configs.recommended],
     languageOptions: {
       ecmaVersion: 2022,
-      sourceType: 'script',
+      sourceType: 'module',
       globals: { ...globals.browser, ...globals.webextensions },
     },
-    // An extension has nowhere else to log
-    rules: { 'no-console': 'off' },
+    rules: {
+      ...commonRules,
+      // An extension has nowhere else to log
+      'no-console': 'off',
+    },
   },
 
   // Must stay last: turns off every rule that would fight Prettier

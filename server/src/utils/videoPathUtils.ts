@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { getVideosFolderPaths } from '../config';
+import { logger } from './logger';
 
 // Validate that all folders exist
 export async function validateVideosFolder(): Promise<void> {
@@ -57,7 +58,7 @@ export function sanitizeFilename(filename: string): string {
 
   // Check for path separators (shouldn't exist after basename, but double-check)
   if (sanitized.includes('/') || sanitized.includes('\\')) {
-    console.error(
+    logger.error(
       `Path traversal detected in filename: ${filename} (decoded: ${decoded}, sanitized: ${sanitized})`
     );
     throw new Error('Invalid filename: path traversal detected');
@@ -68,7 +69,7 @@ export function sanitizeFilename(filename: string): string {
   // Allowed: "file.", "file..webp", "name...ext" - dots are part of the filename
   // Blocked: "." or ".." as the complete filename (directory references)
   if (sanitized === '.' || sanitized === '..') {
-    console.error(
+    logger.error(
       `Path traversal detected in filename: ${filename} (decoded: ${decoded}, sanitized: ${sanitized})`
     );
     throw new Error('Invalid filename: path traversal detected');
@@ -76,7 +77,7 @@ export function sanitizeFilename(filename: string): string {
 
   // Ensure it's not empty
   if (!sanitized || sanitized.trim().length === 0) {
-    console.error(`Empty filename detected: ${filename} (decoded: ${decoded})`);
+    logger.error(`Empty filename detected: ${filename} (decoded: ${decoded})`);
     throw new Error('Invalid filename: empty filename');
   }
 

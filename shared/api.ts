@@ -1,11 +1,12 @@
 /**
- * HTTP API contract shared by the server (Express) and the client (React).
+ * HTTP API contract shared by the server (Express), the client (React) and
+ * the Chrome extension (SSE events of POST /api/folder/download-video).
  *
- * Types only — this module must never contain runtime code. Both projects
+ * Types only — this module must never contain runtime code. All consumers
  * import it with `import type … from '@shared/api'` (enforced by ESLint), so
- * nothing from here lands in a bundle and the server needs no path alias at
- * runtime. Optional properties are *absent* when the server has no value for
- * them; JSON has no `undefined`.
+ * nothing from here lands in a bundle, a `node dist/…` run or an esbuild
+ * output, and no project needs a path alias at runtime. Optional properties
+ * are *absent* when the server has no value for them; JSON has no `undefined`.
  */
 
 // ---------------------------------------------------------------------------
@@ -327,7 +328,7 @@ export interface DownloadVideoRequest extends FolderPathRequest {
   videoUrl: string;
 }
 
-/** Server-sent events streamed by POST /api/folder/download-video */
+/** Server-sent events streamed by POST /api/folder/download-video (consumed by the Chrome extension) */
 export type DownloadVideoEvent =
   | { type: 'start'; message: string }
   | { type: 'output'; message: string }

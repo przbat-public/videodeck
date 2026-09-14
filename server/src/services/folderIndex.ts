@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { logger } from '../utils/logger';
 
 /**
  * Per-folder index of downloaded videos.
@@ -207,7 +208,7 @@ export async function rebuildIndex(folderPath: string): Promise<FolderIndex> {
       const stats = await fs.stat(infoPath);
       entries[id] = { baseName, videoFile, infoMtime: stats.mtime.toISOString() };
     } catch (error) {
-      console.error(`folderIndex: skipping ${infoPath}:`, error);
+      logger.error(`folderIndex: skipping ${infoPath}:`, error);
     }
   }
 
@@ -278,7 +279,7 @@ export async function refreshIndex(folderPath: string, sinceMs: number): Promise
       existing.entries[id] = { baseName, videoFile, infoMtime: stats.mtime.toISOString() };
       changed.push(id);
     } catch (error) {
-      console.error(`folderIndex: skipping ${infoPath}:`, error);
+      logger.error(`folderIndex: skipping ${infoPath}:`, error);
     }
   }
 

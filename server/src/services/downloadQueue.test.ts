@@ -485,7 +485,7 @@ describe('DownloadQueue', () => {
       expect(afterJob).toHaveBeenCalledTimes(2);
       expect(statuses().map(([, status]) => status)).toEqual(['done', 'done']);
       expect(console.error).toHaveBeenCalledWith(
-        'downloadQueue: afterJob failed for a:',
+        expect.stringContaining('downloadQueue: afterJob failed for a:'),
         expect.any(Error)
       );
     });

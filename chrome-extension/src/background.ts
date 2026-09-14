@@ -1,0 +1,224 @@
+import { extractProgress } from './lib/progress';
+import { feedSseBuffer, parseSseEvent } from './lib/sse';
+import type { ActiveDownloadSummary, RuntimeMessage } from './lib/messages';
+
+/**
+ * Background service worker: owns the list of active downloads and streams
+ * yt-dlp output from the server's SSE endpoint to the popup.
+ */
+
+interface ActiveDownload {
+  videoUrl: string;
+  videoTitle: string;
+  progress: number;
+  status: 'starting' | 'downloading';
+  startTime: number;
+}
+
+/** Events pushed from the background worker to the popup */
+type BackgroundEvent =
+  | { action: 'downloadStart'; downloadId: number; videoTitle?: string }
+  | { action: 'downloadProgress'; downloadId: number; progress?: number; message?: string }
+  | { action: 'downloadComplete'; downloadId: number; message?: string }
+  | { action: 'downloadError'; downloadId: number; error?: string }
+  | { action: 'downloadCancelled'; downloadId: number };
+
+const activeDownloads = new Map<number, ActiveDownload>();
+let downloadIdCounter = 0;
+
+chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
+  if (message.action === 'downloadVideo') {
+    const downloadId = ++downloadIdCounter;
+    const videoTitle = message.videoTitle || 'Wideo';
+
+    activeDownloads.set(downloadId, {
+      videoUrl: message.videoUrl,
+      videoTitle,
+      progress: 0,
+      status: 'starting',
+      startTime: Date.now(),
+    });
+
+    updateBadge();
+    notifyDownloadUpdate(downloadId, 'downloadStart', { videoTitle });
+
+    downloadVideo(downloadId, message.videoUrl, message.serverUrl, message.folderPath).catch(
+      (error: unknown) => {
+        activeDownloads.delete(downloadId);
+        updateBadge();
+        notifyDownloadUpdate(downloadId, 'downloadError', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    );
+    return true; // keep the message channel open for the async work
+  }
+
+  if (message.action === 'getActiveDownloads') {
+    sendResponse({ downloads: listDownloads() });
+    return true;
+  }
+
+  if (message.action === 'cancelDownload') {
+    // Cancelling the SSE stream client-side only stops the UI: the server
+    // queue keeps downloading (the extension docs say so), so we just drop
+    // the local entry.
+    if (activeDownloads.has(message.downloadId)) {
+      activeDownloads.delete(message.downloadId);
+      updateBadge();
+      notifyDownloadUpdate(message.downloadId, 'downloadCancelled', {});
+    }
+    return true;
+  }
+
+  return false;
+});
+
+function listDownloads(): ActiveDownloadSummary[] {
+  return Array.from(activeDownloads.entries()).map(([id, download]) => ({
+    id,
+    ...download,
+  }));
+}
+
+async function downloadVideo(
+  downloadId: number,
+  videoUrl: string,
+  serverUrl: string,
+  folderPath: string
+): Promise<void> {
+  const apiUrl = `${serverUrl}/api/folder/download-video`;
+
+  if (!activeDownloads.has(downloadId)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderPath, videoUrl }),
+    });
+
+    if (!response.ok) {
+      throw new Error((await readApiError(response)) ?? `HTTP ${response.status}`);
+    }
+
+    const download = activeDownloads.get(downloadId);
+    if (download) {
+      download.status = 'downloading';
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('Response has no body');
+    }
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      // Check if the download was cancelled
+      if (!activeDownloads.has(downloadId)) {
+        await reader.cancel();
+        return;
+      }
+
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      const { events, buffer: rest } = feedSseBuffer(
+        buffer,
+        decoder.decode(value, { stream: true })
+      );
+      buffer = rest;
+
+      for (const raw of events) {
+        const event = parseSseEvent(raw);
+        if (event === null) {
+          continue;
+        }
+        if (event.type === 'start') {
+          notifyDownloadUpdate(downloadId, 'downloadProgress', {
+            progress: 0,
+            message: event.message || 'Rozpoczynanie pobierania...',
+          });
+        } else if (event.type === 'output') {
+          const progress = extractProgress(event.message);
+          if (progress !== undefined) {
+            const download = activeDownloads.get(downloadId);
+            if (download) {
+              download.progress = progress;
+            }
+          }
+          notifyDownloadUpdate(downloadId, 'downloadProgress', {
+            ...(progress !== undefined ? { progress } : {}),
+            message: event.message,
+          });
+        } else if (event.type === 'done') {
+          activeDownloads.delete(downloadId);
+          updateBadge();
+          notifyDownloadUpdate(downloadId, 'downloadComplete', {
+            message: event.message || 'Pobieranie zakończone',
+          });
+          return;
+        } else {
+          // event.type === 'error'
+          activeDownloads.delete(downloadId);
+          updateBadge();
+          throw new Error(event.error || 'Błąd podczas pobierania');
+        }
+      }
+    }
+
+    // The stream ended without a 'done' event
+    activeDownloads.delete(downloadId);
+    updateBadge();
+    notifyDownloadUpdate(downloadId, 'downloadComplete', {
+      message: 'Pobieranie zakończone',
+    });
+  } catch (error) {
+    activeDownloads.delete(downloadId);
+    updateBadge();
+    notifyDownloadUpdate(downloadId, 'downloadError', {
+      error: error instanceof Error ? error.message : 'Nieznany błąd',
+    });
+    throw error;
+  }
+}
+
+/** The `error`/`message` field of an ApiError body, when present */
+async function readApiError(response: Response): Promise<string | null> {
+  const body: unknown = await response.json().catch(() => null);
+  if (typeof body !== 'object' || body === null) {
+    return null;
+  }
+  const record = body as Record<string, unknown>;
+  for (const key of ['error', 'message'] as const) {
+    if (typeof record[key] === 'string' && record[key].length > 0) {
+      return record[key];
+    }
+  }
+  return null;
+}
+
+function notifyDownloadUpdate<K extends BackgroundEvent['action']>(
+  downloadId: number,
+  action: K,
+  data: Omit<Extract<BackgroundEvent, { action: K }>, 'action' | 'downloadId'>
+): void {
+  chrome.runtime.sendMessage({ action, downloadId, ...data }).catch(() => {
+    // Ignore errors when no listener is around (popup might be closed)
+  });
+}
+
+function updateBadge(): void {
+  const count = activeDownloads.size;
+  if (count > 0) {
+    void chrome.action.setBadgeText({ text: count.toString() });
+    void chrome.action.setBadgeBackgroundColor({ color: '#1976d2' });
+  } else {
+    void chrome.action.setBadgeText({ text: '' });
+  }
+}

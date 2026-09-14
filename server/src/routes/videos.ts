@@ -35,6 +35,7 @@ import { getFolderPathsForCategory, listCategories } from '../services/folderCon
 import { OPENAI_API_KEY, getVideosFolderPaths } from '../config';
 import { readString, sendError } from './http';
 import type { NoParams, RouteHandler } from './http';
+import { logger } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
 // Subtitle text helpers (summary generation)
@@ -192,11 +193,11 @@ const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictRes
       return;
     }
 
-    console.log('Cache refresh requested...');
+    logger.info('Cache refresh requested...');
 
     // Start the refresh process asynchronously (fire and forget)
     refreshVideosCache().catch((error: unknown) => {
-      console.error('Error refreshing cache in background:', error);
+      logger.error('Error refreshing cache in background:', error);
     });
 
     // Return immediately
@@ -205,7 +206,7 @@ const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictRes
       status: 'ok',
     });
   } catch (error) {
-    console.error('Error starting cache refresh:', error);
+    logger.error('Error starting cache refresh:', error);
     sendError(res, 500, 'Failed to start cache refresh', error);
   }
 };
@@ -213,11 +214,11 @@ const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictRes
 // POST /api/videos/recreateIndices - Recreate all Elasticsearch indices
 const recreateIndices: RouteHandler<NoParams, AcceptedResponse> = (_req, res) => {
   try {
-    console.log('Recreate indices requested...');
+    logger.info('Recreate indices requested...');
 
     // Start the recreate process asynchronously (fire and forget)
     recreateAllIndices().catch((error: unknown) => {
-      console.error('Error recreating indices in background:', error);
+      logger.error('Error recreating indices in background:', error);
     });
 
     // Return immediately
@@ -226,7 +227,7 @@ const recreateIndices: RouteHandler<NoParams, AcceptedResponse> = (_req, res) =>
       status: 'ok',
     });
   } catch (error) {
-    console.error('Error starting indices recreation:', error);
+    logger.error('Error starting indices recreation:', error);
     sendError(res, 500, 'Failed to start indices recreation', error);
   }
 };
@@ -247,7 +248,7 @@ const search: RouteHandler<NoParams, SearchResponse> = async (req, res) => {
 
     res.json({ videos, totalCount });
   } catch (error) {
-    console.error('Error searching videos:', error);
+    logger.error('Error searching videos:', error);
     sendError(res, 500, 'Failed to search videos', error);
   }
 };
@@ -257,7 +258,7 @@ const getCategories: RouteHandler<NoParams, CategoriesResponse> = async (_req, r
   try {
     res.json({ categories: await listCategories() });
   } catch (error) {
-    console.error('Error listing categories:', error);
+    logger.error('Error listing categories:', error);
     sendError(res, 500, 'Failed to list categories', error);
   }
 };
@@ -282,7 +283,7 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
         const video = await getVideoByFilePath(filename);
         folderPath = video?.folderPath;
       } catch (lookupError) {
-        console.error('Error looking up file in Elasticsearch:', lookupError);
+        logger.error('Error looking up file in Elasticsearch:', lookupError);
       }
     }
 
@@ -310,7 +311,7 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
     res.setHeader('Content-Type', contentType);
     res.sendFile(path.resolve(filePath));
   } catch (error) {
-    console.error('Error serving file:', error);
+    logger.error('Error serving file:', error);
     sendError(res, 400, 'Failed to serve file', error);
   }
 };
@@ -370,7 +371,7 @@ const getSummary: RouteHandler<{ identifier: string }, VideoSummaryResponse> = a
     const wasTruncated = estimatedTokens > SUMMARY_MAX_INPUT_TOKENS;
 
     if (wasTruncated) {
-      console.warn(
+      logger.warn(
         `Subtitle text is too long (estimated ${estimatedTokens} tokens). Truncating to ${SUMMARY_MAX_INPUT_TOKENS} tokens.`
       );
       subtitleText = truncateTextToTokenLimit(subtitleText, SUMMARY_MAX_INPUT_TOKENS);
@@ -407,7 +408,7 @@ const getSummary: RouteHandler<{ identifier: string }, VideoSummaryResponse> = a
           // For other errors, rethrow immediately
           throw error;
         }
-        console.warn(`Rate limit hit for model ${model}, trying next model...`);
+        logger.warn(`Rate limit hit for model ${model}, trying next model...`);
         if (model === SUMMARY_MODELS[SUMMARY_MODELS.length - 1]) {
           // Every model is rate limited — fail fast, the client decides when to retry
           const detail = error instanceof Error ? error.message : String(error);
@@ -445,7 +446,7 @@ const getSummary: RouteHandler<{ identifier: string }, VideoSummaryResponse> = a
     try {
       await fs.writeFile(summaryFilePath, summary, 'utf-8');
     } catch (writeError) {
-      console.error('Error saving summary to disk:', writeError);
+      logger.error('Error saving summary to disk:', writeError);
       // Continue even if save fails - still return the summary
     }
 
@@ -454,7 +455,7 @@ const getSummary: RouteHandler<{ identifier: string }, VideoSummaryResponse> = a
       stripUndefined<VideoSummaryResponse>({ summary, truncated: wasTruncated ? true : undefined })
     );
   } catch (error) {
-    console.error('Error getting video summary:', error);
+    logger.error('Error getting video summary:', error);
     sendError(res, 500, 'Failed to get video summary', error);
   }
 };
@@ -486,7 +487,7 @@ const getDetails: RouteHandler<{ identifier: string }, VideoDetailsResponse> = a
       const infoJsonContent = await fs.readFile(infoJsonPath, 'utf-8');
       infoJson = JSON.parse(infoJsonContent) as VideoInfoJson;
     } catch (parseError) {
-      console.error(`Error reading or parsing info.json file ${infoJsonPath}:`, parseError);
+      logger.error(`Error reading or parsing info.json file ${infoJsonPath}:`, parseError);
       if (parseError instanceof SyntaxError) {
         res.status(500).json({
           error: 'Invalid JSON format in video metadata',
@@ -518,7 +519,7 @@ const getDetails: RouteHandler<{ identifier: string }, VideoDetailsResponse> = a
 
     res.json({ details });
   } catch (error) {
-    console.error('Error loading video details:', error);
+    logger.error('Error loading video details:', error);
     sendError(res, 500, 'Failed to load video details', error);
   }
 };

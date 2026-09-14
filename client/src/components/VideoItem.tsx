@@ -154,7 +154,11 @@ export function VideoItem({
             </div>
           )}
           <div className="download-output-content" ref={outputRef}>
+            {/* Log lines are a bounded append-only tail; order never changes,
+                so the position is a stable identity. Lines have no id of
+                their own and can repeat verbatim. */}
             {job.log.map((line, index) => (
+              // eslint-disable-next-line @eslint-react/no-array-index-key
               <div key={index} className="output-line">
                 {line}
               </div>
