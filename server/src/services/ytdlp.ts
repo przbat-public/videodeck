@@ -70,6 +70,18 @@ function buildMetadataArgs(options: DownloadOptions): string[] {
   if (options.writeComments) {
     args.push('--write-comments');
   }
+  // Per-folder feature flags (config.json / the status-page editor):
+  if (options.concurrentFragments !== undefined && options.concurrentFragments > 1) {
+    args.push('-N', String(options.concurrentFragments));
+  }
+  if (options.sponsorblockRemove) {
+    args.push('--sponsorblock-remove', 'sponsor,selfpromo,interaction');
+  }
+  if (options.impersonate) {
+    // The cookie-less answer to YouTube bot walls; also safe for us because
+    // it never touches the browser's cookie jar (unlike the forbidden flags).
+    args.push('--impersonate', 'chrome');
+  }
   if (options.extraArgs) {
     args.push(...options.extraArgs);
   }

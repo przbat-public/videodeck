@@ -173,6 +173,12 @@ export const DownloadOptionsSchema = z.object({
    * see validateFolderConfig.
    */
   extraArgs: z.array(z.string()).optional(),
+  /** Pass `--impersonate chrome` — the cookie-less answer to YouTube bot walls */
+  impersonate: z.boolean().optional(),
+  /** `-N N` parallel download fragments (1..16) */
+  concurrentFragments: z.number().int().min(1).max(16).optional(),
+  /** `--sponsorblock-remove sponsor,selfpromo,interaction` */
+  sponsorblockRemove: z.boolean().optional(),
 });
 
 export const FolderConfigSchema = z
@@ -183,6 +189,9 @@ export const FolderConfigSchema = z
     subLangs: z.array(z.string()).optional(),
     writeComments: z.boolean().optional(),
     extraArgs: z.array(z.string()).optional(),
+    impersonate: z.boolean().optional(),
+    concurrentFragments: z.number().int().min(1).max(16).optional(),
+    sponsorblockRemove: z.boolean().optional(),
   })
   .passthrough();
 

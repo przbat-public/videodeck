@@ -17,6 +17,9 @@ export const DEFAULT_DOWNLOAD_OPTIONS: DownloadOptions = {
   subLangs: ['en'],
   writeComments: true,
   extraArgs: [],
+  impersonate: false,
+  concurrentFragments: 1,
+  sponsorblockRemove: false,
 };
 
 export const MIN_MAX_HEIGHT = 144;
@@ -131,6 +134,25 @@ export function validateFolderConfig(config: unknown): string | null {
     return 'writeComments must be a boolean';
   }
 
+  if (c.impersonate !== undefined && typeof c.impersonate !== 'boolean') {
+    return 'impersonate must be a boolean';
+  }
+
+  if (c.sponsorblockRemove !== undefined && typeof c.sponsorblockRemove !== 'boolean') {
+    return 'sponsorblockRemove must be a boolean';
+  }
+
+  if (c.concurrentFragments !== undefined) {
+    if (
+      typeof c.concurrentFragments !== 'number' ||
+      !Number.isInteger(c.concurrentFragments) ||
+      c.concurrentFragments < 1 ||
+      c.concurrentFragments > 16
+    ) {
+      return 'concurrentFragments must be an integer between 1 and 16';
+    }
+  }
+
   if (c.extraArgs !== undefined) {
     if (!Array.isArray(c.extraArgs)) {
       return 'extraArgs must be an array of yt-dlp arguments';
@@ -200,6 +222,18 @@ export function resolveDownloadOptions(config: FolderConfig | null | undefined):
 
   if (typeof config.writeComments === 'boolean') {
     options.writeComments = config.writeComments;
+  }
+
+  options.impersonate = config.impersonate === true;
+  options.sponsorblockRemove = config.sponsorblockRemove === true;
+
+  if (
+    typeof config.concurrentFragments === 'number' &&
+    Number.isInteger(config.concurrentFragments) &&
+    config.concurrentFragments >= 1 &&
+    config.concurrentFragments <= 16
+  ) {
+    options.concurrentFragments = config.concurrentFragments;
   }
 
   if (Array.isArray(config.extraArgs)) {

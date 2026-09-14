@@ -266,6 +266,28 @@ describe('buildYtDlpArgs', () => {
       expect(args[args.indexOf('--progress-template') + 1]).toBe(PROGRESS_TEMPLATE);
     }
   });
+
+  it('adds impersonation, fragment concurrency and SponsorBlock when configured', () => {
+    const options = {
+      maxHeight: 2160,
+      subLangs: ['en'],
+      writeComments: true,
+      impersonate: true,
+      concurrentFragments: 4,
+      sponsorblockRemove: true,
+    };
+    const args = buildYtDlpArgs({ type: 'download', videoUrl: 'u', options });
+
+    expect(args[args.indexOf('--impersonate') + 1]).toBe('chrome');
+    expect(args[args.indexOf('-N') + 1]).toBe('4');
+    expect(args[args.indexOf('--sponsorblock-remove') + 1]).toBe('sponsor,selfpromo,interaction');
+
+    // defaults keep the old behaviour
+    const defaults = buildYtDlpArgs({ type: 'download', videoUrl: 'u' });
+    expect(defaults).not.toContain('--impersonate');
+    expect(defaults).not.toContain('-N');
+    expect(defaults).not.toContain('--sponsorblock-remove');
+  });
 });
 
 describe('DownloadQueue', () => {

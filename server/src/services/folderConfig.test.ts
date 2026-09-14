@@ -129,6 +129,24 @@ describe('folderConfig', () => {
       expect(validateFolderConfig({ category: 'x'.repeat(65) })).toMatch(/at most 64/);
       expect(validateFolderConfig({ category: 'a\nb' })).toMatch(/single line/);
     });
+
+    it('validates the yt-dlp feature toggles', () => {
+      expect(
+        validateFolderConfig({
+          impersonate: true,
+          sponsorblockRemove: true,
+          concurrentFragments: 4,
+        })
+      ).toBeNull();
+      expect(validateFolderConfig({ impersonate: 'yes' })).toBe('impersonate must be a boolean');
+      expect(validateFolderConfig({ sponsorblockRemove: 1 })).toBe(
+        'sponsorblockRemove must be a boolean'
+      );
+      expect(validateFolderConfig({ concurrentFragments: 0 })).toMatch(/between 1 and 16/);
+      expect(validateFolderConfig({ concurrentFragments: 32 })).toMatch(/between 1 and 16/);
+      expect(validateFolderConfig({ concurrentFragments: 2.5 })).toMatch(/between 1 and 16/);
+      expect(validateFolderConfig({ concurrentFragments: '4' })).toMatch(/between 1 and 16/);
+    });
   });
 
   describe('resolveDownloadOptions', () => {
@@ -152,7 +170,15 @@ describe('folderConfig', () => {
           subLangs: ['pl', 'en'],
           writeComments: false,
         })
-      ).toEqual({ maxHeight: 1080, subLangs: ['pl', 'en'], writeComments: false, extraArgs: [] });
+      ).toEqual({
+        maxHeight: 1080,
+        subLangs: ['pl', 'en'],
+        writeComments: false,
+        extraArgs: [],
+        impersonate: false,
+        concurrentFragments: 1,
+        sponsorblockRemove: false,
+      });
     });
 
     it('allows disabling subtitles with an empty array', () => {
@@ -165,6 +191,43 @@ describe('folderConfig', () => {
         subLangs: ['en'],
         writeComments: true,
         extraArgs: ['--no-playlist', '--no-warnings'],
+        impersonate: false,
+        concurrentFragments: 1,
+        sponsorblockRemove: false,
+      });
+    });
+
+    it('applies impersonation, SponsorBlock and fragment concurrency from the config', () => {
+      expect(
+        resolveDownloadOptions({
+          impersonate: true,
+          sponsorblockRemove: true,
+          concurrentFragments: 4,
+        })
+      ).toEqual({
+        maxHeight: 2160,
+        subLangs: ['en'],
+        writeComments: true,
+        extraArgs: [],
+        impersonate: true,
+        concurrentFragments: 4,
+        sponsorblockRemove: true,
+      });
+
+      // invalid values from a hand-edited file fall back to the defaults
+      expect(
+        resolveDownloadOptions({
+          impersonate: 'yes' as unknown as boolean,
+          concurrentFragments: 99,
+        })
+      ).toEqual({
+        maxHeight: 2160,
+        subLangs: ['en'],
+        writeComments: true,
+        extraArgs: [],
+        impersonate: false,
+        concurrentFragments: 1,
+        sponsorblockRemove: false,
       });
     });
 
@@ -183,6 +246,9 @@ describe('folderConfig', () => {
         subLangs: ['en'],
         writeComments: true,
         extraArgs: [],
+        impersonate: false,
+        concurrentFragments: 1,
+        sponsorblockRemove: false,
       });
     });
 
@@ -196,6 +262,9 @@ describe('folderConfig', () => {
         subLangs: ['en'],
         writeComments: true,
         extraArgs: ['--no-playlist'],
+        impersonate: false,
+        concurrentFragments: 1,
+        sponsorblockRemove: false,
       });
     });
   });
@@ -236,6 +305,9 @@ describe('folderConfig', () => {
         subLangs: ['pl'],
         writeComments: true,
         extraArgs: [],
+        impersonate: false,
+        concurrentFragments: 1,
+        sponsorblockRemove: false,
       });
     });
 
