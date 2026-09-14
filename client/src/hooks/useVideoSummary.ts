@@ -23,12 +23,15 @@ export function useVideoSummary(
       return;
     }
 
+    const controller = new AbortController();
     const fetchSummary = async () => {
-      const loadingToastId = toast.loading('Started generating summary...');
+      const loadingToastId = toast.loading('Generowanie streszczenia...');
 
       try {
         dispatch({ type: VideoSummaryActionType.FETCH_SUMMARY_START });
-        const summaryResponse = await fetch(`/api/videos/${encodeURIComponent(baseName)}/summary`);
+        const summaryResponse = await fetch(`/api/videos/${encodeURIComponent(baseName)}/summary`, {
+          signal: controller.signal,
+        });
         if (!summaryResponse.ok) {
           throw new Error('Failed to load summary');
         }
@@ -38,21 +41,25 @@ export function useVideoSummary(
           payload: summaryData.summary,
         });
 
-        // Update toast to success
-        toast.success('Summary generated successfully', { id: loadingToastId });
+        toast.success('Streszczenie gotowe', { id: loadingToastId });
       } catch (err) {
+        if (controller.signal.aborted) {
+          return; // unmounted / superseded — nothing to report
+        }
         const errorMessage = err instanceof Error ? err.message : 'An error occurred';
         dispatch({
           type: VideoSummaryActionType.FETCH_SUMMARY_ERROR,
           payload: errorMessage,
         });
 
-        // Update toast to error
-        toast.error('Failed to generate summary', { id: loadingToastId });
+        toast.error('Nie udało się wygenerować streszczenia', { id: loadingToastId });
       }
     };
 
-    fetchSummary();
+    void fetchSummary();
+    return () => {
+      controller.abort();
+    };
   }, [baseName, subtitlePath]);
 
   return { state };

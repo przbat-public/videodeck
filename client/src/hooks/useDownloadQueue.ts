@@ -36,11 +36,24 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
   const wasActiveRef = useRef(false);
   const callbacksRef = useRef({ onJobFinished, onQueueDrained });
   callbacksRef.current = { onJobFinished, onQueueDrained };
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Stop the last poll on unmount (a new refresh aborts the previous one)
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const response = await fetch(
-        `/api/folder/queue?folderPath=${encodeURIComponent(folderPath)}`
+        `/api/folder/queue?folderPath=${encodeURIComponent(folderPath)}`,
+        { signal: controller.signal }
       );
       if (!response.ok) {
         throw new Error('Failed to load download queue');
@@ -49,6 +62,9 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
       setJobs(Array.isArray(data.jobs) ? data.jobs : []);
       setError(null);
     } catch (err) {
+      if (controller.signal.aborted) {
+        return; // superseded poll or unmount — nothing to report
+      }
       setError(err instanceof Error ? err.message : 'Failed to load download queue');
     }
   }, [folderPath]);

@@ -150,8 +150,8 @@ describe('useCacheRefresh', () => {
       await result.current.refreshCache();
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(START_URL);
-    expect(fetchMock).toHaveBeenCalledWith(STATUS_URL);
+    expect(fetchMock).toHaveBeenCalledWith(START_URL, { signal: expect.any(AbortSignal) });
+    expect(fetchMock).toHaveBeenCalledWith(STATUS_URL, { signal: expect.any(AbortSignal) });
     expect(toast.loading).toHaveBeenCalledWith('Rozpoczynanie odświeżania indeksu...');
     expect(toast.success).toHaveBeenCalledWith(
       'Indeksowanie zakończone: 2561 filmów zindeksowanych, 2 pominiętych',
@@ -214,6 +214,33 @@ describe('useCacheRefresh', () => {
     );
     expect(result.current.loading).toBe(false);
     expect(result.current.status?.running).toBe(false);
+  });
+
+  it('stops polling after unmount', async () => {
+    vi.useFakeTimers();
+    mockServer(jsonResponse({ status: 'ok' }), [jsonResponse(running()), jsonResponse(finished())]);
+
+    const { result, unmount } = renderHook(() => useCacheRefresh({ pollIntervalMs: 1000 }));
+
+    let done: Promise<void>;
+    act(() => {
+      done = result.current.refreshCache();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(statusCalls()).toBe(1);
+    expect(result.current.status?.running).toBe(true);
+
+    unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+      await done;
+    });
+
+    // the loop noticed the abort after the sleep and never asked again
+    expect(statusCalls()).toBe(1);
+    vi.useRealTimers();
   });
 
   it('follows an already running reindex on 409 instead of failing', async () => {

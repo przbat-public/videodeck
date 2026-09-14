@@ -1,4 +1,4 @@
-import { useReducer, useCallback, useState } from 'react';
+import { useReducer, useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 
 import type { ReindexStatus } from '@shared/api';
@@ -57,8 +57,8 @@ export function formatReindexResult(status: ReindexStatus): string {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-async function fetchStatus(): Promise<ReindexStatus> {
-  const response = await fetch('/api/videos/refreshCache/status');
+async function fetchStatus(signal: AbortSignal): Promise<ReindexStatus> {
+  const response = await fetch('/api/videos/refreshCache/status', { signal });
   if (!response.ok) {
     throw new Error(`Nie udało się odczytać statusu indeksowania (HTTP ${response.status})`);
   }
@@ -69,13 +69,26 @@ export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheR
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const [state, dispatch] = useReducer(cacheRefreshReducer, initialState);
   const [status, setStatus] = useState<ReindexStatus | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Unmount stops the polling loop: the next fetch rejects with AbortError
+  // and the catch below exits silently.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const refreshCache = useCallback(async (): Promise<void> => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     dispatch({ type: CacheRefreshActionType.REFRESH_START });
     const loadingToastId = toast.loading('Rozpoczynanie odświeżania indeksu...');
 
     try {
-      const response = await fetch('/api/videos/refreshCache');
+      const response = await fetch('/api/videos/refreshCache', { signal: controller.signal });
 
       if (!response.ok && response.status !== 409) {
         const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
@@ -87,13 +100,19 @@ export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheR
       }
 
       // Follow the background job until the server says it is done
-      let current = await fetchStatus();
+      let current = await fetchStatus(controller.signal);
       setStatus(current);
-      while (current.running) {
+      while (current.running && !controller.signal.aborted) {
         toast.loading(formatReindexProgress(current), { id: loadingToastId });
         await sleep(pollIntervalMs);
-        current = await fetchStatus();
+        if (controller.signal.aborted) {
+          return; // unmounted mid-poll — nothing to report
+        }
+        current = await fetchStatus(controller.signal);
         setStatus(current);
+      }
+      if (controller.signal.aborted) {
+        return; // unmounted mid-poll — nothing to report
       }
 
       const summary = formatReindexResult(current);
@@ -105,6 +124,9 @@ export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheR
         toast.success(summary, { id: loadingToastId });
       }
     } catch (err) {
+      if (controller.signal.aborted) {
+        return; // unmounted or superseded — nothing to report
+      }
       const errorMessage =
         err instanceof Error ? err.message : 'Nie udało się rozpocząć odświeżania indeksu';
       dispatch({

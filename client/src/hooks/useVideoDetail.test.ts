@@ -57,7 +57,9 @@ describe('useVideoDetail', () => {
 
     expect(result.current.state.details).toEqual(mockDetails);
     expect(result.current.state.error).toBeNull();
-    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/test-video/details');
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/test-video/details', {
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it('should handle undefined baseName', async () => {
@@ -141,7 +143,8 @@ describe('useVideoDetail', () => {
     });
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/videos/video%20with%20spaces%20%26%20special%20chars/details'
+      '/api/videos/video%20with%20spaces%20%26%20special%20chars/details',
+      { signal: expect.any(AbortSignal) }
     );
   });
 
@@ -207,8 +210,12 @@ describe('useVideoDetail', () => {
 
     expect(result.current.state.details).toEqual(mockDetails2);
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
-    expect(globalThis.fetch).toHaveBeenNthCalledWith(1, '/api/videos/video1/details');
-    expect(globalThis.fetch).toHaveBeenNthCalledWith(2, '/api/videos/video2/details');
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(1, '/api/videos/video1/details', {
+      signal: expect.any(AbortSignal),
+    });
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(2, '/api/videos/video2/details', {
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it('should handle transition from undefined to valid baseName', async () => {

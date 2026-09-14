@@ -23,10 +23,13 @@ export function useVideoDetail(baseName: string | undefined): UseVideoDetailResu
       return;
     }
 
+    const controller = new AbortController();
     const fetchVideoDetail = async () => {
       try {
         dispatch({ type: VideoDetailActionType.FETCH_DETAILS_START });
-        const detailsResponse = await fetch(`/api/videos/${encodeURIComponent(baseName)}/details`);
+        const detailsResponse = await fetch(`/api/videos/${encodeURIComponent(baseName)}/details`, {
+          signal: controller.signal,
+        });
         if (!detailsResponse.ok) throw new Error('Failed to load video details');
         const detailsData: VideoDetailsResponse = await detailsResponse.json();
         dispatch({
@@ -34,6 +37,9 @@ export function useVideoDetail(baseName: string | undefined): UseVideoDetailResu
           payload: detailsData.details,
         });
       } catch (err) {
+        if (controller.signal.aborted) {
+          return; // unmounted / superseded — nothing to report
+        }
         dispatch({
           type: VideoDetailActionType.FETCH_ERROR,
           payload: err instanceof Error ? err.message : 'An error occurred',
@@ -41,7 +47,10 @@ export function useVideoDetail(baseName: string | undefined): UseVideoDetailResu
       }
     };
 
-    fetchVideoDetail();
+    void fetchVideoDetail();
+    return () => {
+      controller.abort();
+    };
   }, [baseName]);
 
   return { state };
