@@ -31,7 +31,12 @@ import { getFolderPathsForCategory, listCategories } from '../services/folderCon
 import { generateSummary } from '../services/summaryService';
 
 jest.mock('../services/videoScanner');
-jest.mock('../utils/videoPathUtils');
+// Only the file-path join is mocked; normalizeFolderPath must stay real
+// (the router compares folder paths against the allowed list with it)
+jest.mock('../utils/videoPathUtils', () => ({
+  ...jest.requireActual('../utils/videoPathUtils'),
+  getVideoFilePath: jest.fn(),
+}));
 jest.mock('../utils/commentTreeUtils');
 jest.mock('fs/promises');
 jest.mock('../services/elasticsearchService');

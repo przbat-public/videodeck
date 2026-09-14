@@ -42,6 +42,7 @@ import {
   validateFolderConfig,
 } from '../services/folderConfig';
 import { stripUndefined } from '../utils/objectUtils';
+import { normalizeFolderPath } from '../utils/videoPathUtils';
 import { errnoCode, readBody, readString, sendError } from './http';
 import { configBodySchema, firstZodError, queueBodySchema } from './validation';
 import type { NoParams, RouteHandler } from './http';
@@ -53,7 +54,9 @@ import { logger } from '../utils/logger';
 
 /**
  * Resolve and authorize a folder path coming from the request.
- * Sends the proper error response and returns null when invalid.
+ * `~/` and trailing slashes are normalized before the comparison, so a
+ * hand-typed extension option matches the configured list. Sends the proper
+ * error response (echoing the received value) and returns null when invalid.
  */
 function requireAllowedFolder<Res>(value: unknown, res: Response<Res | ApiError>): string | null {
   const folderPath = readString(value);
@@ -61,11 +64,13 @@ function requireAllowedFolder<Res>(value: unknown, res: Response<Res | ApiError>
     res.status(400).json({ error: 'folderPath is required' });
     return null;
   }
-  if (!getVideosFolderPaths().includes(folderPath)) {
-    res.status(403).json({ error: 'Folder path is not in the allowed list' });
+  const normalized = normalizeFolderPath(folderPath);
+  if (!getVideosFolderPaths().some((allowed) => normalizeFolderPath(allowed) === normalized)) {
+    logger.warn(`Rejected folderPath not in the allowed list: ${folderPath}`);
+    res.status(403).json({ error: `Folder path is not in the allowed list: ${folderPath}` });
     return null;
   }
-  return folderPath;
+  return normalized;
 }
 
 /** Optional `folderPath` filter of the queue endpoints; false when malformed */

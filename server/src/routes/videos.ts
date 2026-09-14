@@ -20,7 +20,7 @@ import {
   isReindexRunning,
   refreshVideosCache,
 } from '../services/videoScanner';
-import { getVideoFilePath } from '../utils/videoPathUtils';
+import { getVideoFilePath, normalizeFolderPath } from '../utils/videoPathUtils';
 import { buildCommentTree } from '../utils/commentTreeUtils';
 import { stripUndefined } from '../utils/objectUtils';
 import {
@@ -166,11 +166,18 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
 
   let folderPath: string | undefined;
   if (folderParam !== undefined) {
-    if (typeof folderParam !== 'string' || !getVideosFolderPaths().includes(folderParam)) {
-      res.status(403).json({ error: 'Folder path is not in the allowed list' });
+    const normalized =
+      typeof folderParam === 'string' ? normalizeFolderPath(folderParam) : undefined;
+    if (
+      normalized === undefined ||
+      !getVideosFolderPaths().some((allowed) => normalizeFolderPath(allowed) === normalized)
+    ) {
+      res
+        .status(403)
+        .json({ error: `Folder path is not in the allowed list: ${String(folderParam)}` });
       return;
     }
-    folderPath = folderParam;
+    folderPath = normalized;
   } else {
     try {
       const video = await getVideoByFilePath(filename);

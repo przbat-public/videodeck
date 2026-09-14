@@ -1,7 +1,26 @@
+import os from 'os';
 import path from 'path';
 import fs from 'fs/promises';
 import { getVideosFolderPaths } from '../config';
 import { logger } from './logger';
+
+/**
+ * Normalize a folder path before comparing it against the configured list:
+ * expand a leading `~/` (the extension options are hand-typed, so `~` and a
+ * trailing slash are the most common mismatches) and strip trailing slashes.
+ */
+export function normalizeFolderPath(value: string): string {
+  let normalized = value;
+  if (normalized === '~') {
+    normalized = os.homedir();
+  } else if (normalized.startsWith('~/')) {
+    normalized = path.join(os.homedir(), normalized.slice(2));
+  }
+  while (normalized.length > 1 && normalized.endsWith('/')) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
+}
 
 // Validate that all folders exist
 export async function validateVideosFolder(): Promise<void> {

@@ -1,4 +1,42 @@
-import { sanitizeFilename, getVideoFilePath } from './videoPathUtils';
+import os from 'os';
+import { normalizeFolderPath, sanitizeFilename, getVideoFilePath } from './videoPathUtils';
+
+describe('normalizeFolderPath', () => {
+  const realHomedir = os.homedir();
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('passes plain absolute paths through', () => {
+    expect(normalizeFolderPath('/Users/<user>/Downloads/youtube')).toBe(
+      '/Users/<user>/Downloads/youtube'
+    );
+  });
+
+  it('strips trailing slashes (except the root)', () => {
+    expect(normalizeFolderPath('/Users/<user>/Downloads/youtube/')).toBe(
+      '/Users/<user>/Downloads/youtube'
+    );
+    expect(normalizeFolderPath('/Users/<user>/Downloads/youtube///')).toBe(
+      '/Users/<user>/Downloads/youtube'
+    );
+    expect(normalizeFolderPath('/')).toBe('/');
+  });
+
+  it('expands a leading ~ and ~/', () => {
+    const homedir = jest.spyOn(os, 'homedir').mockReturnValue('/home/tester');
+    expect(normalizeFolderPath('~/Downloads/youtube')).toBe('/home/tester/Downloads/youtube');
+    expect(normalizeFolderPath('~')).toBe('/home/tester');
+    expect(normalizeFolderPath('/Users/x')).toBe('/Users/x'); // untouched
+    expect(homedir).toHaveBeenCalled();
+  });
+
+  it('does not touch other paths', () => {
+    expect(normalizeFolderPath('~/')).toBe(realHomedir);
+    expect(normalizeFolderPath('relative/x/')).toBe('relative/x');
+  });
+});
 
 describe('sanitizeFilename', () => {
   it('should return valid filename as-is', () => {
