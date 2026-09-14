@@ -167,6 +167,12 @@ export const StatusResponseSchema = z.object({
   videosFolderPath: z.array(z.string()),
   folderConfigs: z.record(z.string(), z.union([FolderConfigSchema, z.null()])),
   downloadDefaults: DownloadOptionsSchema,
+  /**
+   * Current folders that already have a search cache in Elasticsearch (their
+   * alias exists) — after a disk swap these are ready to search without a
+   * reindex, and `GET /api/videos/refreshCache?onlyMissing=1` skips them.
+   */
+  indexedFolders: z.array(z.string()),
   status: z.literal('ok'),
 });
 

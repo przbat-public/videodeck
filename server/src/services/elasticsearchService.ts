@@ -4,6 +4,7 @@ import type { SortOption, VideoListItem } from '@shared/api';
 import { getVideosFolderPaths, ELASTICSEARCH_URL } from '../config';
 import { createHash } from 'crypto';
 import { logger } from '../utils/logger';
+import { runPool } from '../utils/runPool';
 
 /**
  * Index layout
@@ -231,6 +232,39 @@ export async function listAllIndexVersions(folderPath: string): Promise<string[]
     features: ['aliases'],
   });
   return Object.keys(response);
+}
+
+/** Alias checks that run in parallel without hammering Elasticsearch */
+const CACHE_CHECK_CONCURRENCY = 8;
+
+/**
+ * Which of the given folders already have a search cache in Elasticsearch
+ * (their alias exists). Aliases are named after folder paths and persist in
+ * ES independently of the disks, so after a disk swap this tells which of
+ * the currently mounted folders can be searched right away — a reindex is
+ * only needed for the rest.
+ *
+ * A folder whose check fails (ES down mid-request) counts as uncached: the
+ * status page should never 500 because of one hiccup.
+ */
+export async function listCachedFolders(folderPaths: string[]): Promise<Set<string>> {
+  const cached = new Set<string>();
+  await runPool(folderPaths, CACHE_CHECK_CONCURRENCY, async (folderPath) => {
+    const alias = getIndexNameFromFolderPath(folderPath);
+    try {
+      const exists = await getElasticsearchClient().indices.existsAlias({ name: alias });
+      if (exists) {
+        cached.add(folderPath);
+      }
+    } catch (error) {
+      logger.warn(
+        `Cannot check the index cache of ${folderPath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  });
+  return cached;
 }
 
 /**

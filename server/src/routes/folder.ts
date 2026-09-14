@@ -31,6 +31,7 @@ import {
 } from '../services/folderIndex';
 import { readListJson } from '../services/channelList';
 import { buildPlaylistArgs, runYtDlp } from '../services/ytdlp';
+import { listCachedFolders } from '../services/elasticsearchService';
 import { downloadQueue } from '../services/downloadQueue';
 import type { DownloadQueue } from '../services/downloadQueue';
 import type { EnqueueRequest } from '../services/downloadQueue';
@@ -105,7 +106,10 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     // Configs live on an external disk: 56 folders read one after another
     // cost up to 3 s (the same reason categories are read in parallel).
     // readFolderConfig never throws, so the whole list is always built.
-    const configs = await Promise.all(videosFolderPaths.map(readFolderConfig));
+    const [configs, cachedFolders] = await Promise.all([
+      Promise.all(videosFolderPaths.map(readFolderConfig)),
+      listCachedFolders(videosFolderPaths),
+    ]);
     const folderConfigs: Record<string, FolderConfig | null> = {};
     videosFolderPaths.forEach((folderPath, index) => {
       folderConfigs[folderPath] = configs[index] ?? null;
@@ -114,6 +118,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
       videosFolderPath: videosFolderPaths,
       folderConfigs,
       downloadDefaults: DEFAULT_DOWNLOAD_OPTIONS,
+      indexedFolders: videosFolderPaths.filter((folderPath) => cachedFolders.has(folderPath)),
       status: 'ok',
     });
   };

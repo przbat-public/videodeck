@@ -16,6 +16,7 @@ import {
   getVideoByFilePath,
   getVideoByVideoId,
   indexVideo,
+  listCachedFolders,
   promoteIndexVersion,
   recreateIndex,
   SEARCH_FIELDS,
@@ -208,6 +209,29 @@ describe('elasticsearchService', () => {
     it('rethrows other errors', async () => {
       mockClient.indices.getAlias.mockRejectedValue(new Error('boom'));
       await expect(getIndexVersions(FOLDER_A)).rejects.toThrow('boom');
+    });
+  });
+
+  describe('listCachedFolders', () => {
+    it('returns the folders whose alias exists (a cache from a previous disk session)', async () => {
+      mockClient.indices.existsAlias.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+      const cached = await listCachedFolders([FOLDER_A, FOLDER_B]);
+
+      expect(cached).toEqual(new Set([FOLDER_A]));
+      expect(mockClient.indices.existsAlias).toHaveBeenCalledWith({ name: ALIAS_A });
+      expect(mockClient.indices.existsAlias).toHaveBeenCalledWith({ name: ALIAS_B });
+    });
+
+    it('treats a failed alias check as uncached instead of throwing', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockClient.indices.existsAlias.mockRejectedValueOnce(new Error('es down'));
+
+      await expect(listCachedFolders([FOLDER_A])).resolves.toEqual(new Set());
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Cannot check the index cache of /videos/a')
+      );
+      warn.mockRestore();
     });
   });
 

@@ -46,6 +46,20 @@ function installFetch(
     if (url === '/api/videos/recreateIndices' && init?.method === 'POST') {
       return json({ message: 'Recreation started' }, 202);
     }
+    if (url.startsWith('/api/videos/refreshCache')) {
+      return url.includes('status')
+        ? json({
+            running: false,
+            foldersDone: 0,
+            foldersTotal: 0,
+            filesDone: 0,
+            filesTotal: 0,
+            indexed: 0,
+            skipped: 0,
+            errors: [],
+          })
+        : json({ message: 'Cache refresh process started', status: 'ok' });
+    }
     throw new Error(`Unexpected fetch: ${init?.method ?? 'GET'} ${url}`);
   });
   globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -346,6 +360,21 @@ describe('VideoListPage', () => {
       await waitFor(() =>
         expect(fetchMock).toHaveBeenCalledWith('/api/videos/recreateIndices', { method: 'POST' })
       );
+    });
+
+    it('Refresh cache can skip folders that already have an index (onlyMissing)', async () => {
+      renderAt('/videos');
+      await screen.findByText('First');
+
+      fireEvent.click(screen.getByLabelText('tylko brakujące (użyj istniejącego indeksu)'));
+      fireEvent.click(screen.getByRole('button', { name: 'Odśwież indeks' }));
+
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(([url]) => url === '/api/videos/refreshCache?onlyMissing=1')
+        ).toBe(true)
+      );
+      expect(fetchMock.mock.calls.some(([url]) => url === '/api/videos/refreshCache')).toBe(false);
     });
   });
 

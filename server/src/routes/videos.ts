@@ -90,9 +90,12 @@ const getRefreshStatus: RouteHandler<NoParams, ReindexStatus> = (_req, res) => {
   res.json(getReindexStatus());
 };
 
-// GET /api/videos/refreshCache - Refresh/reindex videos cache
+// GET /api/videos/refreshCache - Refresh/reindex videos cache.
+// ?onlyMissing=1 reindexes only the folders whose cache does not exist in
+// Elasticsearch yet, so a swapped-in disk with a cache from a previous
+// session is searched immediately and only new folders are scanned.
 const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictResponse> = (
-  _req,
+  req,
   res
 ) => {
   if (isReindexRunning()) {
@@ -104,10 +107,12 @@ const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictRes
     return;
   }
 
-  logger.info('Cache refresh requested...');
+  const onlyMissingValue = readString(req.query.onlyMissing);
+  const onlyMissing = onlyMissingValue === '1' || onlyMissingValue === 'true';
+  logger.info(`Cache refresh requested${onlyMissing ? ' (onlyMissing)' : ''}...`);
 
   // Start the refresh process asynchronously (fire and forget)
-  refreshVideosCache().catch((error: unknown) => {
+  refreshVideosCache(onlyMissing ? { onlyMissing: true } : undefined).catch((error: unknown) => {
     logger.error('Error refreshing cache in background:', error);
   });
 

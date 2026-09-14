@@ -38,6 +38,7 @@ export default function StatusPage(): JSX.Element {
                           folderPath={path}
                           initialConfig={statusData.folderConfigs[path] || null}
                           downloadDefaults={statusData.downloadDefaults}
+                          indexed={statusData.indexedFolders.includes(path)}
                           knownCategories={knownCategories}
                           onConfigUpdate={updateFolderConfig}
                         />

@@ -490,6 +490,14 @@ Odświeża i reindeksuje wszystkie filmy z skonfigurowanych folderów do Elastic
 }
 ```
 
+**Cache na wymiennych dyskach.** Indeks każdego folderu żyje w Elasticsearch pod aliasem wyliczanym ze ścieżki folderu i **przeżywa odpięcie dysku** — po podmianie dysku wyszukiwanie od razu używa aliasów aktualnie podpiętych folderów (poprzedni dysk po prostu nie jest przeszukiwany), a strona statusu pokazuje per folder `indeks ES: gotowy / brak`. Zamiast pełnego reindeksu wystarczy wtedy:
+
+```
+GET /api/videos/refreshCache?onlyMissing=1
+```
+
+— reindeksowane są tylko foldery bez istniejącego indeksu (np. dysk podpięty pierwszy raz); foldery z cache są pomijane i dalej obsługują wyszukiwanie. W web UI służy do tego checkbox **„tylko brakujące (użyj istniejącego indeksu)"** obok przycisku „Odśwież indeks". Pełny reindeks (bez parametru) zostaje dla sytuacji, gdy zawartość dysku się zmieniła i trzeba przebudować istniejący indeks.
+
 **Uwaga:** Ten endpoint uruchamia proces indeksowania w tle i od razu zwraca odpowiedź. Jeśli reindeks już trwa, zwraca `409` z aktualnym statusem. Postęp można śledzić przez `GET /api/videos/refreshCache/status` (klient robi to sam i pokazuje go w toaście).
 
 ### GET /api/videos/refreshCache/status

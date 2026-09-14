@@ -30,12 +30,16 @@ import {
   loadDownloadOptions,
   readFolderConfig,
 } from '../services/folderConfig';
+import { listCachedFolders } from '../services/elasticsearchService';
 import { at } from '../test-utils';
 
 jest.mock('fs/promises');
 jest.mock('child_process');
 jest.mock('../config');
 jest.mock('../services/folderIndex');
+jest.mock('../services/elasticsearchService', () => ({
+  listCachedFolders: jest.fn(),
+}));
 jest.mock('../services/folderConfig', () => {
   const actual = jest.requireActual('../services/folderConfig');
   return {
@@ -111,6 +115,7 @@ const mockedReadFolderConfig = readFolderConfig as jest.MockedFunction<typeof re
 const mockedLoadDownloadOptions = loadDownloadOptions as jest.MockedFunction<
   typeof loadDownloadOptions
 >;
+const mockedListCachedFolders = listCachedFolders as jest.MockedFunction<typeof listCachedFolders>;
 
 const FOLDER = '/videos/channel-a';
 const OTHER_FOLDER = '/videos/channel-b';
@@ -158,6 +163,7 @@ describe('folder router', () => {
     mockedFs.writeFile.mockResolvedValue(undefined);
     mockedReadFolderConfig.mockResolvedValue(null);
     mockedLoadDownloadOptions.mockResolvedValue({ ...DEFAULT_DOWNLOAD_OPTIONS });
+    mockedListCachedFolders.mockResolvedValue(new Set([FOLDER]));
     downloadQueue.clear();
     spawnCalls.length = 0;
     app = createApp();
@@ -182,9 +188,16 @@ describe('folder router', () => {
           [FOLDER]: { channelUrl: 'https://yt/@a', maxHeight: 1080 },
           [OTHER_FOLDER]: null,
         },
-        downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true, extraArgs: [] },
+        downloadDefaults: {
+          maxHeight: 2160,
+          subLangs: ['en'],
+          writeComments: true,
+          extraArgs: [],
+        },
+        indexedFolders: [FOLDER],
         status: 'ok',
       });
+      expect(mockedListCachedFolders).toHaveBeenCalledWith([FOLDER, OTHER_FOLDER]);
     });
   });
 

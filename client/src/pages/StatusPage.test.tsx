@@ -16,6 +16,7 @@ const statusResponse: StatusResponse = {
     '/videos/b': null,
   },
   downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
+  indexedFolders: ['/videos/a'],
   status: 'ok',
 };
 
@@ -72,6 +73,14 @@ describe('StatusPage', () => {
       'href',
       '/videos'
     );
+  });
+
+  it('marks which folders already have an Elasticsearch index', async () => {
+    renderPage();
+
+    expect(await screen.findByText('/videos/b')).toBeInTheDocument();
+    expect(screen.getByText('indeks ES: gotowy')).toBeInTheDocument();
+    expect(screen.getByText('indeks ES: brak')).toBeInTheDocument();
   });
 
   it('offers to create config.json for a folder that has none', async () => {

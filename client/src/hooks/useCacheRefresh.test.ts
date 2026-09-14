@@ -93,6 +93,12 @@ describe('formatReindexResult', () => {
     );
   });
 
+  it('reports a skipped run (every folder already cached) specially', () => {
+    expect(formatReindexResult(finished({ foldersTotal: 0, indexed: 0 }))).toBe(
+      'Wszystkie foldery mają już indeks w Elasticsearch — nic do zrobienia'
+    );
+  });
+
   it('mentions skipped files and folder errors', () => {
     expect(formatReindexResult(finished({ skipped: 2, errors: ['a', 'b'] }))).toBe(
       'Indeksowanie zakończone: 20 filmów zindeksowanych, 2 pominiętych, 2 błędów folderów'
@@ -137,6 +143,37 @@ describe('useCacheRefresh', () => {
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
+  });
+
+  it('asks the server to skip cached folders when onlyMissing is set', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      if (url === '/api/videos/refreshCache?onlyMissing=1') {
+        return jsonResponse({ message: 'Cache refresh process started', status: 'ok' });
+      }
+      if (url === STATUS_URL) {
+        return jsonResponse(finished({ foldersTotal: 0, indexed: 0 }));
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    const { result } = renderHook(() => useCacheRefresh());
+
+    let done: Promise<void> | undefined;
+    act(() => {
+      done = result.current.refreshCache({ onlyMissing: true });
+    });
+    await act(async () => {
+      await done;
+    });
+
+    const startCalls = fetchMock.mock.calls
+      .map(([url]) => url)
+      .filter((url) => url === START_URL || url === `${START_URL}?onlyMissing=1`);
+    expect(startCalls).toEqual(['/api/videos/refreshCache?onlyMissing=1']);
+    expect(toast.success).toHaveBeenCalledWith(
+      'Wszystkie foldery mają już indeks w Elasticsearch — nic do zrobienia',
+      { id: LOADING_TOAST_ID }
+    );
   });
 
   it('starts the reindex, reads the status and shows the summary', async () => {

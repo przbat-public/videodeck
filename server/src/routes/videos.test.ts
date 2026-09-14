@@ -345,6 +345,15 @@ describe('videos router', () => {
       expect(mockedRefreshVideosCache).toHaveBeenCalled();
     });
 
+    it('passes onlyMissing=1 so cached folders are skipped', async () => {
+      mockedRefreshVideosCache.mockResolvedValue(undefined);
+
+      const response = await request(app).get('/api/videos/refreshCache?onlyMissing=1');
+
+      expect(response.status).toBe(200);
+      expect(mockedRefreshVideosCache).toHaveBeenCalledWith({ onlyMissing: true });
+    });
+
     it('should handle errors in background without affecting response', async () => {
       const error = new Error('Failed to refresh');
       mockedRefreshVideosCache.mockRejectedValue(error);

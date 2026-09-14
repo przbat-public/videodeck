@@ -543,6 +543,27 @@ describe('videoScanner', () => {
       expect(mockedEs.createIndexVersion).toHaveBeenCalledWith(FOLDER);
       expect(mockedEs.promoteIndexVersion).toHaveBeenCalledWith(FOLDER, NEW_INDEX);
     });
+
+    it('skips folders whose cache already exists when onlyMissing is set', async () => {
+      mockFolder(['a.info.json', 'a.mp4', 'a.webp']);
+      mockedEs.listCachedFolders.mockResolvedValue(new Set([FOLDER]));
+
+      await refreshVideosCache({ onlyMissing: true });
+
+      expect(mockedEs.listCachedFolders).toHaveBeenCalledWith([FOLDER]);
+      expect(mockedEs.createIndexVersion).not.toHaveBeenCalled();
+      expect(mockedEs.promoteIndexVersion).not.toHaveBeenCalled();
+    });
+
+    it('reindexes a folder without a cache even when onlyMissing is set', async () => {
+      mockFolder(['a.info.json', 'a.mp4', 'a.webp']);
+      mockedEs.listCachedFolders.mockResolvedValue(new Set());
+
+      await refreshVideosCache({ onlyMissing: true });
+
+      expect(mockedEs.createIndexVersion).toHaveBeenCalledWith(FOLDER);
+      expect(mockedEs.promoteIndexVersion).toHaveBeenCalledWith(FOLDER, NEW_INDEX);
+    });
   });
 
   describe('indexVideosFromDisk', () => {

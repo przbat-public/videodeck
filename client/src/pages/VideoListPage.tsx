@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { useVideoSearch } from '../hooks/useVideoSearch';
 import { useCacheRefresh } from '../hooks/useCacheRefresh';
@@ -28,6 +28,7 @@ export default function VideoListPage(): JSX.Element {
   const { loading: refreshLoading, refreshCache } = useCacheRefresh();
   const { categories } = useCategories();
   const { loading: recreateIndicesLoading, recreateIndices } = useRecreateIndices();
+  const [onlyMissing, setOnlyMissing] = useState(false);
 
   // The URL drives the results: a deep link, a reload and a change made in
   // the search bar all arrive here the same way.
@@ -37,9 +38,9 @@ export default function VideoListPage(): JSX.Element {
 
   const handleRefreshCache = useCallback(async (): Promise<void> => {
     // refreshCache resolves when the server-side reindex is over
-    await refreshCache();
+    await refreshCache(onlyMissing ? { onlyMissing: true } : undefined);
     await search({ query, sort, category });
-  }, [refreshCache, search, query, sort, category]);
+  }, [refreshCache, onlyMissing, search, query, sort, category]);
 
   const handleReload = useCallback(async (): Promise<void> => {
     await search({ query, sort, category });
@@ -75,6 +76,17 @@ export default function VideoListPage(): JSX.Element {
           >
             {refreshLoading ? 'Odświeżanie...' : 'Odśwież indeks'}
           </button>
+          <label
+            className="toolbar-checkbox"
+            title="Pomiń foldery, które mają już indeks w Elasticsearch (np. cache poprzednio podpiętego dysku)"
+          >
+            <input
+              type="checkbox"
+              checked={onlyMissing}
+              onChange={(event) => setOnlyMissing(event.target.checked)}
+            />
+            tylko brakujące (użyj istniejącego indeksu)
+          </label>
           <button
             type="button"
             onClick={handleReload}

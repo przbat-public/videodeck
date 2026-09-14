@@ -9,6 +9,8 @@ interface FolderSectionProps {
   folderPath: string;
   initialConfig: FolderConfig | null;
   downloadDefaults: DownloadOptions;
+  /** Whether this folder already has a search cache in Elasticsearch */
+  indexed: boolean;
   /** Categories used by other folders, offered as input suggestions */
   knownCategories?: string[];
   onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
@@ -18,6 +20,7 @@ export function FolderSection({
   folderPath,
   initialConfig,
   downloadDefaults,
+  indexed,
   knownCategories = [],
   onConfigUpdate,
 }: FolderSectionProps) {
@@ -62,6 +65,16 @@ export function FolderSection({
     <div className="folder-section">
       <div className="folder-section-header">
         <h3 className="folder-path">{folderPath}</h3>
+        <span
+          className={`folder-index-badge ${indexed ? 'indexed' : 'missing'}`}
+          title={
+            indexed
+              ? 'Ten folder ma indeks wyszukiwania w Elasticsearch'
+              : 'Brak indeksu w Elasticsearch — uruchom „Odśwież indeks" z opcją „tylko brakujące"'
+          }
+        >
+          {indexed ? 'indeks ES: gotowy' : 'indeks ES: brak'}
+        </span>
       </div>
 
       <FolderConfigEditor

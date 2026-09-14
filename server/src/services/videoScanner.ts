@@ -15,6 +15,7 @@ import {
   discardIndexVersion,
   estimateDocumentBytes,
   indexVideo,
+  listCachedFolders,
   promoteIndexVersion,
   searchVideos,
   toDocument,
@@ -254,8 +255,7 @@ async function scanFolder(folderPath: string): Promise<void> {
   }
 }
 
-async function scanVideosFromDisk(): Promise<void> {
-  const folderPaths = getVideosFolderPaths();
+async function scanVideosFromDisk(folderPaths: string[]): Promise<void> {
   reindexStatus.foldersTotal = folderPaths.length;
 
   for (const folderPath of folderPaths) {
@@ -286,8 +286,13 @@ export function describeError(error: unknown): string {
 /**
  * Rebuild the indices of all configured folders. Only one run at a time;
  * a second call while running is rejected.
+ *
+ * With `onlyMissing`, folders whose alias already exists in Elasticsearch
+ * (their cache survived an earlier session — e.g. a previously plugged disk)
+ * are skipped and the existing cache keeps serving searches. That is what
+ * makes a disk swap cheap: only folders never indexed before are scanned.
  */
-export async function loadVideosCache(): Promise<void> {
+export async function loadVideosCache(options: { onlyMissing?: boolean } = {}): Promise<void> {
   if (reindexStatus.running) {
     throw new Error('Reindex is already running');
   }
@@ -299,8 +304,18 @@ export async function loadVideosCache(): Promise<void> {
       throw new Error('Elasticsearch is not available. Please ensure Elasticsearch is running.');
     }
 
+    const configured = getVideosFolderPaths();
+    let folderPaths = configured;
+    if (options.onlyMissing) {
+      const cached = await listCachedFolders(configured);
+      folderPaths = configured.filter((folderPath) => !cached.has(folderPath));
+      logger.info(
+        `Reindex (onlyMissing): ${cached.size}/${configured.length} folders already have a cache and are skipped`
+      );
+    }
+
     logger.info('Loading videos cache from disk...');
-    await scanVideosFromDisk();
+    await scanVideosFromDisk(folderPaths);
     logger.info(
       `Reindex finished: ${reindexStatus.indexed} indexed, ${reindexStatus.skipped} skipped, ${reindexStatus.errors.length} folder errors`
     );
@@ -315,8 +330,8 @@ export async function loadVideosCache(): Promise<void> {
   }
 }
 
-export async function refreshVideosCache(): Promise<void> {
-  await loadVideosCache();
+export async function refreshVideosCache(options: { onlyMissing?: boolean } = {}): Promise<void> {
+  await loadVideosCache(options);
 }
 
 // ---------------------------------------------------------------------------

@@ -88,6 +88,7 @@ export async function mockApi(
           videosFolderPath: ['/videos/e2e'],
           folderConfigs: { '/videos/e2e': { channelUrl: 'https://yt/@e2e', category: 'fpv' } },
           downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
+          indexedFolders: ['/videos/e2e'],
           status: 'ok',
         }
       )

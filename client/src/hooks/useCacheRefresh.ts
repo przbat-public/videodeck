@@ -14,7 +14,12 @@ interface UseCacheRefreshResult {
   loading: boolean;
   /** Last status received from the server (null before the first run) */
   status: ReindexStatus | null;
-  refreshCache: () => Promise<void>;
+  /**
+   * Start a reindex. With `onlyMissing`, folders that already have a cache
+   * in Elasticsearch (e.g. the disk plugged in earlier) are skipped and
+   * keep serving searches.
+   */
+  refreshCache: (options?: { onlyMissing?: boolean }) => Promise<void>;
 }
 
 export interface UseCacheRefreshOptions {
@@ -47,6 +52,10 @@ export function formatReindexProgress(status: ReindexStatus): string {
 
 /** Final message once the run is over */
 export function formatReindexResult(status: ReindexStatus): string {
+  // A skipped run (onlyMissing with every folder cached) scans nothing
+  if (status.foldersTotal === 0 && status.indexed === 0) {
+    return 'Wszystkie foldery mają już indeks w Elasticsearch — nic do zrobienia';
+  }
   const base = `Indeksowanie zakończone: ${status.indexed} filmów zindeksowanych`;
   const skipped = status.skipped > 0 ? `, ${status.skipped} pominiętych` : '';
   const errors =
@@ -80,64 +89,70 @@ export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheR
     };
   }, []);
 
-  const refreshCache = useCallback(async (): Promise<void> => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+  const refreshCache = useCallback(
+    async (options?: { onlyMissing?: boolean }): Promise<void> => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-    dispatch({ type: CacheRefreshActionType.REFRESH_START });
-    const loadingToastId = toast.loading('Rozpoczynanie odświeżania indeksu...');
+      dispatch({ type: CacheRefreshActionType.REFRESH_START });
+      const loadingToastId = toast.loading('Rozpoczynanie odświeżania indeksu...');
 
-    try {
-      const response = await fetch('/api/videos/refreshCache', { signal: controller.signal });
+      try {
+        const url = options?.onlyMissing
+          ? '/api/videos/refreshCache?onlyMissing=1'
+          : '/api/videos/refreshCache';
+        const response = await fetch(url, { signal: controller.signal });
 
-      if (!response.ok && response.status !== 409) {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
+        if (!response.ok && response.status !== 409) {
+          const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
 
-      if (response.status === 409) {
-        toast.loading('Indeksowanie już trwa — śledzę postęp...', { id: loadingToastId });
-      }
+        if (response.status === 409) {
+          toast.loading('Indeksowanie już trwa — śledzę postęp...', { id: loadingToastId });
+        }
 
-      // Follow the background job until the server says it is done
-      let current = await fetchStatus(controller.signal);
-      setStatus(current);
-      while (current.running && !controller.signal.aborted) {
-        toast.loading(formatReindexProgress(current), { id: loadingToastId });
-        await sleep(pollIntervalMs);
+        // Follow the background job until the server says it is done
+        let current = await fetchStatus(controller.signal);
+        setStatus(current);
+        while (current.running && !controller.signal.aborted) {
+          toast.loading(formatReindexProgress(current), { id: loadingToastId });
+          await sleep(pollIntervalMs);
+          if (controller.signal.aborted) {
+            return; // unmounted mid-poll — nothing to report
+          }
+          current = await fetchStatus(controller.signal);
+          setStatus(current);
+        }
         if (controller.signal.aborted) {
           return; // unmounted mid-poll — nothing to report
         }
-        current = await fetchStatus(controller.signal);
-        setStatus(current);
-      }
-      if (controller.signal.aborted) {
-        return; // unmounted mid-poll — nothing to report
-      }
 
-      const summary = formatReindexResult(current);
-      if (current.errors.length > 0) {
-        dispatch({ type: CacheRefreshActionType.REFRESH_ERROR, payload: summary });
-        toast.error(`${summary}. ${current.lastError ?? ''}`.trim(), { id: loadingToastId });
-      } else {
-        dispatch({ type: CacheRefreshActionType.REFRESH_SUCCESS, payload: summary });
-        toast.success(summary, { id: loadingToastId });
-      }
-    } catch (err) {
-      if (controller.signal.aborted) {
-        return; // unmounted or superseded — nothing to report
-      }
-      const errorMessage =
-        err instanceof Error ? err.message : 'Nie udało się rozpocząć odświeżania indeksu';
-      dispatch({
-        type: CacheRefreshActionType.REFRESH_ERROR,
-        payload: errorMessage,
-      });
+        const summary = formatReindexResult(current);
+        if (current.errors.length > 0) {
+          dispatch({ type: CacheRefreshActionType.REFRESH_ERROR, payload: summary });
+          toast.error(`${summary}. ${current.lastError ?? ''}`.trim(), { id: loadingToastId });
+        } else {
+          dispatch({ type: CacheRefreshActionType.REFRESH_SUCCESS, payload: summary });
+          toast.success(summary, { id: loadingToastId });
+        }
+      } catch (err) {
+        if (controller.signal.aborted) {
+          return; // unmounted or superseded — nothing to report
+        }
+        const errorMessage =
+          err instanceof Error ? err.message : 'Nie udało się rozpocząć odświeżania indeksu';
+        dispatch({
+          type: CacheRefreshActionType.REFRESH_ERROR,
+          payload: errorMessage,
+        });
 
-      toast.error(errorMessage, { id: loadingToastId });
-    }
-  }, [pollIntervalMs]);
+        toast.error(errorMessage, { id: loadingToastId });
+      }
+    },
+    [pollIntervalMs]
+  );
 
   return {
     loading: state.loading,
