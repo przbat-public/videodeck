@@ -144,6 +144,27 @@ Dla zdalnego dostępu ustaw `API_TOKEN` (i ewentualnie `HOST=0.0.0.0` +
 `Authorization: Bearer <token>`. Rozszerzenie Chrome ma pole „Token API" w
 opcjach; `/health` pozostaje publiczne do testów połączenia.
 
+## Internacjonalizacja (polski / angielski)
+
+- **Klient** (`client/src/i18n/`): react-i18next z katalogami `locales/pl.json`
+  i `en.json` — wszystkie stringi UI (strony, komponenty, tosty, postęp
+  reindeksu, statusy zadań) idą przez `t()` z typowanymi kluczami (literówka
+  w kluczu to błąd TypeScript). Polski jest językiem domyślnym i zapasowym;
+  przełącznik PL/EN w prawym górnym rogu zapisuje wybór w localStorage.
+  Liczba mnoga korzysta z reguł i18next (pl: 1 film / 2 filmy / 5 filmów).
+- **Rozszerzenie Chrome** (`chrome-extension/_locales/{pl,en}/messages.json`):
+  natywne `chrome.i18n` — `default_locale: "pl"` w manifeście,
+  `chrome.i18n.getMessage` w kodzie, a statyczny HTML jest tłumaczony przez
+  `[data-i18n]` (`src/lib/i18n.ts`). Język rozszerzenia idzie za językiem
+  przeglądarki (fallback: polski).
+- **Serwer**: komunikaty API pozostają po angielsku (stabilne dla logów i
+  testów); klient dodaje własne, przetłumaczone prefiksy błędów.
+
+Nowy klucz dodaje się w `pl.json`, `en.json` (opcjonalnie w `messages.json`
+rozszerzenia); klucze klienta są sprawdzane typami, więc niespójność wyjdzie
+w typechecku. Testy klienta działają przy domyślnym polskim; E2E sprawdza
+przełączanie języka w obie strony.
+
 ## Uruchomienie
 
 ### Development mode
