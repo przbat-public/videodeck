@@ -8,7 +8,9 @@ import { useRecreateIndices } from '../hooks/useRecreateIndices';
 import { useSearchUrlState } from '../hooks/useSearchUrlState';
 import SearchBar from '../components/SearchBar';
 import VideoList from '../components/VideoList';
+import { Button } from '../components/ui/Button';
 import { Checkbox } from '../components/ui/Checkbox';
+import { Loading } from '../components/ui/Loading';
 
 /** Polish plural: 1 film, 2 filmy, 5 filmów */
 function pluralVideos(count: number): string {
@@ -61,39 +63,29 @@ export default function VideoListPage(): JSX.Element {
     <main className="app-main">
       <div className="toolbar">
         <div className="toolbar-left">
-          <button
-            type="button"
+          <Button
             onClick={handleRecreateIndices}
             disabled={recreateIndicesLoading}
-            className="clear-button"
             title="Odbuduj wszystkie indeksy Elasticsearch"
           >
             {recreateIndicesLoading ? 'Odbudowywanie...' : 'Odbuduj indeksy'}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
             onClick={handleRefreshCache}
             disabled={refreshLoading}
-            className="clear-button"
             title="Odśwież indeks filmów z dysku"
           >
             {refreshLoading ? 'Odświeżanie...' : 'Odśwież indeks'}
-          </button>
+          </Button>
           <Checkbox
             checked={onlyMissing}
             onChange={setOnlyMissing}
             label="tylko brakujące (użyj istniejącego indeksu)"
             title="Pomiń foldery, które mają już indeks w Elasticsearch (np. cache poprzednio podpiętego dysku)"
           />
-          <button
-            type="button"
-            onClick={handleReload}
-            disabled={videoLoading}
-            className="clear-button"
-            title="Odśwież listę filmów"
-          >
+          <Button onClick={handleReload} disabled={videoLoading} title="Odśwież listę filmów">
             {videoLoading ? 'Ładowanie...' : 'Odśwież'}
-          </button>
+          </Button>
         </div>
         <div className="toolbar-right">
           <span className="video-count">
@@ -117,22 +109,15 @@ export default function VideoListPage(): JSX.Element {
       />
 
       {videoLoading && videos.length === 0 ? (
-        <div className="loading">
-          <p>Ładowanie filmów...</p>
-        </div>
+        <Loading message="Ładowanie filmów..." />
       ) : (
         <>
           <VideoList videos={videos} searchQuery={query} />
           {hasMore && (
             <div className="load-more">
-              <button
-                type="button"
-                onClick={handleLoadMore}
-                disabled={videoLoading}
-                className="clear-button"
-              >
+              <Button onClick={handleLoadMore} disabled={videoLoading}>
                 {videoLoading ? 'Ładowanie...' : 'Pokaż więcej'}
-              </button>
+              </Button>
             </div>
           )}
         </>

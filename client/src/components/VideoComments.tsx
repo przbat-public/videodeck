@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { JSX } from 'react';
 import CommentComponent from './CommentComponent';
+import { Button } from './ui/Button';
+import { ErrorMessage } from './ui/ErrorMessage';
 import type { CommentWithReplies } from '@shared/api';
 import { CommentsResponseSchema } from '@shared/schemas';
 
@@ -71,18 +73,15 @@ export default function VideoComments({
       </div>
 
       {hasMore && (
-        <button
-          type="button"
-          className="load-more-comments"
-          onClick={() => void loadMore()}
-          disabled={loadingMore}
-        >
+        <Button onClick={() => void loadMore()} disabled={loadingMore}>
           {loadingMore
             ? 'Ładowanie...'
             : `Pokaż więcej komentarzy (${items.length}/${commentCount})`}
-        </button>
+        </Button>
       )}
-      {loadError && <p className="config-error">Nie udało się załadować kolejnych komentarzy.</p>}
+      {loadError && (
+        <ErrorMessage compact>Nie udało się załadować kolejnych komentarzy.</ErrorMessage>
+      )}
     </div>
   );
 }

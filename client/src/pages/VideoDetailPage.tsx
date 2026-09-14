@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 
 import VideoSummary from '../components/VideoSummary';
 import VideoComments from '../components/VideoComments';
+import { ErrorMessage } from '../components/ui/ErrorMessage';
+import { Loading } from '../components/ui/Loading';
 import { useVideoDetail } from '../hooks/useVideoDetail';
 import { formatUploadDate } from '../utils/videoDates';
 
@@ -22,9 +24,7 @@ export default function VideoDetailPage(): JSX.Element {
   if (state.loading) {
     return (
       <div className="video-detail-page">
-        <div className="loading">
-          <p>Ładowanie filmu...</p>
-        </div>
+        <Loading message="Ładowanie filmu..." />
       </div>
     );
   }
@@ -32,12 +32,10 @@ export default function VideoDetailPage(): JSX.Element {
   if (state.error || !state.details) {
     return (
       <div className="video-detail-page">
-        <div className="error-message">
-          <p>Błąd: {state.error || 'Nie znaleziono filmu'}</p>
-          <Link to="/videos" className="back-link">
-            ← Wróć do wyszukiwania
-          </Link>
-        </div>
+        <ErrorMessage>Błąd: {state.error || 'Nie znaleziono filmu'}</ErrorMessage>
+        <Link to="/videos" className="back-link">
+          ← Wróć do wyszukiwania
+        </Link>
       </div>
     );
   }

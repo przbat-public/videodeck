@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import { useQueueControls } from '../hooks/useQueueControls';
+import { Button } from './ui/Button';
 
 /**
  * Global queue bar on the status page: pause/resume the server-side queue
@@ -11,9 +12,7 @@ export function QueueControls(): JSX.Element {
   return (
     <div className="queue-controls">
       <span className="queue-controls-label">Kolejka pobierania:</span>
-      <button
-        type="button"
-        className="clear-button"
+      <Button
         disabled={loading}
         onClick={() => void setPaused(!paused)}
         title={
@@ -23,16 +22,14 @@ export function QueueControls(): JSX.Element {
         }
       >
         {paused ? 'Wznów kolejkę' : 'Pauza kolejki'}
-      </button>
-      <button
-        type="button"
-        className="clear-button"
+      </Button>
+      <Button
         disabled={loading || finishedCount === 0}
         onClick={() => void clearFinished()}
         title="Usuń zakończone, błędne i anulowane zadania z listy"
       >
         Wyczyść zakończone{finishedCount > 0 ? ` (${finishedCount})` : ''}
-      </button>
+      </Button>
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useStatus } from '../hooks/useStatus';
 import { FolderSection } from '../components/FolderSection';
 import { QueueControls } from '../components/QueueControls';
+import { ErrorMessage } from '../components/ui/ErrorMessage';
+import { Loading } from '../components/ui/Loading';
 import { collectCategories } from '../utils/folderConfigForm';
 
 export default function StatusPage(): JSX.Element {
@@ -11,17 +13,9 @@ export default function StatusPage(): JSX.Element {
   return (
     <main className="app-main">
       <div className="status-page">
-        {state.loading && (
-          <div className="loading">
-            <p>Ładowanie statusu...</p>
-          </div>
-        )}
+        {state.loading && <Loading message="Ładowanie statusu..." />}
 
-        {state.error && (
-          <div className="error-message">
-            <p>Błąd: {state.error}</p>
-          </div>
-        )}
+        {state.error && <ErrorMessage>Błąd: {state.error}</ErrorMessage>}
 
         {state.statusData &&
           (() => {

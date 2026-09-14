@@ -4,6 +4,8 @@ import toast from 'react-hot-toast';
 import { VariableSizeList } from 'react-window';
 import type { ChannelVideo, FolderListResponse, JobType, QueueJob } from '@shared/api';
 import { VideoItem } from './VideoItem';
+import { Button } from './ui/Button';
+import { ErrorMessage } from './ui/ErrorMessage';
 import { useDownloadQueue } from '../hooks/useDownloadQueue';
 import { isOlderThanMonth } from '../utils/videoDates';
 
@@ -236,16 +238,8 @@ export function VideoListSection({
 
   return (
     <div className="videos-list-section">
-      {videosError && (
-        <div className="config-error">
-          <p>Błąd: {videosError}</p>
-        </div>
-      )}
-      {queueError && (
-        <div className="config-error">
-          <p>Błąd kolejki: {queueError}</p>
-        </div>
-      )}
+      {videosError && <ErrorMessage compact>Błąd: {videosError}</ErrorMessage>}
+      {queueError && <ErrorMessage compact>Błąd kolejki: {queueError}</ErrorMessage>}
       {isLoadingVideos ? (
         <p>Ładowanie listy filmów ...</p>
       ) : videos.length > 0 ? (
@@ -268,46 +262,30 @@ export function VideoListSection({
             </p>
             <div className="videos-list-buttons">
               {notDownloadedCount > 0 && (
-                <button
-                  className="download-all-button"
-                  onClick={() => requestBulk('download')}
-                  type="button"
-                >
+                <Button variant="primary" onClick={() => requestBulk('download')}>
                   {armedBulk === 'download'
                     ? `Na pewno? (${notDownloadedCount} filmów)`
                     : 'Pobierz wszystkie'}
-                </button>
+                </Button>
               )}
               {notUpdatedCount > 0 && (
-                <button
-                  className="update-old-button"
-                  onClick={() => requestBulk('update-old')}
-                  type="button"
-                >
+                <Button variant="primary" onClick={() => requestBulk('update-old')}>
                   {armedBulk === 'update-old'
                     ? `Na pewno? (${notUpdatedCount} filmów)`
                     : 'Aktualizuj stare'}
-                </button>
+                </Button>
               )}
               {downloadedCount > 0 && (
-                <button
-                  className="update-all-button"
-                  onClick={() => requestBulk('update')}
-                  type="button"
-                >
+                <Button variant="primary" onClick={() => requestBulk('update')}>
                   {armedBulk === 'update'
                     ? `Na pewno? (${downloadedCount} filmów)`
                     : 'Aktualizuj wszystkie'}
-                </button>
+                </Button>
               )}
               {hasActive && (
-                <button
-                  className="cancel-all-button"
-                  onClick={() => cancelAll().catch(() => undefined)}
-                  type="button"
-                >
+                <Button variant="danger" onClick={() => void cancelAll().catch(() => undefined)}>
                   Anuluj wszystko
-                </button>
+                </Button>
               )}
             </div>
           </div>

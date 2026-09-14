@@ -7,7 +7,9 @@ import type {
 } from '@shared/api';
 import type { FormState } from '../utils/folderConfigForm';
 import { MAX_HEIGHT_CHOICES, buildConfig, toFormState } from '../utils/folderConfigForm';
+import { Button } from './ui/Button';
 import { Checkbox } from './ui/Checkbox';
+import { ErrorMessage } from './ui/ErrorMessage';
 import { Select } from './ui/Select';
 
 interface FolderConfigEditorProps {
@@ -94,26 +96,22 @@ export function FolderConfigEditor({
 
   return (
     <div className="folder-config">
-      {error && (
-        <div className="config-error">
-          <p>Błąd: {error}</p>
-        </div>
-      )}
+      {error && <ErrorMessage compact>Błąd: {error}</ErrorMessage>}
 
       {config === null ? (
         <div className="config-empty">
           <p>Plik config.json nie istnieje w tym folderze.</p>
           {!isEditing && (
-            <button className="create-config-button" onClick={() => setIsEditing(true)}>
+            <Button variant="primary" onClick={() => setIsEditing(true)}>
               Utwórz config.json
-            </button>
+            </Button>
           )}
         </div>
       ) : (
         !isEditing && (
-          <button className="edit-config-button" onClick={() => setIsEditing(true)}>
+          <Button variant="primary" onClick={() => setIsEditing(true)}>
             Edytuj konfigurację
-          </button>
+          </Button>
         )
       )}
 
@@ -213,12 +211,12 @@ export function FolderConfigEditor({
           </div>
 
           <div className="config-actions">
-            <button className="save-config-button" onClick={handleSave} disabled={isSaving}>
+            <Button variant="success" onClick={() => void handleSave()} disabled={isSaving}>
               {isSaving ? 'Zapisywanie...' : 'Zapisz'}
-            </button>
-            <button className="cancel-config-button" onClick={handleCancel} disabled={isSaving}>
+            </Button>
+            <Button onClick={handleCancel} disabled={isSaving}>
               Anuluj
-            </button>
+            </Button>
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { SortOption } from '@shared/api';
 import type { SearchState } from '../utils/searchUrlState';
 import { SORT_OPTIONS } from '../utils/searchUrlState';
+import { Button } from './ui/Button';
 import { Select } from './ui/Select';
 
 interface SearchBarProps {
@@ -160,9 +161,9 @@ export default function SearchBar({
         aria-label="Do daty"
       />
       {text && (
-        <button type="button" onClick={handleClear} className="clear-button">
+        <Button onClick={handleClear} size="small">
           Clear
-        </button>
+        </Button>
       )}
     </div>
   );

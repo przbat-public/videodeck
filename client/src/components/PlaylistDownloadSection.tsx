@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import type { ApiError, FolderConfig } from '@shared/api';
+import { Button } from './ui/Button';
+import { ErrorMessage } from './ui/ErrorMessage';
 
 interface PlaylistDownloadSectionProps {
   folderPath: string;
@@ -61,11 +63,7 @@ export function PlaylistDownloadSection({
   return (
     <div className="playlist-download-section">
       <h4 className="playlist-section-title">Pobieranie listy filmów</h4>
-      {downloadError && (
-        <div className="config-error">
-          <p>Błąd: {downloadError}</p>
-        </div>
-      )}
+      {downloadError && <ErrorMessage compact>Błąd: {downloadError}</ErrorMessage>}
       <div className="playlist-info">
         {listExists === null ? (
           <p>Sprawdzanie statusu pliku list.json...</p>
@@ -80,9 +78,9 @@ export function PlaylistDownloadSection({
           </p>
         )}
         <div className="playlist-buttons">
-          <button
-            className="download-playlist-button"
-            onClick={handleDownloadPlaylist}
+          <Button
+            variant="primary"
+            onClick={() => void handleDownloadPlaylist()}
             disabled={isDownloading}
           >
             {isDownloading
@@ -90,11 +88,9 @@ export function PlaylistDownloadSection({
               : listExists
                 ? 'Aktualizuj playlistę'
                 : 'Pobierz playlistę'}
-          </button>
+          </Button>
           {listExists && onLoadVideosList && (
-            <button className="load-videos-list-button" onClick={onLoadVideosList}>
-              Pobierz listę filmów
-            </button>
+            <Button onClick={onLoadVideosList}>Pobierz listę filmów</Button>
           )}
         </div>
       </div>

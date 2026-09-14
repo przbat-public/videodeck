@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   QueueListResponseSchema,
   ClearFinishedResponseSchema,
@@ -25,13 +25,21 @@ export function useQueueControls(): UseQueueControlsResult {
   const [isPaused, setIsPaused] = useState(false);
   const [finishedCount, setFinishedCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  // Bumped on every mutation: a refresh that started earlier must not
+  // overwrite the fresher state a pause/clear already applied (the mount
+  // fetch can resolve after a quick pause click).
+  const mutationVersionRef = useRef(0);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
+    const versionAtStart = mutationVersionRef.current;
     const response = await fetch('/api/folder/queue', signal ? { signal } : {});
     if (!response.ok) {
       throw new Error(`Failed to fetch queue (HTTP ${response.status})`);
     }
     const data = QueueListResponseSchema.parse(await response.json());
+    if (mutationVersionRef.current !== versionAtStart) {
+      return; // stale — a mutation has reported fresher state since
+    }
     setIsPaused(data.paused);
     setFinishedCount(
       data.jobs.filter(
@@ -47,6 +55,7 @@ export function useQueueControls(): UseQueueControlsResult {
   }, [refresh]);
 
   const setPaused = useCallback(async (next: boolean): Promise<void> => {
+    mutationVersionRef.current += 1;
     setLoading(true);
     try {
       const response = await fetch(
@@ -63,6 +72,7 @@ export function useQueueControls(): UseQueueControlsResult {
   }, []);
 
   const clearFinished = useCallback(async (): Promise<void> => {
+    mutationVersionRef.current += 1;
     setLoading(true);
     try {
       const response = await fetch('/api/folder/queue/finished', { method: 'DELETE' });
