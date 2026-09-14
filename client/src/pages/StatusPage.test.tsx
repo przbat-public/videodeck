@@ -17,6 +17,7 @@ const statusResponse: StatusResponse = {
   },
   downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
   indexedFolders: ['/videos/a'],
+  listExists: { '/videos/a': true, '/videos/b': false },
   status: 'ok',
 };
 

@@ -182,6 +182,8 @@ export const StatusResponseSchema = z.object({
    * reindex, and `GET /api/videos/refreshCache?onlyMissing=1` skips them.
    */
   indexedFolders: z.array(z.string()),
+  /** Whether each folder has a list.json (batched — the client used to ask per folder) */
+  listExists: z.record(z.string(), z.boolean()),
   status: z.literal('ok'),
 });
 

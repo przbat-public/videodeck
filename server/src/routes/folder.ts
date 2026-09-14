@@ -114,11 +114,25 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     videosFolderPaths.forEach((folderPath, index) => {
       folderConfigs[folderPath] = configs[index] ?? null;
     });
+    // list.json presence for every folder in one batched pass — the client
+    // used to ask per folder (57 requests on a full status page)
+    const listExists: Record<string, boolean> = {};
+    await Promise.all(
+      videosFolderPaths.map(async (folderPath) => {
+        try {
+          await fs.access(path.join(folderPath, 'list.json'));
+          listExists[folderPath] = true;
+        } catch {
+          listExists[folderPath] = false;
+        }
+      })
+    );
     res.json({
       videosFolderPath: videosFolderPaths,
       folderConfigs,
       downloadDefaults: DEFAULT_DOWNLOAD_OPTIONS,
       indexedFolders: videosFolderPaths.filter((folderPath) => cachedFolders.has(folderPath)),
+      listExists,
       status: 'ok',
     });
   };

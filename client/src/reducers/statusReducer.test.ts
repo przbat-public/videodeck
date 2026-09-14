@@ -7,6 +7,7 @@ const statusData: StatusData = {
   folderConfigs: { '/videos/a': { channelUrl: 'https://yt/@a' } },
   downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
   indexedFolders: ['/videos/a'],
+  listExists: { '/videos/a': false },
   status: 'ok',
 };
 

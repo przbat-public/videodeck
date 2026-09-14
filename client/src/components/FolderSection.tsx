@@ -11,6 +11,8 @@ interface FolderSectionProps {
   downloadDefaults: DownloadOptions;
   /** Whether this folder already has a search cache in Elasticsearch */
   indexed: boolean;
+  /** list.json presence from /api/status; null = unknown (fall back to a fetch) */
+  initialListExists?: boolean | null;
   /** Categories used by other folders, offered as input suggestions */
   knownCategories?: string[];
   onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
@@ -21,10 +23,11 @@ export function FolderSection({
   initialConfig,
   downloadDefaults,
   indexed,
+  initialListExists = null,
   knownCategories = [],
   onConfigUpdate,
 }: FolderSectionProps) {
-  const [listExists, setListExists] = useState<boolean | null>(null);
+  const [listExists, setListExists] = useState<boolean | null>(initialListExists);
   const videoListSectionRef = useRef<VideoListSectionHandle>(null);
 
   // The config prop is the single source of truth (StatusPage holds it); the
@@ -50,12 +53,13 @@ export function FolderSection({
     }
   }, [folderPath]);
 
-  // Check list.json once the channel URL becomes configured
+  // The batched /api/status value covers the initial render; a fetch is only
+  // needed when it was unknown or after a playlist download created list.json.
   useEffect(() => {
-    if (hasChannelUrl) {
+    if (hasChannelUrl && initialListExists === null) {
       void checkListExists();
     }
-  }, [hasChannelUrl, checkListExists]);
+  }, [hasChannelUrl, checkListExists, initialListExists]);
 
   const handleConfigUpdate = (folderPath: string, config: FolderConfig | null) => {
     onConfigUpdate(folderPath, config);

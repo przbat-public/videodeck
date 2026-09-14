@@ -195,6 +195,7 @@ describe('folder router', () => {
           extraArgs: [],
         },
         indexedFolders: [FOLDER],
+        listExists: { [FOLDER]: true, [OTHER_FOLDER]: true },
         status: 'ok',
       });
       expect(mockedListCachedFolders).toHaveBeenCalledWith([FOLDER, OTHER_FOLDER]);

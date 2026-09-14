@@ -39,6 +39,7 @@ export default function StatusPage(): JSX.Element {
                           initialConfig={statusData.folderConfigs[path] || null}
                           downloadDefaults={statusData.downloadDefaults}
                           indexed={statusData.indexedFolders.includes(path)}
+                          initialListExists={statusData.listExists[path] ?? null}
                           knownCategories={knownCategories}
                           onConfigUpdate={updateFolderConfig}
                         />
