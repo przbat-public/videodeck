@@ -1,7 +1,36 @@
+/* ------------------------------------------------------------------ */
+/* Design tokens — the single source of truth for the palette, radii  */
+/* and shadows. Components must not hardcode colors anymore.          */
+/* ------------------------------------------------------------------ */
+:root {
+  --color-bg: #f5f5f5;
+  --color-surface: #fff;
+  --color-text: #333;
+  --color-text-muted: #666;
+  --color-border: #e0e0e0;
+  --color-primary: #667eea;
+  --color-primary-hover: #5568d3;
+  --color-success: #28a745;
+  --color-success-hover: #218838;
+  --color-danger: #dc3545;
+  --color-info: #17a2b8;
+  --color-info-hover: #138496;
+  --color-focus: #667eea;
+  --radius-card: 8px;
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-card-hover: 0 8px 16px rgba(0, 0, 0, 0.15);
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+/* Keyboard users get a visible focus ring; mouse users stay unchanged */
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 body {
@@ -10,10 +39,23 @@ body {
     'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f5f5f5;
-  color: #333;
+  background-color: var(--color-bg);
+  color: var(--color-text);
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* Respect the OS "reduce motion" setting: cut animations and transitions
+   to the minimum instead of disabling the app's behavior. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
