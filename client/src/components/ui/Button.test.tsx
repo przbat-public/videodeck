@@ -1,20 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Button } from './Button';
 
 describe('Button', () => {
-  it('renders its children and fires the handler', () => {
+  it('renders its children and fires the handler', async () => {
+    const user = userEvent.setup();
     const onClick = vi.fn();
     render(<Button onClick={onClick}>Pobierz</Button>);
 
     const button = screen.getByRole('button', { name: 'Pobierz' });
     expect(button).toHaveAttribute('type', 'button');
-    fireEvent.click(button);
+    await user.click(button);
 
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
-  it('does not fire when disabled', () => {
+  it('does not fire when disabled', async () => {
+    const user = userEvent.setup();
     const onClick = vi.fn();
     render(
       <Button onClick={onClick} disabled>
@@ -24,7 +27,7 @@ describe('Button', () => {
 
     const button = screen.getByRole('button', { name: 'Czekaj' });
     expect(button).toBeDisabled();
-    fireEvent.click(button);
+    await user.click(button);
 
     expect(onClick).not.toHaveBeenCalled();
   });

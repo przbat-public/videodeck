@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { CommentWithReplies } from '@shared/api';
 import VideoComments from './VideoComments';
 import { installFetchMock } from '../test/fetchMock';
@@ -28,6 +29,7 @@ describe('VideoComments', () => {
   });
 
   it('renders the first page and offers more when the count is larger', async () => {
+    const user = userEvent.setup();
     render(<VideoComments videoId="v1" comments={[comment('c1')]} commentCount={3} />);
 
     expect(screen.getByText('Komentarze (3)')).toBeInTheDocument();
@@ -36,7 +38,7 @@ describe('VideoComments', () => {
     fetchMock.mockResolvedValueOnce(
       json({ comments: [comment('c2'), comment('c3')], totalCount: 3, offset: 1 })
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/3)' }));
+    await user.click(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/3)' }));
 
     await waitFor(() => expect(screen.getByText('Comment c3')).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith(
@@ -47,10 +49,11 @@ describe('VideoComments', () => {
   });
 
   it('shows an error when the next page fails', async () => {
+    const user = userEvent.setup();
     render(<VideoComments videoId="v1" comments={[comment('c1')]} commentCount={5} />);
 
     fetchMock.mockResolvedValueOnce(json({ error: 'boom' }, 500));
-    fireEvent.click(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/5)' }));
+    await user.click(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/5)' }));
 
     expect(
       await screen.findByText('Nie udało się załadować kolejnych komentarzy.')
@@ -64,6 +67,7 @@ describe('VideoComments', () => {
   });
 
   it('ignores a second click while a page is already loading', async () => {
+    const user = userEvent.setup();
     render(<VideoComments videoId="v1" comments={[comment('c1')]} commentCount={5} />);
 
     let resolveFetch: (response: MockResponse) => void = () => {};
@@ -75,8 +79,9 @@ describe('VideoComments', () => {
     );
 
     const button = screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/5)' });
-    fireEvent.click(button);
-    fireEvent.click(button);
+    await user.click(button);
+    // the first click disables the button while the page loads
+    await user.click(button);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -84,13 +89,16 @@ describe('VideoComments', () => {
     await waitFor(() => expect(screen.getByText('Comment c2')).toBeInTheDocument());
   });
 
-  it('aborts the pending page when the component unmounts', () => {
+  it('aborts the pending page when the component unmounts', async () => {
+    const user = userEvent.setup();
     const { unmount } = render(
       <VideoComments videoId="v1" comments={[comment('c1')]} commentCount={5} />
     );
 
-    fetchMock.mockResolvedValueOnce(json({ comments: [comment('c2')], totalCount: 5, offset: 1 }));
-    fireEvent.click(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/5)' }));
+    // A page that never resolves: the request must still be in flight when
+    // the component goes away, so the abort is observable.
+    fetchMock.mockImplementationOnce(() => new Promise(() => {}));
+    await user.click(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/5)' }));
     unmount();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);

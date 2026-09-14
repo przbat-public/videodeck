@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { QueueJob } from '@shared/api';
 import { VideoItem } from './VideoItem';
@@ -42,17 +43,19 @@ const renderItem = (props: Partial<React.ComponentProps<typeof VideoItem>> = {})
 };
 
 describe('VideoItem', () => {
-  it('links to YouTube and offers a download when not downloaded', () => {
+  it('links to YouTube and offers a download when not downloaded', async () => {
+    const user = userEvent.setup();
     const { onEnqueue } = renderItem();
 
     const link = screen.getByRole('link', { name: 'Test Video' });
     expect(link).toHaveAttribute('href', video.url);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pobierz' }));
+    await user.click(screen.getByRole('button', { name: 'Pobierz' }));
     expect(onEnqueue).toHaveBeenCalledWith(video, 'download');
   });
 
-  it('links to the detail page and offers an update when downloaded', () => {
+  it('links to the detail page and offers an update when downloaded', async () => {
+    const user = userEvent.setup();
     const { onEnqueue } = renderItem({
       isDownloaded: true,
       video: { ...video, lastUpdated: '2024-03-05T10:20:00.000Z' },
@@ -62,7 +65,7 @@ describe('VideoItem', () => {
     expect(link).toHaveAttribute('href', '/video/abc123');
     expect(link.textContent).toMatch(/aktualizacja: /);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj' }));
+    await user.click(screen.getByRole('button', { name: 'Aktualizuj' }));
     expect(onEnqueue).toHaveBeenCalledWith(expect.objectContaining({ id: 'abc123' }), 'update');
   });
 
@@ -73,13 +76,14 @@ describe('VideoItem', () => {
     expect(screen.queryByRole('link')).toBeNull();
   });
 
-  it('shows queue position and a cancel button for a queued job', () => {
+  it('shows queue position and a cancel button for a queued job', async () => {
+    const user = userEvent.setup();
     const { onCancel } = renderItem({ job: job({ status: 'queued' }) });
 
     expect(screen.getByText('Pobieranie: w kolejce')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pobierz' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Anuluj' }));
+    await user.click(screen.getByRole('button', { name: 'Anuluj' }));
     expect(onCancel).toHaveBeenCalledWith('job-1');
   });
 
@@ -102,7 +106,8 @@ describe('VideoItem', () => {
     expect(screen.getByText('Aktualizacja...')).toBeInTheDocument();
   });
 
-  it('shows the error and log after a failed job and allows retrying', () => {
+  it('shows the error and log after a failed job and allows retrying', async () => {
+    const user = userEvent.setup();
     const { onEnqueue } = renderItem({
       job: job({
         status: 'error',
@@ -115,7 +120,7 @@ describe('VideoItem', () => {
     expect(screen.getByText('Błąd: yt-dlp exited with code 1')).toBeInTheDocument();
     expect(screen.getByText('ERROR: unavailable')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pobierz' }));
+    await user.click(screen.getByRole('button', { name: 'Pobierz' }));
     expect(onEnqueue).toHaveBeenCalledWith(video, 'download');
   });
 

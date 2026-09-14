@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { FolderConfigEditor } from './FolderConfigEditor';
 import type { DownloadOptions, FolderConfig } from '@shared/api';
 import { installFetchMock } from '../test/fetchMock';
@@ -35,21 +36,23 @@ describe('FolderConfigEditor', () => {
     fetchMock = installFetchMock();
   });
 
-  it('shows the fields only after clicking edit', () => {
+  it('shows the fields only after clicking edit', async () => {
+    const user = userEvent.setup();
     renderEditor({ channelUrl: 'https://yt/@a' });
 
     expect(screen.queryByLabelText('Adres kanału YouTube:')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
 
     expect(screen.getByLabelText('Adres kanału YouTube:')).toHaveValue('https://yt/@a');
     expect(screen.queryByRole('button', { name: 'Edytuj konfigurację' })).toBeNull();
   });
 
-  it('shows defaults for keys missing from config.json', () => {
+  it('shows defaults for keys missing from config.json', async () => {
+    const user = userEvent.setup();
     renderEditor({ channelUrl: 'https://yt/@a' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
 
     expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('Domyślnie (2160p)');
     expect(screen.getByLabelText('Pobieraj napisy')).toBeChecked();
@@ -60,7 +63,8 @@ describe('FolderConfigEditor', () => {
     expect(screen.getByLabelText('Pobieraj komentarze')).toBeChecked();
   });
 
-  it('shows explicit values from config.json', () => {
+  it('shows explicit values from config.json', async () => {
+    const user = userEvent.setup();
     renderEditor({
       channelUrl: 'https://yt/@a',
       maxHeight: 1080,
@@ -68,7 +72,7 @@ describe('FolderConfigEditor', () => {
       writeComments: false,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
 
     expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('1080p');
     expect(screen.getByLabelText('Pobieraj napisy')).not.toBeChecked();
@@ -76,6 +80,7 @@ describe('FolderConfigEditor', () => {
   });
 
   it('saves the edited download options', async () => {
+    const user = userEvent.setup();
     const saved = {
       channelUrl: 'https://yt/@a',
       maxHeight: 1080,
@@ -85,14 +90,14 @@ describe('FolderConfigEditor', () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, config: saved }) });
     const { onConfigUpdate } = renderEditor({ channelUrl: 'https://yt/@a' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
-    fireEvent.click(screen.getByLabelText('Maks. rozdzielczość:'));
-    fireEvent.click(screen.getByRole('option', { name: '1080p' }));
-    fireEvent.change(screen.getByLabelText('Języki napisów (po przecinku):'), {
-      target: { value: 'pl, en' },
-    });
-    fireEvent.click(screen.getByLabelText('Pobieraj komentarze'));
-    fireEvent.click(screen.getByRole('button', { name: 'Zapisz' }));
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    await user.click(screen.getByLabelText('Maks. rozdzielczość:'));
+    await user.click(await screen.findByRole('option', { name: '1080p' }));
+    const subLangs = screen.getByLabelText('Języki napisów (po przecinku):');
+    await user.clear(subLangs);
+    await user.type(subLangs, 'pl, en');
+    await user.click(screen.getByLabelText('Pobieraj komentarze'));
+    await user.click(screen.getByRole('button', { name: 'Zapisz' }));
 
     await waitFor(() => expect(onConfigUpdate).toHaveBeenCalledWith(FOLDER, saved));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -101,25 +106,26 @@ describe('FolderConfigEditor', () => {
     );
     expect(lastPutBody(fetchMock)).toEqual({ folderPath: FOLDER, config: saved });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Edytuj konfigurację' }));
+    await user.click(await screen.findByRole('button', { name: 'Edytuj konfigurację' }));
     expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('1080p');
     expect(screen.getByLabelText('Języki napisów (po przecinku):')).toHaveValue('pl, en');
   });
 
   it('unchecking subtitles stores an empty subLangs array', async () => {
+    const user = userEvent.setup();
     fetchMock.mockImplementation(async (_url, init) => ({
       ok: true,
       json: async () => ({ success: true, config: JSON.parse(String(init?.body)).config }),
     }));
     renderEditor(null);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Utwórz config.json' }));
-    fireEvent.change(screen.getByLabelText('Adres kanału YouTube:'), {
-      target: { value: 'https://yt/@new' },
-    });
-    fireEvent.click(screen.getByLabelText('Pobieraj napisy'));
+    await user.click(screen.getByRole('button', { name: 'Utwórz config.json' }));
+    const channelInput = screen.getByLabelText('Adres kanału YouTube:');
+    await user.clear(channelInput);
+    await user.type(channelInput, 'https://yt/@new');
+    await user.click(screen.getByLabelText('Pobieraj napisy'));
     expect(screen.queryByLabelText('Języki napisów (po przecinku):')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Zapisz' }));
+    await user.click(screen.getByRole('button', { name: 'Zapisz' }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(lastPutBody(fetchMock).config).toEqual({
@@ -130,17 +136,18 @@ describe('FolderConfigEditor', () => {
   });
 
   it('saves extra yt-dlp arguments as an array', async () => {
+    const user = userEvent.setup();
     fetchMock.mockImplementation(async (_url, init) => ({
       ok: true,
       json: async () => ({ success: true, config: JSON.parse(String(init?.body)).config }),
     }));
     renderEditor({ channelUrl: 'https://yt/@a' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
-    fireEvent.change(screen.getByLabelText('Dodatkowe argumenty yt-dlp:'), {
-      target: { value: '  --cookies-from-browser chrome --proxy http://127.0.0.1:8080 ' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Zapisz' }));
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    const extraArgs = screen.getByLabelText('Dodatkowe argumenty yt-dlp:');
+    await user.clear(extraArgs);
+    await user.type(extraArgs, '--cookies-from-browser chrome --proxy http://127.0.0.1:8080');
+    await user.click(screen.getByRole('button', { name: 'Zapisz' }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(lastPutBody(fetchMock).config).toEqual({
@@ -151,14 +158,15 @@ describe('FolderConfigEditor', () => {
   });
 
   it('shows the server validation error', async () => {
+    const user = userEvent.setup();
     fetchMock.mockResolvedValue({
       ok: false,
       json: async () => ({ error: 'maxHeight must be an integer between 144 and 4320' }),
     });
     renderEditor({ channelUrl: 'https://yt/@a' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Zapisz' }));
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    await user.click(screen.getByRole('button', { name: 'Zapisz' }));
 
     expect(
       await screen.findByText('Błąd: maxHeight must be an integer between 144 and 4320')
@@ -166,13 +174,14 @@ describe('FolderConfigEditor', () => {
   });
 
   it('saves the category and suggests the ones other folders use', async () => {
+    const user = userEvent.setup();
     fetchMock.mockImplementation(async (_url, init) => ({
       ok: true,
       json: async () => ({ success: true, config: JSON.parse(String(init?.body)).config }),
     }));
     renderEditor({ channelUrl: 'https://yt/@a', category: 'fpv' }, ['fpv', 'psychology']);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
     const input = screen.getByLabelText('Kategoria kanału:');
     expect(input).toHaveValue('fpv');
     // datalist options carry no accessible role, so read them off the DOM
@@ -182,8 +191,9 @@ describe('FolderConfigEditor', () => {
     expect(suggestions).toEqual(['fpv', 'psychology']);
     expect(input).toHaveAttribute('list', 'categories-videos-channel-a');
 
-    fireEvent.change(input, { target: { value: '  lego  ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Zapisz' }));
+    await user.clear(input);
+    await user.type(input, 'lego');
+    await user.click(screen.getByRole('button', { name: 'Zapisz' }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(lastPutBody(fetchMock).config).toEqual({
@@ -194,30 +204,33 @@ describe('FolderConfigEditor', () => {
   });
 
   it('clearing the category drops it from config.json', async () => {
+    const user = userEvent.setup();
     fetchMock.mockImplementation(async (_url, init) => ({
       ok: true,
       json: async () => ({ success: true, config: JSON.parse(String(init?.body)).config }),
     }));
     renderEditor({ channelUrl: 'https://yt/@a', category: 'fpv' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
-    fireEvent.change(screen.getByLabelText('Kategoria kanału:'), { target: { value: '' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Zapisz' }));
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    const category = screen.getByLabelText('Kategoria kanału:');
+    await user.clear(category);
+    await user.click(screen.getByRole('button', { name: 'Zapisz' }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(lastPutBody(fetchMock).config).not.toHaveProperty('category');
   });
 
-  it('cancel restores the previous values', () => {
+  it('cancel restores the previous values', async () => {
+    const user = userEvent.setup();
     renderEditor({ channelUrl: 'https://yt/@a', maxHeight: 720 });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
-    fireEvent.click(screen.getByLabelText('Maks. rozdzielczość:'));
-    fireEvent.click(screen.getByRole('option', { name: '2160p' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Anuluj' }));
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    await user.click(screen.getByLabelText('Maks. rozdzielczość:'));
+    await user.click(await screen.findByRole('option', { name: '2160p' }));
+    await user.click(screen.getByRole('button', { name: 'Anuluj' }));
 
     expect(screen.queryByLabelText('Maks. rozdzielczość:')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
     expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('720p');
   });
 });

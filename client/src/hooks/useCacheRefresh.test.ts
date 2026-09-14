@@ -1,22 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import toast from 'react-hot-toast';
 import type { ReindexStatus } from '@shared/api';
 import { useCacheRefresh, formatReindexProgress, formatReindexResult } from './useCacheRefresh';
 import { installFetchMock } from '../test/fetchMock';
 import type { MockResponse } from '../test/fetchMock';
+import { toast } from '../test/toastMock';
 
-const LOADING_TOAST_ID = 'loading-toast';
-
-// The hook opens a loading toast, rewrites it with progress (same id) and
-// finally replaces it with success/error
-vi.mock('react-hot-toast', () => ({
-  default: {
-    loading: vi.fn(() => 'loading-toast'),
-    success: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+const LOADING_TOAST_ID = 'toast-id';
 
 const fetchMock = installFetchMock();
 

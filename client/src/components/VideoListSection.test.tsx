@@ -1,15 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import toast from 'react-hot-toast';
 import { VideoListSection } from './VideoListSection';
 import { isOlderThanMonth } from '../utils/videoDates';
 import type { QueueJob } from '@shared/api';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
-
-vi.mock('react-hot-toast', () => ({
-  default: { success: vi.fn(), error: vi.fn() },
-}));
+import { toast } from '../test/toastMock';
 
 const FOLDER = '/videos/channel-a';
 const QUEUE_URL = `/api/folder/queue?folderPath=${encodeURIComponent(FOLDER)}`;

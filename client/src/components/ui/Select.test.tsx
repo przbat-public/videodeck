@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Select } from './Select';
 
@@ -88,10 +88,11 @@ describe('Select', () => {
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
   });
 
-  it('opens via a plain click event (no pointer event needed in jsdom)', () => {
+  it('opens via a plain click event (no pointer event needed in jsdom)', async () => {
+    const user = userEvent.setup();
     render(<Select value="" onChange={vi.fn()} aria-label="Sort" items={items} />);
 
-    fireEvent.click(screen.getByRole('combobox', { name: 'Sort' }));
+    await user.click(screen.getByRole('combobox', { name: 'Sort' }));
 
     expect(screen.getAllByRole('option')).toHaveLength(3);
   });

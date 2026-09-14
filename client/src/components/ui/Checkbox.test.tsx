@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Checkbox } from './Checkbox';
 
@@ -12,21 +12,23 @@ describe('Checkbox', () => {
     expect(screen.getByText('tylko brakujące')).toBeInTheDocument();
   });
 
-  it('reports the toggled state when the box is clicked', () => {
+  it('reports the toggled state when the box is clicked', async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(<Checkbox checked={false} onChange={onChange} label="Pobieraj napisy" />);
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Pobieraj napisy' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Pobieraj napisy' }));
 
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith(true);
   });
 
-  it('toggles from a label click too (whole row is the label)', () => {
+  it('toggles from a label click too (whole row is the label)', async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(<Checkbox checked onChange={onChange} label="Pobieraj komentarze" />);
 
-    fireEvent.click(screen.getByText('Pobieraj komentarze'));
+    await user.click(screen.getByText('Pobieraj komentarze'));
 
     expect(onChange).toHaveBeenCalledWith(false);
   });

@@ -1,13 +1,12 @@
 import request from 'supertest';
-import express from 'express';
+import type express from 'express';
 import os from 'os';
 import { EventEmitter } from 'events';
 import type { IncomingMessage } from 'http';
 import * as fs from 'fs/promises';
 import { spawn } from 'child_process';
-import { createFolderRouter } from './folder';
 import { extractYoutubeVideoId } from '@shared/youtube';
-import { errorHandler } from '../app';
+import { createApp as createRealApp } from '../app';
 import {
   ClearFinishedResponseSchema,
   EnqueueJobsResponseSchema,
@@ -17,7 +16,6 @@ import {
   StatusResponseSchema,
   VideoDownloadedResponseSchema,
 } from '@shared/schemas';
-import { createApp as createRealApp } from '../app';
 import { getVideosFolderPaths } from '../config';
 import {
   findEntryByVideoId,
@@ -129,12 +127,9 @@ const OTHER_FOLDER = '/videos/channel-b';
 const enoent = () => Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
+/** The real app wiring (host guard, CORS, auth, routers, error handling) */
 function createApp() {
-  const app = express();
-  app.use(express.json());
-  app.use('/api', createFolderRouter());
-  app.use(errorHandler);
-  return app;
+  return createRealApp();
 }
 
 describe('extractYoutubeVideoId', () => {

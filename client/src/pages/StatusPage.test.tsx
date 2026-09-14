@@ -1,13 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { StatusResponse } from '@shared/api';
 import StatusPage from './StatusPage';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
-
-vi.mock('react-hot-toast', () => ({
-  default: { success: vi.fn(), error: vi.fn(), loading: vi.fn(() => 'toast-id') },
-}));
 
 const statusResponse: StatusResponse = {
   videosFolderPath: ['/videos/a', '/videos/b'],
@@ -99,11 +96,12 @@ describe('StatusPage', () => {
   });
 
   it('pauses and resumes the download queue', async () => {
+    const user = userEvent.setup();
     const fetchMock = installFetch();
     renderPage();
 
     const pause = await screen.findByRole('button', { name: 'Pauza kolejki' });
-    fireEvent.click(pause);
+    await user.click(pause);
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue/pause?paused=1', {
@@ -112,7 +110,7 @@ describe('StatusPage', () => {
     );
     expect(await screen.findByRole('button', { name: 'Wznów kolejkę' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Wznów kolejkę' }));
+    await user.click(screen.getByRole('button', { name: 'Wznów kolejkę' }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue/resume?paused=0', {
         method: 'POST',
@@ -121,6 +119,7 @@ describe('StatusPage', () => {
   });
 
   it('clears the finished jobs the queue keeps in memory', async () => {
+    const user = userEvent.setup();
     const finishedJob = (id: string, status: 'done' | 'cancelled') => ({
       id,
       folderPath: '/videos/a',
@@ -143,7 +142,7 @@ describe('StatusPage', () => {
     renderPage();
 
     const clear = await screen.findByRole('button', { name: 'Wyczyść zakończone (2)' });
-    fireEvent.click(clear);
+    await user.click(clear);
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue/finished', { method: 'DELETE' })

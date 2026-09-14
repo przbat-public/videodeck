@@ -1,7 +1,6 @@
 import request from 'supertest';
 import express from 'express';
-import videosRouter from './videos';
-import { errorHandler } from '../app';
+import { createApp } from '../app';
 import {
   ChannelsResponseSchema,
   CommentsResponseSchema,
@@ -50,7 +49,7 @@ jest.mock('../services/commentStore', () => ({
   loadCommentTree: jest.fn(),
 }));
 jest.mock('../config', () => ({
-  OPENAI_API_KEY: 'test-api-key',
+  ...jest.requireActual('../config'),
   getVideosFolderPaths: () => ['/test/videos', '/test/other'],
 }));
 
@@ -93,10 +92,7 @@ describe('videos router', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.spyOn(console, 'log').mockImplementation(() => {});
 
-    app = express();
-    app.use(express.json());
-    app.use('/api/videos', videosRouter);
-    app.use(errorHandler);
+    app = createApp();
   });
 
   afterEach(() => {

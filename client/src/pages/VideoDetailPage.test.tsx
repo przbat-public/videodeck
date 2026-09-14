@@ -5,10 +5,6 @@ import type { VideoDetails } from '@shared/api';
 import VideoDetailPage from './VideoDetailPage';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
 
-vi.mock('react-hot-toast', () => ({
-  default: { success: vi.fn(), error: vi.fn(), loading: vi.fn(() => 'toast-id') },
-}));
-
 const details: VideoDetails = {
   title: 'A talk about hedgehogs',
   description: 'Everything about hedgehogs',

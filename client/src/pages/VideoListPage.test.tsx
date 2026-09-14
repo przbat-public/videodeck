@@ -1,13 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { VideoListItem } from '@shared/api';
 import VideoListPage from './VideoListPage';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
-
-vi.mock('react-hot-toast', () => ({
-  default: { success: vi.fn(), error: vi.fn(), loading: vi.fn(() => 'toast-id') },
-}));
 
 const CATEGORIES = ['fpv', 'lego'];
 
@@ -110,14 +107,18 @@ const categorySelect = () => screen.findByRole('combobox', { name: 'Kategoria' }
 
 /** Opens the Radix select and clicks the option with the given label */
 const pick = async (select: HTMLElement, label: string) => {
-  fireEvent.click(select);
-  fireEvent.click(await screen.findByRole('option', { name: label }));
+  await user.click(select);
+  await user.click(await screen.findByRole('option', { name: label }));
 };
 
 const searchUrls = (fetchMock: FetchMock): string[] =>
   fetchMock.mock.calls.map(([url]) => url).filter((url) => url.startsWith('/api/videos/search'));
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Real timers here (the page debounces), so interactions go through userEvent
+// — fireEvent stays reserved for the fake-timer suites (SearchBar).
+const user = userEvent.setup();
 
 describe('VideoListPage', () => {
   let fetchMock: FetchMock;
@@ -265,8 +266,8 @@ describe('VideoListPage', () => {
       renderAt('/videos?category=fpv');
       await screen.findByText('First');
 
-      fireEvent.change(searchInput(), { target: { value: 'moto' } });
-      fireEvent.change(searchInput(), { target: { value: 'motor' } });
+      await user.clear(searchInput());
+      await user.type(searchInput(), 'motor');
 
       await waitFor(() => expect(currentUrl()).toBe('/videos?q=motor&category=fpv'));
       await waitFor(() =>
@@ -281,7 +282,8 @@ describe('VideoListPage', () => {
       renderAt('/videos?q=drone');
       await screen.findByText('First');
 
-      fireEvent.change(searchInput(), { target: { value: 'dr' } });
+      await user.clear(searchInput());
+      await user.type(searchInput(), 'dr');
       await sleep(350);
 
       expect(searchInput()).toHaveValue('dr');
@@ -295,7 +297,7 @@ describe('VideoListPage', () => {
       renderAt('/videos?q=drone&sort=views-desc&category=lego');
       await screen.findByText('First');
 
-      fireEvent.click(screen.getByRole('button', { name: 'Wyczyść' }));
+      await user.click(screen.getByRole('button', { name: 'Wyczyść' }));
       await pick(sortSelect(), 'Najnowsze');
       await pick(await categorySelect(), 'Wszystkie kategorie');
 
@@ -319,9 +321,9 @@ describe('VideoListPage', () => {
       await waitFor(() => expect(currentUrl()).toBe('/videos?sort=views-desc&category=lego'));
 
       // A real push, then Back: the page's entry must hold the latest filters…
-      fireEvent.click(screen.getByRole('button', { name: 'go-elsewhere' }));
+      await user.click(screen.getByRole('button', { name: 'go-elsewhere' }));
       await waitFor(() => expect(currentUrl()).toBe('/videos?category=fpv&sort=likes-desc'));
-      fireEvent.click(screen.getByRole('button', { name: 'back' }));
+      await user.click(screen.getByRole('button', { name: 'back' }));
       await waitFor(() => expect(currentUrl()).toBe('/videos?sort=views-desc&category=lego'));
       await waitFor(() =>
         expect(searchUrls(fetchMock).at(-1)).toBe(
@@ -332,7 +334,7 @@ describe('VideoListPage', () => {
       expect(await categorySelect()).toHaveTextContent('lego');
 
       // …and be the only one: another Back has nowhere earlier to go.
-      fireEvent.click(screen.getByRole('button', { name: 'back' }));
+      await user.click(screen.getByRole('button', { name: 'back' }));
       expect(currentUrl()).toBe('/videos?sort=views-desc&category=lego');
     });
 
@@ -341,7 +343,7 @@ describe('VideoListPage', () => {
       await screen.findByText('First');
       expect(searchInput()).toHaveValue('drone');
 
-      fireEvent.click(screen.getByRole('button', { name: 'go-elsewhere' }));
+      await user.click(screen.getByRole('button', { name: 'go-elsewhere' }));
 
       await waitFor(() =>
         expect(searchUrls(fetchMock).at(-1)).toBe(
@@ -360,7 +362,7 @@ describe('VideoListPage', () => {
       renderAt('/videos?q=drone&category=lego');
       await screen.findByText('First');
 
-      fireEvent.click(screen.getByRole('button', { name: 'Odśwież' }));
+      await user.click(screen.getByRole('button', { name: 'Odśwież' }));
 
       await waitFor(() =>
         expect(searchUrls(fetchMock)).toEqual([
@@ -374,7 +376,7 @@ describe('VideoListPage', () => {
       renderAt('/videos');
       await screen.findByText('First');
 
-      fireEvent.click(screen.getByRole('button', { name: 'Odbuduj indeksy' }));
+      await user.click(screen.getByRole('button', { name: 'Odbuduj indeksy' }));
 
       await waitFor(() =>
         expect(fetchMock).toHaveBeenCalledWith('/api/videos/recreateIndices', { method: 'POST' })
@@ -385,8 +387,8 @@ describe('VideoListPage', () => {
       renderAt('/videos');
       await screen.findByText('First');
 
-      fireEvent.click(screen.getByLabelText('tylko brakujące (użyj istniejącego indeksu)'));
-      fireEvent.click(screen.getByRole('button', { name: 'Odśwież indeks' }));
+      await user.click(screen.getByLabelText('tylko brakujące (użyj istniejącego indeksu)'));
+      await user.click(screen.getByRole('button', { name: 'Odśwież indeks' }));
 
       await waitFor(() =>
         expect(
@@ -426,7 +428,7 @@ describe('VideoListPage', () => {
       renderAt('/videos');
 
       expect(await screen.findByText('First')).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Pokaż więcej' }));
+      await user.click(screen.getByRole('button', { name: 'Pokaż więcej' }));
 
       expect(await screen.findByText('Second')).toBeInTheDocument();
       expect(searchUrls(fetchMock).at(-1)).toBe(

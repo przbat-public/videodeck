@@ -1,16 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { act } from 'react';
-import toast from 'react-hot-toast';
 import type { VideoListItem } from '@shared/api';
 import type { SearchState } from '../utils/searchUrlState';
 import { installFetchMock, jsonResponse } from '../test/fetchMock';
 import type { MockResponse } from '../test/fetchMock';
+import { toast } from '../test/toastMock';
 import { useVideoSearch } from './useVideoSearch';
-
-vi.mock('react-hot-toast', () => ({
-  default: { error: vi.fn(), success: vi.fn() },
-}));
 
 const fetchMock = installFetchMock();
 

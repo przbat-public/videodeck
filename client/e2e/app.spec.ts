@@ -21,8 +21,10 @@ test.describe('wyszukiwarka', () => {
     );
 
     await expect(page.getByPlaceholder('Szukaj filmów po opisie...')).toHaveValue('motor');
-    await expect(page.locator('.sort-select')).toContainText('Najwięcej wyświetleń');
-    await expect(page.locator('.category-select')).toContainText('fpv');
+    await expect(page.getByRole('combobox', { name: 'Sort' })).toContainText(
+      'Najwięcej wyświetleń'
+    );
+    await expect(page.getByRole('combobox', { name: 'Kategoria' })).toContainText('fpv');
     await expect(page.getByLabel('Kanał')).toHaveValue('Kanał E2E');
     await expect(page.getByLabel('Od daty')).toHaveValue('2024-01-05');
     await expect(page.getByLabel('Do daty')).toHaveValue('2025-12-31');
@@ -56,10 +58,10 @@ test.describe('wyszukiwarka', () => {
     });
 
     await page.goto('/videos');
-    await page.locator('.sort-select').click();
+    await page.getByRole('combobox', { name: 'Sort' }).click();
     await page.getByRole('option', { name: 'Najnowsze' }).click();
 
-    await expect(page.locator('.sort-select')).toContainText('Najnowsze');
+    await expect(page.getByRole('combobox', { name: 'Sort' })).toContainText('Najnowsze');
     await expect.poll(() => sorts).toContain('date-desc');
   });
 
@@ -78,8 +80,8 @@ test.describe('wyszukiwarka', () => {
     await page.getByRole('button', { name: 'Pokaż więcej' }).click();
 
     await expect(page.getByText('Drugi film')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Pokaż więcej' })).not.toBeVisible();
-    await expect(page.locator('.video-count')).toHaveText('2 filmy / 2 łącznie');
+    await expect(page.getByRole('button', { name: 'Pokaż więcej' })).toBeHidden();
+    await expect(page.getByText('2 filmy / 2 łącznie')).toBeVisible();
   });
 
   test('pusta fraza pokazuje komunikat braku wyników', async ({ page }) => {
@@ -146,9 +148,7 @@ test.describe('szczegóły filmu', () => {
 
     // the first page of comments comes with details; more are paged in
     await expect(detailPage.getByText('Komentarz pierwszy')).toBeVisible();
-    await detailPage
-      .getByRole('button', { name: 'Pokaż więcej komentarzy (1/2)' })
-      .click();
+    await detailPage.getByRole('button', { name: 'Pokaż więcej komentarzy (1/2)' }).click();
     await expect(detailPage.getByText('Komentarz drugi')).toBeVisible();
 
     await detailPage.getByRole('link', { name: '← Wróć do wyszukiwania' }).click();

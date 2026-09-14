@@ -5,6 +5,7 @@ import eslintReact from '@eslint-react/eslint-plugin';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import prettierRecommended from 'eslint-plugin-prettier/recommended';
+import playwright from 'eslint-plugin-playwright';
 import { defineConfig, globalIgnores } from 'eslint/config';
 
 /**
@@ -121,6 +122,24 @@ export default defineConfig([
       // An extension has nowhere else to log
       'no-console': 'off',
     },
+  },
+
+  // Playwright E2E specs: the runner's recommended rules catch the classic
+  // mistakes (no-wait-for-timeout, prefer-web-first-assertions, …). These
+  // files used to be linted by the generic TS block only.
+  {
+    files: ['client/e2e/**/*.ts'],
+    extends: [
+      js.configs.recommended,
+      tseslint.configs.recommended,
+      playwright.configs['flat/recommended'],
+    ],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: { ...globals.browser, ...globals.node },
+    },
+    rules: commonRules,
   },
 
   // Must stay last: turns off every rule that would fight Prettier

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import i18n from '../i18n';
 
@@ -9,7 +10,8 @@ describe('LanguageSwitcher', () => {
     await i18n.changeLanguage('pl');
   });
 
-  it('marks Polish as active by default and switches to English on click', () => {
+  it('marks Polish as active by default and switches to English on click', async () => {
+    const user = userEvent.setup();
     render(<LanguageSwitcher />);
 
     const pl = screen.getByRole('button', { name: 'PL' });
@@ -17,7 +19,7 @@ describe('LanguageSwitcher', () => {
     expect(pl).toHaveAttribute('aria-pressed', 'true');
     expect(en).toHaveAttribute('aria-pressed', 'false');
 
-    fireEvent.click(en);
+    await user.click(en);
 
     expect(i18n.resolvedLanguage).toBe('en');
     expect(en).toHaveAttribute('aria-pressed', 'true');
@@ -25,9 +27,10 @@ describe('LanguageSwitcher', () => {
     expect(localStorage.getItem('i18nextLng')).toBe('en');
   });
 
-  it('keeps the choice in localStorage across a remount', () => {
+  it('keeps the choice in localStorage across a remount', async () => {
+    const user = userEvent.setup();
     const { unmount } = render(<LanguageSwitcher />);
-    fireEvent.click(screen.getByRole('button', { name: 'EN' }));
+    await user.click(screen.getByRole('button', { name: 'EN' }));
     unmount();
 
     render(<LanguageSwitcher />);
