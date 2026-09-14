@@ -6,9 +6,33 @@
  *
  * YouTube video ids are always 11 characters of [A-Za-z0-9_-]; anything else
  * is rejected so an invalid id cannot reach yt-dlp or the queue.
+ *
+ * Extraction only ever succeeds for real YouTube hosts. This doubles as the
+ * server's SSRF guard: a URL on any other host yields null, and callers
+ * refuse the request instead of handing the raw URL to yt-dlp (which would
+ * happily fetch file:///etc/passwd or http://169.254.169.254/…).
  */
 
 const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
+
+const YOUTUBE_HOSTS = new Set([
+  'youtube.com',
+  'www.youtube.com',
+  'm.youtube.com',
+  'music.youtube.com',
+  'youtube-nocookie.com',
+  'youtu.be',
+]);
+
+/** Whether the host belongs to YouTube (exact match — subdomains are not) */
+export function isYoutubeHost(host: string): boolean {
+  return YOUTUBE_HOSTS.has(host);
+}
+
+/** Whether a string is a well-formed 11-character YouTube video id */
+export function isYoutubeVideoId(id: string): boolean {
+  return YOUTUBE_ID_RE.test(id);
+}
 
 /**
  * Canonical watch URL for a video id. Dropping playlist context matters:
@@ -24,15 +48,17 @@ export function extractYoutubeVideoId(url: string): string | null {
   let candidate: string | null;
   try {
     const parsed = new URL(url);
+    if (!YOUTUBE_HOSTS.has(parsed.hostname)) {
+      return null;
+    }
     const v = parsed.searchParams.get('v');
     if (v) {
       candidate = v;
     } else {
-      const host = parsed.hostname.replace(/^www\./, '');
       const segments = parsed.pathname.split('/').filter(Boolean);
       const [first] = segments;
-      if (host === 'youtu.be' && first) {
-        candidate = first;
+      if (parsed.hostname === 'youtu.be') {
+        candidate = first ?? null;
       } else {
         const marker = segments.findIndex(
           (segment) =>

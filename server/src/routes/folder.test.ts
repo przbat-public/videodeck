@@ -38,7 +38,10 @@ import { at } from '../test-utils';
 
 jest.mock('fs/promises');
 jest.mock('child_process');
-jest.mock('../config');
+jest.mock('../config', () => {
+  const actual = jest.requireActual('../config');
+  return { ...actual, getVideosFolderPaths: jest.fn() };
+});
 jest.mock('../services/folderIndex');
 jest.mock('../services/elasticsearchService', () => ({
   listCachedFolders: jest.fn(),
@@ -152,6 +155,17 @@ describe('extractYoutubeVideoId', () => {
   it('returns null for ids that are not 11 characters', () => {
     expect(extractYoutubeVideoId('https://www.youtube.com/watch?v=abc123')).toBeNull();
     expect(extractYoutubeVideoId('https://youtu.be/short')).toBeNull();
+  });
+
+  it('only extracts ids from real YouTube hosts (SSRF guard)', () => {
+    expect(extractYoutubeVideoId('https://evil.example.com/watch?v=dQw4w9WgXcQ')).toBeNull();
+    expect(extractYoutubeVideoId('https://youtube.com.evil.com/watch?v=dQw4w9WgXcQ')).toBeNull();
+    expect(extractYoutubeVideoId('http://169.254.169.254/latest/meta-data')).toBeNull();
+    expect(extractYoutubeVideoId('file:///etc/passwd')).toBeNull();
+    expect(extractYoutubeVideoId('https://m.youtube.com/watch?v=dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
+    expect(extractYoutubeVideoId('https://music.youtube.com/watch?v=dQw4w9WgXcQ')).toBe(
+      'dQw4w9WgXcQ'
+    );
   });
 });
 
@@ -604,7 +618,7 @@ describe('folder router', () => {
           folderPath: FOLDER,
           type: 'download',
           videos: [
-            { videoId: 'v1', title: 'One' },
+            { videoId: 'aaaaaaaaaaa', title: 'One' },
             { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
             { title: 'no id' },
           ],
@@ -613,8 +627,8 @@ describe('folder router', () => {
       expect(response.status).toBe(202);
       expect(EnqueueJobsResponseSchema.parse(response.body).jobs).toHaveLength(2);
       expect(response.body.jobs[0]).toMatchObject({
-        videoId: 'v1',
-        videoUrl: 'https://www.youtube.com/watch?v=v1',
+        videoId: 'aaaaaaaaaaa',
+        videoUrl: 'https://www.youtube.com/watch?v=aaaaaaaaaaa',
         type: 'download',
         status: 'running',
         folderPath: FOLDER,
@@ -650,6 +664,31 @@ describe('folder router', () => {
       expect(args.join(' ')).not.toContain('list=');
     });
 
+    it('refuses video URLs that are not YouTube (SSRF guard)', async () => {
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({
+          folderPath: FOLDER,
+          type: 'download',
+          videos: [
+            { videoUrl: 'file:///etc/passwd' },
+            { videoUrl: 'http://169.254.169.254/latest/meta-data' },
+            { videoUrl: 'https://evil.example.com/watch?v=dQw4w9WgXcQ' },
+            { videoId: 'not-a-valid-id' },
+          ],
+        });
+
+      expect(response.status).toBe(202);
+      expect(response.body.jobs).toHaveLength(0);
+      expect(response.body.skipped).toEqual([
+        { videoId: '', reason: 'videoUrl must be a YouTube video URL' },
+        { videoId: '', reason: 'videoUrl must be a YouTube video URL' },
+        { videoId: '', reason: 'videoUrl must be a YouTube video URL' },
+        { videoId: 'not-a-valid-id', reason: 'videoId is not a valid YouTube video id' },
+      ]);
+      expect(spawnCalls).toHaveLength(0);
+    });
+
     it('applies the folder download options to enqueued jobs', async () => {
       mockedLoadDownloadOptions.mockResolvedValue({
         maxHeight: 1080,
@@ -659,7 +698,7 @@ describe('folder router', () => {
 
       const response = await request(app)
         .post('/api/folder/queue')
-        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: 'v1' }] });
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: 'aaaaaaaaaaa' }] });
 
       expect(response.status).toBe(202);
       expect(mockedLoadDownloadOptions).toHaveBeenCalledWith(FOLDER);
@@ -678,7 +717,9 @@ describe('folder router', () => {
       mockedLoadIndex.mockResolvedValue({
         version: 1,
         builtAt: 'now',
-        entries: { v1: { baseName: '20240101_Old_Name', videoFile: 'x.mp4', infoMtime: 'm' } },
+        entries: {
+          aaaaaaaaaaa: { baseName: '20240101_Old_Name', videoFile: 'x.mp4', infoMtime: 'm' },
+        },
       });
 
       const response = await request(app)
@@ -686,17 +727,17 @@ describe('folder router', () => {
         .send({
           folderPath: FOLDER,
           type: 'update',
-          videos: [{ videoId: 'v1' }, { videoId: 'v9' }],
+          videos: [{ videoId: 'aaaaaaaaaaa' }, { videoId: 'iiiiiiiiiii' }],
         });
 
       expect(response.status).toBe(202);
       expect(response.body.jobs).toHaveLength(1);
       expect(response.body.jobs[0]).toMatchObject({
-        videoId: 'v1',
+        videoId: 'aaaaaaaaaaa',
         type: 'update',
         baseName: '20240101_Old_Name',
       });
-      expect(response.body.skipped).toEqual([{ videoId: 'v9', reason: 'not downloaded' }]);
+      expect(response.body.skipped).toEqual([{ videoId: 'iiiiiiiiiii', reason: 'not downloaded' }]);
       expect(at(spawnCalls, 0).args).toContain('--skip-download');
       expect(at(spawnCalls, 0).args).toContain('20240101_Old_Name.%(ext)s');
     });
@@ -704,18 +745,23 @@ describe('folder router', () => {
     it('lists jobs, optionally filtered by folder', async () => {
       await request(app)
         .post('/api/folder/queue')
-        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: 'v1' }] });
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: 'aaaaaaaaaaa' }] });
       await request(app)
         .post('/api/folder/queue')
-        .send({ folderPath: OTHER_FOLDER, type: 'download', videos: [{ videoId: 'v2' }] });
+        .send({ folderPath: OTHER_FOLDER, type: 'download', videos: [{ videoId: 'bbbbbbbbbbb' }] });
 
       const all = await request(app).get('/api/folder/queue');
-      expect(all.body.jobs.map((j: { videoId: string }) => j.videoId)).toEqual(['v1', 'v2']);
+      expect(all.body.jobs.map((j: { videoId: string }) => j.videoId)).toEqual([
+        'aaaaaaaaaaa',
+        'bbbbbbbbbbb',
+      ]);
 
       const filtered = await request(app)
         .get('/api/folder/queue')
         .query({ folderPath: OTHER_FOLDER });
-      expect(filtered.body.jobs.map((j: { videoId: string }) => j.videoId)).toEqual(['v2']);
+      expect(filtered.body.jobs.map((j: { videoId: string }) => j.videoId)).toEqual([
+        'bbbbbbbbbbb',
+      ]);
     });
 
     it('cancels a single job and all jobs of a folder', async () => {
@@ -724,7 +770,11 @@ describe('folder router', () => {
         .send({
           folderPath: FOLDER,
           type: 'download',
-          videos: [{ videoId: 'v1' }, { videoId: 'v2' }, { videoId: 'v3' }],
+          videos: [
+            { videoId: 'aaaaaaaaaaa' },
+            { videoId: 'bbbbbbbbbbb' },
+            { videoId: 'ccccccccccc' },
+          ],
         });
       const [running, queued] = enqueued.body.jobs;
 
@@ -762,7 +812,7 @@ describe('folder router', () => {
         .send({
           folderPath: FOLDER,
           type: 'download',
-          videos: [{ videoId: 'v1' }, { videoId: 'v2' }],
+          videos: [{ videoId: 'aaaaaaaaaaa' }, { videoId: 'bbbbbbbbbbb' }],
         });
       await request(app).delete('/api/folder/queue').query({ folderPath: FOLDER });
       await flush();
@@ -821,11 +871,21 @@ describe('folder router', () => {
       ).toBe(403);
     });
 
+    it('rejects a non-YouTube videoUrl before opening the stream (SSRF guard)', async () => {
+      const response = await request(app)
+        .post('/api/folder/download-video')
+        .send({ folderPath: FOLDER, videoUrl: 'file:///etc/passwd' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'videoUrl must be a YouTube video URL' });
+      expect(spawnCalls).toHaveLength(0);
+    });
+
     it('streams start/output/done events for a queued job', async () => {
       const pending = startRequest(
         request(app)
           .post('/api/folder/download-video')
-          .send({ folderPath: FOLDER, videoUrl: 'https://www.youtube.com/watch?v=v1' })
+          .send({ folderPath: FOLDER, videoUrl: 'https://www.youtube.com/watch?v=aaaaaaaaaaa' })
           .buffer(true)
           .parse(collectStream)
       );
@@ -833,7 +893,7 @@ describe('folder router', () => {
 
       expect(spawnCalls).toHaveLength(1);
       const { args, process } = at(spawnCalls, 0);
-      expect(args).toContain('https://www.youtube.com/watch?v=v1');
+      expect(args).toContain('https://www.youtube.com/watch?v=aaaaaaaaaaa');
       process.stdout.emit('data', Buffer.from('[download] 50.0% of 1MiB\n'));
       process.stdout.emit('data', Buffer.from('[download] 100% of 1MiB\n'));
       process.emit('close', 0);
@@ -881,7 +941,7 @@ describe('folder router', () => {
       const pending = startRequest(
         request(app)
           .post('/api/folder/download-video')
-          .send({ folderPath: FOLDER, videoUrl: 'https://youtu.be/v2' })
+          .send({ folderPath: FOLDER, videoUrl: 'https://youtu.be/bbbbbbbbbbb' })
           .buffer(true)
           .parse(collectStream)
       );
@@ -919,7 +979,7 @@ describe('createApp (full app with body limit)', () => {
 
   it('accepts a bulk enqueue for a channel with thousands of videos', async () => {
     const videos = Array.from({ length: 4000 }, (_, i) => ({
-      videoId: `video-${String(i).padStart(6, '0')}`,
+      videoId: `video${String(i).padStart(6, '0')}`,
     }));
     const body = { folderPath: FOLDER, type: 'download', videos };
     // body-parser's default limit is 100 kB — make sure we are well above it

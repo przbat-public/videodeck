@@ -164,6 +164,23 @@ describe('isAllowedCorsOrigin', () => {
     expect(isAllowedCorsOrigin('chrome-extension://abcdefghijklmnop')).toBe(true);
   });
 
+  it('keeps extension origins open without a configured list', () => {
+    expect(isAllowedCorsOrigin('chrome-extension://abcdefghijklmnop', [], undefined)).toBe(true);
+  });
+
+  it('restricts extension origins to the configured list', () => {
+    expect(
+      isAllowedCorsOrigin('chrome-extension://abcdefghijklmnop', [], ['chrome-extension://otherid'])
+    ).toBe(false);
+    expect(
+      isAllowedCorsOrigin(
+        'chrome-extension://abcdefghijklmnop',
+        [],
+        ['chrome-extension://abcdefghijklmnop']
+      )
+    ).toBe(true);
+  });
+
   it('allows explicitly configured extra origins', () => {
     expect(isAllowedCorsOrigin('https://videos.example.com', ['https://videos.example.com'])).toBe(
       true
@@ -174,5 +191,50 @@ describe('isAllowedCorsOrigin', () => {
     expect(isAllowedCorsOrigin('https://evil.example.com')).toBe(false);
     expect(isAllowedCorsOrigin('http://localhost.evil.com')).toBe(false);
     expect(isAllowedCorsOrigin('http://example.com:3000')).toBe(false);
+  });
+});
+
+describe('Host header guard (DNS rebinding)', () => {
+  const originalAllowedHosts = process.env.ALLOWED_HOSTS;
+
+  afterEach(() => {
+    if (originalAllowedHosts === undefined) {
+      delete process.env.ALLOWED_HOSTS;
+    } else {
+      process.env.ALLOWED_HOSTS = originalAllowedHosts;
+    }
+  });
+
+  it('accepts loopback Host headers with any port', async () => {
+    const app = createApp();
+    for (const host of [
+      '127.0.0.1',
+      '127.0.0.1:3000',
+      'localhost',
+      'localhost:5173',
+      '[::1]',
+      '[::1]:8080',
+    ]) {
+      const response = await request(app).get('/health').set('Host', host);
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it('rejects an unknown Host header', async () => {
+    const response = await request(createApp()).get('/health').set('Host', 'evil.example.com');
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: 'Forbidden', message: 'Unknown Host header' });
+  });
+
+  it('accepts hosts listed in ALLOWED_HOSTS', async () => {
+    process.env.ALLOWED_HOSTS = 'nas.local, 192.168.0.10';
+    const app = createApp();
+
+    const byName = await request(app).get('/health').set('Host', 'nas.local:4567');
+    expect(byName.status).toBe(200);
+
+    const byIp = await request(app).get('/health').set('Host', '192.168.0.10');
+    expect(byIp.status).toBe(200);
   });
 });

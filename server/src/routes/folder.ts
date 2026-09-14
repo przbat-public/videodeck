@@ -23,7 +23,7 @@ import type {
   StatusResponse,
   VideoDownloadedResponse,
 } from '@shared/api';
-import { extractYoutubeVideoId, toWatchUrl } from '@shared/youtube';
+import { extractYoutubeVideoId, isYoutubeVideoId, toWatchUrl } from '@shared/youtube';
 import { getVideosFolderPaths } from '../config';
 import {
   findEntryByVideoId,
@@ -358,15 +358,26 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     const skipped: SkippedVideo[] = [];
     for (const video of videos) {
       const videoUrl = readString(video.videoUrl) ?? readString(video.url) ?? '';
+      // SSRF guard: the URL only ever reaches yt-dlp as a canonical YouTube
+      // watch URL. A URL that is not YouTube (or not even a URL) is refused —
+      // never passed through raw (yt-dlp would fetch arbitrary targets).
       const extractedId = videoUrl ? extractYoutubeVideoId(videoUrl) : null;
+      if (videoUrl && !extractedId) {
+        skipped.push({ videoId: '', reason: 'videoUrl must be a YouTube video URL' });
+        continue;
+      }
       const videoId = readString(video.videoId) ?? extractedId;
       if (!videoId) {
         skipped.push({ videoId: '', reason: 'videoId or videoUrl is required' });
         continue;
       }
+      if (!isYoutubeVideoId(videoId)) {
+        skipped.push({ videoId, reason: 'videoId is not a valid YouTube video id' });
+        continue;
+      }
       // A watch URL carrying &list=&index= makes yt-dlp walk the whole
       // playlist from that point — always hand it a canonical single-video URL
-      const url = extractedId ? toWatchUrl(extractedId) : videoUrl || toWatchUrl(videoId);
+      const url = toWatchUrl(videoId);
       const title = readString(video.title);
       if (type === 'update') {
         const entry = folderIndex?.entries[videoId];
@@ -455,6 +466,12 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
         res.status(400).json({ error: 'videoUrl is required' });
         return;
       }
+      // SSRF guard: only canonical YouTube watch URLs reach the queue.
+      const extractedId = extractYoutubeVideoId(videoUrl);
+      if (!extractedId) {
+        res.status(400).json({ error: 'videoUrl must be a YouTube video URL' });
+        return;
+      }
 
       await fs.mkdir(folderPath, { recursive: true });
 
@@ -468,11 +485,10 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       };
 
-      const extractedId = extractYoutubeVideoId(videoUrl);
-      const videoId = extractedId ?? videoUrl;
       // Strip playlist context (&list=, &index=) — see the comment in
-      // enqueueJobs; non-YouTube URLs pass through untouched.
-      const queueUrl = extractedId ? toWatchUrl(extractedId) : videoUrl;
+      // enqueueJobs.
+      const videoId = extractedId;
+      const queueUrl = toWatchUrl(videoId);
       const options = await loadDownloadOptions(folderPath);
       const [job] = queue.enqueue([
         { folderPath, videoId, videoUrl: queueUrl, type: 'download', options },

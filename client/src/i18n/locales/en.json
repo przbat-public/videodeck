@@ -148,8 +148,8 @@
     "subtitleLangsPlaceholder": "default: {{langs}}",
     "comments": "Download comments",
     "extraArgs": "Extra yt-dlp arguments:",
-    "extraArgsPlaceholder": "e.g. --cookies-from-browser chrome --proxy http://127.0.0.1:8080",
-    "extraArgsReserved": "the -f, -o, --download-archive, --merge-output-format and --paths flags are reserved"
+    "extraArgsPlaceholder": "e.g. --no-playlist --match-filter \"duration < 7200\"",
+    "extraArgsReserved": "the -f, -o, --download-archive, --merge-output-format and --paths flags are reserved; --exec, --proxy and --cookies* are forbidden"
   },
   "playlist": {
     "title": "Video list download",

@@ -168,8 +168,9 @@ export const DownloadOptionsSchema = z.object({
   writeComments: z.boolean(),
   /**
    * Extra yt-dlp flags appended after the built-in ones, e.g.
-   * `--cookies-from-browser chrome`. Flags the pipeline depends on are
-   * rejected server-side; see validateFolderConfig.
+   * `--no-playlist`. Flags the pipeline depends on and dangerous flags
+   * (`--exec`, `--proxy`, `--cookies*`, …) are rejected server-side;
+   * see validateFolderConfig.
    */
   extraArgs: z.array(z.string()).optional(),
 });

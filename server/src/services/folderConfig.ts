@@ -58,9 +58,37 @@ const RESERVED_ARGS_WITH_VALUE = [
   '--merge-output-format',
 ];
 
+/**
+ * Flags a per-folder config may never pass to yt-dlp, even though the
+ * pipeline does not use them: `--exec` runs a shell command (RCE via
+ * config.json), `--config-locations` loads an arbitrary yt-dlp config,
+ * `--cookies*` exfiltrate the browser cookie jar, `--proxy` routes the
+ * traffic through an arbitrary host, and `--netrc`/`--username`/`--password`
+ * leak credentials into the process list and logs.
+ */
+const FORBIDDEN_EXTRA_ARGS = [
+  '--exec',
+  '--config-locations',
+  '--cookies',
+  '--load-cookies',
+  '--cookies-from-browser',
+  '--proxy',
+  '--netrc',
+  '--username',
+  '--password',
+  '--video-password',
+];
+
 /** Whether an `extraArgs` entry shadows a pipeline-owned flag (`-f`, `-f=…`) */
 export function isReservedExtraArg(arg: string): boolean {
   return RESERVED_EXTRA_ARGS.some((reserved) => arg === reserved || arg.startsWith(`${reserved}=`));
+}
+
+/** Whether an `extraArgs` entry is a dangerous flag (`--exec`, `--proxy=…`) */
+export function isForbiddenExtraArg(arg: string): boolean {
+  return FORBIDDEN_EXTRA_ARGS.some(
+    (forbidden) => arg === forbidden || arg.startsWith(`${forbidden}=`)
+  );
 }
 
 /**
@@ -113,6 +141,9 @@ export function validateFolderConfig(config: unknown): string | null {
       }
       if (isReservedExtraArg(arg)) {
         return `extraArgs must not override the built-in argument: ${arg}`;
+      }
+      if (isForbiddenExtraArg(arg)) {
+        return `extraArgs must not use the restricted argument: ${arg}`;
       }
     }
   }
@@ -188,6 +219,14 @@ export function resolveDownloadOptions(config: FolderConfig | null | undefined):
           typeof next === 'string' &&
           !next.startsWith('-')
         ) {
+          index += 1;
+        }
+        continue;
+      }
+      if (isForbiddenExtraArg(arg)) {
+        // Same orphan-value handling: `--proxy http://p` arrives as two entries.
+        const next = config.extraArgs[index + 1];
+        if (!arg.includes('=') && typeof next === 'string' && !next.startsWith('-')) {
           index += 1;
         }
         continue;

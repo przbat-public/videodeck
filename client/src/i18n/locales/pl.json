@@ -168,8 +168,8 @@
     "subtitleLangsPlaceholder": "domyślnie: {{langs}}",
     "comments": "Pobieraj komentarze",
     "extraArgs": "Dodatkowe argumenty yt-dlp:",
-    "extraArgsPlaceholder": "np. --cookies-from-browser chrome --proxy http://127.0.0.1:8080",
-    "extraArgsReserved": "flagi -f, -o, --download-archive, --merge-output-format i --paths są zarezerwowane"
+    "extraArgsPlaceholder": "np. --no-playlist --match-filter \"duration < 7200\"",
+    "extraArgsReserved": "flagi -f, -o, --download-archive, --merge-output-format i --paths są zarezerwowane; --exec, --proxy i --cookies* są zabronione"
   },
   "playlist": {
     "title": "Pobieranie listy filmów",

@@ -43,6 +43,36 @@ export function getCorsOrigins(): string[] {
     .filter((origin) => origin.length > 0);
 }
 
+/**
+ * Extra hosts accepted in the `Host` header, on top of the loopback defaults
+ * (localhost, 127.0.0.1, [::1]). Needed together with `HOST=0.0.0.0` for LAN
+ * use: every name/IP the clients will use must be listed, or the server
+ * answers 403. This is the DNS-rebinding guard — a malicious domain resolving
+ * to 127.0.0.1 sends its own Host header and gets refused.
+ */
+export function getAllowedHosts(): string[] {
+  return (process.env.ALLOWED_HOSTS ?? '')
+    .split(',')
+    .map((host) => host.trim())
+    .filter((host) => host.length > 0);
+}
+
+/**
+ * Exact `chrome-extension://<id>` origins allowed by CORS. When unset,
+ * any Chrome extension may call the API (dev convenience: unpacked
+ * extensions get a fresh id per load). When set, only the listed ids can —
+ * e.g. `EXTENSION_ORIGINS=chrome-extension://abcdefghijklmnop` after pinning
+ * the extension id.
+ */
+export function getExtensionOrigins(): string[] | undefined {
+  const raw = process.env.EXTENSION_ORIGINS ?? '';
+  const origins = raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+  return origins.length > 0 ? origins : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Video folders
 // ---------------------------------------------------------------------------

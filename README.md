@@ -57,9 +57,9 @@ Najpierw upewnij się, że Docker Desktop jest uruchomiony:
 - Na macOS: Otwórz aplikację "Docker Desktop" z folderu Applications lub użyj Spotlight (Cmd+Space → "Docker")
 - Sprawdź czy Docker działa: `docker ps` (powinno działać bez błędów)
 
-Następnie uruchom Elasticsearch:
+Następnie uruchom Elasticsearch (porty bindowane na loopback — bez hasła ES nie może być osiągalny z sieci):
 ```bash
-docker run -d -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.0
+docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.0
 ```
 
 **Opcja B: Homebrew (macOS)**
@@ -124,6 +124,8 @@ OPENAI_API_KEY=sk-REPLACE-ME    # klucz dla AI streszczeń (GET /api/videos/:id/
 HOST=127.0.0.1           # adres bindowania serwera (domyślnie loopback)
 API_TOKEN=sekret         # bearer token chroniący /api (patrz Bezpieczeństwo niżej)
 CORS_ORIGINS=https://example.com  # dodatkowe originy CORS (przecinkami), poza localhost i chrome-extension://
+ALLOWED_HOSTS=nas.local,192.168.0.10  # dodatkowe nazwy/IP dozwolone w nagłówku Host (potrzebne przy HOST=0.0.0.0)
+EXTENSION_ORIGINS=chrome-extension://abcdefghijklmnop  # dokładne ID rozszerzenia dopuszczone w CORS (bez tego: każde chrome-extension://)
 ```
 
 **Uwaga:** 
@@ -139,8 +141,30 @@ localne originy (`localhost`/`127.0.0.1`) i rozszerzenia Chrome. Bez
 z obcych stron są odrzucane (`Sec-Fetch-Site: cross-site` → 403), więc złośliwa
 strona WWW nie wywoła reindeksu ani nie dopisze zadań do kolejki.
 
+Dodatkowe zabezpieczenia:
+
+- **Allowlista Host (DNS rebinding)** — serwer przyjmuje tylko nagłówek
+  `Host` z loopback (`localhost`, `127.0.0.1`, `[::1]`) lub z `ALLOWED_HOSTS`.
+  Domena atakującego, która rozwiązuje się na 127.0.0.1, wysyła własny
+  `Host` i dostaje 403, zanim trafi do API.
+- **SSRF w URL wideo** — `POST /api/folder/queue` i `/api/folder/download-video`
+  przyjmują wyłącznie adresy YouTube (rozpoznane przez `shared/youtube.ts`);
+  każdy inny URL (także `file://` czy adresy IP) jest odrzucany, a do yt-dlp
+  trafia zawsze kanoniczny `https://www.youtube.com/watch?v=<id>`.
+- **Zabronione flagi yt-dlp** — `extraArgs` w `config.json` nie przepuści
+  `--exec`, `--config-locations`, `--cookies`/`--load-cookies`/
+  `--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`
+  i `--video-password` (RCE, kradzież ciasteczek, wyciek poświadczeń).
+  `PUT /api/folder/config` odrzuca te flagi, a w ręcznie edytowanym pliku
+  są ignorowane (razem ze swoją wartością).
+- **Dokładne ID rozszerzenia w CORS** — domyślnie (tryb dev) CORS dopuszcza
+  każde `chrome-extension://…`, bo rozszerzenia developerskie dostają nowe ID
+  przy każdym załadowaniu. Ustaw `EXTENSION_ORIGINS` z dokładnym ID
+  (widoczne na `chrome://extensions`), aby API wywoływało tylko Twoje
+  rozszerzenie.
+
 Dla zdalnego dostępu ustaw `API_TOKEN` (i ewentualnie `HOST=0.0.0.0` +
-`CORS_ORIGINS`): każdy request na `/api` musi wtedy nieść
+`ALLOWED_HOSTS` + `CORS_ORIGINS`): każdy request na `/api` musi wtedy nieść
 `Authorization: Bearer <token>`. Rozszerzenie Chrome ma pole „Token API" w
 opcjach; `/health` pozostaje publiczne do testów połączenia.
 
@@ -707,7 +731,7 @@ Aplikacja automatycznie skanuje wszystkie podane foldery i indeksuje pliki speł
   "maxHeight": 1080,
   "subLangs": ["pl", "en"],
   "writeComments": false,
-  "extraArgs": ["--cookies-from-browser", "chrome"]
+  "extraArgs": ["--no-playlist"]
 }
 ```
 
@@ -718,7 +742,7 @@ Aplikacja automatycznie skanuje wszystkie podane foldery i indeksuje pliki speł
 | `maxHeight` | `2160` | Maksymalna wysokość wideo (144-4320). Preferowany h264/aac w mp4, potem dowolny kodek |
 | `subLangs` | `["en"]` | Języki napisów dla `--sub-lang` (`pl`, `en`, `en.*`, `all`). Pusta tablica wyłącza napisy |
 | `writeComments` | `true` | Czy pobierać komentarze (`--write-comments`) - są indeksowane do wyszukiwania |
-| `extraArgs` | `[]` | Dodatkowe flagi yt-dlp dopisane po wbudowanych, np. `["--cookies-from-browser", "chrome"]` (oddzielne wpisy jak w argv, bez cudzysłowów). Zarezerwowane są flagi, na których opiera się potok: `-f/--format`, `-o/--output`, `-P/--paths`, `--download-archive`, `--no-download-archive`, `--merge-output-format` — `PUT /api/folder/config` je odrzuca, a w ręcznie edytowanym pliku są ignorowane |
+| `extraArgs` | `[]` | Dodatkowe flagi yt-dlp dopisane po wbudowanych, np. `["--no-playlist"]` (oddzielne wpisy jak w argv, bez cudzysłowów). Zarezerwowane są flagi, na których opiera się potok: `-f/--format`, `-o/--output`, `-P/--paths`, `--download-archive`, `--no-download-archive`, `--merge-output-format`, a zabronione (bezpieczeństwo): `--exec`, `--config-locations`, `--cookies`/`--load-cookies`/`--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`, `--video-password` — `PUT /api/folder/config` je odrzuca, a w ręcznie edytowanym pliku są ignorowane (wraz z wartością) |
 
 Brakujące klucze biorą wartości domyślne (`GET /api/status` zwraca je w `downloadDefaults`). Wartości nieprawidłowe w ręcznie edytowanym pliku są ignorowane, a `PUT /api/folder/config` je odrzuca. Opcje są odczytywane w momencie dodawania zadania do kolejki. Edytor w UI (strona statusu) pozwala je ustawić bez ręcznej edycji pliku.
 

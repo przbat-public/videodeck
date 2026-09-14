@@ -235,11 +235,11 @@ describe('buildYtDlpArgs', () => {
       maxHeight: 2160,
       subLangs: ['en'],
       writeComments: true,
-      extraArgs: ['--proxy', 'http://127.0.0.1:8080'],
+      extraArgs: ['--no-warnings'],
     };
 
     const download = buildYtDlpArgs({ type: 'download', videoUrl: 'https://yt/x', options });
-    expect(download.slice(-3)).toEqual(['--proxy', 'http://127.0.0.1:8080', 'https://yt/x']);
+    expect(download.slice(-2)).toEqual(['--no-warnings', 'https://yt/x']);
 
     const update = buildYtDlpArgs({
       type: 'update',
@@ -247,7 +247,7 @@ describe('buildYtDlpArgs', () => {
       baseName: 'stem',
       options,
     });
-    expect(update.slice(-3)).toEqual(['--proxy', 'http://127.0.0.1:8080', 'https://yt/x']);
+    expect(update.slice(-2)).toEqual(['--no-warnings', 'https://yt/x']);
   });
 });
 

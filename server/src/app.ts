@@ -5,7 +5,7 @@ import cors from 'cors';
 import videosRouter from './routes/videos';
 import { createFolderRouter } from './routes/folder';
 import type { DownloadQueueLike } from './routes/folder';
-import { getCorsOrigins } from './config';
+import { getAllowedHosts, getCorsOrigins, getExtensionOrigins } from './config';
 import { createAuthMiddleware, isAllowedCorsOrigin } from './routes/http';
 import { logger } from './utils/logger';
 import { metricsBody, metricsRegistry, recordRequest } from './metrics';
@@ -45,6 +45,35 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
 }
 
 /**
+ * Host-header guard against DNS rebinding: a malicious domain can resolve to
+ * 127.0.0.1, and the browser then sends its own Host header along — without
+ * this check such a page could drive the local API like the real client.
+ * Loopback hosts are always allowed; `extraHosts` (ALLOWED_HOSTS) extends
+ * the list for LAN setups. Requests without a Host header (HTTP/1.0) pass.
+ */
+function createHostGuard(
+  extraHosts: readonly string[]
+): (req: Request, res: Response, next: NextFunction) => void {
+  const allowed = new Set(['localhost', '127.0.0.1', '::1', ...extraHosts]);
+  return (req, res, next) => {
+    const rawHost = req.headers.host;
+    if (rawHost === undefined) {
+      next();
+      return;
+    }
+    // Host may carry a port ("localhost:3000") and IPv6 brackets ("[::1]:8080")
+    const host = rawHost.toLowerCase().startsWith('[')
+      ? rawHost.toLowerCase().replace(/^\[(.*)\](:\d+)?$/, '$1')
+      : rawHost.toLowerCase().replace(/:\d+$/, '');
+    if (!allowed.has(host)) {
+      res.status(403).json({ error: 'Forbidden', message: 'Unknown Host header' });
+      return;
+    }
+    next();
+  };
+}
+
+/**
  * Safety net for anything a handler did not catch itself. Express 5 forwards
  * rejected async handlers here, so the boilerplate `try/catch + sendError`
  * blocks are gone: a 500 now looks the same everywhere and the full error
@@ -75,13 +104,20 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   const app = express();
 
   const extraCorsOrigins = getCorsOrigins();
+  const extensionOrigins = getExtensionOrigins();
+
+  // DNS-rebinding guard first — every request pays the Host check
+  app.use(createHostGuard(getAllowedHosts()));
 
   // Only browsers are subject to CORS; requests without an Origin header
   // (curl, the server itself) go through untouched.
   app.use(
     cors({
       origin: (origin, callback) => {
-        callback(null, origin === undefined || isAllowedCorsOrigin(origin, extraCorsOrigins));
+        callback(
+          null,
+          origin === undefined || isAllowedCorsOrigin(origin, extraCorsOrigins, extensionOrigins)
+        );
       },
     })
   );

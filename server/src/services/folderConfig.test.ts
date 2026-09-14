@@ -73,7 +73,36 @@ describe('folderConfig', () => {
       expect(validateFolderConfig({ extraArgs: '--cookies' })).toMatch(/extraArgs/);
       expect(validateFolderConfig({ extraArgs: [''] })).toMatch(/invalid argument/);
       expect(validateFolderConfig({ extraArgs: [42] })).toMatch(/invalid argument/);
-      expect(validateFolderConfig({ extraArgs: ['--cookies-from-browser', 'chrome'] })).toBeNull();
+      expect(validateFolderConfig({ extraArgs: ['--no-playlist'] })).toBeNull();
+    });
+
+    it('rejects dangerous extraArgs', () => {
+      expect(validateFolderConfig({ extraArgs: ['--cookies-from-browser', 'chrome'] })).toMatch(
+        /restricted argument/
+      );
+      expect(validateFolderConfig({ extraArgs: ['--exec', 'id'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--proxy=http://p'] })).toMatch(
+        /restricted argument/
+      );
+      expect(validateFolderConfig({ extraArgs: ['--config-locations', '/tmp/x'] })).toMatch(
+        /restricted argument/
+      );
+      expect(validateFolderConfig({ extraArgs: ['--cookies', '/tmp/c.txt'] })).toMatch(
+        /restricted argument/
+      );
+      expect(validateFolderConfig({ extraArgs: ['--load-cookies', '/tmp/c.txt'] })).toMatch(
+        /restricted argument/
+      );
+      expect(validateFolderConfig({ extraArgs: ['--netrc'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--username', 'u'] })).toMatch(
+        /restricted argument/
+      );
+      expect(validateFolderConfig({ extraArgs: ['--password', 'p'] })).toMatch(
+        /restricted argument/
+      );
+      expect(validateFolderConfig({ extraArgs: ['--video-password', 'p'] })).toMatch(
+        /restricted argument/
+      );
     });
 
     it('rejects extraArgs that shadow pipeline-owned flags', () => {
@@ -130,12 +159,12 @@ describe('folderConfig', () => {
       expect(resolveDownloadOptions({ subLangs: [] }).subLangs).toEqual([]);
     });
 
-    it('passes extra yt-dlp arguments through', () => {
-      expect(resolveDownloadOptions({ extraArgs: ['--cookies-from-browser', 'chrome'] })).toEqual({
+    it('passes harmless extra yt-dlp arguments through', () => {
+      expect(resolveDownloadOptions({ extraArgs: ['--no-playlist', '--no-warnings'] })).toEqual({
         maxHeight: 2160,
         subLangs: ['en'],
         writeComments: true,
-        extraArgs: ['--cookies-from-browser', 'chrome'],
+        extraArgs: ['--no-playlist', '--no-warnings'],
       });
     });
 
@@ -145,13 +174,28 @@ describe('folderConfig', () => {
           maxHeight: 'big' as unknown as number,
           subLangs: ['en', '', 'bad lang', 42 as unknown as string],
           writeComments: 'no' as unknown as boolean,
+          // reserved (-f) and forbidden (--proxy) flags are dropped
+          // together with their value
           extraArgs: ['', 42 as unknown as string, '-f', 'best', '--proxy', 'http://p'],
         })
       ).toEqual({
         maxHeight: 2160,
         subLangs: ['en'],
         writeComments: true,
-        extraArgs: ['--proxy', 'http://p'],
+        extraArgs: [],
+      });
+    });
+
+    it('drops forbidden flags and their values from a hand-edited file', () => {
+      expect(
+        resolveDownloadOptions({
+          extraArgs: ['--exec', 'id', '--proxy=http://p', '--no-playlist'],
+        })
+      ).toEqual({
+        maxHeight: 2160,
+        subLangs: ['en'],
+        writeComments: true,
+        extraArgs: ['--no-playlist'],
       });
     });
   });

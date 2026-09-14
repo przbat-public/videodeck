@@ -27,6 +27,12 @@ describe('getYouTubeVideoId', () => {
     expect(getYouTubeVideoId('https://example.com/page')).toBeNull();
   });
 
+  it('returns null for non-YouTube hosts (SSRF guard)', () => {
+    expect(getYouTubeVideoId('https://evil.example.com/watch?v=dQw4w9WgXcQ')).toBeNull();
+    expect(getYouTubeVideoId('https://youtube.com.evil.com/watch?v=dQw4w9WgXcQ')).toBeNull();
+    expect(getYouTubeVideoId('file:///etc/passwd')).toBeNull();
+  });
+
   it('rejects ids that are not 11 characters long', () => {
     expect(getYouTubeVideoId('https://youtu.be/short')).toBeNull();
   });

@@ -43,15 +43,26 @@ export function sendError<Res>(
  * (localhost/127.0.0.1, any port) and Chrome extensions (the extension's
  * background worker sends `Origin: chrome-extension://<id>`); `extraOrigins`
  * extends the list (CORS_ORIGINS env).
+ *
+ * Extension origins are open by default (unpacked dev extensions get a fresh
+ * id per load). When `extensionOrigins` is set (EXTENSION_ORIGINS env), only
+ * the exact listed ids are accepted.
  */
-export function isAllowedCorsOrigin(origin: string, extraOrigins: readonly string[] = []): boolean {
+export function isAllowedCorsOrigin(
+  origin: string,
+  extraOrigins: readonly string[] = [],
+  extensionOrigins: readonly string[] | undefined = undefined
+): boolean {
   if (extraOrigins.includes(origin)) {
     return true;
   }
-  return (
-    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
-    origin.startsWith('chrome-extension://')
-  );
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+    return true;
+  }
+  if (origin.startsWith('chrome-extension://')) {
+    return extensionOrigins === undefined || extensionOrigins.includes(origin);
+  }
+  return false;
 }
 
 /**
