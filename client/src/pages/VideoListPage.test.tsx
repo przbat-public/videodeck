@@ -295,7 +295,7 @@ describe('VideoListPage', () => {
       renderAt('/videos?q=drone&sort=views-desc&category=lego');
       await screen.findByText('First');
 
-      fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Wyczyść' }));
       await pick(sortSelect(), 'Najnowsze');
       await pick(await categorySelect(), 'Wszystkie kategorie');
 

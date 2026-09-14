@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef } from 'react';
 import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
-import i18n from '../i18n';
+import { useTranslation } from 'react-i18next';
 import type { ChannelVideo, JobType, QueueJob } from '@shared/api';
 
 /** A list.json entry plus the local "last updated" date from the folder index */
@@ -19,39 +19,18 @@ export interface VideoItemProps {
   scrollContainerRef?: React.RefObject<HTMLDivElement>;
 }
 
-const formatLastUpdated = (dateString?: string): string => {
+/** Date of the last local update, formatted in the current UI language */
+const formatLastUpdated = (dateString: string | undefined, locale: string): string => {
   if (!dateString) return '';
   const date = new Date(dateString);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('pl-PL', {
+  return new Intl.DateTimeFormat(locale, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  });
-};
-
-const describeJob = (job: QueueJob): string => {
-  const verb = job.type === 'update' ? 'Aktualizacja' : 'Pobieranie';
-  switch (job.status) {
-    case 'queued':
-      return `${verb}: w kolejce`;
-    case 'running':
-      return job.progress !== undefined && job.type === 'download'
-        ? `${verb}: ${Math.round(job.progress)}%`
-        : `${verb}...`;
-    case 'done':
-      return job.type === 'update'
-        ? i18n.t('queue.statusUpdated')
-        : i18n.t('queue.statusDownloaded');
-    case 'error':
-      return i18n.t('queue.statusError');
-    case 'cancelled':
-      return i18n.t('queue.statusCancelled');
-    default:
-      return '';
-  }
+  }).format(date);
 };
 
 export function VideoItemInner({
@@ -62,6 +41,7 @@ export function VideoItemInner({
   onCancel,
   scrollContainerRef,
 }: VideoItemProps): JSX.Element {
+  const { t, i18n } = useTranslation();
   const itemRef = useRef<HTMLDivElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
 
@@ -94,14 +74,34 @@ export function VideoItemInner({
     }
   }, [job?.log, isRunning]);
 
-  const videoTitle = video.title || i18n.t('video.noTitle');
-  const lastUpdatedFormatted = formatLastUpdated(video.lastUpdated);
+  const describeJob = (job: QueueJob): string => {
+    const verb = job.type === 'update' ? t('queue.verbUpdate') : t('queue.verbDownload');
+    switch (job.status) {
+      case 'queued':
+        return t('queue.statusQueued', { verb });
+      case 'running':
+        return job.progress !== undefined && job.type === 'download'
+          ? t('queue.statusRunningProgress', { verb, progress: Math.round(job.progress) })
+          : t('queue.statusRunning', { verb });
+      case 'done':
+        return job.type === 'update' ? t('queue.statusUpdated') : t('queue.statusDownloaded');
+      case 'error':
+        return t('queue.statusError');
+      case 'cancelled':
+        return t('queue.statusCancelled');
+      default:
+        return '';
+    }
+  };
+
+  const videoTitle = video.title || t('video.noTitle');
+  const lastUpdatedFormatted = formatLastUpdated(video.lastUpdated, i18n.language);
   const titleWithDate = lastUpdatedFormatted
-    ? `${videoTitle} (aktualizacja: ${lastUpdatedFormatted})`
+    ? t('video.updatedTitle', { title: videoTitle, date: lastUpdatedFormatted })
     : videoTitle;
 
   const actionType: JobType = isDownloaded ? 'update' : 'download';
-  const actionLabel = isDownloaded ? i18n.t('app.update') : i18n.t('app.download');
+  const actionLabel = isDownloaded ? t('app.update') : t('app.download');
   const showLog = job && (isRunning || job.status === 'error') && job.log.length > 0;
 
   return (
@@ -135,14 +135,14 @@ export function VideoItemInner({
               onClick={() => job && onCancel(job.id)}
               type="button"
             >
-              {i18n.t('app.cancel')}
+              {t('app.cancel')}
             </button>
           ) : (
             <button
               className={isDownloaded ? 'update-video-button' : 'download-video-button'}
               onClick={() => onEnqueue(video, actionType)}
               disabled={!video.url}
-              title={video.url ? undefined : 'Brak URL filmu'}
+              title={video.url ? undefined : t('video.noUrl')}
               type="button"
             >
               {actionLabel}
@@ -154,7 +154,7 @@ export function VideoItemInner({
         <div className="download-output">
           {job.status === 'error' && (
             <div className="download-error">
-              <p>{i18n.t('app.error', { message: job.error || i18n.t('errors.unknown') })}</p>
+              <p>{t('app.error', { message: job.error || t('errors.unknown') })}</p>
             </div>
           )}
           <div className="download-output-content" ref={outputRef}>
@@ -180,5 +180,8 @@ export function VideoItemInner({
  * every row. The parent passes stable rows/callbacks (see VideoListSection),
  * so the default shallow comparison skips everything but genuinely changed
  * rows (their own job/log updates still re-render this item).
+ *
+ * useTranslation subscribes this item to language changes, so a memo'd row
+ * still re-renders when the user switches languages.
  */
 export const VideoItem = memo(VideoItemInner);

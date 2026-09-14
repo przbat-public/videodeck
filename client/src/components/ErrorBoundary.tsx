@@ -14,6 +14,10 @@ interface ErrorBoundaryState {
  * Last line of defense for render errors: without a boundary, one throwing
  * component blanks the whole app. A class component is the only way React
  * lets you catch errors thrown during rendering.
+ *
+ * As a class it cannot use useTranslation, so it subscribes to
+ * `languageChanged` by hand — otherwise the error screen would keep the
+ * language from before the switch.
  */
 export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   override state: ErrorBoundaryState = { error: null };
@@ -21,6 +25,18 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error };
   }
+
+  override componentDidMount(): void {
+    i18n.on('languageChanged', this.handleLanguageChanged);
+  }
+
+  override componentWillUnmount(): void {
+    i18n.off('languageChanged', this.handleLanguageChanged);
+  }
+
+  private handleLanguageChanged = (): void => {
+    this.forceUpdate();
+  };
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('ErrorBoundary caught a render error:', error, info.componentStack);

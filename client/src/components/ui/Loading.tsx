@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import i18n from '../../i18n';
+import { useTranslation } from 'react-i18next';
 
 interface LoadingProps {
   message?: string;
@@ -7,9 +7,10 @@ interface LoadingProps {
 
 /** Standard "loading" block used by every page */
 export function Loading({ message }: LoadingProps): JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="ui-loading" role="status">
-      <p>{message ?? i18n.t('app.loading')}</p>
+      <p>{message ?? t('app.loading')}</p>
     </div>
   );
 }

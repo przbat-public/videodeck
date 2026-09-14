@@ -44,7 +44,7 @@ describe('CommentComponent', () => {
         like_count: 42,
       };
       render(<CommentComponent comment={comment} />);
-      expect(screen.getByText('42 polubień')).toBeInTheDocument();
+      expect(screen.getByText('42 polubienia')).toBeInTheDocument();
     });
 
     it('should not render like count when 0', () => {
@@ -146,7 +146,7 @@ describe('CommentComponent', () => {
       vi.useRealTimers();
     });
 
-    it('should show "Today" for comments from today', () => {
+    it('should show "Dzisiaj" for comments from today', () => {
       const now = new Date('2024-01-15T12:00:00Z');
       vi.setSystemTime(now);
 
@@ -159,10 +159,10 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      expect(screen.getByText('Today')).toBeInTheDocument();
+      expect(screen.getByText('Dzisiaj')).toBeInTheDocument();
     });
 
-    it('should show "Yesterday" for comments from yesterday', () => {
+    it('should show "Wczoraj" for comments from yesterday', () => {
       const now = new Date('2024-01-15T12:00:00Z');
       vi.setSystemTime(now);
 
@@ -178,10 +178,10 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      expect(screen.getByText('Yesterday')).toBeInTheDocument();
+      expect(screen.getByText('Wczoraj')).toBeInTheDocument();
     });
 
-    it('should show "X days ago" for comments from last week', () => {
+    it('should show "X dni temu" for comments from last week', () => {
       const now = new Date('2024-01-15T12:00:00Z');
       vi.setSystemTime(now);
 
@@ -197,10 +197,10 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      expect(screen.getByText('3 days ago')).toBeInTheDocument();
+      expect(screen.getByText('3 dni temu')).toBeInTheDocument();
     });
 
-    it('should show "X weeks ago" for comments from last month', () => {
+    it('should show "X tygodni temu" for comments from last month', () => {
       const now = new Date('2024-01-15T12:00:00Z');
       vi.setSystemTime(now);
 
@@ -216,10 +216,10 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      expect(screen.getByText('2 weeks ago')).toBeInTheDocument();
+      expect(screen.getByText('2 tygodnie temu')).toBeInTheDocument();
     });
 
-    it('should show "X months ago" for comments from last year', () => {
+    it('should show "X miesięcy temu" for comments from last year', () => {
       const now = new Date('2024-01-15T12:00:00Z');
       vi.setSystemTime(now);
 
@@ -235,7 +235,7 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      expect(screen.getByText('2 months ago')).toBeInTheDocument();
+      expect(screen.getByText('2 miesiące temu')).toBeInTheDocument();
     });
 
     it('should show full date for old comments', () => {
@@ -253,7 +253,7 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      const timeElement = screen.getByText(/Jun/);
+      const timeElement = screen.getByText(/cze/);
       expect(timeElement).toBeInTheDocument();
     });
   });
@@ -275,7 +275,7 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      expect(screen.getByText('Today')).toBeInTheDocument();
+      expect(screen.getByText('Dzisiaj')).toBeInTheDocument();
       expect(screen.queryByText('Should not show')).not.toBeInTheDocument();
 
       vi.useRealTimers();

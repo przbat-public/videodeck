@@ -1,4 +1,5 @@
 import type { JSX } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useVideoSummary } from '../hooks/useVideoSummary';
 
 interface VideoSummaryProps {
@@ -10,6 +11,7 @@ export default function VideoSummary({
   baseName,
   subtitlePath,
 }: VideoSummaryProps): JSX.Element | null {
+  const { t } = useTranslation();
   const { state: summaryState } = useVideoSummary(baseName, subtitlePath);
 
   if (!subtitlePath || !summaryState.summary) {
@@ -18,7 +20,7 @@ export default function VideoSummary({
 
   return (
     <div className="video-summary-section">
-      <h2>Streszczenie</h2>
+      <h2>{t('video.summaryTitle')}</h2>
       <div className="summary-content">
         <p>{summaryState.summary}</p>
       </div>

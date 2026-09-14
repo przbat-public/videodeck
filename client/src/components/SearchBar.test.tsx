@@ -11,7 +11,7 @@ const CATEGORIES = ['fpv', 'lego', 'psychology'];
 const input = () => screen.getByPlaceholderText('Szukaj filmów po opisie...');
 const sortSelect = () => screen.getByRole('combobox', { name: 'Sort' });
 const categorySelect = () => screen.getByRole('combobox', { name: 'Kategoria' });
-const clearButton = () => screen.getByRole('button', { name: 'Clear' });
+const clearButton = () => screen.getByRole('button', { name: 'Wyczyść' });
 
 // The debounce tests drive the input with fireEvent instead of userEvent:
 // userEvent's internal waits deadlock with fake timers (vitest 5 + React 19),
@@ -141,7 +141,7 @@ describe('SearchBar', () => {
       renderBar({}, []);
 
       expect(screen.queryByRole('combobox', { name: 'Kategoria' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Wyczyść' })).not.toBeInTheDocument();
     });
 
     it('lists "Wszystkie kategorie" first, then the categories it is given', () => {
@@ -409,7 +409,7 @@ describe('SearchBar', () => {
         dateFrom: '',
         dateTo: '',
       });
-      expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Wyczyść' })).not.toBeInTheDocument();
 
       await flushTimers();
       expect(onChange).toHaveBeenCalledTimes(1);

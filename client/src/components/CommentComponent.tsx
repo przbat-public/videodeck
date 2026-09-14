@@ -1,49 +1,41 @@
 import { useState } from 'react';
 import type { JSX } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type { CommentWithReplies } from '@shared/api';
-import i18n from '../i18n';
 
 const MAX_COMMENT_LENGTH = 250;
 
 /**
- * Format comment timestamp to readable date
+ * "Dzisiaj"/"wczoraj"/"5 dni temu"… — relative dates with Intl in the
+ * current UI language (skill react-i18n: never hand-roll dates).
  */
-const formatCommentDate = (timestamp: number): string => {
+function formatCommentDate(timestamp: number, language: string, t: TFunction): string {
   const date = new Date(timestamp * 1000);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
   if (diffDays === 0) {
-    return 'Today';
+    return t('video.commentToday');
   } else if (diffDays === 1) {
-    return 'Yesterday';
+    return t('video.commentYesterday');
   } else if (diffDays < 7) {
-    return `${diffDays} days ago`;
+    return t('video.commentDaysAgo', { count: diffDays });
   } else if (diffDays < 30) {
     const weeks = Math.floor(diffDays / 7);
-    return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`;
+    return t('video.commentWeeksAgo', { count: weeks });
   } else if (diffDays < 365) {
     const months = Math.floor(diffDays / 30);
-    return `${months} ${months === 1 ? 'month' : 'months'} ago`;
+    return t('video.commentMonthsAgo', { count: months });
   } else {
-    return date.toLocaleDateString('en-US', {
+    return new Intl.DateTimeFormat(language, {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
-    });
+    }).format(date);
   }
-};
-
-/**
- * Count replies (only one level of nesting supported)
- */
-const countReplies = (comment: CommentWithReplies): number => {
-  if (!comment.replies || comment.replies.length === 0) {
-    return 0;
-  }
-  return comment.replies.length;
-};
+}
 
 interface CommentComponentProps {
   comment: CommentWithReplies;
@@ -57,6 +49,7 @@ export default function CommentComponent({
   comment,
   depth = 0,
 }: CommentComponentProps): JSX.Element {
+  const { t, i18n } = useTranslation();
   const hasReplies = comment.replies && comment.replies.length > 0;
   const isReply = depth > 0;
   const [isExpanded, setIsExpanded] = useState(false);
@@ -67,7 +60,10 @@ export default function CommentComponent({
   const displayText =
     isLong && !isExpanded ? commentText.substring(0, MAX_COMMENT_LENGTH) + '...' : commentText;
 
-  const totalRepliesCount = hasReplies ? countReplies(comment) : 0;
+  const totalRepliesCount = hasReplies ? (comment.replies?.length ?? 0) : 0;
+  const replies = comment.replies;
+  const formattedDate =
+    comment.timestamp !== undefined ? formatCommentDate(comment.timestamp, i18n.language, t) : null;
 
   return (
     <div
@@ -75,29 +71,31 @@ export default function CommentComponent({
       style={{ marginLeft: `${depth * 1.5}rem` }}
     >
       <div className="comment-header">
-        <strong>{comment.author || 'Anonim'}</strong>
+        <strong>{comment.author || t('video.commentAnonymous')}</strong>
         {comment.like_count !== undefined && comment.like_count > 0 && (
-          <span className="comment-likes">{comment.like_count} polubień</span>
+          <span className="comment-likes">
+            {t('video.commentLikes', { count: comment.like_count })}
+          </span>
         )}
       </div>
       <p className="comment-text">
         {displayText}
         {isLong && (
           <button className="comment-expand-btn" onClick={() => setIsExpanded(!isExpanded)}>
-            {isExpanded ? ` ${i18n.t('video.collapse')}` : ` ${i18n.t('video.readMore')}`}
+            {isExpanded ? ` ${t('video.collapse')}` : ` ${t('video.readMore')}`}
           </button>
         )}
       </p>
       <div className="comment-footer">
-        {comment.timestamp && (
-          <span className="comment-time" title={formatCommentDate(comment.timestamp)}>
-            {formatCommentDate(comment.timestamp)}
+        {formattedDate !== null && (
+          <span className="comment-time" title={formattedDate}>
+            {formattedDate}
           </span>
         )}
-        {!comment.timestamp && comment.time_parsed && (
+        {formattedDate === null && comment.time_parsed && (
           <span className="comment-time">{comment.time_parsed}</span>
         )}
-        {!comment.timestamp &&
+        {formattedDate === null &&
           !comment.time_parsed &&
           (comment.time_text || comment._time_text) && (
             <span className="comment-time">{comment.time_text || comment._time_text}</span>
@@ -106,21 +104,19 @@ export default function CommentComponent({
           <button
             className="comment-replies-toggle"
             onClick={() => setIsRepliesExpanded(!isRepliesExpanded)}
-            title={
-              isRepliesExpanded ? i18n.t('video.collapseReplies') : i18n.t('video.showReplies')
-            }
+            title={isRepliesExpanded ? t('video.collapseReplies') : t('video.showReplies')}
           >
             {isRepliesExpanded ? '▼' : '▶'}
             <span className="comment-replies-count">
-              ({i18n.t('video.replyCount', { count: totalRepliesCount })})
+              ({t('video.replyCount', { count: totalRepliesCount })})
             </span>
           </button>
         )}
       </div>
-      {hasReplies && isRepliesExpanded && (
+      {hasReplies && isRepliesExpanded && replies && (
         <div className="comment-replies">
-          {comment
-            .replies!.map((reply, index) => ({ reply, key: reply.id ?? `reply-${index}` }))
+          {replies
+            .map((reply, index) => ({ reply, key: reply.id ?? `reply-${index}` }))
             .map(({ reply, key }) => (
               <CommentComponent key={key} comment={reply} depth={depth + 1} />
             ))}

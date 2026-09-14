@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useImperativeHandle, useCallback, useMemo } from 'react';
 import type { JSX, Ref } from 'react';
 import { useTranslation } from 'react-i18next';
-import i18n from '../i18n';
 import toast from 'react-hot-toast';
 import { VariableSizeList } from 'react-window';
 import type { ChannelVideo, FolderListResponse, JobType, QueueJob } from '@shared/api';
@@ -132,20 +131,19 @@ export function VideoListSection({
           items.map((video) => ({ videoId: video.id })),
           type
         );
-        const verb =
-          type === 'update' ? i18n.t('toast.updateTarget') : i18n.t('toast.downloadTarget');
-        toast.success(i18n.t('toast.addedToQueue', { count: result.jobs.length, target: verb }));
+        const verb = type === 'update' ? t('toast.updateTarget') : t('toast.downloadTarget');
+        toast.success(t('toast.addedToQueue', { count: result.jobs.length, target: verb }));
         const [firstSkipped] = result.skipped;
         if (firstSkipped) {
           toast.error(
-            i18n.t('toast.skipped', { count: result.skipped.length, reason: firstSkipped.reason })
+            t('toast.skipped', { count: result.skipped.length, reason: firstSkipped.reason })
           );
         }
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : i18n.t('toast.enqueueFailed'));
+        toast.error(err instanceof Error ? err.message : t('toast.enqueueFailed'));
       }
     },
-    [enqueue]
+    [enqueue, t]
   );
 
   // Stable per-render callbacks: VideoItem is memoized and a new callback
@@ -330,7 +328,7 @@ export function VideoListSection({
           </div>
         </div>
       ) : hasLoadedVideos ? (
-        <p>Brak filmów w pliku list.json</p>
+        <p>{t('queue.emptyList')}</p>
       ) : null}
     </div>
   );

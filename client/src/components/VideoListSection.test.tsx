@@ -140,8 +140,8 @@ describe('VideoListSection', () => {
     installFetch({});
     await renderLoaded();
 
-    expect(screen.getByText(/1 nie pobranych/)).toBeInTheDocument();
-    expect(screen.getByText(/1 nie zaktualizowanych od ponad miesiąca/)).toBeInTheDocument();
+    expect(screen.getByText(/1 nie pobrany/)).toBeInTheDocument();
+    expect(screen.getByText(/1 nie zaktualizowany od ponad miesiąca/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pobierz wszystkie' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aktualizuj stare' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aktualizuj wszystkie' })).toBeInTheDocument();
@@ -162,7 +162,7 @@ describe('VideoListSection', () => {
       type: 'download',
       videos: [{ videoId: 'v3' }],
     });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Dodano 1 filmów do pobrania'));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Dodano 1 film do pobrania'));
   });
 
   it('"Aktualizuj" enqueues update jobs for downloaded videos older than a month', async () => {
