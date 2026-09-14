@@ -17,7 +17,7 @@ export type VideoSearchAction =
   | { type: VideoSearchActionType.SEARCH_START }
   | {
       type: VideoSearchActionType.SEARCH_SUCCESS;
-      payload: { videos: VideoListItem[]; totalCount: number };
+      payload: { videos: VideoListItem[]; totalCount: number; append?: boolean };
     }
   | { type: VideoSearchActionType.SEARCH_ERROR; payload: string };
 
@@ -42,7 +42,10 @@ export function videoSearchReducer(
     case VideoSearchActionType.SEARCH_SUCCESS:
       return {
         ...state,
-        videos: action.payload.videos,
+        // `append` accumulates a "load more" page onto the current results
+        videos: action.payload.append
+          ? [...state.videos, ...action.payload.videos]
+          : action.payload.videos,
         totalCount: action.payload.totalCount,
         loading: false,
       };

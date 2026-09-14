@@ -60,24 +60,36 @@ describe('useVideoSearch', () => {
 
   describe('request URL', () => {
     it.each<[string, SearchState, string]>([
-      ['the defaults', state(), '/api/videos/search?sort=date-desc'],
-      ['a query', state({ query: 'drone' }), '/api/videos/search?q=drone&sort=date-desc'],
-      ['a sort', state({ sort: 'views-desc' }), '/api/videos/search?sort=views-desc'],
-      ['a category', state({ category: 'fpv' }), '/api/videos/search?sort=date-desc&category=fpv'],
+      ['the defaults', state(), '/api/videos/search?sort=date-desc&offset=0&limit=100'],
+      [
+        'a query',
+        state({ query: 'drone' }),
+        '/api/videos/search?q=drone&sort=date-desc&offset=0&limit=100',
+      ],
+      [
+        'a sort',
+        state({ sort: 'views-desc' }),
+        '/api/videos/search?sort=views-desc&offset=0&limit=100',
+      ],
+      [
+        'a category',
+        state({ category: 'fpv' }),
+        '/api/videos/search?sort=date-desc&category=fpv&offset=0&limit=100',
+      ],
       [
         'everything at once',
         state({ query: 'drone motor', sort: 'likes-asc', category: 'fpv' }),
-        '/api/videos/search?q=drone+motor&sort=likes-asc&category=fpv',
+        '/api/videos/search?q=drone+motor&sort=likes-asc&category=fpv&offset=0&limit=100',
       ],
       [
         'whitespace-padded values (trimmed)',
         state({ query: '  drone ', category: ' fpv ' }),
-        '/api/videos/search?q=drone&sort=date-desc&category=fpv',
+        '/api/videos/search?q=drone&sort=date-desc&category=fpv&offset=0&limit=100',
       ],
       [
         'whitespace-only values (dropped)',
         state({ query: '   ', category: '  ' }),
-        '/api/videos/search?sort=date-desc',
+        '/api/videos/search?sort=date-desc&offset=0&limit=100',
       ],
     ])('encodes %s', async (_label, input, expectedUrl) => {
       fetchMock.mockResolvedValueOnce(jsonResponse({ videos: [], totalCount: 0 }));
@@ -119,6 +131,50 @@ describe('useVideoSearch', () => {
     await act(() => result.current.search(state()));
 
     expect(result.current).toMatchObject({ videos: [], totalCount: 0, loading: false });
+  });
+
+  describe('loadMore', () => {
+    it('appends the next page and reports hasMore while results remain', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ videos: [video('a')], totalCount: 3 }))
+        .mockResolvedValueOnce(jsonResponse({ videos: [video('b')], totalCount: 3 }));
+      const { result } = renderHook(() => useVideoSearch());
+
+      await act(() => result.current.search(state()));
+      expect(result.current.hasMore).toBe(true);
+
+      await act(() => result.current.loadMore());
+
+      expect(result.current.videos).toEqual([video('a'), video('b')]);
+      expect(result.current.hasMore).toBe(true);
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/videos/search?sort=date-desc&offset=1&limit=100'
+      );
+    });
+
+    it('reports hasMore=false once everything is loaded', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ videos: [video('a')], totalCount: 1 }));
+      const { result } = renderHook(() => useVideoSearch());
+
+      await act(() => result.current.search(state()));
+
+      expect(result.current.videos).toHaveLength(1);
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it('continues the search that produced the current results', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ videos: [video('a')], totalCount: 2 }))
+        .mockResolvedValueOnce(jsonResponse({ videos: [video('b')], totalCount: 2 }));
+      const { result } = renderHook(() => useVideoSearch());
+
+      await act(() => result.current.search(state({ query: 'drone', category: 'fpv' })));
+      await act(() => result.current.loadMore());
+
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        '/api/videos/search?q=drone&sort=date-desc&category=fpv&offset=1&limit=100'
+      );
+    });
   });
 
   it('reports a failed request and clears the previous results', async () => {

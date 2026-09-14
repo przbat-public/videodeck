@@ -168,8 +168,14 @@ describe('elasticsearchService', () => {
       expect(request.index).toBe(name);
       expect(request.mappings.properties.commentsText).toEqual({
         type: 'text',
-        analyzer: 'standard',
+        analyzer: 'polish_folded',
       });
+      expect(request.settings.analysis.analyzer.polish_folded.filter).toEqual([
+        'lowercase',
+        'asciifolding',
+        'polish_stop',
+        'polish_stem',
+      ]);
       expect(request.mappings.properties).not.toHaveProperty('comments');
       expect(request.settings.index).not.toHaveProperty('mapping');
       expect(mockClient.indices.updateAliases).not.toHaveBeenCalled();
@@ -497,7 +503,9 @@ describe('elasticsearchService', () => {
         },
       });
       expect(SEARCH_FIELDS).toContain('commentsText');
+      expect(SEARCH_FIELDS[0]).toBe('baseName.text^4');
       expect(request.sort).toEqual([{ viewCount: { order: 'desc', missing: '_last' } }]);
+      expect(request.from).toBe(0);
       expect(request.size).toBe(100);
       expect(request._source).toEqual({ excludes: ['commentsText'] });
 
@@ -529,6 +537,22 @@ describe('elasticsearchService', () => {
       // An empty index list would make Elasticsearch search *every* index
       expect(await searchVideos('q', 'date-desc', [])).toEqual([]);
       expect(mockClient.search).not.toHaveBeenCalled();
+    });
+
+    it('passes offset and limit through to Elasticsearch', async () => {
+      await searchVideos('q', 'date-desc', undefined, { offset: 200, limit: 25 });
+
+      const request = mockClient.search.mock.calls[0][0];
+      expect(request.from).toBe(200);
+      expect(request.size).toBe(25);
+    });
+
+    it('clamps out-of-range paging values', async () => {
+      await searchVideos('q', 'date-desc', undefined, { offset: -10, limit: 9999 });
+
+      const request = mockClient.search.mock.calls[0][0];
+      expect(request.from).toBe(0);
+      expect(request.size).toBe(500);
     });
   });
 

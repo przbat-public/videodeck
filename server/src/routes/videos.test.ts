@@ -102,7 +102,10 @@ describe('videos router', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ videos: mockVideos, totalCount: 100 });
-      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined);
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
+        offset: 0,
+        limit: 100,
+      });
       expect(mockedGetTotalVideoCount).toHaveBeenCalled();
     });
 
@@ -114,7 +117,10 @@ describe('videos router', () => {
       const response = await request(app).get('/api/videos/search?q=test');
 
       expect(response.status).toBe(200);
-      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined);
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
+        offset: 0,
+        limit: 100,
+      });
       expect(mockedGetTotalVideoCount).toHaveBeenCalled();
     });
 
@@ -126,8 +132,35 @@ describe('videos router', () => {
       const response = await request(app).get('/api/videos/search?q=test&sort=views-desc');
 
       expect(response.status).toBe(200);
-      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'views-desc', undefined);
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'views-desc', undefined, {
+        offset: 0,
+        limit: 100,
+      });
       expect(mockedGetTotalVideoCount).toHaveBeenCalled();
+    });
+
+    it('passes offset and limit through to the search', async () => {
+      mockedGetVideos.mockResolvedValue([]);
+      mockedGetTotalVideoCount.mockResolvedValue(0);
+
+      await request(app).get('/api/videos/search?q=test&offset=200&limit=25');
+
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
+        offset: 200,
+        limit: 25,
+      });
+    });
+
+    it('falls back to defaults for malformed offset and limit', async () => {
+      mockedGetVideos.mockResolvedValue([]);
+      mockedGetTotalVideoCount.mockResolvedValue(0);
+
+      await request(app).get('/api/videos/search?q=test&offset=abc&limit=-5');
+
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
+        offset: 0,
+        limit: 100,
+      });
     });
 
     it('falls back to the default sort for unknown or repeated sort values', async () => {
@@ -135,10 +168,16 @@ describe('videos router', () => {
       mockedGetTotalVideoCount.mockResolvedValue(0);
 
       await request(app).get('/api/videos/search?q=test&sort=title-asc');
-      expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc', undefined);
+      expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc', undefined, {
+        offset: 0,
+        limit: 100,
+      });
 
       await request(app).get('/api/videos/search?q=test&sort=views-desc&sort=likes-asc');
-      expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc', undefined);
+      expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc', undefined, {
+        offset: 0,
+        limit: 100,
+      });
     });
 
     it('should handle empty query', async () => {
@@ -150,7 +189,10 @@ describe('videos router', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ videos: mockVideos, totalCount: 0 });
-      expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', undefined);
+      expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', undefined, {
+        offset: 0,
+        limit: 100,
+      });
       expect(mockedGetTotalVideoCount).toHaveBeenCalled();
     });
 
@@ -203,7 +245,10 @@ describe('videos router', () => {
 
       expect(response.status).toBe(200);
       expect(mockedGetFolderPathsForCategory).toHaveBeenCalledWith('fpv');
-      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', ['/test/videos']);
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', ['/test/videos'], {
+        offset: 0,
+        limit: 100,
+      });
       expect(mockedGetTotalVideoCount).toHaveBeenCalledWith(['/test/videos']);
       expect(response.body.totalCount).toBe(12);
     });
@@ -217,7 +262,10 @@ describe('videos router', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ videos: [], totalCount: 0 });
-      expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', []);
+      expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', [], {
+        offset: 0,
+        limit: 100,
+      });
     });
 
     it('ignores a blank category instead of matching nothing', async () => {
@@ -227,7 +275,10 @@ describe('videos router', () => {
       await request(app).get('/api/videos/search?category=%20%20');
 
       expect(mockedGetFolderPathsForCategory).not.toHaveBeenCalled();
-      expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', undefined);
+      expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', undefined, {
+        offset: 0,
+        limit: 100,
+      });
     });
   });
 

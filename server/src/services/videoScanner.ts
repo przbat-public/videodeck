@@ -16,7 +16,7 @@ import {
   searchVideos,
   toDocument,
 } from './elasticsearchService';
-import type { VideoDocument } from './elasticsearchService';
+import type { SearchOptions, VideoDocument } from './elasticsearchService';
 
 /** Max documents per bulk request */
 export const REINDEX_BATCH_SIZE = 50;
@@ -328,7 +328,8 @@ export async function indexVideosFromDisk(
 export const getVideos = async (
   query?: string,
   sortOption: SortOption = 'date-desc',
-  folderPaths?: string[]
+  folderPaths?: string[],
+  options?: SearchOptions
 ): Promise<VideoListItem[]> => {
-  return searchVideos(query, sortOption, folderPaths);
+  return searchVideos(query, sortOption, folderPaths, options);
 };

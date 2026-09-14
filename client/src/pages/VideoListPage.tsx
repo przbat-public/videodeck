@@ -10,7 +10,7 @@ import VideoList from '../components/VideoList';
 export default function VideoListPage(): JSX.Element {
   const { searchState, setSearchState } = useSearchUrlState();
   const { query, sort, category } = searchState;
-  const { videos, totalCount, loading: videoLoading, search } = useVideoSearch();
+  const { videos, totalCount, loading: videoLoading, hasMore, search, loadMore } = useVideoSearch();
   const { loading: refreshLoading, refreshCache } = useCacheRefresh();
   const { categories } = useCategories();
   const { loading: recreateIndicesLoading, recreateIndices } = useRecreateIndices();
@@ -34,6 +34,10 @@ export default function VideoListPage(): JSX.Element {
   const handleRecreateIndices = useCallback(async (): Promise<void> => {
     await recreateIndices();
   }, [recreateIndices]);
+
+  const handleLoadMore = useCallback(() => {
+    void loadMore();
+  }, [loadMore]);
 
   return (
     <main className="app-main">
@@ -89,7 +93,21 @@ export default function VideoListPage(): JSX.Element {
           <p>Loading videos...</p>
         </div>
       ) : (
-        <VideoList videos={videos} searchQuery={query} />
+        <>
+          <VideoList videos={videos} searchQuery={query} />
+          {hasMore && (
+            <div className="load-more">
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={videoLoading}
+                className="clear-button"
+              >
+                {videoLoading ? 'Loading...' : 'Show more'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </main>
   );

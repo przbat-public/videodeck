@@ -113,7 +113,9 @@ describe('VideoListPage', () => {
       await screen.findByRole('combobox', { name: 'Category' }); // categories loaded too
       await sleep(350); // past the search bar's debounce: nothing else may fire
 
-      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?sort=date-desc']);
+      expect(searchUrls(fetchMock)).toEqual([
+        '/api/videos/search?sort=date-desc&offset=0&limit=100',
+      ]);
       expect(currentUrl()).toBe('/videos');
     });
 
@@ -131,7 +133,7 @@ describe('VideoListPage', () => {
 
       expect(await screen.findByText('2 videos / 7 total')).toBeInTheDocument();
       expect(searchUrls(fetchMock)).toEqual([
-        '/api/videos/search?q=robot+arm&sort=views-desc&category=lego',
+        '/api/videos/search?q=robot+arm&sort=views-desc&category=lego&offset=0&limit=100',
       ]);
 
       expect(searchInput()).toHaveValue('robot arm');
@@ -158,7 +160,7 @@ describe('VideoListPage', () => {
       await screen.findByText('First');
 
       expect(searchUrls(fetchMock)).toEqual([
-        '/api/videos/search?q=drone&sort=date-desc&category=fpv',
+        '/api/videos/search?q=drone&sort=date-desc&category=fpv&offset=0&limit=100',
       ]);
       expect(sortSelect()).toHaveValue('date-desc');
       expect(searchInput()).toHaveValue('drone');
@@ -171,7 +173,9 @@ describe('VideoListPage', () => {
       expect(
         await screen.findByText('No videos found. Try a different search query.')
       ).toBeInTheDocument();
-      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?sort=date-desc&category=archive']);
+      expect(searchUrls(fetchMock)).toEqual([
+        '/api/videos/search?sort=date-desc&category=archive&offset=0&limit=100',
+      ]);
       expect(await categorySelect()).toHaveValue('archive');
     });
 
@@ -187,7 +191,9 @@ describe('VideoListPage', () => {
       await screen.findByText('First');
 
       expect(await categorySelect()).toHaveValue('lego');
-      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?sort=date-desc&category=lego']);
+      expect(searchUrls(fetchMock)).toEqual([
+        '/api/videos/search?sort=date-desc&category=lego&offset=0&limit=100',
+      ]);
     });
   });
 
@@ -201,8 +207,8 @@ describe('VideoListPage', () => {
       await waitFor(() => expect(currentUrl()).toBe('/videos?category=lego'));
       await waitFor(() =>
         expect(searchUrls(fetchMock)).toEqual([
-          '/api/videos/search?sort=date-desc',
-          '/api/videos/search?sort=date-desc&category=lego',
+          '/api/videos/search?sort=date-desc&offset=0&limit=100',
+          '/api/videos/search?sort=date-desc&category=lego&offset=0&limit=100',
         ])
       );
     });
@@ -218,9 +224,9 @@ describe('VideoListPage', () => {
       await waitFor(() => expect(currentUrl()).toBe('/videos?q=drone'));
 
       expect(searchUrls(fetchMock)).toEqual([
-        '/api/videos/search?q=drone&sort=date-desc',
-        '/api/videos/search?q=drone&sort=likes-asc',
-        '/api/videos/search?q=drone&sort=date-desc',
+        '/api/videos/search?q=drone&sort=date-desc&offset=0&limit=100',
+        '/api/videos/search?q=drone&sort=likes-asc&offset=0&limit=100',
+        '/api/videos/search?q=drone&sort=date-desc&offset=0&limit=100',
       ]);
     });
 
@@ -234,8 +240,8 @@ describe('VideoListPage', () => {
       await waitFor(() => expect(currentUrl()).toBe('/videos?q=motor&category=fpv'));
       await waitFor(() =>
         expect(searchUrls(fetchMock)).toEqual([
-          '/api/videos/search?sort=date-desc&category=fpv',
-          '/api/videos/search?q=motor&sort=date-desc&category=fpv',
+          '/api/videos/search?sort=date-desc&category=fpv&offset=0&limit=100',
+          '/api/videos/search?q=motor&sort=date-desc&category=fpv&offset=0&limit=100',
         ])
       );
     });
@@ -249,7 +255,9 @@ describe('VideoListPage', () => {
 
       expect(searchInput()).toHaveValue('dr');
       expect(currentUrl()).toBe('/videos?q=drone');
-      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?q=drone&sort=date-desc']);
+      expect(searchUrls(fetchMock)).toEqual([
+        '/api/videos/search?q=drone&sort=date-desc&offset=0&limit=100',
+      ]);
     });
 
     it('returns to the bare URL when everything is cleared', async () => {
@@ -262,7 +270,9 @@ describe('VideoListPage', () => {
 
       await waitFor(() => expect(currentUrl()).toBe('/videos'));
       await waitFor(() =>
-        expect(searchUrls(fetchMock).at(-1)).toBe('/api/videos/search?sort=date-desc')
+        expect(searchUrls(fetchMock).at(-1)).toBe(
+          '/api/videos/search?sort=date-desc&offset=0&limit=100'
+        )
       );
     });
   });
@@ -284,7 +294,7 @@ describe('VideoListPage', () => {
       await waitFor(() => expect(currentUrl()).toBe('/videos?sort=views-desc&category=lego'));
       await waitFor(() =>
         expect(searchUrls(fetchMock).at(-1)).toBe(
-          '/api/videos/search?sort=views-desc&category=lego'
+          '/api/videos/search?sort=views-desc&category=lego&offset=0&limit=100'
         )
       );
       expect(sortSelect()).toHaveValue('views-desc');
@@ -303,7 +313,9 @@ describe('VideoListPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'go-elsewhere' }));
 
       await waitFor(() =>
-        expect(searchUrls(fetchMock).at(-1)).toBe('/api/videos/search?sort=likes-desc&category=fpv')
+        expect(searchUrls(fetchMock).at(-1)).toBe(
+          '/api/videos/search?sort=likes-desc&category=fpv&offset=0&limit=100'
+        )
       );
       expect(searchInput()).toHaveValue('');
       expect(sortSelect()).toHaveValue('likes-desc');
@@ -321,8 +333,8 @@ describe('VideoListPage', () => {
 
       await waitFor(() =>
         expect(searchUrls(fetchMock)).toEqual([
-          '/api/videos/search?q=drone&sort=date-desc&category=lego',
-          '/api/videos/search?q=drone&sort=date-desc&category=lego',
+          '/api/videos/search?q=drone&sort=date-desc&category=lego&offset=0&limit=100',
+          '/api/videos/search?q=drone&sort=date-desc&category=lego&offset=0&limit=100',
         ])
       );
     });
@@ -356,6 +368,36 @@ describe('VideoListPage', () => {
       expect(
         await screen.findByText('No videos found. Try a different search query.')
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('load more', () => {
+    it('offers Show more while results remain and appends the next page on click', async () => {
+      fetchMock = installFetch({
+        search: (params) =>
+          params.get('offset') === '1'
+            ? { videos: [video('v2', 'Second')], totalCount: 3 }
+            : { videos: [video('v1', 'First')], totalCount: 3 },
+      });
+      renderAt('/videos');
+
+      expect(await screen.findByText('First')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+      expect(await screen.findByText('Second')).toBeInTheDocument();
+      expect(searchUrls(fetchMock).at(-1)).toBe(
+        '/api/videos/search?sort=date-desc&offset=1&limit=100'
+      );
+    });
+
+    it('hides the button once everything is loaded', async () => {
+      fetchMock = installFetch({
+        search: () => ({ videos: [video('v1', 'First')], totalCount: 1 }),
+      });
+      renderAt('/videos');
+
+      expect(await screen.findByText('First')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
     });
   });
 });

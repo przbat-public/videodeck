@@ -30,6 +30,7 @@ import {
   getVideoByFilePath,
   getTotalVideoCount,
   recreateAllIndices,
+  SEARCH_DEFAULT_LIMIT,
 } from '../services/elasticsearchService';
 import { getFolderPathsForCategory, listCategories } from '../services/folderConfig';
 import { OPENAI_API_KEY, getVideosFolderPaths } from '../config';
@@ -158,6 +159,15 @@ export function parseSortOption(value: unknown): SortOption {
   return typeof value === 'string' && isSortOption(value) ? value : 'date-desc';
 }
 
+/** `?offset=`/`?limit=` values; anything malformed falls back to the default */
+function parseNonNegativeInt(value: string | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
 
 /**
@@ -232,7 +242,7 @@ const recreateIndices: RouteHandler<NoParams, AcceptedResponse> = (_req, res) =>
   }
 };
 
-// GET /api/videos/search?q={query}&sort={sortOption}&category={category}
+// GET /api/videos/search?q={query}&sort={sortOption}&category={category}&offset=&limit=
 // The category is read from each folder's config.json and narrows the search
 // to that category's folders; an unknown category matches no folder at all.
 const search: RouteHandler<NoParams, SearchResponse> = async (req, res) => {
@@ -240,10 +250,12 @@ const search: RouteHandler<NoParams, SearchResponse> = async (req, res) => {
     const query = readString(req.query.q);
     const sort = parseSortOption(req.query.sort);
     const category = readString(req.query.category)?.trim();
+    const offset = parseNonNegativeInt(readString(req.query.offset), 0);
+    const limit = parseNonNegativeInt(readString(req.query.limit), SEARCH_DEFAULT_LIMIT);
 
     const folderPaths = category ? await getFolderPathsForCategory(category) : undefined;
 
-    const videos = await getVideos(query, sort, folderPaths);
+    const videos = await getVideos(query, sort, folderPaths, { offset, limit });
     const totalCount = await getTotalVideoCount(folderPaths);
 
     res.json({ videos, totalCount });

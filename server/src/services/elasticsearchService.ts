@@ -83,20 +83,35 @@ export function fromDocument(document: VideoDocument): VideoListItem {
   return { ...rest, comments: [] };
 }
 
+/**
+ * Text analysis for search: Polish stemming plus diacritics folding, so
+ * `srodek` finds `środek`, `środka`, `środki`, … without the user having to
+ * type diacritics. Indices created before this analyzer existed keep the old
+ * `standard` mapping until the next reindex (refreshCache).
+ */
+const SEARCH_ANALYZER = 'polish_folded';
+
 const INDEX_MAPPINGS = {
   properties: {
-    baseName: { type: 'keyword' },
+    baseName: {
+      type: 'keyword',
+      fields: {
+        // analyzed variant for full-text search (baseName^4 in SEARCH_FIELDS);
+        // the keyword parent keeps exact lookups (getVideoByBaseName) working
+        text: { type: 'text', analyzer: SEARCH_ANALYZER },
+      },
+    },
     videoId: { type: 'keyword' },
     title: {
       type: 'text',
-      analyzer: 'standard',
+      analyzer: SEARCH_ANALYZER,
       fields: {
         keyword: { type: 'keyword' },
       },
     },
     description: {
       type: 'text',
-      analyzer: 'standard',
+      analyzer: SEARCH_ANALYZER,
     },
     videoPath: { type: 'keyword' },
     thumbnailPath: { type: 'keyword' },
@@ -113,7 +128,7 @@ const INDEX_MAPPINGS = {
     },
     commentsText: {
       type: 'text',
-      analyzer: 'standard',
+      analyzer: SEARCH_ANALYZER,
     },
   },
 } as const;
@@ -135,6 +150,15 @@ export async function createIndexVersion(folderPath: string): Promise<string> {
     settings: {
       index: {
         number_of_replicas: 0,
+      },
+      analysis: {
+        analyzer: {
+          [SEARCH_ANALYZER]: {
+            type: 'custom',
+            tokenizer: 'standard',
+            filter: ['lowercase', 'asciifolding', 'polish_stop', 'polish_stem'],
+          },
+        },
       },
     },
     mappings: INDEX_MAPPINGS,
@@ -440,22 +464,45 @@ function buildSortOptions(sortOption: SortOption): estypes.SortCombinations[] {
   }
 }
 
-export const SEARCH_FIELDS = ['baseName^4', 'title^3', 'description^2', 'commentsText'];
+export const SEARCH_FIELDS = ['baseName.text^4', 'title^3', 'description^2', 'commentsText'];
+
+/** How many results one page holds by default */
+export const SEARCH_DEFAULT_LIMIT = 100;
+/** Upper bound for ?limit= — keeps response payloads bounded */
+export const SEARCH_MAX_LIMIT = 500;
+
+export interface SearchOptions {
+  /** First result to return (0-based) */
+  offset?: number;
+  /** Results per page; clamped to 1..SEARCH_MAX_LIMIT */
+  limit?: number;
+}
+
+function normalizePaging(options: SearchOptions): { from: number; size: number } {
+  const from = Math.max(0, Math.trunc(options.offset ?? 0));
+  const size = Math.min(
+    SEARCH_MAX_LIMIT,
+    Math.max(1, Math.trunc(options.limit ?? SEARCH_DEFAULT_LIMIT))
+  );
+  return { from, size };
+}
 
 /**
- * Search videos with query and sorting. `folderPaths` narrows the search to
- * those folders' indices (used by the category filter); an empty array means
- * "no folder qualifies" and yields no results.
+ * Search videos with query, sorting and paging. `folderPaths` narrows the
+ * search to those folders' indices (used by the category filter); an empty
+ * array means "no folder qualifies" and yields no results.
  */
 export async function searchVideos(
   query?: string,
   sortOption: SortOption = 'date-desc',
-  folderPaths?: string[]
+  folderPaths?: string[],
+  options: SearchOptions = {}
 ): Promise<VideoListItem[]> {
   if (folderPaths?.length === 0) {
     return [];
   }
   const esClient = getElasticsearchClient();
+  const { from, size } = normalizePaging(options);
 
   let searchQuery: Record<string, unknown> = { match_all: {} };
 
@@ -476,7 +523,8 @@ export async function searchVideos(
     ignore_unavailable: true,
     query: searchQuery,
     sort: buildSortOptions(sortOption),
-    size: 100,
+    from,
+    size,
     _source: {
       excludes: ['commentsText'],
     },
