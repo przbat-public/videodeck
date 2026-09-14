@@ -1,0 +1,148 @@
+{
+  "appName": {
+    "message": "Video Downloader"
+  },
+  "popupTagline": {
+    "message": "Download the video from the current page"
+  },
+  "configRequiredTitle": {
+    "message": "⚠️ Configuration required"
+  },
+  "configRequiredPrefix": {
+    "message": "Configure the server URL and folderPath in the"
+  },
+  "configRequiredLink": {
+    "message": "options"
+  },
+  "configRequiredSuffix": {
+    "message": "."
+  },
+  "loading": {
+    "message": "Loading..."
+  },
+  "activeDownloads": {
+    "message": "Active downloads"
+  },
+  "video": {
+    "message": "Video"
+  },
+  "cancelDownload": {
+    "message": "Cancel download"
+  },
+  "starting": {
+    "message": "Starting..."
+  },
+  "downloading": {
+    "message": "Downloading..."
+  },
+  "noVideo": {
+    "message": "No video found on this page"
+  },
+  "refreshAndRetry": {
+    "message": "Refresh the page and try again"
+  },
+  "configureFirst": {
+    "message": "Configure the server URL and folderPath in the options first"
+  },
+  "addingToQueue": {
+    "message": "Adding to the download queue..."
+  },
+  "errorWithMessage": {
+    "message": "Error: $message$",
+    "placeholders": {
+      "message": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsTitle": {
+    "message": "Video Downloader Options"
+  },
+  "optionsSubtitle": {
+    "message": "Configure the server connection"
+  },
+  "serverUrl": {
+    "message": "Server URL"
+  },
+  "folderPath": {
+    "message": "Folder path"
+  },
+  "folderPathHelp": {
+    "message": "Where videos are saved (must be in the server's VIDEOS_FOLDER_PATH)"
+  },
+  "apiToken": {
+    "message": "API token (optional)"
+  },
+  "apiTokenHelp": {
+    "message": "Fill only when the server sets API_TOKEN. Sent as Authorization: Bearer."
+  },
+  "apiTokenPlaceholder": {
+    "message": "the server API_TOKEN value"
+  },
+  "testConnection": {
+    "message": "Test connection"
+  },
+  "save": {
+    "message": "Save"
+  },
+  "fillAllFields": {
+    "message": "Fill in all fields"
+  },
+  "settingsSaved": {
+    "message": "Settings saved!"
+  },
+  "saveError": {
+    "message": "Save error: $message$",
+    "placeholders": {
+      "message": {
+        "content": "$1"
+      }
+    }
+  },
+  "enterServerUrl": {
+    "message": "Enter the server URL"
+  },
+  "testingConnection": {
+    "message": "Testing connection..."
+  },
+  "connectionOk": {
+    "message": "Connection to the server works!"
+  },
+  "connectionBadStatus": {
+    "message": "Server responded, but the status is not OK"
+  },
+  "httpError": {
+    "message": "HTTP error: $status$",
+    "placeholders": {
+      "status": {
+        "content": "$1"
+      }
+    }
+  },
+  "connectionError": {
+    "message": "Connection error: $message$",
+    "placeholders": {
+      "message": {
+        "content": "$1"
+      }
+    }
+  },
+  "downloadFinished": {
+    "message": "Download finished"
+  },
+  "downloadFailed": {
+    "message": "Download failed"
+  },
+  "unknownError": {
+    "message": "Unknown error"
+  },
+  "downloadButton": {
+    "message": "Download video"
+  },
+  "manifestDescription": {
+    "message": "Download videos from the browser using the video-search-app endpoint"
+  },
+  "serverUrlHelp": {
+    "message": "The video-search-app server URL (e.g. http://localhost:3001)"
+  }
+}

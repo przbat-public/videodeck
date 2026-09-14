@@ -246,21 +246,21 @@
 <body>
   <div class="header">
     <h1>Video Downloader</h1>
-    <p>Pobierz wideo z bieżącej strony</p>
+    <p data-i18n="popupTagline"></p>
   </div>
 
   <div id="configWarning" class="config-warning" style="display: none;">
-    <strong>⚠️ Konfiguracja wymagana</strong><br>
-    Skonfiguruj URL serwera i folderPath w <a href="#" id="optionsLink">opcjach</a>.
+    <strong data-i18n="configRequiredTitle"></strong><br>
+    <span data-i18n="configRequiredPrefix"></span> <a href="#" id="optionsLink" data-i18n="configRequiredLink"></a><span data-i18n="configRequiredSuffix"></span>
   </div>
 
   <div id="videoInfo" class="video-info" style="display: none;">
-    <h3 id="videoTitle">Ładowanie...</h3>
+    <h3 id="videoTitle" data-i18n="loading"></h3>
     <div class="url" id="videoUrl"></div>
   </div>
 
   <div id="activeDownloadsSection" style="display: none;">
-    <h3 style="font-size: 14px; margin-bottom: 12px; color: #333;">Aktywne pobierania</h3>
+    <h3 style="font-size: 14px; margin-bottom: 12px; color: #333;" data-i18n="activeDownloads"></h3>
     <div id="activeDownloadsList"></div>
   </div>
 
@@ -273,16 +273,13 @@
     <div class="progress-text" id="progressText">0%</div>
   </div>
 
-  <button id="downloadBtn" class="button button-primary" disabled>
-    Pobierz wideo
+  <button id="downloadBtn" class="button button-primary" disabled data-i18n="downloadButton">
   </button>
 
-  <button id="optionsBtn" class="button button-secondary">
-    Opcje
+  <button id="optionsBtn" class="button button-secondary" data-i18n="optionsLink">
   </button>
 
-  <div id="noVideo" class="no-video" style="display: none;">
-    Nie znaleziono wideo na tej stronie
+  <div id="noVideo" class="no-video" style="display: none;" data-i18n="noVideo">
   </div>
 
   <script src="popup.js"></script>

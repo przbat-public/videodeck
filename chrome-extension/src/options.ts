@@ -1,4 +1,5 @@
 import { byId } from './lib/dom';
+import { localizeDom } from './lib/i18n';
 import type { PopupConfig } from './lib/messages';
 
 /**
@@ -24,6 +25,7 @@ function showStatus(
 }
 
 async function main(): Promise<void> {
+  localizeDom();
   const form = byId<HTMLFormElement>('optionsForm');
   const serverUrlInput = byId<HTMLInputElement>('serverUrl');
   const folderPathInput = byId<HTMLInputElement>('folderPath');
@@ -57,7 +59,7 @@ async function main(): Promise<void> {
       const apiToken = apiTokenInput.value.trim();
 
       if (!serverUrl || !folderPath) {
-        showStatus(status, 'error', 'Wypełnij wszystkie pola');
+        showStatus(status, 'error', chrome.i18n.getMessage('fillAllFields'));
         return;
       }
 
@@ -67,12 +69,14 @@ async function main(): Promise<void> {
           folderPath,
           ...(apiToken.length > 0 ? { apiToken } : {}),
         });
-        showStatus(status, 'success', 'Ustawienia zapisane pomyślnie!');
+        showStatus(status, 'success', chrome.i18n.getMessage('settingsSaved'));
       } catch (error) {
         showStatus(
           status,
           'error',
-          `Błąd zapisu: ${error instanceof Error ? error.message : String(error)}`
+          chrome.i18n.getMessage('saveError', [
+            error instanceof Error ? error.message : String(error),
+          ])
         );
       }
     })();
@@ -84,13 +88,13 @@ async function main(): Promise<void> {
       const serverUrl = serverUrlInput.value.trim();
 
       if (!serverUrl) {
-        showStatus(status, 'error', 'Wprowadź URL serwera');
+        showStatus(status, 'error', chrome.i18n.getMessage('enterServerUrl'));
         return;
       }
 
       testBtn.disabled = true;
       testBtn.textContent = 'Testowanie...';
-      showStatus(status, 'info', 'Testowanie połączenia...');
+      showStatus(status, 'info', chrome.i18n.getMessage('testingConnection'));
 
       try {
         const response = await fetch(`${serverUrl}/health`);
@@ -102,21 +106,27 @@ async function main(): Promise<void> {
             status,
             statusOk ? 'success' : 'error',
             statusOk
-              ? 'Połączenie z serwerem działa poprawnie!'
-              : 'Serwer odpowiedział, ale status nie jest OK'
+              ? chrome.i18n.getMessage('connectionOk')
+              : chrome.i18n.getMessage('connectionBadStatus')
           );
         } else {
-          showStatus(status, 'error', `Błąd HTTP: ${response.status}`);
+          showStatus(
+            status,
+            'error',
+            chrome.i18n.getMessage('httpError', [String(response.status)])
+          );
         }
       } catch (error) {
         showStatus(
           status,
           'error',
-          `Błąd połączenia: ${error instanceof Error ? error.message : String(error)}`
+          chrome.i18n.getMessage('connectionError', [
+            error instanceof Error ? error.message : String(error),
+          ])
         );
       } finally {
         testBtn.disabled = false;
-        testBtn.textContent = 'Test połączenia';
+        testBtn.textContent = chrome.i18n.getMessage('testConnection');
       }
     })();
   });

@@ -127,43 +127,35 @@
 </head>
 <body>
   <div class="header">
-    <h1>Opcje Video Downloader</h1>
-    <p>Skonfiguruj ustawienia połączenia z serwerem</p>
+    <h1 data-i18n="optionsTitle"></h1>
+    <p data-i18n="optionsSubtitle"></p>
   </div>
 
   <div id="status" class="status"></div>
 
   <form id="optionsForm">
     <div class="form-group">
-      <label for="serverUrl">URL serwera</label>
+      <label for="serverUrl" data-i18n="serverUrl"></label>
       <input type="text" id="serverUrl" placeholder="http://localhost:3001" required>
-      <div class="help-text">
-        URL serwera video-search-app (np. http://localhost:3001)
-      </div>
+      <div class="help-text" data-i18n="serverUrlHelp"></div>
     </div>
 
     <div class="form-group">
-      <label for="folderPath">Ścieżka folderu</label>
+      <label for="folderPath" data-i18n="folderPath"></label>
       <input type="text" id="folderPath" placeholder="/path/to/videos" required>
-      <div class="help-text">
-        Ścieżka do folderu gdzie mają być zapisywane wideo (musi być w VIDEOS_FOLDER_PATH)
-      </div>
+      <div class="help-text" data-i18n="folderPathHelp"></div>
     </div>
 
     <div class="form-group">
-      <label for="apiToken">Token API (opcjonalny)</label>
-      <input type="password" id="apiToken" placeholder="token z API_TOKEN serwera">
-      <div class="help-text">
-        Wypełnij tylko, gdy serwer ma ustawione API_TOKEN. Wysyłany jako Authorization: Bearer.
-      </div>
+      <label for="apiToken" data-i18n="apiToken"></label>
+      <input type="password" id="apiToken" data-i18n-placeholder="apiTokenPlaceholder">
+      <div class="help-text" data-i18n="apiTokenHelp"></div>
     </div>
 
     <div class="actions">
-      <button type="button" class="button button-secondary" id="testBtn">
-        Test połączenia
+      <button type="button" class="button button-secondary" id="testBtn" data-i18n="testConnection">
       </button>
-      <button type="submit" class="button button-primary">
-        Zapisz
+      <button type="submit" class="button button-primary" data-i18n="save">
       </button>
     </div>
   </form>

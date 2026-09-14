@@ -1,4 +1,5 @@
 import { byId } from './lib/dom';
+import { localizeDom } from './lib/i18n';
 import type {
   ActiveDownloadSummary,
   ActiveDownloadsResponse,
@@ -17,6 +18,7 @@ interface PopupDownload {
 }
 
 async function main(): Promise<void> {
+  localizeDom();
   const downloadBtn = byId<HTMLButtonElement>('downloadBtn');
   const optionsBtn = byId('optionsBtn');
   const videoInfo = byId('videoInfo');
@@ -98,13 +100,13 @@ async function main(): Promise<void> {
 
     const title = document.createElement('div');
     title.className = 'download-item-title';
-    title.textContent = download.videoTitle || 'Wideo';
+    title.textContent = download.videoTitle || chrome.i18n.getMessage('video');
     title.title = download.videoUrl;
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'download-item-cancel';
     cancelBtn.textContent = '✕';
-    cancelBtn.title = 'Anuluj pobieranie';
+    cancelBtn.title = chrome.i18n.getMessage('cancelDownload');
     cancelBtn.addEventListener('click', () => {
       void chrome.runtime.sendMessage({
         action: 'cancelDownload',
@@ -128,10 +130,10 @@ async function main(): Promise<void> {
     statusLine.className = 'download-item-status';
     statusLine.textContent =
       download.status === 'starting'
-        ? 'Rozpoczynanie...'
+        ? chrome.i18n.getMessage('starting')
         : download.status === 'downloading'
           ? `${download.progress || 0}%`
-          : 'Pobieranie...';
+          : chrome.i18n.getMessage('downloading');
 
     item.appendChild(header);
     item.appendChild(progressBar);
@@ -187,7 +189,7 @@ async function main(): Promise<void> {
 
     if (response?.videoUrl) {
       videoInfo.style.display = 'block';
-      videoTitle.textContent = response.videoTitle || 'Wideo';
+      videoTitle.textContent = response.videoTitle || chrome.i18n.getMessage('video');
       videoUrl.textContent = response.videoUrl;
 
       if (config.serverUrl && config.folderPath) {
@@ -201,7 +203,7 @@ async function main(): Promise<void> {
     console.error('Error getting video info:', error);
     // A connection error means the content script is not injected
     if (error instanceof Error && error.message.includes('Could not establish connection')) {
-      noVideo.textContent = 'Odśwież stronę i spróbuj ponownie';
+      noVideo.textContent = chrome.i18n.getMessage('refreshAndRetry');
     }
     noVideo.style.display = 'block';
     videoInfo.style.display = 'none';
@@ -211,7 +213,7 @@ async function main(): Promise<void> {
   downloadBtn.addEventListener('click', () => {
     void (async () => {
       if (!config.serverUrl || !config.folderPath) {
-        showStatus('error', 'Skonfiguruj najpierw URL serwera i folderPath w opcjach');
+        showStatus('error', chrome.i18n.getMessage('configureFirst'));
         return;
       }
 
@@ -222,12 +224,12 @@ async function main(): Promise<void> {
         } satisfies RuntimeMessage)) as { videoUrl?: string; videoTitle?: string } | undefined;
 
         if (!response?.videoUrl) {
-          showStatus('error', 'Nie znaleziono wideo na tej stronie');
+          showStatus('error', chrome.i18n.getMessage('noVideo'));
           return;
         }
 
         downloadBtn.disabled = false; // keep enabled so the user can add more downloads
-        showStatus('info', 'Dodawanie do kolejki pobierania...');
+        showStatus('info', chrome.i18n.getMessage('addingToQueue'));
 
         await chrome.runtime.sendMessage({
           action: 'downloadVideo',
@@ -241,7 +243,12 @@ async function main(): Promise<void> {
         // Reload active downloads to show the new one
         setTimeout(() => void loadActiveDownloads(), 100);
       } catch (error) {
-        showStatus('error', `Błąd: ${error instanceof Error ? error.message : String(error)}`);
+        showStatus(
+          'error',
+          chrome.i18n.getMessage('errorWithMessage', [
+            error instanceof Error ? error.message : String(error),
+          ])
+        );
         downloadBtn.disabled = false;
         progressContainer.classList.remove('active');
       }

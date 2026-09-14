@@ -1,0 +1,148 @@
+{
+  "appName": {
+    "message": "Video Downloader"
+  },
+  "popupTagline": {
+    "message": "Pobierz wideo z bieżącej strony"
+  },
+  "configRequiredTitle": {
+    "message": "⚠️ Konfiguracja wymagana"
+  },
+  "configRequiredPrefix": {
+    "message": "Skonfiguruj URL serwera i folderPath w"
+  },
+  "configRequiredLink": {
+    "message": "opcjach"
+  },
+  "configRequiredSuffix": {
+    "message": "."
+  },
+  "loading": {
+    "message": "Ładowanie..."
+  },
+  "activeDownloads": {
+    "message": "Aktywne pobierania"
+  },
+  "video": {
+    "message": "Wideo"
+  },
+  "cancelDownload": {
+    "message": "Anuluj pobieranie"
+  },
+  "starting": {
+    "message": "Rozpoczynanie..."
+  },
+  "downloading": {
+    "message": "Pobieranie..."
+  },
+  "noVideo": {
+    "message": "Nie znaleziono wideo na tej stronie"
+  },
+  "refreshAndRetry": {
+    "message": "Odśwież stronę i spróbuj ponownie"
+  },
+  "configureFirst": {
+    "message": "Skonfiguruj najpierw URL serwera i folderPath w opcjach"
+  },
+  "addingToQueue": {
+    "message": "Dodawanie do kolejki pobierania..."
+  },
+  "errorWithMessage": {
+    "message": "Błąd: $message$",
+    "placeholders": {
+      "message": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsTitle": {
+    "message": "Opcje Video Downloader"
+  },
+  "optionsSubtitle": {
+    "message": "Skonfiguruj ustawienia połączenia z serwerem"
+  },
+  "serverUrl": {
+    "message": "URL serwera"
+  },
+  "folderPath": {
+    "message": "Ścieżka folderu"
+  },
+  "folderPathHelp": {
+    "message": "Ścieżka do folderu gdzie mają być zapisywane wideo (musi być w VIDEOS_FOLDER_PATH)"
+  },
+  "apiToken": {
+    "message": "Token API (opcjonalny)"
+  },
+  "apiTokenHelp": {
+    "message": "Wypełnij tylko, gdy serwer ma ustawione API_TOKEN. Wysyłany jako Authorization: Bearer."
+  },
+  "apiTokenPlaceholder": {
+    "message": "token z API_TOKEN serwera"
+  },
+  "testConnection": {
+    "message": "Test połączenia"
+  },
+  "save": {
+    "message": "Zapisz"
+  },
+  "fillAllFields": {
+    "message": "Wypełnij wszystkie pola"
+  },
+  "settingsSaved": {
+    "message": "Ustawienia zapisane pomyślnie!"
+  },
+  "saveError": {
+    "message": "Błąd zapisu: $message$",
+    "placeholders": {
+      "message": {
+        "content": "$1"
+      }
+    }
+  },
+  "enterServerUrl": {
+    "message": "Wprowadź URL serwera"
+  },
+  "testingConnection": {
+    "message": "Testowanie połączenia..."
+  },
+  "connectionOk": {
+    "message": "Połączenie z serwerem działa poprawnie!"
+  },
+  "connectionBadStatus": {
+    "message": "Serwer odpowiedział, ale status nie jest OK"
+  },
+  "httpError": {
+    "message": "Błąd HTTP: $status$",
+    "placeholders": {
+      "status": {
+        "content": "$1"
+      }
+    }
+  },
+  "connectionError": {
+    "message": "Błąd połączenia: $message$",
+    "placeholders": {
+      "message": {
+        "content": "$1"
+      }
+    }
+  },
+  "downloadFinished": {
+    "message": "Pobieranie zakończone"
+  },
+  "downloadFailed": {
+    "message": "Błąd podczas pobierania"
+  },
+  "unknownError": {
+    "message": "Nieznany błąd"
+  },
+  "downloadButton": {
+    "message": "Pobierz wideo"
+  },
+  "manifestDescription": {
+    "message": "Pobieraj wideo z przeglądarki używając endpointu z projektu video-search-app"
+  },
+  "serverUrlHelp": {
+    "message": "URL serwera video-search-app (np. http://localhost:3001)"
+  }
+}

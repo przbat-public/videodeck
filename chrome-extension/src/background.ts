@@ -168,14 +168,14 @@ async function downloadVideo(
           activeDownloads.delete(downloadId);
           updateBadge();
           notifyDownloadUpdate(downloadId, 'downloadComplete', {
-            message: event.message || 'Pobieranie zakończone',
+            message: event.message || chrome.i18n.getMessage('downloadFinished'),
           });
           return;
         } else {
           // event.type === 'error'
           activeDownloads.delete(downloadId);
           updateBadge();
-          throw new Error(event.error || 'Błąd podczas pobierania');
+          throw new Error(event.error || chrome.i18n.getMessage('downloadFailed'));
         }
       }
     }
@@ -184,13 +184,13 @@ async function downloadVideo(
     activeDownloads.delete(downloadId);
     updateBadge();
     notifyDownloadUpdate(downloadId, 'downloadComplete', {
-      message: 'Pobieranie zakończone',
+      message: chrome.i18n.getMessage('downloadFinished'),
     });
   } catch (error) {
     activeDownloads.delete(downloadId);
     updateBadge();
     notifyDownloadUpdate(downloadId, 'downloadError', {
-      error: error instanceof Error ? error.message : 'Nieznany błąd',
+      error: error instanceof Error ? error.message : chrome.i18n.getMessage('unknownError'),
     });
     throw error;
   }
