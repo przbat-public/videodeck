@@ -27,6 +27,7 @@ async function main(): Promise<void> {
   const form = byId<HTMLFormElement>('optionsForm');
   const serverUrlInput = byId<HTMLInputElement>('serverUrl');
   const folderPathInput = byId<HTMLInputElement>('folderPath');
+  const apiTokenInput = byId<HTMLInputElement>('apiToken');
   const testBtn = byId<HTMLButtonElement>('testBtn');
   const status = byId('status');
 
@@ -34,12 +35,16 @@ async function main(): Promise<void> {
   const config = (await chrome.storage.sync.get([
     'serverUrl',
     'folderPath',
+    'apiToken',
   ])) as Partial<PopupConfig>;
   if (config.serverUrl) {
     serverUrlInput.value = config.serverUrl;
   }
   if (config.folderPath) {
     folderPathInput.value = config.folderPath;
+  }
+  if (config.apiToken) {
+    apiTokenInput.value = config.apiToken;
   }
 
   // Form submit handler
@@ -49,6 +54,7 @@ async function main(): Promise<void> {
 
       const serverUrl = serverUrlInput.value.trim();
       const folderPath = folderPathInput.value.trim();
+      const apiToken = apiTokenInput.value.trim();
 
       if (!serverUrl || !folderPath) {
         showStatus(status, 'error', 'Wypełnij wszystkie pola');
@@ -56,7 +62,11 @@ async function main(): Promise<void> {
       }
 
       try {
-        await chrome.storage.sync.set({ serverUrl, folderPath });
+        await chrome.storage.sync.set({
+          serverUrl,
+          folderPath,
+          ...(apiToken.length > 0 ? { apiToken } : {}),
+        });
         showStatus(status, 'success', 'Ustawienia zapisane pomyślnie!');
       } catch (error) {
         showStatus(

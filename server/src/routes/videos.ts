@@ -285,9 +285,14 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
       } catch (lookupError) {
         logger.error('Error looking up file in Elasticsearch:', lookupError);
       }
+      // A file that is not indexed cannot be served — never fall back to a
+      // guessed folder (that used to leak files from the first configured one).
+      if (folderPath === undefined) {
+        res.status(404).json({ error: 'File not found' });
+        return;
+      }
     }
 
-    // Falls back to the first configured folder when the file is not indexed
     const filePath = getVideoFilePath(filename, folderPath);
 
     // Check if file exists

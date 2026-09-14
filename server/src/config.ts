@@ -12,6 +12,22 @@ export const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL || 'http://localh
 
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
+/** Bind address of the HTTP server. Loopback by default — see API_TOKEN. */
+export const HOST = process.env.HOST || '127.0.0.1';
+
+/**
+ * Shared bearer token guarding /api. When unset the API is unauthenticated
+ * (single-user local mode) and a warning is logged at startup.
+ */
+export const API_TOKEN = process.env.API_TOKEN;
+
+/**
+ * Extra browser origins allowed by CORS (comma-separated), on top of the
+ * built-in defaults: the local dev client (localhost, any port) and Chrome
+ * extensions.
+ */
+export const CORS_ORIGINS = process.env.CORS_ORIGINS;
+
 /**
  * Get all video folder paths from environment variable
  * Supports multiple paths separated by semicolon (;) or comma (,)

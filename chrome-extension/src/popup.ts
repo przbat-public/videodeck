@@ -43,6 +43,7 @@ async function main(): Promise<void> {
   const config = (await chrome.storage.sync.get([
     'serverUrl',
     'folderPath',
+    'apiToken',
   ])) as Partial<PopupConfig>;
 
   if (!config.serverUrl || !config.folderPath) {
@@ -234,6 +235,7 @@ async function main(): Promise<void> {
           videoTitle: response.videoTitle || 'Wideo',
           serverUrl: config.serverUrl,
           folderPath: config.folderPath,
+          ...(config.apiToken ? { apiToken: config.apiToken } : {}),
         } satisfies RuntimeMessage);
 
         // Reload active downloads to show the new one

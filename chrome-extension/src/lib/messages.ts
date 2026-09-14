@@ -7,6 +7,8 @@
 export interface PopupConfig {
   serverUrl: string;
   folderPath: string;
+  /** Bearer token matching the server's API_TOKEN (optional when unset there) */
+  apiToken?: string;
 }
 
 /** Video info gathered by the content script on the current page */
@@ -35,6 +37,7 @@ export type RuntimeMessage =
       videoTitle: string;
       serverUrl: string;
       folderPath: string;
+      apiToken?: string;
     }
   | { action: 'getActiveDownloads' }
   | { action: 'cancelDownload'; downloadId: number }

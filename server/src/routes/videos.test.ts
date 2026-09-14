@@ -474,18 +474,16 @@ describe('videos router', () => {
       expect(mockedGetVideoFilePath).toHaveBeenCalledWith(filename, '/test/videos');
     });
 
-    it('should return 404 when file does not exist', async () => {
+    it('should return 404 when the file is not indexed (no fallback to a guessed folder)', async () => {
       const filename = 'nonexistent.mp4';
-      const mockFilePath = '/test/videos/nonexistent.mp4';
 
       mockedGetVideoByFilePath.mockResolvedValue(null);
-      mockedGetVideoFilePath.mockReturnValue(mockFilePath);
-      mockedFs.access.mockRejectedValue(new Error('File not found'));
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
 
       expect(response.status).toBe(404);
       expect(response.body).toEqual({ error: 'File not found' });
+      expect(mockedGetVideoFilePath).not.toHaveBeenCalled();
     });
 
     it('should handle file access errors', async () => {
@@ -585,28 +583,26 @@ describe('videos router', () => {
       expect(mockedGetVideoFilePath).not.toHaveBeenCalled();
     });
 
-    it('falls back to the default folder when the file is not indexed', async () => {
+    it('returns 404 instead of falling back to a guessed folder when the file is not indexed', async () => {
       const filename = 'unindexed.mp4';
       mockedGetVideoByFilePath.mockResolvedValue(null);
-      mockedGetVideoFilePath.mockReturnValue('/test/videos/unindexed.mp4');
-      mockedFs.access.mockResolvedValue(undefined);
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
 
-      expect(response.status).toBe(200);
-      expect(mockedGetVideoFilePath).toHaveBeenCalledWith(filename, undefined);
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: 'File not found' });
+      expect(mockedGetVideoFilePath).not.toHaveBeenCalled();
     });
 
-    it('still serves the file when the Elasticsearch lookup fails', async () => {
+    it('returns 404 when the Elasticsearch lookup fails (no guessed fallback)', async () => {
       const filename = 'test.mp4';
       mockedGetVideoByFilePath.mockRejectedValue(new Error('ES down'));
-      mockedGetVideoFilePath.mockReturnValue('/test/videos/test.mp4');
-      mockedFs.access.mockResolvedValue(undefined);
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
 
-      expect(response.status).toBe(200);
-      expect(mockedGetVideoFilePath).toHaveBeenCalledWith(filename, undefined);
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: 'File not found' });
+      expect(mockedGetVideoFilePath).not.toHaveBeenCalled();
     });
   });
 

@@ -42,15 +42,19 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
     updateBadge();
     notifyDownloadUpdate(downloadId, 'downloadStart', { videoTitle });
 
-    downloadVideo(downloadId, message.videoUrl, message.serverUrl, message.folderPath).catch(
-      (error: unknown) => {
-        activeDownloads.delete(downloadId);
-        updateBadge();
-        notifyDownloadUpdate(downloadId, 'downloadError', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    );
+    downloadVideo(
+      downloadId,
+      message.videoUrl,
+      message.serverUrl,
+      message.folderPath,
+      message.apiToken
+    ).catch((error: unknown) => {
+      activeDownloads.delete(downloadId);
+      updateBadge();
+      notifyDownloadUpdate(downloadId, 'downloadError', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
     return true; // keep the message channel open for the async work
   }
 
@@ -85,7 +89,8 @@ async function downloadVideo(
   downloadId: number,
   videoUrl: string,
   serverUrl: string,
-  folderPath: string
+  folderPath: string,
+  apiToken?: string
 ): Promise<void> {
   const apiUrl = `${serverUrl}/api/folder/download-video`;
 
@@ -96,7 +101,10 @@ async function downloadVideo(
   try {
     const response = await fetch(apiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
+      },
       body: JSON.stringify({ folderPath, videoUrl }),
     });
 
