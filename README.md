@@ -1,12 +1,13 @@
 # Video Search App
 
-Aplikacja webowa do wyszukiwania i przeglądania filmów pobranych przez yt-dlp. Umożliwia przeszukiwanie opisów filmów, wyświetlanie szczegółowych informacji, komentarzy oraz odtwarzanie filmów bezpośrednio w przeglądarce.
+Aplikacja webowa do wyszukiwania i przeglądania filmów pobranych przez yt-dlp. Umożliwia przeszukiwanie opisów i komentarzy, wyświetlanie szczegółowych informacji, odtwarzanie filmów bezpośrednio w przeglądarce oraz zarządzanie kanałami YouTube i kolejką pobierania. Towarzyszące rozszerzenie Chrome pozwala dodawać filmy do kolejki wprost z YouTube.
 
 ## Wymagania
 
 - Node.js 22.x
 - npm
 - Elasticsearch 8.x lub 9.x (lokalnie lub zdalnie)
+- Chrome 88+ (tylko dla rozszerzenia Chrome, zob. [chrome-extension/README.md](chrome-extension/README.md))
 
 ## Technologie
 
@@ -23,13 +24,18 @@ Aplikacja webowa do wyszukiwania i przeglądania filmów pobranych przez yt-dlp.
 - **Vitest** - framework do testowania
 - **HTML5 Video API** - odtwarzanie filmów
 
+### Chrome extension
+- **TypeScript 6** - strict, te same ostre flagi co reszta repo
+- **esbuild** - budowanie do klasycznych skryptów MV3 (`background.js`, `content.js`, `popup.js`, `options.js`)
+- **Vitest** - testy jednostkowe czystej logiki (framing SSE, postęp yt-dlp, id YouTube)
+
 ### Narzędzia
-- **ESLint** - linter kodu
+- **ESLint** - linter kodu (z `--max-warnings 0`, patrz [Linting](#linting-i-formatowanie))
 - **Prettier** - formatter kodu
 
 ## Instalacja
 
-1. Zainstaluj zależności dla backendu i frontendu:
+1. Zainstaluj zależności dla backendu, frontendu i rozszerzenia Chrome:
 
 ```bash
 npm run install:all
@@ -40,6 +46,7 @@ Lub osobno:
 ```bash
 cd server && npm install
 cd ../client && npm install
+cd ../chrome-extension && npm install
 ```
 
 2. Uruchom Elasticsearch:
@@ -142,12 +149,21 @@ npm run build:client
 cd client && npm run preview
 ```
 
+**Chrome extension:**
+```bash
+npm run build:extension   # esbuild → background/content/popup/options.js
+```
+
+Wygenerowane pliki `chrome-extension/*.js` nie są commitowane (gitignore) —
+po klonowaniu repo rozszerzenie trzeba zbudować przed załadowaniem do Chrome.
+
 ### Sprawdzenie typów (bez emisji)
 
 ```bash
-npm run typecheck                # oba projekty
-cd server && npm run typecheck   # tsconfig.json (kod + testy)
-cd client && npm run typecheck   # tsconfig.json + tsconfig.node.json (vite.config.ts)
+npm run typecheck                        # wszystkie trzy projekty
+cd server && npm run typecheck           # tsconfig.json (kod + testy)
+cd client && npm run typecheck           # tsconfig.json + tsconfig.node.json (vite.config.ts)
+cd chrome-extension && npm run typecheck # src/ + shared/api.ts (wspólny kontrakt)
 ```
 
 ## Linting i Formatowanie
@@ -155,15 +171,23 @@ cd client && npm run typecheck   # tsconfig.json + tsconfig.node.json (vite.conf
 Projekt używa ESLint i Prettier do utrzymania spójności kodu.
 
 Konfiguracja jest jedna dla całego repozytorium — `eslint.config.mjs` w katalogu
-głównym obejmuje `server/`, `client/`, `shared/` i `chrome-extension/`. Flat
-config ESLinta lintuje tylko pliki poniżej swojego katalogu, a `shared/` leży
-poza oboma workspace'ami, dlatego lint i formatowanie uruchamia się z roota.
+głównym obejmuje `server/`, `client/`, `shared/` i `chrome-extension/src/`
+(wygenerowane `*.js` rozszerzenia są ignorowane). Flat config ESLinta lintuje
+tylko pliki poniżej swojego katalogu, a `shared/` leży poza oboma
+workspace'ami, dlatego lint i formatowanie uruchamia się z roota. Konfiguracja
+mówi pluginowi React, że projekt celuje w React 18 (`settings['react-x']`),
+więc reguły właściwe tylko dla Reacta 19 nie strzelają.
 
 ### Sprawdzenie kodu (lint)
 
 ```bash
 npm run lint
 ```
+
+Lint działa z `--max-warnings 0`: każdy warning psuje przebieg, więc lista
+problemów nie może narastać. Tam, gdzie klucz-w-pozycji jest naprawdę
+bezpieczny (np. linie logu yt-dlp, które nigdy nie zmieniają kolejności),
+stosowany jest celowy `eslint-disable` z uzasadnieniem.
 
 ### Automatyczne naprawianie błędów
 
@@ -185,7 +209,7 @@ npm run format:check
 
 ## Testy
 
-Projekt używa **Jest** dla backendu i **Vitest** dla frontendu.
+Projekt używa **Jest** dla backendu oraz **Vitest** dla frontendu i rozszerzenia Chrome.
 
 ### Uruchamianie testów
 
@@ -209,6 +233,12 @@ cd client && npm run test:ui  # Interfejs graficzny
 cd client && npm run test:coverage  # Z raportem pokrycia
 ```
 
+**Tylko rozszerzenie Chrome:**
+```bash
+cd chrome-extension && npm test  # Jednorazowe uruchomienie
+cd chrome-extension && npm run test:watch  # Tryb watch
+```
+
 ### Pokrycie testami
 
 ```bash
@@ -221,20 +251,23 @@ cd client && npm run test:coverage
 
 Raporty pokrycia są generowane w folderze `coverage/`.
 
-Oba projekty mają ustawione progi pokrycia (`coverageThreshold` w
+Backend i frontend mają ustawione progi pokrycia (`coverageThreshold` w
 `server/jest.config.js`, `test.coverage.thresholds` w `client/vite.config.ts`).
 Progi stoją tuż pod aktualnym poziomem — mają wychwytywać regresje, nie być
-celem samym w sobie. Kiedy pokrycie rośnie, warto je podnieść.
+celem samym w sobie. Kiedy pokrycie rośnie, warto je podnieść. Rozszerzenie
+Chrome ma testy jednostkowe bez progów — to niewielka, czysta logika w
+`chrome-extension/src/lib/`.
 
 ## Dobre praktyki rozwoju
 
 ### Architektura
 - **Separacja odpowiedzialności** - podział na warstwy: routes, services, utils
 - **Zarządzanie stanem** - reducery dla złożonego stanu w React
-- **Custom hooks** - reużywalna logika (useVideoSearch, useVideoDetail)
+- **Custom hooks** - reużywalna logika (useVideoSearch, useVideoDetail, useDownloadQueue)
 - **Elasticsearch** - indeksowanie i wyszukiwanie filmów z pełnotekstowym wyszukiwaniem i sortowaniem
 - **Rekursywne struktury** - zagnieżdżone drzewo komentarzy
 - **Toast notifications** - nieinwazyjne komunikaty o sukcesie/błędach (react-hot-toast)
+- **Strukturyzowany logger** - `server/src/utils/logger.ts` to jedyne miejsce dotykające `console`; reszta kodu loguje przez niego (poziom + timestamp)
 
 ### Jakość kodu
 - **TypeScript** - silne typowanie w całym projekcie (szczegóły niżej)
@@ -251,7 +284,7 @@ celem samym w sobie. Kiedy pokrycie rośnie, warto je podnieść.
 
 ### Typowanie
 
-Oba projekty kompiluje TypeScript 6.0 (ta sama wersja, którą Cursor używa do podświetlania błędów). Poza `strict` włączone są:
+Wszystkie trzy projekty kompiluje TypeScript 6.0 (ta sama wersja, którą Cursor używa do podświetlania błędów). Poza `strict` włączone są:
 
 | Flaga | Skutek w praktyce |
 |-------|-------------------|
@@ -259,9 +292,9 @@ Oba projekty kompiluje TypeScript 6.0 (ta sama wersja, którą Cursor używa do 
 | `exactOptionalPropertyTypes` | pole `x?: string` można pominąć, ale nie wolno wpisać do niego `undefined`; obiekty z opcjonalnymi polami buduje `stripUndefined()` z `server/src/utils/objectUtils.ts` |
 | `noImplicitReturns`, `noImplicitOverride`, `noFallthroughCasesInSwitch` | handlery Express kończą się `res.json(...); return;`, nie `return res.json(...)` |
 | `noUnusedLocals`, `noUnusedParameters` | nieużywane zmienne to błąd kompilacji (parametry celowo ignorowane zaczynają się od `_`) |
-| `verbatimModuleSyntax` (tylko klient) | typy importuje się przez `import type`; na serwerze to samo wymusza ESLint (`consistent-type-imports`) |
+| `verbatimModuleSyntax` (klient, rozszerzenie) | typy importuje się przez `import type`; na serwerze to samo wymusza ESLint (`consistent-type-imports`) |
 
-**Wspólny kontrakt API** leży w `shared/api.ts` - jeden plik z typami odpowiedzi i żądań (`SearchResponse`, `QueueJob`, `StatusResponse`, ...), importowany przez oba projekty jako `@shared/api`. Plik zawiera wyłącznie typy: importy `import type` znikają przy kompilacji, więc ani `node dist/...`, ani bundle Vite nie potrzebują aliasu w runtime. ESLint (`no-restricted-imports`) blokuje zwykły `import` z `@shared/*`, żeby nikt tam przypadkiem nie wrzucił kodu.
+**Wspólny kontrakt API** leży w `shared/api.ts` - jeden plik z typami odpowiedzi i żądań (`SearchResponse`, `QueueJob`, `StatusResponse`, `DownloadVideoEvent`, ...), importowany jako `@shared/api` przez serwer, klienta i rozszerzenie Chrome. Plik zawiera wyłącznie typy: importy `import type` znikają przy kompilacji, więc ani `node dist/...`, ani bundle Vite, ani build esbuilda rozszerzenia nie potrzebują aliasu w runtime. ESLint (`no-restricted-imports`) blokuje zwykły `import` z `@shared/*`, żeby nikt tam przypadkiem nie wrzucił kodu.
 
 Routery Express używają `RouteHandler<Params, Response>` z `server/src/routes/http.ts`: parametry ścieżki są wyprowadzane z wzorca trasy, `req.body` ma typ `unknown` i jest zawężany helperami `readBody`/`readString`, a `res.json()` przyjmuje tylko typ z kontraktu (albo `ApiError`). `any` jest zabronione lintem (`no-explicit-any: error`) w kodzie i w testach.
 
@@ -270,7 +303,7 @@ Routery Express używają `RouteHandler<Params, Response>` z `server/src/routes/
 ```
 video-search-app/
 ├── shared/
-│   └── api.ts           # Kontrakt HTTP API (tylko typy) wspólny dla serwera i klienta
+│   └── api.ts           # Kontrakt HTTP API (tylko typy) wspólny dla serwera, klienta i rozszerzenia
 ├── server/              # Backend (Node.js/Express)
 │   ├── src/
 │   │   ├── index.ts     # Start serwera
@@ -287,6 +320,7 @@ video-search-app/
 │   │   │   └── folderIndex.ts
 │   │   ├── utils/       # Narzędzia pomocnicze
 │   │   │   ├── commentTreeUtils.ts
+│   │   │   ├── logger.ts        # Jedyny moduł dotykający console (poziom + timestamp)
 │   │   │   ├── objectUtils.ts   # stripUndefined() dla exactOptionalPropertyTypes
 │   │   │   └── videoPathUtils.ts
 │   │   ├── config.ts    # Konfiguracja
@@ -298,25 +332,48 @@ video-search-app/
 ├── client/              # Frontend (React + Vite)
 │   ├── src/
 │   │   ├── components/  # Komponenty React
-│   │   │   ├── SearchBar.tsx
-│   │   │   ├── VideoCard.tsx
-│   │   │   ├── VideoList.tsx
-│   │   │   └── CommentComponent.tsx
+│   │   │   ├── SearchBar.tsx, VideoCard.tsx, VideoList.tsx
+│   │   │   ├── VideoItem.tsx, VideoListSection.tsx
+│   │   │   ├── CommentComponent.tsx, VideoComments.tsx, VideoSummary.tsx
+│   │   │   └── FolderSection.tsx, FolderConfigEditor.tsx, PlaylistDownloadSection.tsx
 │   │   ├── pages/       # Strony aplikacji
-│   │   │   ├── VideoListPage.tsx
-│   │   │   └── VideoDetailPage.tsx
+│   │   │   ├── StatusPage.tsx        # / - folderów, konfiguracji i kolejki
+│   │   │   ├── VideoListPage.tsx     # /videos - wyszukiwarka
+│   │   │   └── VideoDetailPage.tsx   # /video/:id - szczegóły + odtwarzacz
 │   │   ├── hooks/       # Custom hooks
-│   │   │   ├── useVideoSearch.ts
-│   │   │   ├── useVideoDetail.ts
-│   │   │   └── useCacheRefresh.ts
+│   │   │   ├── useVideoSearch.ts, useVideoDetail.ts, useVideoSummary.ts
+│   │   │   ├── useDownloadQueue.ts, useCacheRefresh.ts, useRecreateIndices.ts
+│   │   │   ├── useCategories.ts, useSearchUrlState.ts
 │   │   ├── reducers/    # Zarządzanie stanem
-│   │   │   ├── videoSearchReducer.ts
-│   │   │   ├── videoDetailReducer.ts
-│   │   │   └── cacheRefreshReducer.ts
+│   │   │   ├── videoSearchReducer.ts, videoDetailReducer.ts, videoSummaryReducer.ts
+│   │   │   ├── cacheRefreshReducer.ts, statusReducer.ts, recreateIndicesReducer.ts
+│   │   ├── utils/       # searchUrlState.ts, folderConfigForm.ts, videoDates.ts
 │   │   ├── test/        # setup Vitest i typowany mock fetch (fetchMock.ts)
 │   │   └── App.tsx      # Główny komponent
 │   └── package.json
+├── chrome-extension/     # Rozszerzenie Chrome (TypeScript + Vitest)
+│   ├── src/              # Kod źródłowy (background, content, popup, options)
+│   │   └── lib/          # Czysta logika z testami (SSE, postęp, id YouTube)
+│   ├── package.json      # npm run build (esbuild) / test (vitest) / typecheck
+│   ├── manifest.json     # MV3; wskazuje wygenerowane *.js w katalogu głównym
+│   └── *.js              # Build output (nie commitowane)
 └── .env                 # Zmienne środowiskowe (nie commituj!)
+```
+
+### Chrome extension
+
+Rozszerzenie jest napisane w TypeScript (strict, te same ostre flagi co reszta
+repo) i budowane esbuildem do klasycznych skryptów w katalogu głównym
+(`chrome-extension/*.js` — nie commitowane, gitignore). Czysta logika —
+framing SSE (`feedSseBuffer`/`parseSseEvent`), wyciąganie postępu yt-dlp,
+rozpoznawanie id YouTube — leży w `chrome-extension/src/lib/` i ma testy
+Vitest. Kontrakt zdarzeń SSE jest współdzielony z serwerem przez
+`shared/api.ts` (import `import type`). Komendy:
+
+```bash
+npm run build:extension   # esbuild → background/content/popup/options.js
+cd chrome-extension && npm test   # testy jednostkowe
+cd chrome-extension && npm run typecheck
 ```
 
 ## Funkcjonalności
@@ -343,6 +400,7 @@ video-search-app/
 - **Filtrowanie po kategorii** - każdy kanał ma w swoim `config.json` kategorię (np. `fpv`, `lego`, `psychology`); wybór kategorii zawęża wyszukiwanie do jej kanałów
 - **Wyszukiwanie w URL** - fraza, sortowanie i kategoria siedzą w adresie strony listy, np. `/videos?q=motor&sort=views-desc&category=fpv`. Taki link można zapisać albo wysłać: po otwarciu formularz i wyniki odzwierciedlają parametry. Wartości domyślne (brak frazy, `date-desc`, wszystkie kategorie) nie trafiają do adresu, a nieznany `sort` wraca do domyślnego. Strona podmienia swój wpis w historii zamiast dokładać nowe, więc "wstecz" wychodzi z listy, a nie cofa filtry.
 - **Responsywny design** - dostosowanie do różnych rozmiarów ekranów
+- **Rozszerzenie Chrome** - dodawanie filmów do kolejki pobierania wprost z YouTube: wykrywanie wideo na stronie, postęp na żywo (SSE), licznik aktywnych pobrań na ikonie rozszerzenia (szczegóły w [chrome-extension/README.md](chrome-extension/README.md))
 
 ## API Endpoints
 

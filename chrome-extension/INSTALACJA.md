@@ -1,5 +1,17 @@
 # Instrukcja instalacji rozszerzenia Chrome
 
+## Krok 0: Zbuduj rozszerzenie (wymagane)
+
+Kod źródłowy rozszerzenia to TypeScript w folderze `src/`. Chrome ładuje
+wygenerowane pliki `*.js`, więc przed pierwszą instalacją (i po każdej zmianie
+kodu):
+
+```bash
+cd chrome-extension
+npm install
+npm run build
+```
+
 ## Krok 1: Wygeneruj ikony (opcjonalne, ale zalecane)
 
 ### Opcja A: Użyj create-icons.html (najłatwiejsze)
