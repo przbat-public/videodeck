@@ -74,6 +74,9 @@ jest.mock('../services/downloadQueue', () => {
     ...actual,
     downloadQueue: new actual.DownloadQueue({
       maxConcurrent: 2,
+      // One attempt: the SSE tests fail a process and expect the error
+      // event right away, not after a retry backoff
+      maxAttempts: 1,
       spawnFn,
       afterJob: async () => {},
     }),
@@ -723,7 +726,7 @@ describe('folder router', () => {
 
       expect(events[events.length - 1]).toEqual({
         type: 'error',
-        error: 'yt-dlp exited with code 1',
+        error: 'yt-dlp exited with code 1 after 1 attempts',
         done: true,
       });
     });
