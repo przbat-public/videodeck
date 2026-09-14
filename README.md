@@ -126,6 +126,8 @@ API_TOKEN=sekret         # bearer token chroniący /api (patrz Bezpieczeństwo n
 CORS_ORIGINS=https://example.com  # dodatkowe originy CORS (przecinkami), poza localhost i chrome-extension://
 ALLOWED_HOSTS=nas.local,192.168.0.10  # dodatkowe nazwy/IP dozwolone w nagłówku Host (potrzebne przy HOST=0.0.0.0)
 EXTENSION_ORIGINS=chrome-extension://abcdefghijklmnop  # dokładne ID rozszerzenia dopuszczone w CORS (bez tego: każde chrome-extension://)
+RATE_LIMIT_MAX=2000      # limit żądań HTTP na okno czasowe na IP (domyślnie 2000)
+RATE_LIMIT_WINDOW_MS=600000  # długość okna rate-limitu w ms (domyślnie 10 minut)
 ```
 
 **Uwaga:** 
@@ -519,10 +521,13 @@ cd chrome-extension && npm run typecheck
 ## API Endpoints
 
 ### GET /health (publiczne)
-Readiness probe: pinguje Elasticsearch i zwraca `200 { status: 'ok', elasticsearch: 'ok' }`, a gdy ES nie odpowiada — `503 { status: 'degraded', elasticsearch: 'down' }`. Rozszerzenie Chrome używa go w „Test połączenia".
+Readiness probe: pinguje Elasticsearch i zwraca `200 { status: 'ok', elasticsearch: 'ok' }`, a gdy ES nie odpowiada — `503 { status: 'degraded', elasticsearch: 'down' }`. Rozszerzenie Chrome używa go w „Test połączenia". Wynik pingowania jest cache'owany przez 5 s, więc częste odpytywanie nie obciąża ES.
+
+### GET /health/live (publiczne)
+Liveness probe bez zależności: `200 { status: 'ok' }`, gdy proces serwera odpowiada.
 
 ### GET /metrics (publiczne)
-Prometheus: `http_requests_total`, `http_request_duration_ms` (z etykietami method/route/status) i `download_queue_size`.
+Prometheus: `http_requests_total` i `http_request_duration_seconds` (etykiety method/route/status; nieznane ścieżki trafiają do etykiety `unmatched`, żeby nie mnożyć serii per URL), `download_queue_size` oraz metryki kosztów streszczeń: `openai_summary_requests_total`, `openai_summary_tokens_total`, `openai_summary_estimated_cost_cents_total` (szacunek $ wg przybliżonego cennika modeli).
 
 ### GET /api/videos/refreshCache
 Odświeża i reindeksuje wszystkie filmy z skonfigurowanych folderów do Elasticsearch.

@@ -120,7 +120,42 @@ describe('createApp auth wiring', () => {
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toContain('text/plain');
     expect(response.text).toContain('http_requests_total');
+    expect(response.text).toContain('http_request_duration_seconds');
     expect(response.text).toContain('download_queue_size');
+  });
+
+  it('answers JSON 404 for unknown paths instead of an HTML page', async () => {
+    const response = await request(createApp()).get('/api/does-not-exist');
+
+    expect(response.status).toBe(404);
+    expect(response.headers['content-type']).toContain('application/json');
+    expect(response.body).toEqual({ error: 'Not found' });
+  });
+
+  it('sets basic security headers on every response', async () => {
+    const response = await request(createApp()).get('/health');
+
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+  });
+
+  it('answers /health/live without touching Elasticsearch', async () => {
+    const app = createApp();
+
+    const response = await request(app).get('/health/live');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: 'ok' });
+    expect(mockedCheckElasticsearch).not.toHaveBeenCalled();
+  });
+
+  it('caches the Elasticsearch check across consecutive /health probes', async () => {
+    mockedCheckElasticsearch.mockResolvedValue(true);
+    const app = createApp();
+
+    await request(app).get('/health');
+    await request(app).get('/health');
+
+    expect(mockedCheckElasticsearch).toHaveBeenCalledTimes(1);
   });
 
   it('stamps every response with an X-Request-Id', async () => {
@@ -236,5 +271,37 @@ describe('Host header guard (DNS rebinding)', () => {
 
     const byIp = await request(app).get('/health').set('Host', '192.168.0.10');
     expect(byIp.status).toBe(200);
+  });
+});
+
+describe('rate limiting', () => {
+  const originalMax = process.env.RATE_LIMIT_MAX;
+  const originalWindow = process.env.RATE_LIMIT_WINDOW_MS;
+
+  afterEach(() => {
+    if (originalMax === undefined) {
+      delete process.env.RATE_LIMIT_MAX;
+    } else {
+      process.env.RATE_LIMIT_MAX = originalMax;
+    }
+    if (originalWindow === undefined) {
+      delete process.env.RATE_LIMIT_WINDOW_MS;
+    } else {
+      process.env.RATE_LIMIT_WINDOW_MS = originalWindow;
+    }
+  });
+
+  it('rejects a burst beyond the configured limit', async () => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const app = createApp();
+
+    for (let i = 0; i < 3; i += 1) {
+      expect((await request(app).get('/health/live')).status).toBe(200);
+    }
+
+    const limited = await request(app).get('/health/live');
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual({ error: 'Too many requests' });
   });
 });

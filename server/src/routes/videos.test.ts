@@ -282,7 +282,6 @@ describe('videos router', () => {
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
         error: 'Internal server error',
-        message: 'Failed to load videos',
       });
       expect(mockedGetTotalVideoCount).not.toHaveBeenCalled();
     });
@@ -297,7 +296,6 @@ describe('videos router', () => {
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
         error: 'Internal server error',
-        message: 'Failed to get count',
       });
     });
 
@@ -309,7 +307,6 @@ describe('videos router', () => {
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
         error: 'Internal server error',
-        message: 'Unknown error',
       });
     });
 
@@ -375,7 +372,7 @@ describe('videos router', () => {
       const response = await request(app).get('/api/videos/categories');
 
       expect(response.status).toBe(500);
-      expect(response.body).toEqual({ error: 'Internal server error', message: 'disk gone' });
+      expect(response.body).toEqual({ error: 'Internal server error' });
     });
   });
 
@@ -713,7 +710,6 @@ describe('videos router', () => {
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
         error: 'Internal server error',
-        message: 'Failed to read file',
       });
     });
 
@@ -853,7 +849,6 @@ describe('videos router', () => {
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
         error: 'Internal server error',
-        message: 'OpenAI API error',
       });
     });
   });
@@ -1162,7 +1157,6 @@ describe('videos router', () => {
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
         error: 'Internal server error',
-        message: 'Permission denied',
       });
     });
 
@@ -1177,7 +1171,6 @@ describe('videos router', () => {
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
         error: 'Internal server error',
-        message: 'Failed to load video',
       });
     });
 

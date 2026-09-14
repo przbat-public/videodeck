@@ -1,8 +1,10 @@
 import fs from 'fs/promises';
 import path from 'path';
 import OpenAI from 'openai';
+import { Counter } from 'prom-client';
 import { logger } from '../utils/logger';
 import { getOpenAiApiKey } from '../config';
+import { metricsRegistry } from '../metricsRegistry';
 
 /**
  * AI summaries of video subtitles (GET /api/videos/:identifier/summary).
@@ -11,7 +13,9 @@ import { getOpenAiApiKey } from '../config';
  * `generateSummary` ties them together: read the `.summary.txt` cache, and
  * only when it is missing or empty, extract the subtitles' text and ask
  * OpenAI for a Polish summary, walking the model list on 429s. The result is
- * cached on disk, so a summary is generated at most once per video.
+ * cached on disk, so a summary is generated at most once per video — and a
+ * concurrent second request for the same video shares the in-flight call
+ * instead of paying for a second one.
  */
 
 // Models in order of preference (higher TPM limits first)
@@ -20,6 +24,41 @@ export const SUMMARY_MODELS = ['gpt-4o', 'gpt-4-turbo', 'gpt-4o-mini', 'gpt-4'] 
 // Reserve tokens for: system prompt (~50), user prompt (~100), response (2000), and buffer
 // TPM limit is 30000, but we want to be safe with ~25000 tokens for input
 export const SUMMARY_MAX_INPUT_TOKENS = 25000;
+
+/** Give up on a hung OpenAI call instead of holding the request forever */
+export const OPENAI_TIMEOUT_MS = 60_000;
+
+/**
+ * Approximate USD prices per 1M tokens (input, output). They drift over time;
+ * used only for logs and the cost metric — good enough to spot a runaway bill.
+ */
+const MODEL_PRICES: Record<(typeof SUMMARY_MODELS)[number], [number, number]> = {
+  'gpt-4o': [2.5, 10],
+  'gpt-4-turbo': [10, 30],
+  'gpt-4o-mini': [0.15, 0.6],
+  'gpt-4': [30, 60],
+};
+
+const summaryRequestsTotal = new Counter({
+  name: 'openai_summary_requests_total',
+  help: 'OpenAI summary requests, by model and outcome',
+  labelNames: ['model', 'status'],
+  registers: [metricsRegistry],
+});
+
+const summaryTokensTotal = new Counter({
+  name: 'openai_summary_tokens_total',
+  help: 'Tokens billed for video summaries, by model and kind',
+  labelNames: ['model', 'type'],
+  registers: [metricsRegistry],
+});
+
+const summaryEstimatedCostCents = new Counter({
+  name: 'openai_summary_estimated_cost_cents_total',
+  help: 'Estimated USD cents spent on video summaries, by model (approximate pricing)',
+  labelNames: ['model'],
+  registers: [metricsRegistry],
+});
 
 /**
  * Extracts plain text from VTT subtitle content by removing timestamps and
@@ -136,12 +175,28 @@ export interface GeneratedSummary {
   truncated: boolean;
 }
 
+/** In-flight generations by summary file path — deduplicates concurrent calls */
+const inFlight = new Map<string, Promise<GeneratedSummary>>();
+
+/** Tests reset the map between cases (nothing to do when a promise settled) */
+export function pendingSummaryCount(): number {
+  return inFlight.size;
+}
+
+/** Drop all in-flight entries (tests only — production entries always settle) */
+export function resetInFlightSummaries(): void {
+  inFlight.clear();
+}
+
 /**
  * Return the cached summary or generate (and cache) a new one. Throws on
  * anything unrecoverable — callers let the error handler turn it into a 500.
+ *
+ * Two simultaneous requests for the same video share one OpenAI call: the
+ * second caller awaits the same promise instead of paying for a duplicate.
  */
 export async function generateSummary(input: GenerateSummaryInput): Promise<GeneratedSummary> {
-  const { folderPath, baseName, subtitlePath } = input;
+  const { folderPath, baseName } = input;
   const summaryFilePath = path.join(folderPath, `${baseName}.summary.txt`);
 
   // A summary on disk wins — it was paid for once already
@@ -154,6 +209,24 @@ export async function generateSummary(input: GenerateSummaryInput): Promise<Gene
     // File doesn't exist, continue to generate a new summary
   }
 
+  const pending = inFlight.get(summaryFilePath);
+  if (pending) {
+    logger.info(`Summary for ${baseName}: joining the in-flight OpenAI call`);
+    return pending;
+  }
+
+  const generation = generateUncached(input, summaryFilePath).finally(() => {
+    inFlight.delete(summaryFilePath);
+  });
+  inFlight.set(summaryFilePath, generation);
+  return generation;
+}
+
+async function generateUncached(
+  input: GenerateSummaryInput,
+  summaryFilePath: string
+): Promise<GeneratedSummary> {
+  const { folderPath, baseName, subtitlePath } = input;
   const apiKey = getOpenAiApiKey();
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY environment variable is required');
@@ -163,7 +236,7 @@ export async function generateSummary(input: GenerateSummaryInput): Promise<Gene
   const subtitleFileContent = await fs.readFile(subtitleFilePath, 'utf-8');
 
   // Extract only text content from VTT, removing timestamps and metadata
-  // This significantly reduces token count for OpenAI API
+  // This significantly reduces token count for OpenAI API calls
   let subtitleText = extractTextFromVttSubtitles(subtitleFileContent);
 
   const estimatedTokens = estimateTokenCount(subtitleText);
@@ -176,7 +249,9 @@ export async function generateSummary(input: GenerateSummaryInput): Promise<Gene
     subtitleText = truncateTextToTokenLimit(subtitleText, SUMMARY_MAX_INPUT_TOKENS);
   }
 
-  const openai = new OpenAI({ apiKey });
+  // No SDK retries (429s walk the model list here) and a hard timeout: a hung
+  // OpenAI call must not pin the request (and the queue behind it) forever.
+  const openai = new OpenAI({ apiKey, timeout: OPENAI_TIMEOUT_MS, maxRetries: 0 });
 
   let completion: OpenAI.Chat.Completions.ChatCompletion | undefined;
   let lastError: unknown;
@@ -203,6 +278,7 @@ export async function generateSummary(input: GenerateSummaryInput): Promise<Gene
       break; // Success, exit loop
     } catch (error) {
       lastError = error;
+      summaryRequestsTotal.inc({ model, status: 'error' });
       if (!isRateLimitError(error)) {
         // For other errors, rethrow immediately
         throw error;
@@ -227,11 +303,42 @@ export async function generateSummary(input: GenerateSummaryInput): Promise<Gene
     );
   }
 
+  const model = completion.model;
+  summaryRequestsTotal.inc({ model, status: 'ok' });
+
+  const usage = completion.usage;
+  if (usage) {
+    summaryTokensTotal.inc({ model, type: 'prompt' }, usage.prompt_tokens);
+    summaryTokensTotal.inc({ model, type: 'completion' }, usage.completion_tokens);
+    const [inputPrice, outputPrice] = MODEL_PRICES[model as (typeof SUMMARY_MODELS)[number]] ?? [
+      0, 0,
+    ];
+    const costCents =
+      (usage.prompt_tokens / 1_000_000) * inputPrice * 100 +
+      (usage.completion_tokens / 1_000_000) * outputPrice * 100;
+    summaryEstimatedCostCents.inc({ model }, costCents);
+    logger.info(
+      `Summary for ${baseName}: model=${model} prompt=${usage.prompt_tokens} completion=${usage.completion_tokens} tokens, ≈$${costCents.toFixed(4)}`
+    );
+  }
+
   // Defensive `?.` on message: the API has returned choices without one
-  const summary = completion.choices[0]?.message?.content;
+  const choice = completion.choices[0];
+  const summary = choice?.message?.content;
 
   if (!summary) {
     throw new Error('OpenAI API did not return a summary');
+  }
+
+  // `finish_reason: 'length'` means the model hit max_tokens mid-sentence:
+  // the summary is cut off. Return it marked as truncated and DO NOT cache it
+  // — the cache must only ever hold complete summaries.
+  const cutOff = choice?.finish_reason === 'length';
+  if (cutOff) {
+    logger.warn(
+      `Summary for ${baseName}: model stopped at max_tokens (finish_reason=length) — not caching the partial summary`
+    );
+    return { summary, truncated: true };
   }
 
   // Save summary to disk for future use

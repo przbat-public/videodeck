@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { validateEnv } from './env';
 import { validateVideosFolder } from './utils/videoPathUtils';
 import { createApp } from './app';
 import { getApiToken, getHost } from './config';
@@ -8,7 +9,10 @@ import { logger } from './utils/logger';
 
 dotenv.config();
 
-const PORT = Number(process.env.PORT) || 3001;
+// Fail fast on a misconfigured environment (typo'd names, bad numbers) —
+// validateEnv throws one error listing every problem.
+const env = validateEnv(process.env);
+const PORT = env.PORT;
 
 // Start server
 async function startServer() {

@@ -73,6 +73,21 @@ export function getExtensionOrigins(): string[] | undefined {
   return origins.length > 0 ? origins : undefined;
 }
 
+/**
+ * Rate limit for the whole HTTP server (requests per window per IP).
+ * Generous by default: the client polls the queue every 1.5 s while jobs
+ * run. `RATE_LIMIT_MAX`/`RATE_LIMIT_WINDOW_MS` override.
+ */
+export function getRateLimitMax(): number {
+  const parsed = Number.parseInt(process.env.RATE_LIMIT_MAX ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2000;
+}
+
+export function getRateLimitWindowMs(): number {
+  const parsed = Number.parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10 * 60 * 1000;
+}
+
 // ---------------------------------------------------------------------------
 // Video folders
 // ---------------------------------------------------------------------------

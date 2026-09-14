@@ -1,10 +1,13 @@
 import * as fs from 'fs/promises';
 import OpenAI from 'openai';
+import { logger } from '../utils/logger';
+import { metricsRegistry } from '../metrics';
 import {
   estimateTokenCount,
   extractTextFromVttSubtitles,
   generateSummary,
   isRateLimitError,
+  resetInFlightSummaries,
   truncateTextToTokenLimit,
 } from './summaryService';
 
@@ -39,8 +42,8 @@ const mockOpenAIInstance = {
   },
 };
 
-function mockCompletion(summary: string) {
-  return { choices: [{ message: { content: summary } }] };
+function mockCompletion(summary: string, finishReason = 'stop') {
+  return { choices: [{ message: { content: summary }, finish_reason: finishReason }] };
 }
 
 describe('extractTextFromVttSubtitles', () => {
@@ -148,6 +151,7 @@ describe('isRateLimitError', () => {
 describe('generateSummary', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetInFlightSummaries();
     process.env.OPENAI_API_KEY = 'test-api-key';
     MockedOpenAI.mockImplementation(() => mockOpenAIInstance as unknown as OpenAI);
     mockedFs.writeFile.mockResolvedValue(undefined);
@@ -284,5 +288,80 @@ This is a test subtitle`;
       process.env.OPENAI_API_KEY = 'test-api-key';
     }
     expect(mockOpenAIInstance.chat.completions.create).not.toHaveBeenCalled();
+  });
+
+  it('shares one OpenAI call between concurrent requests for the same video', async () => {
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+    mockedFs.readFile.mockResolvedValueOnce(VTT as never);
+    let resolveCreate: (value: unknown) => void = () => {};
+    mockOpenAIInstance.chat.completions.create.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        })
+    );
+
+    const first = generateSummary(INPUT);
+    const second = generateSummary(INPUT);
+    // Both calls are async — let them reach the (single) OpenAI call before
+    // resolving it.
+    await new Promise((resolve) => setImmediate(resolve));
+    resolveCreate(mockCompletion('Shared summary'));
+    const [a, b] = await Promise.all([first, second]);
+
+    expect(a).toEqual({ summary: 'Shared summary', truncated: false });
+    expect(b).toEqual(a);
+    expect(mockOpenAIInstance.chat.completions.create).toHaveBeenCalledTimes(1);
+    expect(mockedFs.writeFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache a summary cut off by finish_reason=length', async () => {
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+    mockedFs.readFile.mockResolvedValueOnce(VTT as never);
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue(
+      mockCompletion('The video is about', 'length')
+    );
+
+    const result = await generateSummary(INPUT);
+
+    expect(result).toEqual({ summary: 'The video is about', truncated: true });
+    expect(mockedFs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it('creates the OpenAI client without SDK retries and with a hard timeout', async () => {
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+    mockedFs.readFile.mockResolvedValueOnce(VTT as never);
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue(mockCompletion('Summary'));
+
+    await generateSummary(INPUT);
+
+    expect(MockedOpenAI).toHaveBeenCalledWith({
+      apiKey: 'test-api-key',
+      timeout: 60000,
+      maxRetries: 0,
+    });
+  });
+
+  it('logs the billed tokens, approximate cost and records cost metrics', async () => {
+    const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {});
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+    mockedFs.readFile.mockResolvedValueOnce(VTT as never);
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue({
+      ...mockCompletion('Summary'),
+      model: 'gpt-4o-mini',
+      usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+    });
+
+    await generateSummary(INPUT);
+
+    // 100/1M × $0.15 + 50/1M × $0.60 = $0.000045 = ≈$0.0045
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('≈$0.0045'));
+    expect(metricsRegistry.getSingleMetric('openai_summary_requests_total')).toBeDefined();
+    expect(metricsRegistry.getSingleMetric('openai_summary_tokens_total')).toBeDefined();
+    expect(
+      metricsRegistry.getSingleMetric('openai_summary_estimated_cost_cents_total')
+    ).toBeDefined();
+    infoSpy.mockRestore();
   });
 });

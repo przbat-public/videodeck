@@ -2,10 +2,18 @@ import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import cors from 'cors';
+import helmet from 'helmet';
+import { rateLimit } from 'express-rate-limit';
 import videosRouter from './routes/videos';
 import { createFolderRouter } from './routes/folder';
 import type { DownloadQueueLike } from './routes/folder';
-import { getAllowedHosts, getCorsOrigins, getExtensionOrigins } from './config';
+import {
+  getAllowedHosts,
+  getCorsOrigins,
+  getExtensionOrigins,
+  getRateLimitMax,
+  getRateLimitWindowMs,
+} from './config';
 import { createAuthMiddleware, isAllowedCorsOrigin } from './routes/http';
 import { logger } from './utils/logger';
 import { metricsBody, metricsRegistry, recordRequest } from './metrics';
@@ -18,6 +26,9 @@ import type { ApiError } from '@shared/api';
  * body-parser's default of 100 kB is too small for that.
  */
 export const JSON_BODY_LIMIT = '1mb';
+
+/** How long a /health probe trusts the previous Elasticsearch check */
+const HEALTH_CACHE_TTL_MS = 5_000;
 
 export interface CreateAppOptions {
   /** Bearer token guarding /api; undefined means the API is open */
@@ -35,7 +46,10 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
   const start = Date.now();
   res.on('finish', () => {
     const durationMs = Date.now() - start;
-    const route = req.route?.path ?? req.path;
+    // The route template ("/api/videos/:identifier/details") keeps the
+    // cardinality bounded; unregistered paths collapse into "unmatched"
+    // instead of a new series per URL (every filename would be one).
+    const route = req.route?.path ?? 'unmatched';
     recordRequest(req.method, route, res.statusCode, durationMs);
     logger.info(
       `${req.method} ${req.originalUrl} → ${res.statusCode} (${durationMs}ms) [${requestId}]`
@@ -78,6 +92,9 @@ function createHostGuard(
  * rejected async handlers here, so the boilerplate `try/catch + sendError`
  * blocks are gone: a 500 now looks the same everywhere and the full error
  * lands in the log with its route.
+ *
+ * The response body is generic on purpose: `error.message` may carry file
+ * paths, tokens or library internals that must not leak to the client.
  */
 export function errorHandler(
   error: unknown,
@@ -93,10 +110,7 @@ export function errorHandler(
     `Unhandled error in ${req.method} ${req.originalUrl} [${String(res.locals.requestId)}]:`,
     error
   );
-  const body: ApiError = {
-    error: 'Internal server error',
-    message: error instanceof Error ? error.message : 'Unknown error',
-  };
+  const body: ApiError = { error: 'Internal server error' };
   res.status(500).json(body);
 }
 
@@ -108,6 +122,20 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
 
   // DNS-rebinding guard first — every request pays the Host check
   app.use(createHostGuard(getAllowedHosts()));
+
+  app.use(helmet());
+
+  // Broad-but-bounded rate limit: stops runaway scripts and the browser tab
+  // from hammering the server; the queue poll (1.5 s) stays far below it.
+  app.use(
+    rateLimit({
+      windowMs: getRateLimitWindowMs(),
+      limit: getRateLimitMax(),
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: 'Too many requests' },
+    })
+  );
 
   // Only browsers are subject to CORS; requests without an Origin header
   // (curl, the server itself) go through untouched.
@@ -124,8 +152,8 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
   app.use(requestLogger);
 
-  // /health and /metrics stay public; everything else is behind the token
-  // when set
+  // /health, /health/live and /metrics stay public; everything else is behind
+  // the token when set
   app.use('/api', createAuthMiddleware(options.apiToken));
 
   app.use('/api/videos', videosRouter);
@@ -133,18 +161,35 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   app.use('/api', createFolderRouter(options.downloadQueue));
 
   // Readiness probe: also tells the extension's "Test połączenia" whether
-  // the whole stack (Elasticsearch included) is healthy
+  // the whole stack (Elasticsearch included) is healthy. The ES check is
+  // cached for a few seconds so a polling dashboard does not ping ES per hit.
+  let healthCache: { checkedAt: number; esUp: boolean } | null = null;
   app.get('/health', async (_req, res) => {
-    const esUp = await checkElasticsearchConnection();
+    const now = Date.now();
+    if (!healthCache || now - healthCache.checkedAt > HEALTH_CACHE_TTL_MS) {
+      healthCache = { checkedAt: now, esUp: await checkElasticsearchConnection() };
+    }
+    const esUp = healthCache.esUp;
     res.status(esUp ? 200 : 503).json({
       status: esUp ? 'ok' : 'degraded',
       elasticsearch: esUp ? 'ok' : 'down',
     });
   });
 
+  // Liveness probe: the process answers — no dependencies involved
+  app.get('/health/live', (_req, res) => {
+    res.json({ status: 'ok' });
+  });
+
   app.get('/metrics', async (_req, res) => {
     res.setHeader('Content-Type', metricsRegistry.contentType);
     res.end(await metricsBody());
+  });
+
+  // Unknown paths answer JSON like the rest of the API (Express' default
+  // would be an HTML 404 page)
+  app.use((_req, res) => {
+    res.status(404).json({ error: 'Not found' });
   });
 
   app.use(errorHandler);

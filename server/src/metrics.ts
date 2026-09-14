@@ -1,12 +1,14 @@
-import { Counter, Gauge, Histogram, Registry } from 'prom-client';
+import { Counter, Gauge, Histogram } from 'prom-client';
 import { downloadQueue } from './services/downloadQueue';
+import { metricsRegistry } from './metricsRegistry';
+
+export { metricsRegistry };
 
 /**
  * Prometheus metrics for /metrics. Deliberately no collectDefaultMetrics:
  * its interval timer keeps test workers alive; the process-level defaults
  * can be re-enabled when the app gets a proper observability setup.
  */
-export const metricsRegistry = new Registry();
 
 export const httpRequestsTotal = new Counter({
   name: 'http_requests_total',
@@ -15,11 +17,11 @@ export const httpRequestsTotal = new Counter({
   registers: [metricsRegistry],
 });
 
-export const httpRequestDurationMs = new Histogram({
-  name: 'http_request_duration_ms',
-  help: 'HTTP request duration in milliseconds',
+export const httpRequestDurationSeconds = new Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'HTTP request duration in seconds',
   labelNames: ['method', 'route'],
-  buckets: [10, 50, 100, 250, 500, 1000, 2500, 5000, 10000],
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
   registers: [metricsRegistry],
 });
 
@@ -37,7 +39,7 @@ export function recordRequest(
   durationMs: number
 ): void {
   httpRequestsTotal.inc({ method, route, status });
-  httpRequestDurationMs.observe({ method, route }, durationMs);
+  httpRequestDurationSeconds.observe({ method, route }, durationMs / 1000);
 }
 
 /** Text body of /metrics with the queue gauge refreshed */
