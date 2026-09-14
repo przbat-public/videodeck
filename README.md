@@ -194,8 +194,8 @@ głównym obejmuje `server/`, `client/`, `shared/` i `chrome-extension/src/`
 (wygenerowane `*.js` rozszerzenia są ignorowane). Flat config ESLinta lintuje
 tylko pliki poniżej swojego katalogu, a `shared/` leży poza oboma
 workspace'ami, dlatego lint i formatowanie uruchamia się z roota. Konfiguracja
-mówi pluginowi React, że projekt celuje w React 18 (`settings['react-x']`),
-więc reguły właściwe tylko dla Reacta 19 nie strzelają.
+mówi pluginowi React, że projekt celuje w React 19 (`settings['react-x']`) —
+komponenty przyjmują `ref` jako zwykły prop (bez `forwardRef`).
 
 ### Sprawdzenie kodu (lint)
 
@@ -301,8 +301,11 @@ Chrome ma testy jednostkowe bez progów — to niewielka, czysta logika w
 - **Elasticsearch** - indeksowanie i wyszukiwanie filmów z pełnotekstowym wyszukiwaniem i sortowaniem
 - **Rekursywne struktury** - zagnieżdżone drzewo komentarzy
 - **Toast notifications** - nieinwazyjne komunikaty o sukcesie/błędach (react-hot-toast)
-- **Strukturyzowany logger** - `server/src/utils/logger.ts` to jedyne miejsce dotykające `console`; reszta kodu loguje przez niego (poziom + timestamp), a middleware loguje każde żądanie (metoda, ścieżka, status, czas)
+- **Strukturyzowany logger** - `server/src/utils/logger.ts` to jedyne miejsce dotykające `console`; reszta kodu loguje przez niego (poziom + timestamp, `LOG_LEVEL`), a middleware loguje każde żądanie (metoda, ścieżka, status, czas) z korelującym `X-Request-Id` w nagłówku i logach
 - **Centralna obsługa błędów** - Express 5 przekazuje odrzucone handlery do jednego middleware'a (`server/src/app.ts`), więc każdy nieobsłużony błąd to spójne 500 w JSON i pełny log z trasą — bez try/catch w każdym handlerze
+- **Walidacja kontraktu** - body `POST /api/folder/queue` i `PUT /api/folder/config` parsują schematy zod (`server/src/routes/validation.ts`); błąd walidacji to 400 z pierwszym problemem opisanym wprost
+- **Wstrzykiwanie zależności** - `createApp` przyjmuje token i kolejkę pobierania (`createFolderRouter(queue)`), a klient ES ma punkt wstrzykiwania — testy nie sięgają po singleton modułowy
+- **Graceful shutdown** - `SIGINT`/`SIGTERM` anuluje zadania kolejki (ubija yt-dlp), zamyka serwer i wymusza exit po 10 s (`server/src/shutdown.ts`)
 
 ### Jakość kodu
 - **TypeScript** - silne typowanie w całym projekcie (szczegóły niżej)
