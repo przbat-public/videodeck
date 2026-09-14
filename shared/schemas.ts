@@ -91,6 +91,12 @@ export const VideoListItemSchema = z.object({
   transcriptText: z.string().optional(),
 });
 
+/** One subtitle file actually on disk, with its language from the file name */
+export const SubtitleTrackSchema = z.object({
+  path: z.string(),
+  lang: z.string().optional(),
+});
+
 export const VideoDetailsSchema = z.object({
   title: z.string(),
   description: z.string(),
@@ -103,7 +109,10 @@ export const VideoDetailsSchema = z.object({
   commentCount: z.number(),
   videoPath: z.string(),
   thumbnailPath: z.string(),
+  /** Primary subtitle (first track found); kept for summaries */
   subtitlePath: z.string().optional(),
+  /** Every subtitle file the folder holds for this video */
+  subtitles: z.array(SubtitleTrackSchema),
   folderPath: z.string(),
 });
 
@@ -253,6 +262,7 @@ export type VideoComment = z.infer<typeof VideoCommentSchema>;
 export type CommentWithReplies = z.infer<typeof CommentWithRepliesSchema>;
 export type VideoListItem = z.infer<typeof VideoListItemSchema>;
 export type VideoDetails = z.infer<typeof VideoDetailsSchema>;
+export type SubtitleTrack = z.infer<typeof SubtitleTrackSchema>;
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 export type CategoriesResponse = z.infer<typeof CategoriesResponseSchema>;
 export type VideoDetailsResponse = z.infer<typeof VideoDetailsResponseSchema>;

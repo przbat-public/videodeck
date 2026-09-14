@@ -8,6 +8,7 @@ import type {
   ReindexStatus,
   SearchResponse,
   SortOption,
+  SubtitleTrack,
   VideoDetails,
   VideoDetailsResponse,
   VideoListItem,
@@ -37,6 +38,7 @@ import { getVideosFolderPaths } from '../config';
 import { readString } from './http';
 import type { NoParams, RouteHandler } from './http';
 import { logger } from '../utils/logger';
+import { stripVttCueSettings, vttLanguage } from '../utils/vttUtils';
 
 // ---------------------------------------------------------------------------
 // Request parsing
@@ -217,7 +219,18 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
   } else if (ext === '.webp') {
     contentType = 'image/webp';
   } else if (ext === '.vtt') {
+    // yt-dlp auto captions carry `align:start position:0%` on every cue,
+    // pinning the text to the left edge — strip the settings so the browser
+    // centers the cues the way it does for plain WebVTT.
     contentType = 'text/vtt; charset=utf-8';
+    try {
+      const vtt = await fs.readFile(filePath, 'utf-8');
+      res.setHeader('Content-Type', contentType);
+      res.end(stripVttCueSettings(vtt));
+    } catch {
+      res.status(404).json({ error: 'File not found' });
+    }
+    return;
   }
 
   res.setHeader('Content-Type', contentType);
@@ -292,6 +305,29 @@ const getDetails: RouteHandler<{ identifier: string }, VideoDetailsResponse> = a
 
   const comments = buildCommentTree(infoJson.comments || []);
 
+  // Every subtitle file the folder actually holds for this video, so the
+  // player can offer each language instead of one hardcoded track.
+  let subtitles: SubtitleTrack[] = [];
+  try {
+    const entries = (await fs.readdir(video.folderPath)) ?? [];
+    const prefix = `${video.baseName}.`;
+    subtitles = entries
+      .filter((file) => file.startsWith(prefix) && file.endsWith('.vtt'))
+      .map((file) => stripUndefined<SubtitleTrack>({ path: file, lang: vttLanguage(file) }))
+      .sort((a, b) => a.path.localeCompare(b.path));
+  } catch (error) {
+    logger.warn(`Cannot list subtitles of ${video.folderPath}:`, error);
+  }
+  if (subtitles.length === 0 && video.subtitlePath) {
+    // Fallback for videos indexed before subtitle listing existed
+    subtitles = [
+      stripUndefined<SubtitleTrack>({
+        path: video.subtitlePath,
+        lang: vttLanguage(video.subtitlePath),
+      }),
+    ];
+  }
+
   const details = stripUndefined<VideoDetails>({
     title: infoJson.title || infoJson.fulltitle || '',
     description: infoJson.description || infoJson.title || infoJson.fulltitle || '',
@@ -305,6 +341,7 @@ const getDetails: RouteHandler<{ identifier: string }, VideoDetailsResponse> = a
     videoPath: video.videoPath,
     thumbnailPath: video.thumbnailPath,
     subtitlePath: video.subtitlePath,
+    subtitles,
     folderPath: video.folderPath,
   });
 

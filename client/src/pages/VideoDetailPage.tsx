@@ -6,6 +6,15 @@ import VideoComments from '../components/VideoComments';
 import { useVideoDetail } from '../hooks/useVideoDetail';
 import { formatUploadDate } from '../utils/videoDates';
 
+/** Polish names for the subtitle languages we download; others show the code */
+const SUBTITLE_NAMES: Record<string, string> = {
+  pl: 'Polski',
+  en: 'Angielski',
+  de: 'Niemiecki',
+  fr: 'Francuski',
+  es: 'Hiszpański',
+};
+
 export default function VideoDetailPage(): JSX.Element {
   const { videoId } = useParams<{ videoId: string }>();
   const { state } = useVideoDetail(videoId);
@@ -37,9 +46,8 @@ export default function VideoDetailPage(): JSX.Element {
     ? `?folder=${encodeURIComponent(state.details.folderPath)}`
     : '';
   const videoUrl = `/api/videos/file/${encodeURIComponent(state.details.videoPath)}${folderQuery}`;
-  const subtitleUrl = state.details.subtitlePath
-    ? `/api/videos/file/${encodeURIComponent(state.details.subtitlePath)}${folderQuery}`
-    : undefined;
+  const subtitleUrl = (subtitlePath: string) =>
+    `/api/videos/file/${encodeURIComponent(subtitlePath)}${folderQuery}`;
 
   return (
     <div className="video-detail-page">
@@ -55,7 +63,16 @@ export default function VideoDetailPage(): JSX.Element {
             {/* Native HTML5 video: the files are plain mp4s and the server
                 supports Range requests — no react-player dependency needed */}
             <video src={videoUrl} controls className="video-player-full" data-testid="video-player">
-              {subtitleUrl && <track kind="subtitles" src={subtitleUrl} srcLang="pl" default />}
+              {state.details.subtitles.map((subtitle) => (
+                <track
+                  key={subtitle.path}
+                  kind="subtitles"
+                  src={subtitleUrl(subtitle.path)}
+                  srcLang={subtitle.lang ?? 'und'}
+                  label={SUBTITLE_NAMES[subtitle.lang ?? ''] ?? subtitle.lang ?? 'Napisy'}
+                  default={subtitle.path === state.details?.subtitlePath}
+                />
+              ))}
             </video>
           </div>
 

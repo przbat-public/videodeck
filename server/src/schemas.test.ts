@@ -100,11 +100,13 @@ describe('response shapes', () => {
         commentCount: 1,
         videoPath: 'v.mp4',
         thumbnailPath: 'v.webp',
+        subtitles: [{ path: 'v.en.vtt', lang: 'en' }],
         folderPath: '/videos/a',
       },
     };
     const parsed = VideoDetailsResponseSchema.parse(body);
     expect(parsed.details.comments[0]?.replies?.[0]?.arbitrary_field).toBe('kept');
+    expect(parsed.details.subtitles).toEqual([{ path: 'v.en.vtt', lang: 'en' }]);
   });
 
   it('accepts a nested comment tree', () => {

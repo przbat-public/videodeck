@@ -89,6 +89,7 @@ test.describe('szczegóły filmu', () => {
           videoPath: 'v1.mp4',
           thumbnailPath: 'v1.webp',
           subtitlePath: 'v1.en.vtt',
+          subtitles: [{ path: 'v1.en.vtt', lang: 'en' }],
           folderPath: '/videos/e2e',
         },
       },
@@ -112,6 +113,8 @@ test.describe('szczegóły filmu', () => {
     );
     const track = player.locator('track');
     await expect(track).toHaveAttribute('kind', 'subtitles');
+    await expect(track).toHaveAttribute('srcLang', 'en');
+    await expect(track).toHaveAttribute('label', 'Angielski');
     await expect(track).toHaveAttribute(
       'src',
       `/api/videos/file/v1.en.vtt?folder=${encodeURIComponent('/videos/e2e')}`

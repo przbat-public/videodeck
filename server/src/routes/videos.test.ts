@@ -605,18 +605,22 @@ describe('videos router', () => {
       expect(response.headers['content-type']).toBe('video/mp4');
     });
 
-    it('should set text/vtt Content-Type for subtitle files', async () => {
+    it('should serve subtitle files with cue settings stripped (centered captions)', async () => {
       const filename = 'test.en.vtt';
       const mockFilePath = '/test/videos/test.en.vtt';
 
       mockedGetVideoByFilePath.mockResolvedValue(mockVideo);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
       mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.readFile.mockResolvedValue(
+        'WEBVTT\n\n00:00:03.360 --> 00:00:05.200 align:start position:0%\ntext\n'
+      );
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toContain('text/vtt');
+      expect(response.text).toBe('WEBVTT\n\n00:00:03.360 --> 00:00:05.200\ntext\n');
     });
 
     it('should set correct Content-Type for .webp files', async () => {
@@ -902,6 +906,29 @@ describe('videos router', () => {
       expect(mockedGetVideoByVideoId).toHaveBeenCalledWith(videoId);
       expect(mockedFs.readFile).toHaveBeenCalledWith(infoJsonPath, 'utf-8');
       expect(mockedBuildCommentTree).toHaveBeenCalledWith([]);
+    });
+
+    it('lists every subtitle file of the video with its language', async () => {
+      const baseName = '20231201_TestVideo';
+
+      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
+      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
+      mockedFs.readdir.mockResolvedValue([
+        '20231201_TestVideo.pl.vtt',
+        '20231201_TestVideo.en.vtt',
+        '20231201_OtherVideo.en.vtt',
+        '20231201_TestVideo.en.json',
+      ] as never);
+      mockedBuildCommentTree.mockReturnValue([]);
+
+      const response = await request(app).get(`/api/videos/${baseName}/details`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.details.subtitles).toEqual([
+        { path: '20231201_TestVideo.en.vtt', lang: 'en' },
+        { path: '20231201_TestVideo.pl.vtt', lang: 'pl' },
+      ]);
     });
 
     it('should use fulltitle when title is not available', async () => {

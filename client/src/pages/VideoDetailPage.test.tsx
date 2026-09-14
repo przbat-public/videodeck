@@ -21,6 +21,7 @@ const details: VideoDetails = {
   commentCount: 0,
   videoPath: 'hedgehogs.mp4',
   thumbnailPath: 'hedgehogs.webp',
+  subtitles: [],
   folderPath: '/videos/a',
 };
 
@@ -86,20 +87,59 @@ describe('VideoDetailPage', () => {
     );
   });
 
-  it('renders a subtitle track when the video has subtitles', async () => {
+  it('renders one subtitle track per file with the language from its name', async () => {
     installFetch({
-      details: () => json({ details: { ...details, subtitlePath: 'hedgehogs.en.vtt' } }),
+      details: () =>
+        json({
+          details: {
+            ...details,
+            subtitlePath: 'hedgehogs.en.vtt',
+            subtitles: [
+              { path: 'hedgehogs.en.vtt', lang: 'en' },
+              { path: 'hedgehogs.pl.vtt', lang: 'pl' },
+            ],
+          },
+        }),
+    });
+    renderPage();
+
+    const player = await screen.findByTestId('video-player');
+    const tracks = player.querySelectorAll('track');
+    expect(tracks).toHaveLength(2);
+
+    const [en, pl] = tracks;
+    expect(en).toHaveAttribute('kind', 'subtitles');
+    expect(en).toHaveAttribute('srcLang', 'en');
+    expect(en).toHaveAttribute('label', 'Angielski');
+    expect(en).toHaveAttribute(
+      'src',
+      `/api/videos/file/hedgehogs.en.vtt?folder=${encodeURIComponent('/videos/a')}`
+    );
+    expect(en).toHaveAttribute('default');
+
+    expect(pl).toHaveAttribute('srcLang', 'pl');
+    expect(pl).toHaveAttribute('label', 'Polski');
+    expect(pl).not.toHaveAttribute('default');
+  });
+
+  it('labels a subtitle file without a language code as generic', async () => {
+    installFetch({
+      details: () =>
+        json({
+          details: {
+            ...details,
+            subtitlePath: 'hedgehogs.vtt',
+            subtitles: [{ path: 'hedgehogs.vtt' }],
+          },
+        }),
     });
     renderPage();
 
     const player = await screen.findByTestId('video-player');
     const track = player.querySelector('track');
     expect(track).not.toBeNull();
-    expect(track).toHaveAttribute('kind', 'subtitles');
-    expect(track).toHaveAttribute(
-      'src',
-      `/api/videos/file/hedgehogs.en.vtt?folder=${encodeURIComponent('/videos/a')}`
-    );
+    expect(track).toHaveAttribute('srcLang', 'und');
+    expect(track).toHaveAttribute('label', 'Napisy');
   });
 
   it('renders no subtitle track without subtitles', async () => {

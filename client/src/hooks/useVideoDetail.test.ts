@@ -42,6 +42,7 @@ describe('useVideoDetail', () => {
       commentCount: 0,
       videoPath: 'test-video.mp4',
       thumbnailPath: 'test-video.webp',
+      subtitles: [],
       folderPath: '/videos/a',
     };
 
@@ -162,6 +163,7 @@ describe('useVideoDetail', () => {
       commentCount: 0,
       videoPath: 'video1.mp4',
       thumbnailPath: 'video1.webp',
+      subtitles: [],
       folderPath: '/videos/a',
     };
 
@@ -177,6 +179,7 @@ describe('useVideoDetail', () => {
       commentCount: 0,
       videoPath: 'video2.mp4',
       thumbnailPath: 'video2.webp',
+      subtitles: [],
       folderPath: '/videos/a',
     };
 
@@ -234,6 +237,7 @@ describe('useVideoDetail', () => {
       commentCount: 0,
       videoPath: 'test-video.mp4',
       thumbnailPath: 'test-video.webp',
+      subtitles: [],
       folderPath: '/videos/a',
     };
 
@@ -279,6 +283,7 @@ describe('useVideoDetail', () => {
       commentCount: 0,
       videoPath: 'test-video.mp4',
       thumbnailPath: 'test-video.webp',
+      subtitles: [],
       folderPath: '/videos/a',
     };
 

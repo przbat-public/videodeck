@@ -3,6 +3,7 @@ import { extractYtDlpProgress } from '@shared/progress';
 import { extractYoutubeVideoId, toWatchUrl } from '@shared/youtube';
 import { extractTextFromVttSubtitles } from './services/summaryService';
 import { runPool } from './utils/runPool';
+import { stripVttCueSettings } from './utils/vttUtils';
 
 /**
  * Property-based tests: invariants that must hold for EVERY input, not just
@@ -83,6 +84,32 @@ describe('extractYoutubeVideoId', () => {
         const url = toWatchUrl(id);
         expect(url).not.toContain('list=');
         expect(url).not.toContain('index=');
+      })
+    );
+  });
+});
+
+describe('stripVttCueSettings', () => {
+  it('never leaves cue settings behind, for any input', () => {
+    fc.assert(
+      fc.property(fc.string(), (input) => {
+        const output = stripVttCueSettings(input);
+        // timing lines must be bare timestamps, nothing position/align-ish
+        for (const line of output.split('\n')) {
+          if (line.includes('-->')) {
+            expect(line).not.toMatch(/\s+(?:align|position|line|vertical|size):/);
+          }
+        }
+      })
+    );
+  });
+
+  it('strips any settings tail from a cue line, leaving the bare timestamps', () => {
+    fc.assert(
+      fc.property(fc.string({ maxLength: 40 }), (settings) => {
+        const withoutNewlines = settings.replace(/\r?\n/g, ' ');
+        const line = `00:00:01.000 --> 00:00:02.000${withoutNewlines ? ` ${withoutNewlines}` : ''}`;
+        expect(stripVttCueSettings(line)).toBe('00:00:01.000 --> 00:00:02.000');
       })
     );
   });

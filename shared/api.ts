@@ -32,6 +32,7 @@ export type {
   SearchResponse,
   SkippedVideo,
   StatusResponse,
+  SubtitleTrack,
   VideoComment,
   VideoDetails,
   VideoDetailsResponse,

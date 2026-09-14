@@ -73,6 +73,7 @@ export async function mockApi(
         commentCount: 0,
         videoPath: 'hedgehogs.mp4',
         thumbnailPath: 'hedgehogs.webp',
+        subtitles: [],
         folderPath: '/videos/e2e',
       },
     };
