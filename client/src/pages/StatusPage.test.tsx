@@ -87,12 +87,13 @@ describe('StatusPage', () => {
     );
   });
 
-  it('marks which folders already have an Elasticsearch index', async () => {
+  it('marks only the folders whose Elasticsearch index is missing', async () => {
     renderPage();
 
     expect(await screen.findByText('/videos/b')).toBeInTheDocument();
-    expect(screen.getByText('indeks ES: gotowy')).toBeInTheDocument();
     expect(screen.getByText('indeks ES: brak')).toBeInTheDocument();
+    // "ready" is noise: only the actionable state is shown
+    expect(screen.queryByText('indeks ES: gotowy')).toBeNull();
   });
 
   it('pauses and resumes the download queue', async () => {

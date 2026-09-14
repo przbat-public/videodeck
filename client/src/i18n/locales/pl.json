@@ -56,9 +56,7 @@
     "foldersTitle": "Konfiguracja folderów wideo",
     "noFolders": "Brak skonfigurowanych ścieżek",
     "goToVideos": "Przejdź do listy filmów",
-    "indexReady": "indeks ES: gotowy",
     "indexMissing": "indeks ES: brak",
-    "indexReadyTitle": "Ten folder ma indeks wyszukiwania w Elasticsearch",
     "indexMissingTitle": "Brak indeksu w Elasticsearch — uruchom „Odśwież indeks” z opcją „tylko brakujące”"
   },
   "queue": {

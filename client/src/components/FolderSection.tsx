@@ -71,12 +71,13 @@ export function FolderSection({
     <div className="folder-section">
       <div className="folder-section-header">
         <h3 className="folder-path">{folderPath}</h3>
-        <span
-          className={`folder-index-badge ${indexed ? 'indexed' : 'missing'}`}
-          title={indexed ? t('status.indexReadyTitle') : t('status.indexMissingTitle')}
-        >
-          {indexed ? t('status.indexReady') : t('status.indexMissing')}
-        </span>
+        {/* Only the actionable state is shown: a missing ES index needs the
+            "refresh index (missing only)" run; "ready" adds nothing. */}
+        {!indexed && (
+          <span className="folder-index-badge" title={t('status.indexMissingTitle')}>
+            {t('status.indexMissing')}
+          </span>
+        )}
       </div>
 
       <FolderConfigEditor

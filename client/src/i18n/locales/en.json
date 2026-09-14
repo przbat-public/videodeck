@@ -54,9 +54,7 @@
     "foldersTitle": "Video folder configuration",
     "noFolders": "No configured paths",
     "goToVideos": "Go to the video list",
-    "indexReady": "ES index: ready",
     "indexMissing": "ES index: missing",
-    "indexReadyTitle": "This folder has a search index in Elasticsearch",
     "indexMissingTitle": "No index in Elasticsearch — run \"Refresh index\" with \"missing only\""
   },
   "queue": {
