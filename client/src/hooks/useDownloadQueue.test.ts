@@ -39,7 +39,9 @@ describe('useDownloadQueue', () => {
   });
 
   it('loads the queue for the folder on mount', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ jobs: [makeJob({ status: 'done' })] }));
+    fetchMock.mockResolvedValue(
+      jsonResponse({ paused: false, jobs: [makeJob({ status: 'done' })] })
+    );
 
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
 
@@ -62,9 +64,13 @@ describe('useDownloadQueue', () => {
 
   it('enqueues videos and refreshes the list', async () => {
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ jobs: [] })) // mount
-      .mockResolvedValueOnce(jsonResponse({ jobs: [makeJob({})], skipped: [] }, true, 202)) // POST
-      .mockResolvedValueOnce(jsonResponse({ jobs: [makeJob({ status: 'running' })] })); // refresh
+      .mockResolvedValueOnce(jsonResponse({ paused: false, jobs: [] })) // mount
+      .mockResolvedValueOnce(
+        jsonResponse({ paused: false, jobs: [makeJob({})], skipped: [] }, true, 202)
+      ) // POST
+      .mockResolvedValueOnce(
+        jsonResponse({ paused: false, jobs: [makeJob({ status: 'running' })] })
+      ); // refresh
 
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -92,7 +98,7 @@ describe('useDownloadQueue', () => {
   });
 
   it('does not call the server when enqueueing an empty list', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ jobs: [] }));
+    fetchMock.mockResolvedValue(jsonResponse({ paused: false, jobs: [] }));
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
@@ -104,7 +110,7 @@ describe('useDownloadQueue', () => {
 
   it('throws the server error message when enqueue fails', async () => {
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ jobs: [] }))
+      .mockResolvedValueOnce(jsonResponse({ paused: false, jobs: [] }))
       .mockResolvedValueOnce(
         jsonResponse({ error: 'Folder path is not in the allowed list' }, false, 403)
       );
@@ -120,9 +126,13 @@ describe('useDownloadQueue', () => {
   it('polls while jobs are active and stops when they finish', async () => {
     vi.useFakeTimers();
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ jobs: [makeJob({ status: 'running' })] }))
-      .mockResolvedValueOnce(jsonResponse({ jobs: [makeJob({ status: 'running', progress: 50 })] }))
-      .mockResolvedValue(jsonResponse({ jobs: [makeJob({ status: 'done' })] }));
+      .mockResolvedValueOnce(
+        jsonResponse({ paused: false, jobs: [makeJob({ status: 'running' })] })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ paused: false, jobs: [makeJob({ status: 'running', progress: 50 })] })
+      )
+      .mockResolvedValue(jsonResponse({ paused: false, jobs: [makeJob({ status: 'done' })] }));
 
     const { result } = renderHook(() => useDownloadQueue(FOLDER, { pollIntervalMs: 1000 }));
 
@@ -156,11 +166,14 @@ describe('useDownloadQueue', () => {
     const onJobFinished = vi.fn();
     const onQueueDrained = vi.fn();
     const running = makeJob({ status: 'running' });
-    fetchMock.mockResolvedValueOnce(jsonResponse({ jobs: [running] })).mockResolvedValue(
-      jsonResponse({
-        jobs: [{ ...running, status: 'done', finishedAt: '2024-01-01T00:01:00.000Z' }],
-      })
-    );
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ paused: false, jobs: [running] }))
+      .mockResolvedValue(
+        jsonResponse({
+          paused: false,
+          jobs: [{ ...running, status: 'done', finishedAt: '2024-01-01T00:01:00.000Z' }],
+        })
+      );
 
     renderHook(() =>
       useDownloadQueue(FOLDER, { pollIntervalMs: 1000, onJobFinished, onQueueDrained })
@@ -191,6 +204,7 @@ describe('useDownloadQueue', () => {
   it('prefers the active job per video, otherwise the newest one', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({
+        paused: false,
         jobs: [
           makeJob({ id: 'old-error', status: 'error', createdAt: '2024-01-01T00:00:00.000Z' }),
           makeJob({ id: 'newer-done', status: 'done', createdAt: '2024-01-02T00:00:00.000Z' }),
@@ -209,9 +223,11 @@ describe('useDownloadQueue', () => {
 
   it('cancels a job and refreshes', async () => {
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ jobs: [makeJob({ status: 'running' })] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ paused: false, jobs: [makeJob({ status: 'running' })] })
+      )
       .mockResolvedValueOnce(jsonResponse({ cancelled: true }))
-      .mockResolvedValue(jsonResponse({ jobs: [makeJob({ status: 'cancelled' })] }));
+      .mockResolvedValue(jsonResponse({ paused: false, jobs: [makeJob({ status: 'cancelled' })] }));
 
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
     await waitFor(() => expect(result.current.hasActive).toBe(true));
@@ -225,7 +241,7 @@ describe('useDownloadQueue', () => {
   });
 
   it('cancelAll targets the folder', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ jobs: [] }));
+    fetchMock.mockResolvedValue(jsonResponse({ paused: false, jobs: [] }));
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
@@ -240,7 +256,7 @@ describe('useDownloadQueue', () => {
   });
 
   it('reloads when the folder changes', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ jobs: [] }));
+    fetchMock.mockResolvedValue(jsonResponse({ paused: false, jobs: [] }));
     const { rerender } = renderHook(({ folder }) => useDownloadQueue(folder), {
       initialProps: { folder: FOLDER },
     });

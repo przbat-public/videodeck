@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { StatusResponse } from '@shared/api';
 import StatusPage from './StatusPage';
@@ -28,14 +28,28 @@ const json = (body: unknown, status = 200): MockResponse => ({
 });
 
 /**
- * StatusPage renders a FolderSection per configured path, and each of those
- * checks list.json on its own — hence the routing mock rather than a single
- * canned response.
+ * StatusPage renders a FolderSection per configured path plus the global
+ * queue controls — hence the routing mock rather than a single canned
+ * response.
  */
-function installFetch(handlers: { status?: () => MockResponse } = {}): FetchMock {
+function installFetch(
+  handlers: {
+    status?: () => MockResponse;
+    queue?: () => MockResponse;
+  } = {}
+): FetchMock {
   const fetchMock: FetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/status') {
       return handlers.status?.() ?? json(statusResponse);
+    }
+    if (url === '/api/folder/queue') {
+      return handlers.queue?.() ?? json({ jobs: [], paused: false });
+    }
+    if (url === '/api/folder/queue/pause?paused=1' || url === '/api/folder/queue/resume?paused=0') {
+      return json({ paused: url.includes('pause') });
+    }
+    if (url === '/api/folder/queue/finished' && init?.method === 'DELETE') {
+      return json({ cleared: 2 });
     }
     if (url.startsWith('/api/folder/list-exists')) {
       return json({ exists: false });
@@ -82,6 +96,58 @@ describe('StatusPage', () => {
     expect(await screen.findByText('/videos/b')).toBeInTheDocument();
     expect(screen.getByText('indeks ES: gotowy')).toBeInTheDocument();
     expect(screen.getByText('indeks ES: brak')).toBeInTheDocument();
+  });
+
+  it('pauses and resumes the download queue', async () => {
+    const fetchMock = installFetch();
+    renderPage();
+
+    const pause = await screen.findByRole('button', { name: 'Pauza kolejki' });
+    fireEvent.click(pause);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue/pause?paused=1', {
+        method: 'POST',
+      })
+    );
+    expect(await screen.findByRole('button', { name: 'Wznów kolejkę' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Wznów kolejkę' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue/resume?paused=0', {
+        method: 'POST',
+      })
+    );
+  });
+
+  it('clears the finished jobs the queue keeps in memory', async () => {
+    const finishedJob = (id: string, status: 'done' | 'cancelled') => ({
+      id,
+      folderPath: '/videos/a',
+      videoId: id,
+      videoUrl: `https://yt/${id}`,
+      type: 'download',
+      status,
+      log: [],
+      logLineCount: 0,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      finishedAt: '2025-01-01T00:01:00.000Z',
+    });
+    const fetchMock = installFetch({
+      queue: () =>
+        json({
+          jobs: [finishedJob('a', 'cancelled'), finishedJob('b', 'done')],
+          paused: false,
+        }),
+    });
+    renderPage();
+
+    const clear = await screen.findByRole('button', { name: 'Wyczyść zakończone (2)' });
+    fireEvent.click(clear);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue/finished', { method: 'DELETE' })
+    );
   });
 
   it('offers to create config.json for a folder that has none', async () => {

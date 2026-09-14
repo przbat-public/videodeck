@@ -231,6 +231,18 @@ export const EnqueueJobsResponseSchema = z.object({
 
 export const QueueListResponseSchema = z.object({
   jobs: z.array(QueueJobSchema),
+  /** Whether the queue is paused (queued jobs wait; running ones finish) */
+  paused: z.boolean(),
+});
+
+/** POST /api/folder/queue/pause | /resume */
+export const QueuePauseResponseSchema = z.object({
+  paused: z.boolean(),
+});
+
+/** DELETE /api/folder/queue/finished */
+export const ClearFinishedResponseSchema = z.object({
+  cleared: z.number(),
 });
 
 export const ListExistsResponseSchema = z.object({
@@ -279,6 +291,8 @@ export type QueueJob = z.infer<typeof QueueJobSchema>;
 export type SkippedVideo = z.infer<typeof SkippedVideoSchema>;
 export type EnqueueJobsResponse = z.infer<typeof EnqueueJobsResponseSchema>;
 export type QueueListResponse = z.infer<typeof QueueListResponseSchema>;
+export type QueuePauseResponse = z.infer<typeof QueuePauseResponseSchema>;
+export type ClearFinishedResponse = z.infer<typeof ClearFinishedResponseSchema>;
 export type ListExistsResponse = z.infer<typeof ListExistsResponseSchema>;
 export type VideoDownloadedResponse = z.infer<typeof VideoDownloadedResponseSchema>;
 export type RebuildIndexResponse = z.infer<typeof RebuildIndexResponseSchema>;

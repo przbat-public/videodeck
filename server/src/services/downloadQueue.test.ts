@@ -756,6 +756,51 @@ describe('DownloadQueue', () => {
     expect(queue.cancel('nope')).toBe(false);
   });
 
+  it('holds queued jobs while paused and starts them on resume', async () => {
+    // downloads are exclusive per folder, so spread them across folders
+    queue.enqueue([request('a'), request('b', { folderPath: '/videos/channel-b' })]);
+    queue.setPaused(true);
+    queue.enqueue([request('c', { folderPath: '/videos/channel-c' })]);
+    await flush();
+
+    expect(spawn.calls).toHaveLength(2); // a and b were already running
+    expect(spawn.calls[2]).toBeUndefined();
+
+    queue.setPaused(false);
+    spawned(0).process.exit(0); // free a slot — c may start once unpaused
+    await flush();
+
+    expect(spawn.calls).toHaveLength(3);
+  });
+
+  it('does not start queued jobs while paused, even when a slot frees up', async () => {
+    queue.enqueue([
+      request('a'),
+      request('b', { folderPath: '/videos/channel-b' }),
+      request('c', { folderPath: '/videos/channel-c' }),
+    ]);
+    queue.setPaused(true);
+
+    spawned(0).process.exit(0);
+    await flush();
+
+    expect(spawn.calls).toHaveLength(2); // c still waiting for the resume
+  });
+
+  it('clearFinished drops finished and cancelled jobs and keeps active ones', () => {
+    const enqueued = queue.enqueue([request('a'), request('b')]);
+    const running = at(enqueued, 0);
+    const queued = at(enqueued, 1);
+
+    expect(queue.cancel(queued.id)).toBe(true);
+    expect(queue.clearFinished()).toBe(1);
+
+    const jobs = queue.list();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.id).toBe(running.id);
+    expect(queue.clearFinished()).toBe(0);
+  });
+
   it('cancelAll cancels active jobs, optionally only for one folder', () => {
     queue.enqueue([request('a'), request('b'), request('c', { folderPath: '/videos/channel-b' })]);
 

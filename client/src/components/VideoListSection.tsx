@@ -188,9 +188,40 @@ export function VideoListSection({
   const isVideoOlderThanMonth = (video: ChannelVideo) =>
     isDownloaded(video) && isOlderThanMonth(lastUpdatedDates[video.id]);
 
-  const handleDownloadAll = () => enqueueVideos(videos.filter(isNotDownloaded), 'download');
-  const handleUpdateOld = () => enqueueVideos(videos.filter(isVideoOlderThanMonth), 'update');
-  const handleUpdateAll = () => enqueueVideos(videos.filter(isDownloaded), 'update');
+  // Bulk actions on big channels arm a confirmation first: one misclick used
+  // to enqueue hundreds of downloads.
+  const BULK_CONFIRM_THRESHOLD = 50;
+  const [armedBulk, setArmedBulk] = useState<null | 'download' | 'update' | 'update-old'>(null);
+  const armedTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (armedTimerRef.current !== null) {
+        window.clearTimeout(armedTimerRef.current);
+      }
+    };
+  }, []);
+
+  const requestBulk = (action: 'download' | 'update' | 'update-old') => {
+    const items =
+      action === 'download'
+        ? videos.filter(isNotDownloaded)
+        : action === 'update'
+          ? videos.filter(isDownloaded)
+          : videos.filter(isVideoOlderThanMonth);
+    if (items.length === 0) {
+      return;
+    }
+    if (items.length >= BULK_CONFIRM_THRESHOLD && armedBulk !== action) {
+      setArmedBulk(action);
+      if (armedTimerRef.current !== null) {
+        window.clearTimeout(armedTimerRef.current);
+      }
+      armedTimerRef.current = window.setTimeout(() => setArmedBulk(null), 5000);
+      return;
+    }
+    setArmedBulk(null);
+    enqueueVideos(items, action === 'download' ? 'download' : 'update');
+  };
 
   // Don't render anything if list doesn't exist
   if (listExists !== true) {
@@ -237,18 +268,36 @@ export function VideoListSection({
             </p>
             <div className="videos-list-buttons">
               {notDownloadedCount > 0 && (
-                <button className="download-all-button" onClick={handleDownloadAll} type="button">
-                  Pobierz wszystkie
+                <button
+                  className="download-all-button"
+                  onClick={() => requestBulk('download')}
+                  type="button"
+                >
+                  {armedBulk === 'download'
+                    ? `Na pewno? (${notDownloadedCount} filmów)`
+                    : 'Pobierz wszystkie'}
                 </button>
               )}
               {notUpdatedCount > 0 && (
-                <button className="update-old-button" onClick={handleUpdateOld} type="button">
-                  Aktualizuj stare
+                <button
+                  className="update-old-button"
+                  onClick={() => requestBulk('update-old')}
+                  type="button"
+                >
+                  {armedBulk === 'update-old'
+                    ? `Na pewno? (${notUpdatedCount} filmów)`
+                    : 'Aktualizuj stare'}
                 </button>
               )}
               {downloadedCount > 0 && (
-                <button className="update-all-button" onClick={handleUpdateAll} type="button">
-                  Aktualizuj wszystkie
+                <button
+                  className="update-all-button"
+                  onClick={() => requestBulk('update')}
+                  type="button"
+                >
+                  {armedBulk === 'update'
+                    ? `Na pewno? (${downloadedCount} filmów)`
+                    : 'Aktualizuj wszystkie'}
                 </button>
               )}
               {hasActive && (

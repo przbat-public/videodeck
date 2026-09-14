@@ -110,9 +110,21 @@ export async function mockApi(
     )
   );
   // the download queue hook polls while it thinks jobs may exist
-  await context.route('**/api/folder/queue*', (route) =>
-    route.request().method() === 'GET'
-      ? route.fulfill(json({ jobs: [] }))
-      : route.fulfill(json({ jobs: [], skipped: [] }))
-  );
+  await context.route('**/api/folder/queue*', (route) => {
+    const request = route.request();
+    const url = request.url();
+    if (request.method() === 'GET') {
+      return route.fulfill(json({ jobs: [], paused: false }));
+    }
+    if (request.method() === 'POST' && /queue\/(pause|resume)/.test(url)) {
+      return route.fulfill(json({ paused: url.includes('pause') }));
+    }
+    if (request.method() === 'DELETE' && url.endsWith('/finished')) {
+      return route.fulfill(json({ cleared: 0 }));
+    }
+    if (request.method() === 'POST') {
+      return route.fulfill(json({ jobs: [], skipped: [] }));
+    }
+    return route.fulfill(json({ cancelled: 0 }));
+  });
 }

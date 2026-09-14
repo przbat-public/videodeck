@@ -9,8 +9,11 @@ import { createFolderRouter } from './folder';
 import { extractYoutubeVideoId } from '@shared/youtube';
 import { errorHandler } from '../app';
 import {
+  ClearFinishedResponseSchema,
   EnqueueJobsResponseSchema,
   FolderListResponseSchema,
+  QueueListResponseSchema,
+  QueuePauseResponseSchema,
   StatusResponseSchema,
   VideoDownloadedResponseSchema,
 } from '@shared/schemas';
@@ -736,6 +739,40 @@ describe('folder router', () => {
       expect(at(spawnCalls, 0).process.kill).toHaveBeenCalled();
       await flush();
       expect(downloadQueue.get(running.id)?.status).toBe('cancelled');
+    });
+
+    it('pauses and resumes the queue', async () => {
+      let response = await request(app).post('/api/folder/queue/pause?paused=1');
+      expect(response.status).toBe(200);
+      expect(QueuePauseResponseSchema.parse(response.body)).toEqual({ paused: true });
+
+      const pausedList = await request(app).get('/api/folder/queue');
+      expect(QueueListResponseSchema.parse(pausedList.body).paused).toBe(true);
+
+      response = await request(app).post('/api/folder/queue/resume?paused=0');
+      expect(response.body).toEqual({ paused: false });
+
+      const bad = await request(app).post('/api/folder/queue/pause?paused=banana');
+      expect(bad.status).toBe(400);
+    });
+
+    it('clears the finished jobs the queue keeps in memory', async () => {
+      await request(app)
+        .post('/api/folder/queue')
+        .send({
+          folderPath: FOLDER,
+          type: 'download',
+          videos: [{ videoId: 'v1' }, { videoId: 'v2' }],
+        });
+      await request(app).delete('/api/folder/queue').query({ folderPath: FOLDER });
+      await flush();
+
+      const cleared = await request(app).delete('/api/folder/queue/finished');
+      expect(cleared.status).toBe(200);
+      expect(ClearFinishedResponseSchema.parse(cleared.body)).toEqual({ cleared: 2 });
+
+      const list = await request(app).get('/api/folder/queue');
+      expect(QueueListResponseSchema.parse(list.body).jobs).toHaveLength(0);
     });
   });
 

@@ -137,4 +137,17 @@ test.describe('strona statusu', () => {
     await expect(page.getByRole('button', { name: 'Edytuj konfigurację' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Przejdź do listy filmów' })).toBeVisible();
   });
+
+  test('kontrolki kolejki: pauza i wznów', async ({ page }) => {
+    await mockApi(page);
+
+    await page.goto('/');
+
+    await expect(page.getByRole('button', { name: 'Pauza kolejki' })).toBeVisible();
+    await page.getByRole('button', { name: 'Pauza kolejki' }).click();
+
+    await expect(page.getByRole('button', { name: 'Wznów kolejkę' })).toBeVisible();
+    await page.getByRole('button', { name: 'Wznów kolejkę' }).click();
+    await expect(page.getByRole('button', { name: 'Pauza kolejki' })).toBeVisible();
+  });
 });

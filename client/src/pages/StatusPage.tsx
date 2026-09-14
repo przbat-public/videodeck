@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
 import { useStatus } from '../hooks/useStatus';
 import { FolderSection } from '../components/FolderSection';
+import { QueueControls } from '../components/QueueControls';
 import { collectCategories } from '../utils/folderConfigForm';
 
 export default function StatusPage(): JSX.Element {
@@ -28,6 +29,7 @@ export default function StatusPage(): JSX.Element {
             const knownCategories = collectCategories(statusData.folderConfigs);
             return (
               <div className="status-content">
+                <QueueControls />
                 <div className="status-section">
                   <h2>Konfiguracja folderów wideo</h2>
                   <div className="folder-sections">

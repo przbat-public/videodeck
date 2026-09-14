@@ -7,6 +7,7 @@ import type {
   CancelAllResponse,
   CancelJobResponse,
   ChannelVideo,
+  ClearFinishedResponse,
   DownloadPlaylistResponse,
   DownloadVideoEvent,
   EnqueueJobsResponse,
@@ -15,6 +16,7 @@ import type {
   ListExistsResponse,
   QueueJob,
   QueueListResponse,
+  QueuePauseResponse,
   RebuildIndexResponse,
   SaveFolderConfigResponse,
   SkippedVideo,
@@ -92,7 +94,7 @@ function readFolderFilter<Res>(
 
 export type DownloadQueueLike = Pick<
   DownloadQueue,
-  'enqueue' | 'list' | 'get' | 'cancel' | 'cancelAll' | 'on' | 'off'
+  'enqueue' | 'list' | 'get' | 'cancel' | 'cancelAll' | 'on' | 'off' | 'setPaused' | 'clearFinished'
 >;
 
 /**
@@ -101,6 +103,10 @@ export type DownloadQueueLike = Pick<
  * singleton. Each call closes over its own queue instance.
  */
 export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): express.Router {
+  // Paused state is mirrored here so listJobs can report it (the injected
+  // queue only exposes setPaused)
+  let queueIsPaused = false;
+
   const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, res) => {
     const videosFolderPaths = getVideosFolderPaths();
     // Configs live on an external disk: 56 folders read one after another
@@ -400,7 +406,22 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
   const listJobs: RouteHandler<NoParams, QueueListResponse> = (req, res) => {
     const folderPath = readFolderFilter(req.query.folderPath, res);
     if (folderPath === false) return;
-    res.json({ jobs: queue.list(folderPath) });
+    res.json({ jobs: queue.list(folderPath), paused: queueIsPaused });
+  };
+
+  const setQueuePaused: RouteHandler<NoParams, QueuePauseResponse> = (req, res) => {
+    const value = readString(req.query.paused);
+    if (value !== '1' && value !== '0' && value !== 'true' && value !== 'false') {
+      res.status(400).json({ error: 'paused must be 1 or 0' });
+      return;
+    }
+    queueIsPaused = value === '1' || value === 'true';
+    queue.setPaused(queueIsPaused);
+    res.json({ paused: queueIsPaused });
+  };
+
+  const clearFinishedJobs: RouteHandler<NoParams, ClearFinishedResponse> = (_req, res) => {
+    res.json({ cleared: queue.clearFinished() });
   };
 
   const cancelAllJobs: RouteHandler<NoParams, CancelAllResponse> = (req, res) => {
@@ -537,6 +558,10 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
   router.post('/folder/queue', enqueueJobs);
   router.get('/folder/queue', listJobs);
   router.delete('/folder/queue', cancelAllJobs);
+  router.post('/folder/queue/pause', setQueuePaused);
+  router.post('/folder/queue/resume', setQueuePaused);
+  // registered before /:jobId so "finished" is not read as a job id
+  router.delete('/folder/queue/finished', clearFinishedJobs);
   router.delete('/folder/queue/:jobId', cancelJob);
   router.post('/folder/download-video', downloadVideo);
 

@@ -65,7 +65,7 @@ function installFetch(handlers: {
     async (url: string, init?: RequestInit): Promise<MockResponse> => {
       if (url === LIST_URL) return json(handlers.list?.() ?? listResponse);
       if (url === QUEUE_URL && (!init || !init.method || init.method === 'GET')) {
-        return json(handlers.queue?.() ?? { jobs: [] });
+        return json(handlers.queue?.() ?? { jobs: [], paused: false });
       }
       if (url === '/api/folder/queue' && init?.method === 'POST') {
         const body = JSON.parse(String(init.body));
@@ -203,6 +203,44 @@ describe('VideoListSection', () => {
     });
   });
 
+  it('requires a confirming click before bulk actions on a large channel', async () => {
+    const many = Array.from({ length: 60 }, (_, i) => ({
+      id: `v${i}`,
+      title: `Video ${i}`,
+      url: `https://www.youtube.com/watch?v=v${i}`,
+    }));
+    const statuses = Object.fromEntries(many.map((v) => [v.id, true]));
+    const fetchMock = installFetch({
+      list: () => ({ videos: many, downloadStatuses: statuses, lastUpdatedDates: {} }),
+      enqueue: () => ({
+        jobs: [makeJob({ status: 'queued' })],
+        skipped: [],
+      }),
+    });
+    const ref = { current: null as null | { loadVideos: () => Promise<void> } };
+    render(
+      <MemoryRouter>
+        <VideoListSection ref={ref} folderPath={FOLDER} listExists={true} />
+      </MemoryRouter>
+    );
+    await act(async () => {
+      await ref.current!.loadVideos();
+    });
+    await screen.findByText(/Liczba filmów: 60/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj wszystkie' }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Na pewno? (60 filmów)' })
+    ).toBeInTheDocument();
+    expect(postCalls(fetchMock)).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Na pewno? (60 filmów)' }));
+
+    await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
+    expect(postCalls(fetchMock)[0]?.videos).toHaveLength(60);
+  });
+
   it('a single item button enqueues just that video', async () => {
     const fetchMock = installFetch({});
     await renderLoaded();
@@ -230,7 +268,7 @@ describe('VideoListSection', () => {
   it('shows a toast when the server rejects the enqueue', async () => {
     const fetchMock = installFetch({});
     fetchMock.mockImplementationOnce(async (url: string) =>
-      json(url === LIST_URL ? listResponse : { jobs: [] })
+      json(url === LIST_URL ? listResponse : { jobs: [], paused: false })
     );
     await renderLoaded();
     fetchMock.mockImplementationOnce(async () =>
@@ -247,7 +285,10 @@ describe('VideoListSection', () => {
   it('shows queue state, marks finished downloads locally and re-syncs when the queue drains', async () => {
     let queueState: QueueJob[] = [makeJob({ status: 'running', progress: 10 })];
     let listState: ListResponse = listResponse;
-    const fetchMock = installFetch({ queue: () => ({ jobs: queueState }), list: () => listState });
+    const fetchMock = installFetch({
+      queue: () => ({ jobs: queueState, paused: false }),
+      list: () => listState,
+    });
     await renderLoaded();
 
     expect(screen.getByText(/kolejka: 1 w toku, 0 czeka/)).toBeInTheDocument();
@@ -276,7 +317,9 @@ describe('VideoListSection', () => {
   });
 
   it('"Anuluj wszystko" cancels the folder queue', async () => {
-    const fetchMock = installFetch({ queue: () => ({ jobs: [makeJob({ status: 'queued' })] }) });
+    const fetchMock = installFetch({
+      queue: () => ({ jobs: [makeJob({ status: 'queued' })], paused: false }),
+    });
     await renderLoaded();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Anuluj wszystko' }));

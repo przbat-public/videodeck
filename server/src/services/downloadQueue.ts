@@ -114,6 +114,8 @@ export class DownloadQueue extends EventEmitter {
   private readonly attempts = new Map<string, number>();
   /** Pending retry timers, keyed by job id (cleared on cancel) */
   private readonly retryTimers = new Map<string, NodeJS.Timeout>();
+  /** While paused, queued jobs wait; running ones finish (cancel still works) */
+  private paused = false;
 
   constructor(options: DownloadQueueOptions = {}) {
     super();
@@ -279,11 +281,37 @@ export class DownloadQueue extends EventEmitter {
 
   /** Start every queued job that may run, oldest first; a blocked job does not hold up the ones behind it */
   private pump(): void {
+    if (this.paused) {
+      return;
+    }
     for (const job of this.jobs.values()) {
       if (job.status === 'queued' && this.canStart(job)) {
         this.start(job);
       }
     }
+  }
+
+  /** Pause/resume: running jobs finish, queued ones wait while paused */
+  setPaused(paused: boolean): void {
+    if (this.paused === paused) {
+      return;
+    }
+    this.paused = paused;
+    if (!paused) {
+      this.pump();
+    }
+  }
+
+  /** Forget finished (done/error/cancelled) jobs; returns how many were dropped */
+  clearFinished(): number {
+    let cleared = 0;
+    for (const [id, job] of this.jobs) {
+      if (!isActive(job)) {
+        this.jobs.delete(id);
+        cleared += 1;
+      }
+    }
+    return cleared;
   }
 
   private start(job: QueueJob): void {
