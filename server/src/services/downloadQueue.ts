@@ -5,6 +5,7 @@ import type { DownloadOptions, JobStatus, JobType, QueueJob } from '@shared/api'
 import { refreshIndex } from './folderIndex';
 import { indexVideosFromDisk } from './videoScanner';
 import { stripUndefined } from '../utils/objectUtils';
+import { removePartialDownloads } from '../utils/fsUtils';
 import { extractYtDlpProgress } from '@shared/progress';
 import { buildYtDlpArgs } from './ytdlp';
 import { logger } from '../utils/logger';
@@ -316,7 +317,11 @@ export class DownloadQueue extends EventEmitter {
     child.on('close', (code) => {
       this.processes.delete(job.id);
       if (job.status !== 'running') {
-        // already cancelled or failed via 'error'
+        // Already cancelled or failed via 'error'. A cancelled download was
+        // killed mid-write: sweep the temporary files yt-dlp left behind.
+        if (job.status === 'cancelled' && job.type === 'download') {
+          void removePartialDownloads(job.folderPath);
+        }
         this.pump();
         return;
       }

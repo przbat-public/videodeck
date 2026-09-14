@@ -5,6 +5,7 @@ import { buildFormatSelector, buildYtDlpArgs, escapeOutputTemplate } from './ytd
 import type { EnqueueRequest, SpawnedProcess } from './downloadQueue';
 import { refreshIndex } from './folderIndex';
 import { indexVideosFromDisk } from './videoScanner';
+import { removePartialDownloads } from '../utils/fsUtils';
 import { at } from '../test-utils';
 
 jest.mock('./folderIndex', () => ({
@@ -14,10 +15,17 @@ jest.mock('./folderIndex', () => ({
 jest.mock('./videoScanner', () => ({
   indexVideosFromDisk: jest.fn(),
 }));
+jest.mock('../utils/fsUtils', () => ({
+  ...jest.requireActual('../utils/fsUtils'),
+  removePartialDownloads: jest.fn(),
+}));
 
 const mockedRefreshIndex = refreshIndex as jest.MockedFunction<typeof refreshIndex>;
 const mockedIndexVideosFromDisk = indexVideosFromDisk as jest.MockedFunction<
   typeof indexVideosFromDisk
+>;
+const mockedRemovePartialDownloads = removePartialDownloads as jest.MockedFunction<
+  typeof removePartialDownloads
 >;
 
 class FakeProcess extends EventEmitter implements SpawnedProcess {
@@ -722,9 +730,10 @@ describe('DownloadQueue', () => {
     expect(queue.cancel(queued.id)).toBe(true);
     expect(queue.get(queued.id)?.status).toBe('cancelled');
     expect(spawn.calls).toHaveLength(1);
+    expect(mockedRemovePartialDownloads).not.toHaveBeenCalled();
   });
 
-  it('kills a running job on cancel and moves on to the next one', async () => {
+  it('kills a running job on cancel, sweeps partial files and moves on to the next one', async () => {
     const running = at(queue.enqueue([request('a'), request('b')]), 0);
 
     expect(queue.cancel(running.id)).toBe(true);
@@ -735,6 +744,7 @@ describe('DownloadQueue', () => {
     expect(queue.get(running.id)?.status).toBe('cancelled');
     expect(spawn.calls).toHaveLength(2);
     expect(afterJob).not.toHaveBeenCalled();
+    expect(mockedRemovePartialDownloads).toHaveBeenCalledWith('/videos/channel-a');
   });
 
   it('returns false when cancelling an unknown or finished job', async () => {
