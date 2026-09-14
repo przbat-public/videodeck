@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ApiError, FolderConfig } from '@shared/api';
 import { Button } from './ui/Button';
 import { ErrorMessage } from './ui/ErrorMessage';
@@ -18,12 +19,13 @@ export function PlaylistDownloadSection({
   onPlaylistDownloaded,
   onLoadVideosList,
 }: PlaylistDownloadSectionProps) {
+  const { t } = useTranslation();
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const handleDownloadPlaylist = async () => {
     if (!config?.channelUrl) {
-      setDownloadError('Brak skonfigurowanego adresu kanału YouTube');
+      setDownloadError(t('playlist.noChannelUrl'));
       return;
     }
 
@@ -62,20 +64,17 @@ export function PlaylistDownloadSection({
 
   return (
     <div className="playlist-download-section">
-      <h4 className="playlist-section-title">Pobieranie listy filmów</h4>
-      {downloadError && <ErrorMessage compact>Błąd: {downloadError}</ErrorMessage>}
+      <h4 className="playlist-section-title">{t('playlist.title')}</h4>
+      {downloadError && (
+        <ErrorMessage compact>{t('app.error', { message: downloadError })}</ErrorMessage>
+      )}
       <div className="playlist-info">
         {listExists === null ? (
-          <p>Sprawdzanie statusu pliku list.json...</p>
+          <p>{t('playlist.checking')}</p>
         ) : listExists ? (
-          <p>
-            Plik list.json już istnieje. Kliknij przycisk poniżej, aby zaktualizować listę filmów.
-          </p>
+          <p>{t('playlist.exists')}</p>
         ) : (
-          <p>
-            Plik list.json nie istnieje. Kliknij przycisk poniżej, aby utworzyć listę filmów z
-            kanału.
-          </p>
+          <p>{t('playlist.missing')}</p>
         )}
         <div className="playlist-buttons">
           <Button
@@ -84,13 +83,13 @@ export function PlaylistDownloadSection({
             disabled={isDownloading}
           >
             {isDownloading
-              ? 'Pobieranie...'
+              ? t('playlist.downloading')
               : listExists
-                ? 'Aktualizuj playlistę'
-                : 'Pobierz playlistę'}
+                ? t('playlist.update')
+                : t('playlist.download')}
           </Button>
           {listExists && onLoadVideosList && (
-            <Button onClick={onLoadVideosList}>Pobierz listę filmów</Button>
+            <Button onClick={onLoadVideosList}>{t('playlist.loadVideos')}</Button>
           )}
         </div>
       </div>

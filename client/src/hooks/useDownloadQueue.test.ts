@@ -59,7 +59,7 @@ describe('useDownloadQueue', () => {
 
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
 
-    await waitFor(() => expect(result.current.error).toBe('Failed to load download queue'));
+    await waitFor(() => expect(result.current.error).toBe('Nie udało się wczytać kolejki'));
   });
 
   it('enqueues videos and refreshes the list', async () => {

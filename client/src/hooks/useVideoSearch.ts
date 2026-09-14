@@ -1,5 +1,6 @@
 import { useReducer, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
+import i18n from '../i18n';
 import type { VideoListItem } from '@shared/api';
 import { SearchResponseSchema } from '@shared/schemas';
 import type { SearchState } from '../utils/searchUrlState';
@@ -87,7 +88,7 @@ export function useVideoSearch(): UseVideoSearchResult {
           signal: controller.signal,
         });
         if (!response.ok) {
-          throw new Error('Failed to search videos');
+          throw new Error(i18n.t('errors.search'));
         }
         const data = SearchResponseSchema.parse(await response.json());
         if (!isCurrent()) {
@@ -106,14 +107,14 @@ export function useVideoSearch(): UseVideoSearchResult {
         if (controller.signal.aborted || !isCurrent()) {
           return;
         }
-        const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+        const errorMessage = err instanceof Error ? err.message : i18n.t('errors.occurred');
         dispatch({
           type: VideoSearchActionType.SEARCH_ERROR,
           payload: errorMessage,
         });
 
         // One toast slot: rapid typing must not stack a toast per keystroke
-        toast.error(`Nie udało się wyszukać filmów: ${errorMessage}`, {
+        toast.error(i18n.t('toast.searchFailed', { message: errorMessage }), {
           id: 'video-search-error',
         });
       } finally {

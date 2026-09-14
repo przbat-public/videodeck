@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
+import i18n from '../i18n';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -29,10 +30,10 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
     if (this.state.error !== null) {
       return (
         <div className="error-boundary">
-          <h1>Coś poszło nie tak</h1>
+          <h1>{i18n.t('app.unexpectedError')}</h1>
           <p>{this.state.error.message}</p>
           <button type="button" onClick={() => window.location.reload()}>
-            Odśwież stronę
+            {i18n.t('app.refreshPage')}
           </button>
         </div>
       );

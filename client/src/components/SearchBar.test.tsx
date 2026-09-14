@@ -3,7 +3,7 @@ import type { Mock } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { act, useState } from 'react';
 import type { SearchState } from '../utils/searchUrlState';
-import { DEFAULT_SEARCH_STATE, SORT_OPTIONS } from '../utils/searchUrlState';
+import { DEFAULT_SEARCH_STATE } from '../utils/searchUrlState';
 import SearchBar from './SearchBar';
 
 const CATEGORIES = ['fpv', 'lego', 'psychology'];
@@ -126,7 +126,15 @@ describe('SearchBar', () => {
 
       openSelect(sortSelect());
 
-      expect(optionLabels()).toEqual(SORT_OPTIONS.map((o) => o.label));
+      expect(optionLabels()).toEqual([
+        'Trafność',
+        'Najnowsze',
+        'Najstarsze',
+        'Najwięcej wyświetleń',
+        'Najmniej wyświetleń',
+        'Najwięcej polubień',
+        'Najmniej polubień',
+      ]);
     });
 
     it('hides the category filter when there is nothing to pick from', () => {

@@ -1,4 +1,5 @@
 import { useEffect, useReducer } from 'react';
+import i18n from '../i18n';
 import { VideoDetailsResponseSchema } from '@shared/schemas';
 import type { VideoDetailState } from '../reducers/videoDetailReducer';
 import {
@@ -18,7 +19,7 @@ export function useVideoDetail(baseName: string | undefined): UseVideoDetailResu
     if (!baseName) {
       dispatch({
         type: VideoDetailActionType.FETCH_ERROR,
-        payload: 'Nieprawidłowy identyfikator filmu',
+        payload: i18n.t('video.invalidId'),
       });
       return;
     }
@@ -30,7 +31,7 @@ export function useVideoDetail(baseName: string | undefined): UseVideoDetailResu
         const detailsResponse = await fetch(`/api/videos/${encodeURIComponent(baseName)}/details`, {
           signal: controller.signal,
         });
-        if (!detailsResponse.ok) throw new Error('Failed to load video details');
+        if (!detailsResponse.ok) throw new Error(i18n.t('errors.loadDetails'));
         const detailsData = VideoDetailsResponseSchema.parse(await detailsResponse.json());
         dispatch({
           type: VideoDetailActionType.FETCH_DETAILS_SUCCESS,
@@ -42,7 +43,7 @@ export function useVideoDetail(baseName: string | undefined): UseVideoDetailResu
         }
         dispatch({
           type: VideoDetailActionType.FETCH_ERROR,
-          payload: err instanceof Error ? err.message : 'An error occurred',
+          payload: err instanceof Error ? err.message : i18n.t('errors.occurred'),
         });
       }
     };

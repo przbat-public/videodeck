@@ -248,7 +248,7 @@ describe('useVideoSearch', () => {
 
     await act(() => result.current.search(state()));
 
-    expect(result.current.error).toBe('Failed to search videos');
+    expect(result.current.error).toBe('Nie udało się wyszukać filmów');
   });
 
   it('recovers from an error on the next successful search', async () => {

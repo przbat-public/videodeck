@@ -1,4 +1,5 @@
 import type { JSX } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { VideoListItem } from '@shared/api';
 import VideoCard from './VideoCard';
 
@@ -8,10 +9,12 @@ interface VideoListProps {
 }
 
 export default function VideoList({ videos, searchQuery }: VideoListProps): JSX.Element {
+  const { t } = useTranslation();
+
   if (videos.length === 0) {
     return (
       <div className="video-list-empty">
-        <p>Brak filmów. Spróbuj innego zapytania.</p>
+        <p>{t('search.noResults')}</p>
       </div>
     );
   }

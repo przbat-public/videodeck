@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { JSX } from 'react';
+import { useTranslation } from 'react-i18next';
 import CommentComponent from './CommentComponent';
 import { Button } from './ui/Button';
 import { ErrorMessage } from './ui/ErrorMessage';
@@ -21,6 +22,7 @@ export default function VideoComments({
   comments,
   commentCount,
 }: VideoCommentsProps): JSX.Element | null {
+  const { t } = useTranslation();
   const [items, setItems] = useState(comments);
   const [previousComments, setPreviousComments] = useState(comments);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -62,7 +64,11 @@ export default function VideoComments({
 
   return (
     <div className="video-comments-section">
-      <h2>Komentarze {commentCount !== undefined ? `(${commentCount})` : ''}</h2>
+      <h2>
+        {commentCount !== undefined
+          ? t('video.commentsWithCount', { count: commentCount })
+          : t('video.comments')}
+      </h2>
 
       <div className="comments-list">
         {items
@@ -75,13 +81,11 @@ export default function VideoComments({
       {hasMore && (
         <Button onClick={() => void loadMore()} disabled={loadingMore}>
           {loadingMore
-            ? 'Ładowanie...'
-            : `Pokaż więcej komentarzy (${items.length}/${commentCount})`}
+            ? t('app.loading')
+            : t('video.showMoreComments', { shown: items.length, total: commentCount })}
         </Button>
       )}
-      {loadError && (
-        <ErrorMessage compact>Nie udało się załadować kolejnych komentarzy.</ErrorMessage>
-      )}
+      {loadError && <ErrorMessage compact>{t('video.commentsError')}</ErrorMessage>}
     </div>
   );
 }

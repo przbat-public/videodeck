@@ -113,7 +113,7 @@ describe('useVideoDetail', () => {
       expect(result.current.state.loading).toBe(false);
     });
 
-    expect(result.current.state.error).toBe('Failed to load video details');
+    expect(result.current.state.error).toBe('Nie udało się wczytać szczegółów filmu');
     expect(result.current.state.details).toBeNull();
   });
 
@@ -126,7 +126,7 @@ describe('useVideoDetail', () => {
       expect(result.current.state.loading).toBe(false);
     });
 
-    expect(result.current.state.error).toBe('An error occurred');
+    expect(result.current.state.error).toBe('Wystąpił błąd');
     expect(result.current.state.details).toBeNull();
   });
 

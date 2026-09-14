@@ -1,6 +1,7 @@
 import { useReducer, useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 
+import i18n from '../i18n';
 import type { ReindexStatus } from '@shared/api';
 import { ReindexStatusSchema } from '@shared/schemas';
 import {
@@ -36,16 +37,26 @@ function folderName(folderPath?: string): string {
 
 /** One-line progress text for the loading toast */
 export function formatReindexProgress(status: ReindexStatus): string {
-  const folder = folderName(status.currentFolder);
   const folderPart =
-    status.foldersTotal > 0 ? `folder ${status.foldersDone + 1}/${status.foldersTotal}` : '';
-  const filesPart = status.filesTotal > 0 ? `${status.filesDone}/${status.filesTotal} plików` : '';
+    status.foldersTotal > 0
+      ? i18n.t('reindex.progressFolder', {
+          folder: status.foldersDone + 1,
+          total: status.foldersTotal,
+        })
+      : '';
+  const filesPart =
+    status.filesTotal > 0
+      ? i18n.t('reindex.progressFiles', {
+          filesDone: status.filesDone,
+          filesTotal: status.filesTotal,
+        })
+      : '';
   const parts = [
-    'Indeksowanie',
+    i18n.t('reindex.progressLabel'),
     folderPart,
-    folder,
+    folderName(status.currentFolder),
     filesPart,
-    `${status.indexed} zindeksowanych`,
+    i18n.t('reindex.progressIndexed', { count: status.indexed }),
   ].filter(Boolean);
   return parts.join(' · ');
 }
@@ -54,15 +65,17 @@ export function formatReindexProgress(status: ReindexStatus): string {
 export function formatReindexResult(status: ReindexStatus): string {
   // A skipped run (onlyMissing with every folder cached) scans nothing
   if (status.foldersTotal === 0 && status.indexed === 0) {
-    return 'Wszystkie foldery mają już indeks w Elasticsearch — nic do zrobienia';
+    return i18n.t('reindex.nothingToDo');
   }
-  const base = `Indeksowanie zakończone: ${status.indexed} filmów zindeksowanych`;
-  const skipped = status.skipped > 0 ? `, ${status.skipped} pominiętych` : '';
+  const base = i18n.t(status.skipped > 0 ? 'reindex.finishedWithSkipped' : 'reindex.finished', {
+    indexed: status.indexed,
+    skipped: status.skipped,
+  });
   const errors =
     status.errors.length > 0
-      ? `, ${status.errors.length} ${status.errors.length === 1 ? 'błąd folderu' : 'błędów folderów'}`
+      ? `, ${i18n.t('reindex.folderError', { count: status.errors.length })}`
       : '';
-  return `${base}${skipped}${errors}`;
+  return `${base}${errors}`;
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -70,7 +83,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 async function fetchStatus(signal: AbortSignal): Promise<ReindexStatus> {
   const response = await fetch('/api/videos/refreshCache/status', { signal });
   if (!response.ok) {
-    throw new Error(`Nie udało się odczytać statusu indeksowania (HTTP ${response.status})`);
+    throw new Error(i18n.t('reindex.statusFailed', { status: response.status }));
   }
   return ReindexStatusSchema.parse(await response.json());
 }
@@ -96,7 +109,7 @@ export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheR
       abortRef.current = controller;
 
       dispatch({ type: CacheRefreshActionType.REFRESH_START });
-      const loadingToastId = toast.loading('Rozpoczynanie odświeżania indeksu...');
+      const loadingToastId = toast.loading(i18n.t('reindex.starting'));
 
       try {
         const url = options?.onlyMissing
@@ -110,7 +123,7 @@ export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheR
         }
 
         if (response.status === 409) {
-          toast.loading('Indeksowanie już trwa — śledzę postęp...', { id: loadingToastId });
+          toast.loading(i18n.t('reindex.alreadyRunning'), { id: loadingToastId });
         }
 
         // Follow the background job until the server says it is done
@@ -141,8 +154,7 @@ export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheR
         if (controller.signal.aborted) {
           return; // unmounted or superseded — nothing to report
         }
-        const errorMessage =
-          err instanceof Error ? err.message : 'Nie udało się rozpocząć odświeżania indeksu';
+        const errorMessage = err instanceof Error ? err.message : i18n.t('reindex.startFailed');
         dispatch({
           type: CacheRefreshActionType.REFRESH_ERROR,
           payload: errorMessage,

@@ -1,0 +1,36 @@
+import { describe, it, expect, afterEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { LanguageSwitcher } from './LanguageSwitcher';
+import i18n from '../i18n';
+
+describe('LanguageSwitcher', () => {
+  afterEach(async () => {
+    localStorage.clear();
+    await i18n.changeLanguage('pl');
+  });
+
+  it('marks Polish as active by default and switches to English on click', () => {
+    render(<LanguageSwitcher />);
+
+    const pl = screen.getByRole('button', { name: 'PL' });
+    const en = screen.getByRole('button', { name: 'EN' });
+    expect(pl).toHaveAttribute('aria-pressed', 'true');
+    expect(en).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(en);
+
+    expect(i18n.resolvedLanguage).toBe('en');
+    expect(en).toHaveAttribute('aria-pressed', 'true');
+    expect(pl).toHaveAttribute('aria-pressed', 'false');
+    expect(localStorage.getItem('i18nextLng')).toBe('en');
+  });
+
+  it('keeps the choice in localStorage across a remount', () => {
+    const { unmount } = render(<LanguageSwitcher />);
+    fireEvent.click(screen.getByRole('button', { name: 'EN' }));
+    unmount();
+
+    render(<LanguageSwitcher />);
+    expect(screen.getByRole('button', { name: 'EN' })).toHaveAttribute('aria-pressed', 'true');
+  });
+});

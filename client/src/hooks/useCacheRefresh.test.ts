@@ -101,7 +101,7 @@ describe('formatReindexResult', () => {
 
   it('mentions skipped files and folder errors', () => {
     expect(formatReindexResult(finished({ skipped: 2, errors: ['a', 'b'] }))).toBe(
-      'Indeksowanie zakończone: 20 filmów zindeksowanych, 2 pominiętych, 2 błędów folderów'
+      'Indeksowanie zakończone: 20 filmów zindeksowanych, 2 pominiętych, 2 błędy folderów'
     );
     expect(formatReindexResult(finished({ errors: ['a'] }))).toBe(
       'Indeksowanie zakończone: 20 filmów zindeksowanych, 1 błąd folderu'

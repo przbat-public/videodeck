@@ -31,6 +31,21 @@ test.describe('wyszukiwarka', () => {
     expect(new URL(page.url()).search).toContain('q=motor');
   });
 
+  test('przełącznik języka zmienia interfejs na angielski i z powrotem', async ({ page }) => {
+    await mockApi(page);
+
+    await page.goto('/videos');
+    await expect(page.getByPlaceholder('Szukaj filmów po opisie...')).toBeVisible();
+
+    await page.getByRole('button', { name: 'EN' }).click();
+    await expect(page.getByPlaceholder('Search videos by description...')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Refresh index' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'PL' }).click();
+    await expect(page.getByPlaceholder('Szukaj filmów po opisie...')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Odśwież indeks' })).toBeVisible();
+  });
+
   test('select sortowania otwiera listę i zmienia sortowanie', async ({ page }) => {
     const sorts: (string | null)[] = [];
     await mockApi(page, {

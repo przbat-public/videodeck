@@ -2,6 +2,7 @@ import { RouterProvider, createBrowserRouter } from 'react-router-dom';
 import type { DefaultToastOptions } from 'react-hot-toast';
 import { Toaster } from 'react-hot-toast';
 import ErrorBoundary from './components/ErrorBoundary';
+import { LanguageSwitcher } from './components/LanguageSwitcher';
 import StatusPage from './pages/StatusPage';
 import VideoListPage from './pages/VideoListPage';
 import VideoDetailPage from './pages/VideoDetailPage';
@@ -39,6 +40,7 @@ function App() {
   return (
     <div className="app">
       <Toaster position="bottom-right" toastOptions={toastOptions} />
+      <LanguageSwitcher />
       <ErrorBoundary>
         <RouterProvider router={router} />
       </ErrorBoundary>

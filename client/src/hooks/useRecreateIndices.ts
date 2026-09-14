@@ -1,6 +1,6 @@
 import { useReducer, useCallback } from 'react';
-import type { AcceptedResponse } from '@shared/api';
 import toast from 'react-hot-toast';
+import i18n from '../i18n';
 
 import {
   recreateIndicesReducer,
@@ -18,7 +18,7 @@ export function useRecreateIndices(): UseRecreateIndicesResult {
 
   const recreateIndices = useCallback(async (): Promise<void> => {
     dispatch({ type: RecreateIndicesActionType.RECREATE_START });
-    const loadingToastId = toast.loading('Starting indices recreation process...');
+    const loadingToastId = toast.loading(i18n.t('toast.recreateStarting'));
 
     try {
       const response = await fetch('/api/videos/recreateIndices', {
@@ -30,15 +30,12 @@ export function useRecreateIndices(): UseRecreateIndicesResult {
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
 
-      const data: AcceptedResponse = await response.json();
+      await response.json();
       dispatch({ type: RecreateIndicesActionType.RECREATE_SUCCESS, payload: '' });
 
-      toast.success(data.message || 'Indices recreation process started successfully!', {
-        id: loadingToastId,
-      });
+      toast.success(i18n.t('toast.recreateDone'), { id: loadingToastId });
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : 'Failed to start indices recreation';
+      const errorMessage = err instanceof Error ? err.message : i18n.t('errors.recreateStart');
       dispatch({
         type: RecreateIndicesActionType.RECREATE_ERROR,
         payload: errorMessage,

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { DownloadOptions, FolderConfig, ListExistsResponse } from '@shared/api';
 import { FolderConfigEditor } from './FolderConfigEditor';
 import { PlaylistDownloadSection } from './PlaylistDownloadSection';
@@ -28,6 +29,7 @@ export function FolderSection({
   onConfigUpdate,
 }: FolderSectionProps) {
   const [listExists, setListExists] = useState<boolean | null>(initialListExists);
+  const { t } = useTranslation();
   const videoListSectionRef = useRef<VideoListSectionHandle>(null);
 
   // The config prop is the single source of truth (StatusPage holds it); the
@@ -71,13 +73,9 @@ export function FolderSection({
         <h3 className="folder-path">{folderPath}</h3>
         <span
           className={`folder-index-badge ${indexed ? 'indexed' : 'missing'}`}
-          title={
-            indexed
-              ? 'Ten folder ma indeks wyszukiwania w Elasticsearch'
-              : 'Brak indeksu w Elasticsearch — uruchom „Odśwież indeks" z opcją „tylko brakujące"'
-          }
+          title={indexed ? t('status.indexReadyTitle') : t('status.indexMissingTitle')}
         >
-          {indexed ? 'indeks ES: gotowy' : 'indeks ES: brak'}
+          {indexed ? t('status.indexReady') : t('status.indexMissing')}
         </span>
       </div>
 

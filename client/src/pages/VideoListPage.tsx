@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { JSX } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useVideoSearch } from '../hooks/useVideoSearch';
 import { useCacheRefresh } from '../hooks/useCacheRefresh';
 import { useCategories } from '../hooks/useCategories';
@@ -12,19 +13,6 @@ import { Button } from '../components/ui/Button';
 import { Checkbox } from '../components/ui/Checkbox';
 import { Loading } from '../components/ui/Loading';
 
-/** Polish plural: 1 film, 2 filmy, 5 filmów */
-function pluralVideos(count: number): string {
-  if (count === 1) {
-    return 'film';
-  }
-  const lastDigit = count % 10;
-  const lastTwo = count % 100;
-  if (lastDigit >= 2 && lastDigit <= 4 && !(lastTwo >= 12 && lastTwo <= 14)) {
-    return 'filmy';
-  }
-  return 'filmów';
-}
-
 export default function VideoListPage(): JSX.Element {
   const { searchState, setSearchState } = useSearchUrlState();
   const { query, sort, category, channel, dateFrom, dateTo } = searchState;
@@ -34,6 +22,7 @@ export default function VideoListPage(): JSX.Element {
   const { channels } = useChannelNames();
   const { loading: recreateIndicesLoading, recreateIndices } = useRecreateIndices();
   const [onlyMissing, setOnlyMissing] = useState(false);
+  const { t } = useTranslation();
 
   // The URL drives the results: a deep link, a reload and a change made in
   // the search bar all arrive here the same way.
@@ -66,32 +55,32 @@ export default function VideoListPage(): JSX.Element {
           <Button
             onClick={handleRecreateIndices}
             disabled={recreateIndicesLoading}
-            title="Odbuduj wszystkie indeksy Elasticsearch"
+            title={t('reindex.recreateTitle')}
           >
-            {recreateIndicesLoading ? 'Odbudowywanie...' : 'Odbuduj indeksy'}
+            {recreateIndicesLoading ? t('reindex.recreating') : t('reindex.recreate')}
           </Button>
           <Button
             onClick={handleRefreshCache}
             disabled={refreshLoading}
-            title="Odśwież indeks filmów z dysku"
+            title={t('reindex.startTitle')}
           >
-            {refreshLoading ? 'Odświeżanie...' : 'Odśwież indeks'}
+            {refreshLoading ? t('reindex.refreshing') : t('reindex.start')}
           </Button>
           <Checkbox
             checked={onlyMissing}
             onChange={setOnlyMissing}
-            label="tylko brakujące (użyj istniejącego indeksu)"
-            title="Pomiń foldery, które mają już indeks w Elasticsearch (np. cache poprzednio podpiętego dysku)"
+            label={t('reindex.onlyMissing')}
+            title={t('reindex.onlyMissingTitle')}
           />
-          <Button onClick={handleReload} disabled={videoLoading} title="Odśwież listę filmów">
-            {videoLoading ? 'Ładowanie...' : 'Odśwież'}
+          <Button onClick={handleReload} disabled={videoLoading} title={t('reindex.reloadTitle')}>
+            {videoLoading ? t('app.loading') : t('reindex.reload')}
           </Button>
         </div>
         <div className="toolbar-right">
           <span className="video-count">
             {videoLoading
-              ? 'Ładowanie...'
-              : `${videos.length} ${pluralVideos(videos.length)}${totalCount > 0 ? ` / ${totalCount} łącznie` : ''}`}
+              ? t('app.loading')
+              : `${t('videoCount', { count: videos.length })}${totalCount > 0 ? ` / ${t('search.total', { count: totalCount })}` : ''}`}
           </span>
         </div>
       </div>
@@ -109,14 +98,14 @@ export default function VideoListPage(): JSX.Element {
       />
 
       {videoLoading && videos.length === 0 ? (
-        <Loading message="Ładowanie filmów..." />
+        <Loading message={t('search.loading')} />
       ) : (
         <>
           <VideoList videos={videos} searchQuery={query} />
           {hasMore && (
             <div className="load-more">
               <Button onClick={handleLoadMore} disabled={videoLoading}>
-                {videoLoading ? 'Ładowanie...' : 'Pokaż więcej'}
+                {videoLoading ? t('app.loading') : t('search.loadMore')}
               </Button>
             </div>
           )}

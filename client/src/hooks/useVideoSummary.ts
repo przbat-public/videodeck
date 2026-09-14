@@ -1,4 +1,5 @@
 import { useEffect, useReducer } from 'react';
+import i18n from '../i18n';
 import { VideoSummaryResponseSchema } from '@shared/schemas';
 import toast from 'react-hot-toast';
 import type { VideoSummaryState } from '../reducers/videoSummaryReducer';
@@ -25,7 +26,7 @@ export function useVideoSummary(
 
     const controller = new AbortController();
     const fetchSummary = async () => {
-      const loadingToastId = toast.loading('Generowanie streszczenia...');
+      const loadingToastId = toast.loading(i18n.t('toast.summaryStarting'));
 
       try {
         dispatch({ type: VideoSummaryActionType.FETCH_SUMMARY_START });
@@ -41,18 +42,18 @@ export function useVideoSummary(
           payload: summaryData.summary,
         });
 
-        toast.success('Streszczenie gotowe', { id: loadingToastId });
+        toast.success(i18n.t('toast.summaryDone'), { id: loadingToastId });
       } catch (err) {
         if (controller.signal.aborted) {
           return; // unmounted / superseded — nothing to report
         }
-        const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+        const errorMessage = err instanceof Error ? err.message : i18n.t('errors.occurred');
         dispatch({
           type: VideoSummaryActionType.FETCH_SUMMARY_ERROR,
           payload: errorMessage,
         });
 
-        toast.error('Nie udało się wygenerować streszczenia', { id: loadingToastId });
+        toast.error(i18n.t('toast.summaryFailed'), { id: loadingToastId });
       }
     };
 

@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef } from 'react';
 import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
+import i18n from '../i18n';
 import type { ChannelVideo, JobType, QueueJob } from '@shared/api';
 
 /** A list.json entry plus the local "last updated" date from the folder index */
@@ -41,11 +42,13 @@ const describeJob = (job: QueueJob): string => {
         ? `${verb}: ${Math.round(job.progress)}%`
         : `${verb}...`;
     case 'done':
-      return job.type === 'update' ? 'Zaktualizowano' : 'Pobrano';
+      return job.type === 'update'
+        ? i18n.t('queue.statusUpdated')
+        : i18n.t('queue.statusDownloaded');
     case 'error':
-      return 'Błąd';
+      return i18n.t('queue.statusError');
     case 'cancelled':
-      return 'Anulowano';
+      return i18n.t('queue.statusCancelled');
     default:
       return '';
   }
@@ -91,14 +94,14 @@ export function VideoItemInner({
     }
   }, [job?.log, isRunning]);
 
-  const videoTitle = video.title || 'Brak tytułu';
+  const videoTitle = video.title || i18n.t('video.noTitle');
   const lastUpdatedFormatted = formatLastUpdated(video.lastUpdated);
   const titleWithDate = lastUpdatedFormatted
     ? `${videoTitle} (aktualizacja: ${lastUpdatedFormatted})`
     : videoTitle;
 
   const actionType: JobType = isDownloaded ? 'update' : 'download';
-  const actionLabel = isDownloaded ? 'Aktualizuj' : 'Pobierz';
+  const actionLabel = isDownloaded ? i18n.t('app.update') : i18n.t('app.download');
   const showLog = job && (isRunning || job.status === 'error') && job.log.length > 0;
 
   return (
@@ -132,7 +135,7 @@ export function VideoItemInner({
               onClick={() => job && onCancel(job.id)}
               type="button"
             >
-              Anuluj
+              {i18n.t('app.cancel')}
             </button>
           ) : (
             <button
@@ -151,7 +154,7 @@ export function VideoItemInner({
         <div className="download-output">
           {job.status === 'error' && (
             <div className="download-error">
-              <p>Błąd: {job.error || 'nieznany błąd'}</p>
+              <p>{i18n.t('app.error', { message: job.error || i18n.t('errors.unknown') })}</p>
             </div>
           )}
           <div className="download-output-content" ref={outputRef}>

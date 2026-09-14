@@ -34,7 +34,7 @@ describe('ErrorBoundary', () => {
       consoleSpy.mockRestore();
     }
 
-    expect(screen.getByText('Coś poszło nie tak')).toBeInTheDocument();
+    expect(screen.getByText('Coś poszło nie tak.')).toBeInTheDocument();
     expect(screen.getByText('kaput')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Odśwież stronę' })).toBeInTheDocument();
   });

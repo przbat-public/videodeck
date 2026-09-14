@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import type { SortOption } from '@shared/api';
 import type { SearchState } from '../utils/searchUrlState';
@@ -47,6 +48,7 @@ export default function SearchBar({
   channels = [],
   onChange,
 }: SearchBarProps) {
+  const { t } = useTranslation();
   // The input is typed into faster than we want to search, so it keeps its
   // own text and commits it to `onChange` after a pause. `query` is the
   // committed value; the two only differ while the user is typing.
@@ -106,7 +108,7 @@ export default function SearchBar({
         type="text"
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Szukaj filmów po opisie..."
+        placeholder={t('search.placeholder')}
         className="search-input"
       />
       {categoryOptions.length > 0 && (
@@ -114,9 +116,9 @@ export default function SearchBar({
           value={category}
           onChange={(value) => commitWith({ category: value })}
           className="category-select"
-          aria-label="Kategoria"
+          aria-label={t('search.category')}
           items={[
-            { value: '', label: 'Wszystkie kategorie' },
+            { value: '', label: t('search.allCategories') },
             ...categoryOptions.map((name) => ({ value: name, label: name })),
           ]}
         />
@@ -125,8 +127,11 @@ export default function SearchBar({
         value={sort}
         onChange={(value) => commitWith({ sort: value as SortOption })}
         className="sort-select"
-        aria-label="Sort"
-        items={SORT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+        aria-label={t('search.sort')}
+        items={SORT_OPTIONS.map((option) => ({
+          value: option.value,
+          label: t(option.labelKey),
+        }))}
       />
       {channels.length > 0 && (
         <>
@@ -135,9 +140,9 @@ export default function SearchBar({
             list="channel-suggestions"
             value={channel}
             onChange={(e) => commitWith({ channel: e.target.value })}
-            placeholder="Kanał..."
+            placeholder={t('search.channelPlaceholder')}
             className="channel-input"
-            aria-label="Kanał"
+            aria-label={t('search.channel')}
           />
           <datalist id="channel-suggestions">
             {channels.map((name) => (
@@ -151,18 +156,18 @@ export default function SearchBar({
         value={toDisplayDate(dateFrom)}
         onChange={(e) => commitWith({ dateFrom: toDateDigits(e.target.value) })}
         className="date-filter"
-        aria-label="Od daty"
+        aria-label={t('search.fromDate')}
       />
       <input
         type="date"
         value={toDisplayDate(dateTo)}
         onChange={(e) => commitWith({ dateTo: toDateDigits(e.target.value) })}
         className="date-filter"
-        aria-label="Do daty"
+        aria-label={t('search.toDate')}
       />
       {text && (
         <Button onClick={handleClear} size="small">
-          Clear
+          {t('search.clear')}
         </Button>
       )}
     </div>

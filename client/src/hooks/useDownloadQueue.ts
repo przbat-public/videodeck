@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import i18n from '../i18n';
 import type {
   ApiError,
   EnqueueJobsResponse,
@@ -56,7 +57,7 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
         { signal: controller.signal }
       );
       if (!response.ok) {
-        throw new Error('Failed to load download queue');
+        throw new Error(i18n.t('errors.loadQueue'));
       }
       const data = QueueListResponseSchema.parse(await response.json());
       setJobs(Array.isArray(data.jobs) ? data.jobs : []);
@@ -65,7 +66,7 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
       if (controller.signal.aborted) {
         return; // superseded poll or unmount — nothing to report
       }
-      setError(err instanceof Error ? err.message : 'Failed to load download queue');
+      setError(err instanceof Error ? err.message : i18n.t('errors.loadQueue'));
     }
   }, [folderPath]);
 
@@ -80,7 +81,7 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
         body: JSON.stringify({ folderPath, type, videos }),
       });
       if (!response.ok) {
-        let message = 'Failed to enqueue downloads';
+        let message = i18n.t('errors.enqueue');
         try {
           const body: ApiError = await response.json();
           message = body.error || body.message || message;

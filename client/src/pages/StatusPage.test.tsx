@@ -162,7 +162,7 @@ describe('StatusPage', () => {
     installFetch({ status: () => json({ error: 'boom' }, 500) });
     renderPage();
 
-    expect(await screen.findByText('Błąd: Failed to fetch status')).toBeInTheDocument();
+    expect(await screen.findByText('Błąd: Nie udało się pobrać statusu')).toBeInTheDocument();
   });
 
   it('says so when no folders are configured', async () => {

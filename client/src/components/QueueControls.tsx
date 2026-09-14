@@ -1,4 +1,5 @@
 import type { JSX } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueueControls } from '../hooks/useQueueControls';
 import { Button } from './ui/Button';
 
@@ -8,27 +9,26 @@ import { Button } from './ui/Button';
  */
 export function QueueControls(): JSX.Element {
   const { loading, paused, finishedCount, setPaused, clearFinished } = useQueueControls();
+  const { t } = useTranslation();
 
   return (
     <div className="queue-controls">
-      <span className="queue-controls-label">Kolejka pobierania:</span>
+      <span className="queue-controls-label">{t('queue.title')}</span>
       <Button
         disabled={loading}
         onClick={() => void setPaused(!paused)}
-        title={
-          paused
-            ? 'Wznów przetwarzanie kolejki'
-            : 'Wstrzymaj przetwarzanie kolejki (bieżące zadania dokończą się)'
-        }
+        title={paused ? t('queue.resumeTitle') : t('queue.pauseTitle')}
       >
-        {paused ? 'Wznów kolejkę' : 'Pauza kolejki'}
+        {paused ? t('queue.resume') : t('queue.pause')}
       </Button>
       <Button
         disabled={loading || finishedCount === 0}
         onClick={() => void clearFinished()}
-        title="Usuń zakończone, błędne i anulowane zadania z listy"
+        title={t('queue.clearTitle')}
       >
-        Wyczyść zakończone{finishedCount > 0 ? ` (${finishedCount})` : ''}
+        {finishedCount > 0
+          ? t('queue.clearFinishedWithCount', { count: finishedCount })
+          : t('queue.clearFinished')}
       </Button>
     </div>
   );

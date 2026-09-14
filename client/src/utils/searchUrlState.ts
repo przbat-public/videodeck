@@ -31,15 +31,24 @@ export const DEFAULT_SEARCH_STATE: SearchState = {
   dateTo: '',
 };
 
-/** Every sort option with its label, in the order the select shows them */
-export const SORT_OPTIONS: ReadonlyArray<{ value: SortOption; label: string }> = [
-  { value: 'relevance', label: 'Trafność' },
-  { value: 'date-desc', label: 'Najnowsze' },
-  { value: 'date-asc', label: 'Najstarsze' },
-  { value: 'views-desc', label: 'Najwięcej wyświetleń' },
-  { value: 'views-asc', label: 'Najmniej wyświetleń' },
-  { value: 'likes-desc', label: 'Najwięcej polubień' },
-  { value: 'likes-asc', label: 'Najmniej polubień' },
+export type SortLabelKey =
+  | 'sortOption.relevance'
+  | 'sortOption.dateDesc'
+  | 'sortOption.dateAsc'
+  | 'sortOption.viewsDesc'
+  | 'sortOption.viewsAsc'
+  | 'sortOption.likesDesc'
+  | 'sortOption.likesAsc';
+
+/** Every sort option with its i18n key, in the order the select shows them */
+export const SORT_OPTIONS: ReadonlyArray<{ value: SortOption; labelKey: SortLabelKey }> = [
+  { value: 'relevance', labelKey: 'sortOption.relevance' },
+  { value: 'date-desc', labelKey: 'sortOption.dateDesc' },
+  { value: 'date-asc', labelKey: 'sortOption.dateAsc' },
+  { value: 'views-desc', labelKey: 'sortOption.viewsDesc' },
+  { value: 'views-asc', labelKey: 'sortOption.viewsAsc' },
+  { value: 'likes-desc', labelKey: 'sortOption.likesDesc' },
+  { value: 'likes-asc', labelKey: 'sortOption.likesAsc' },
 ];
 
 export const isSortOption = (value: string): value is SortOption =>

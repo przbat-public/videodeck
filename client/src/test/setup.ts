@@ -1,5 +1,7 @@
 // Registers the jest-dom matchers on Vitest's `expect`, types included
 import '@testing-library/jest-dom/vitest';
+// The real i18n instance with the Polish default — components use it directly
+import '../i18n';
 import { afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
 

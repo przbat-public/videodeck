@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useStatus } from '../hooks/useStatus';
 import { FolderSection } from '../components/FolderSection';
 import { QueueControls } from '../components/QueueControls';
@@ -9,13 +10,14 @@ import { collectCategories } from '../utils/folderConfigForm';
 
 export default function StatusPage(): JSX.Element {
   const { state, updateFolderConfig } = useStatus();
+  const { t } = useTranslation();
 
   return (
     <main className="app-main">
       <div className="status-page">
-        {state.loading && <Loading message="Ładowanie statusu..." />}
+        {state.loading && <Loading message={t('status.loading')} />}
 
-        {state.error && <ErrorMessage>Błąd: {state.error}</ErrorMessage>}
+        {state.error && <ErrorMessage>{t('app.error', { message: state.error })}</ErrorMessage>}
 
         {state.statusData &&
           (() => {
@@ -25,7 +27,7 @@ export default function StatusPage(): JSX.Element {
               <div className="status-content">
                 <QueueControls />
                 <div className="status-section">
-                  <h2>Konfiguracja folderów wideo</h2>
+                  <h2>{t('status.foldersTitle')}</h2>
                   <div className="folder-sections">
                     {statusData.videosFolderPath.length > 0 ? (
                       statusData.videosFolderPath.map((path) => (
@@ -41,14 +43,14 @@ export default function StatusPage(): JSX.Element {
                         />
                       ))
                     ) : (
-                      <p>Brak skonfigurowanych ścieżek</p>
+                      <p>{t('status.noFolders')}</p>
                     )}
                   </div>
                 </div>
 
                 <div className="status-actions">
                   <Link to="/videos" className="status-link">
-                    Przejdź do listy filmów
+                    {t('status.goToVideos')}
                   </Link>
                 </div>
               </div>

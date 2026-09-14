@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 import VideoSummary from '../components/VideoSummary';
 import VideoComments from '../components/VideoComments';
@@ -8,23 +9,15 @@ import { Loading } from '../components/ui/Loading';
 import { useVideoDetail } from '../hooks/useVideoDetail';
 import { formatUploadDate } from '../utils/videoDates';
 
-/** Polish names for the subtitle languages we download; others show the code */
-const SUBTITLE_NAMES: Record<string, string> = {
-  pl: 'Polski',
-  en: 'Angielski',
-  de: 'Niemiecki',
-  fr: 'Francuski',
-  es: 'Hiszpański',
-};
-
 export default function VideoDetailPage(): JSX.Element {
   const { videoId } = useParams<{ videoId: string }>();
   const { state } = useVideoDetail(videoId);
+  const { t, i18n } = useTranslation();
 
   if (state.loading) {
     return (
       <div className="video-detail-page">
-        <Loading message="Ładowanie filmu..." />
+        <Loading message={t('video.loading')} />
       </div>
     );
   }
@@ -32,9 +25,11 @@ export default function VideoDetailPage(): JSX.Element {
   if (state.error || !state.details) {
     return (
       <div className="video-detail-page">
-        <ErrorMessage>Błąd: {state.error || 'Nie znaleziono filmu'}</ErrorMessage>
+        <ErrorMessage>
+          {t('app.error', { message: state.error || t('video.notFound') })}
+        </ErrorMessage>
         <Link to="/videos" className="back-link">
-          ← Wróć do wyszukiwania
+          {t('video.back')}
         </Link>
       </div>
     );
@@ -51,7 +46,7 @@ export default function VideoDetailPage(): JSX.Element {
     <div className="video-detail-page">
       <div className="video-detail-header">
         <Link to="/videos" className="back-link">
-          ← Wróć do wyszukiwania
+          {t('video.back')}
         </Link>
       </div>
 
@@ -67,7 +62,13 @@ export default function VideoDetailPage(): JSX.Element {
                   kind="subtitles"
                   src={subtitleUrl(subtitle.path)}
                   srcLang={subtitle.lang ?? 'und'}
-                  label={SUBTITLE_NAMES[subtitle.lang ?? ''] ?? subtitle.lang ?? 'Napisy'}
+                  label={
+                    subtitle.lang
+                      ? (t(`subtitleLanguages.${subtitle.lang}`, {
+                          defaultValue: subtitle.lang,
+                        }) as string)
+                      : t('subtitleLanguages.generic')
+                  }
                   default={subtitle.path === state.details?.subtitlePath}
                 />
               ))}
@@ -80,10 +81,18 @@ export default function VideoDetailPage(): JSX.Element {
             {state.details && (
               <div className="video-meta">
                 {state.details.viewCount > 0 && (
-                  <span>{state.details.viewCount.toLocaleString('pl-PL')} wyświetleń</span>
+                  <span>
+                    {t('video.views', {
+                      count: state.details.viewCount.toLocaleString(i18n.language),
+                    })}
+                  </span>
                 )}
                 {state.details.likeCount > 0 && (
-                  <span>{state.details.likeCount.toLocaleString('pl-PL')} polubień</span>
+                  <span>
+                    {t('video.likes', {
+                      count: state.details.likeCount.toLocaleString(i18n.language),
+                    })}
+                  </span>
                 )}
                 {state.details.uploadDate && (
                   <span>{formatUploadDate(state.details.uploadDate)}</span>
@@ -100,7 +109,7 @@ export default function VideoDetailPage(): JSX.Element {
         />
 
         <div className="video-description-full">
-          <h2>Oryginalny opis</h2>
+          <h2>{t('video.description')}</h2>
           <p>{state.details?.description}</p>
         </div>
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { JSX } from 'react';
 import type { CommentWithReplies } from '@shared/api';
+import i18n from '../i18n';
 
 const MAX_COMMENT_LENGTH = 250;
 
@@ -83,7 +84,7 @@ export default function CommentComponent({
         {displayText}
         {isLong && (
           <button className="comment-expand-btn" onClick={() => setIsExpanded(!isExpanded)}>
-            {isExpanded ? ' Zwiń' : ' Czytaj więcej'}
+            {isExpanded ? ` ${i18n.t('video.collapse')}` : ` ${i18n.t('video.readMore')}`}
           </button>
         )}
       </p>
@@ -105,11 +106,13 @@ export default function CommentComponent({
           <button
             className="comment-replies-toggle"
             onClick={() => setIsRepliesExpanded(!isRepliesExpanded)}
-            title={isRepliesExpanded ? 'Ukryj odpowiedzi' : 'Pokaż odpowiedzi'}
+            title={
+              isRepliesExpanded ? i18n.t('video.collapseReplies') : i18n.t('video.showReplies')
+            }
           >
             {isRepliesExpanded ? '▼' : '▶'}
             <span className="comment-replies-count">
-              ({totalRepliesCount} {totalRepliesCount === 1 ? 'odpowiedź' : 'odpowiedzi'})
+              ({i18n.t('video.replyCount', { count: totalRepliesCount })})
             </span>
           </button>
         )}

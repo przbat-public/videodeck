@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type {
   ApiError,
   DownloadOptions,
@@ -29,6 +30,7 @@ export function FolderConfigEditor({
   knownCategories = [],
   onConfigUpdate,
 }: FolderConfigEditorProps) {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<FolderConfig | null>(initialConfig);
   const [previousInitialConfig, setPreviousInitialConfig] = useState(initialConfig);
   const [error, setError] = useState<string | null>(null);
@@ -96,21 +98,21 @@ export function FolderConfigEditor({
 
   return (
     <div className="folder-config">
-      {error && <ErrorMessage compact>Błąd: {error}</ErrorMessage>}
+      {error && <ErrorMessage compact>{t('app.error', { message: error })}</ErrorMessage>}
 
       {config === null ? (
         <div className="config-empty">
-          <p>Plik config.json nie istnieje w tym folderze.</p>
+          <p>{t('config.missingFile')}</p>
           {!isEditing && (
             <Button variant="primary" onClick={() => setIsEditing(true)}>
-              Utwórz config.json
+              {t('config.create')}
             </Button>
           )}
         </div>
       ) : (
         !isEditing && (
           <Button variant="primary" onClick={() => setIsEditing(true)}>
-            Edytuj konfigurację
+            {t('config.edit')}
           </Button>
         )
       )}
@@ -118,26 +120,26 @@ export function FolderConfigEditor({
       {isEditing && (
         <div className="config-edit">
           <div className="config-field">
-            <label htmlFor={id('channelUrl')}>Adres kanału YouTube:</label>
+            <label htmlFor={id('channelUrl')}>{t('config.channelUrl')}</label>
             <input
               id={id('channelUrl')}
               type="text"
               value={form.channelUrl}
               onChange={(e) => updateForm({ channelUrl: e.target.value })}
-              placeholder="https://www.youtube.com/@channel"
+              placeholder={t('config.channelUrlPlaceholder')}
               className="config-input"
             />
           </div>
 
           <div className="config-field">
-            <label htmlFor={id('category')}>Kategoria kanału:</label>
+            <label htmlFor={id('category')}>{t('config.category')}</label>
             <input
               id={id('category')}
               type="text"
               list={id('categories')}
               value={form.category}
               onChange={(e) => updateForm({ category: e.target.value })}
-              placeholder="np. fpv — pozwala filtrować wyszukiwanie"
+              placeholder={t('config.categoryPlaceholder')}
               className="config-input"
             />
             <datalist id={id('categories')}>
@@ -148,14 +150,17 @@ export function FolderConfigEditor({
           </div>
 
           <div className="config-field">
-            <label htmlFor={id('maxHeight')}>Maks. rozdzielczość:</label>
+            <label htmlFor={id('maxHeight')}>{t('config.maxHeight')}</label>
             <Select
               id={id('maxHeight')}
               value={form.maxHeight}
               onChange={(value) => updateForm({ maxHeight: value })}
               className="config-input"
               items={[
-                { value: '', label: `Domyślnie (${downloadDefaults.maxHeight}p)` },
+                {
+                  value: '',
+                  label: t('config.maxHeightDefault', { height: downloadDefaults.maxHeight }),
+                },
                 ...MAX_HEIGHT_CHOICES.map((height) => ({
                   value: String(height),
                   label: `${height}p`,
@@ -168,17 +173,19 @@ export function FolderConfigEditor({
             <Checkbox
               checked={form.subtitlesEnabled}
               onChange={(checked) => updateForm({ subtitlesEnabled: checked })}
-              label="Pobieraj napisy"
+              label={t('config.subtitles')}
             />
             {form.subtitlesEnabled && (
               <>
-                <label htmlFor={id('subLangs')}>Języki napisów (po przecinku):</label>
+                <label htmlFor={id('subLangs')}>{t('config.subtitleLangs')}</label>
                 <input
                   id={id('subLangs')}
                   type="text"
                   value={form.subLangs}
                   onChange={(e) => updateForm({ subLangs: e.target.value })}
-                  placeholder={`domyślnie: ${downloadDefaults.subLangs.join(', ') || 'brak'}`}
+                  placeholder={t('config.subtitleLangsPlaceholder', {
+                    langs: downloadDefaults.subLangs.join(', ') || 'brak',
+                  })}
                   className="config-input"
                 />
               </>
@@ -189,33 +196,35 @@ export function FolderConfigEditor({
             <Checkbox
               checked={form.writeComments}
               onChange={(checked) => updateForm({ writeComments: checked })}
-              label="Pobieraj komentarze"
+              label={t('config.comments')}
             />
           </div>
 
           <div className="config-field">
-            <label htmlFor={id('extraArgs')}>Dodatkowe argumenty yt-dlp:</label>
+            <label htmlFor={id('extraArgs')}>{t('config.extraArgs')}</label>
             <input
               id={id('extraArgs')}
               type="text"
               value={form.extraArgs}
               onChange={(e) => updateForm({ extraArgs: e.target.value })}
-              placeholder="np. --cookies-from-browser chrome --proxy http://127.0.0.1:8080"
+              placeholder={t('config.extraArgsPlaceholder')}
               className="config-input"
             />
             <p className="config-hint">
               {downloadDefaults.extraArgs && downloadDefaults.extraArgs.length > 0
-                ? `domyślnie: ${downloadDefaults.extraArgs.join(' ')}`
-                : 'flagi -f, -o, --download-archive, --merge-output-format i --paths są zarezerwowane'}
+                ? t('config.subtitleLangsPlaceholder', {
+                    langs: downloadDefaults.extraArgs.join(' '),
+                  })
+                : t('config.extraArgsReserved')}
             </p>
           </div>
 
           <div className="config-actions">
             <Button variant="success" onClick={() => void handleSave()} disabled={isSaving}>
-              {isSaving ? 'Zapisywanie...' : 'Zapisz'}
+              {isSaving ? t('config.saving') : t('config.save')}
             </Button>
             <Button onClick={handleCancel} disabled={isSaving}>
-              Anuluj
+              {t('config.cancel')}
             </Button>
           </div>
         </div>

@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useImperativeHandle, useCallback, useMemo } from 'react';
 import type { JSX, Ref } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 import toast from 'react-hot-toast';
 import { VariableSizeList } from 'react-window';
 import type { ChannelVideo, FolderListResponse, JobType, QueueJob } from '@shared/api';
@@ -34,6 +36,7 @@ export function VideoListSection({
   const [videos, setVideos] = useState<ChannelVideo[]>([]);
   const [downloadStatuses, setDownloadStatuses] = useState<Record<string, boolean>>({});
   const [lastUpdatedDates, setLastUpdatedDates] = useState<Record<string, string>>({});
+  const { t } = useTranslation();
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [videosError, setVideosError] = useState<string | null>(null);
   const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
@@ -129,14 +132,17 @@ export function VideoListSection({
           items.map((video) => ({ videoId: video.id })),
           type
         );
-        const verb = type === 'update' ? 'aktualizacji' : 'pobrania';
-        toast.success(`Dodano ${result.jobs.length} filmów do ${verb}`);
+        const verb =
+          type === 'update' ? i18n.t('toast.updateTarget') : i18n.t('toast.downloadTarget');
+        toast.success(i18n.t('toast.addedToQueue', { count: result.jobs.length, target: verb }));
         const [firstSkipped] = result.skipped;
         if (firstSkipped) {
-          toast.error(`Pominięto ${result.skipped.length}: ${firstSkipped.reason}`);
+          toast.error(
+            i18n.t('toast.skipped', { count: result.skipped.length, reason: firstSkipped.reason })
+          );
         }
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Nie udało się dodać do kolejki');
+        toast.error(err instanceof Error ? err.message : i18n.t('toast.enqueueFailed'));
       }
     },
     [enqueue]
@@ -238,25 +244,29 @@ export function VideoListSection({
 
   return (
     <div className="videos-list-section">
-      {videosError && <ErrorMessage compact>Błąd: {videosError}</ErrorMessage>}
-      {queueError && <ErrorMessage compact>Błąd kolejki: {queueError}</ErrorMessage>}
+      {videosError && (
+        <ErrorMessage compact>{t('app.error', { message: videosError })}</ErrorMessage>
+      )}
+      {queueError && (
+        <ErrorMessage compact>{t('queue.queueError', { message: queueError })}</ErrorMessage>
+      )}
       {isLoadingVideos ? (
-        <p>Ładowanie listy filmów ...</p>
+        <p>{t('queue.loadingVideos')}</p>
       ) : videos.length > 0 ? (
         <div className="videos-list">
           <div className="videos-list-header">
             <p className="videos-count">
-              Liczba filmów: {videos.length}
-              {notDownloadedCount > 0 && ` (${notDownloadedCount} nie pobranych)`}
-              {notUpdatedCount > 0 &&
-                ` (${notUpdatedCount} nie zaktualizowanych od ponad miesiąca)`}
+              {t('queue.videoListCount', { count: videos.length })}
+              {notDownloadedCount > 0 &&
+                ` ${t('queue.notDownloaded', { count: notDownloadedCount })}`}
+              {notUpdatedCount > 0 && ` ${t('queue.notUpdated', { count: notUpdatedCount })}`}
               {downloadedCount > 0 &&
                 notDownloadedCount === 0 &&
                 notUpdatedCount === 0 &&
-                ' (wszystkie pobrane)'}
+                ` ${t('queue.allDownloaded')}`}
               {hasActive && (
                 <span className="queue-summary">
-                  kolejka: {runningCount} w toku, {queuedCount} czeka
+                  {t('queue.inProgress', { running: runningCount, queued: queuedCount })}
                 </span>
               )}
             </p>
@@ -264,27 +274,27 @@ export function VideoListSection({
               {notDownloadedCount > 0 && (
                 <Button variant="primary" onClick={() => requestBulk('download')}>
                   {armedBulk === 'download'
-                    ? `Na pewno? (${notDownloadedCount} filmów)`
-                    : 'Pobierz wszystkie'}
+                    ? t('queue.confirmMany', { count: notDownloadedCount })
+                    : t('queue.downloadAll')}
                 </Button>
               )}
               {notUpdatedCount > 0 && (
                 <Button variant="primary" onClick={() => requestBulk('update-old')}>
                   {armedBulk === 'update-old'
-                    ? `Na pewno? (${notUpdatedCount} filmów)`
-                    : 'Aktualizuj stare'}
+                    ? t('queue.confirmMany', { count: notUpdatedCount })
+                    : t('queue.updateOld')}
                 </Button>
               )}
               {downloadedCount > 0 && (
                 <Button variant="primary" onClick={() => requestBulk('update')}>
                   {armedBulk === 'update'
-                    ? `Na pewno? (${downloadedCount} filmów)`
-                    : 'Aktualizuj wszystkie'}
+                    ? t('queue.confirmMany', { count: downloadedCount })
+                    : t('queue.updateAll')}
                 </Button>
               )}
               {hasActive && (
                 <Button variant="danger" onClick={() => void cancelAll().catch(() => undefined)}>
-                  Anuluj wszystko
+                  {t('queue.cancelAll')}
                 </Button>
               )}
             </div>

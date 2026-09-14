@@ -1,5 +1,6 @@
 import { useEffect, useReducer } from 'react';
 import type { FolderConfig } from '@shared/api';
+import i18n from '../i18n';
 import { StatusResponseSchema } from '@shared/schemas';
 import { statusReducer, initialState, StatusActionType } from '../reducers/statusReducer';
 import type { StatusData } from '../reducers/statusReducer';
@@ -25,7 +26,7 @@ export function useStatus(): UseStatusResult {
         dispatch({ type: StatusActionType.FETCH_START });
         const response = await fetch('/api/status', { signal: controller.signal });
         if (!response.ok) {
-          throw new Error('Failed to fetch status');
+          throw new Error(i18n.t('errors.fetchStatus'));
         }
         const data = StatusResponseSchema.parse(await response.json()) as StatusData;
         dispatch({ type: StatusActionType.FETCH_SUCCESS, payload: data });
@@ -33,7 +34,7 @@ export function useStatus(): UseStatusResult {
         if (controller.signal.aborted) {
           return;
         }
-        const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+        const errorMessage = err instanceof Error ? err.message : i18n.t('errors.occurred');
         dispatch({ type: StatusActionType.FETCH_ERROR, payload: errorMessage });
       }
     };
