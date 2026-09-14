@@ -16,3 +16,7 @@ chrome-extension/*.js
 
 # shared/ is types-only; an accidental tsc emit must never be committed
 shared/*.js
+
+# Playwright
+client/playwright-report/
+client/test-results/

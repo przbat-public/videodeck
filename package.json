@@ -17,7 +17,8 @@
     "typecheck": "cd server && npm run typecheck && cd ../client && npm run typecheck && cd ../chrome-extension && npm run typecheck",
     "test": "cd server && npm run test && cd ../client && npm run test:run && cd ../chrome-extension && npm test",
     "test:watch": "cd server && npm run test:watch",
-    "test:coverage": "cd server && npm run test:coverage && cd ../client && npm run test:coverage"
+    "test:coverage": "cd server && npm run test:coverage && cd ../client && npm run test:coverage",
+    "test:e2e": "cd client && npm run test:e2e"
   },
   "engines": {
     "node": "22.x"
