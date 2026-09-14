@@ -9,18 +9,19 @@ export interface StatusState {
   error: string | null;
 }
 
-export enum StatusActionType {
-  FETCH_START = 'FETCH_START',
-  FETCH_SUCCESS = 'FETCH_SUCCESS',
-  FETCH_ERROR = 'FETCH_ERROR',
-  RESET = 'RESET',
-}
+export const StatusActionType = {
+  FETCH_START: 'FETCH_START',
+  FETCH_SUCCESS: 'FETCH_SUCCESS',
+  FETCH_ERROR: 'FETCH_ERROR',
+  RESET: 'RESET',
+} as const;
+export type StatusActionType = (typeof StatusActionType)[keyof typeof StatusActionType];
 
 export type StatusAction =
-  | { type: StatusActionType.FETCH_START }
-  | { type: StatusActionType.FETCH_SUCCESS; payload: StatusData }
-  | { type: StatusActionType.FETCH_ERROR; payload: string }
-  | { type: StatusActionType.RESET };
+  | { type: 'FETCH_START' }
+  | { type: 'FETCH_SUCCESS'; payload: StatusData }
+  | { type: 'FETCH_ERROR'; payload: string }
+  | { type: 'RESET' };
 
 export const initialState: StatusState = {
   statusData: null,

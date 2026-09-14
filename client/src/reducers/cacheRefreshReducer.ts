@@ -3,18 +3,20 @@ export interface CacheRefreshState {
   message: { type: 'success' | 'error'; text: string } | null;
 }
 
-export enum CacheRefreshActionType {
-  REFRESH_START = 'REFRESH_START',
-  REFRESH_SUCCESS = 'REFRESH_SUCCESS',
-  REFRESH_ERROR = 'REFRESH_ERROR',
-  CLEAR_MESSAGE = 'CLEAR_MESSAGE',
-}
+export const CacheRefreshActionType = {
+  REFRESH_START: 'REFRESH_START',
+  REFRESH_SUCCESS: 'REFRESH_SUCCESS',
+  REFRESH_ERROR: 'REFRESH_ERROR',
+  CLEAR_MESSAGE: 'CLEAR_MESSAGE',
+} as const;
+export type CacheRefreshActionType =
+  (typeof CacheRefreshActionType)[keyof typeof CacheRefreshActionType];
 
 export type CacheRefreshAction =
-  | { type: CacheRefreshActionType.REFRESH_START }
-  | { type: CacheRefreshActionType.REFRESH_SUCCESS; payload: string }
-  | { type: CacheRefreshActionType.REFRESH_ERROR; payload: string }
-  | { type: CacheRefreshActionType.CLEAR_MESSAGE };
+  | { type: 'REFRESH_START' }
+  | { type: 'REFRESH_SUCCESS'; payload: string }
+  | { type: 'REFRESH_ERROR'; payload: string }
+  | { type: 'CLEAR_MESSAGE' };
 
 export const initialState: CacheRefreshState = {
   loading: false,

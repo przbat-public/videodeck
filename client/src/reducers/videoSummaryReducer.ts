@@ -4,18 +4,20 @@ export interface VideoSummaryState {
   error: string | null;
 }
 
-export enum VideoSummaryActionType {
-  FETCH_SUMMARY_START = 'FETCH_SUMMARY_START',
-  FETCH_SUMMARY_SUCCESS = 'FETCH_SUMMARY_SUCCESS',
-  FETCH_SUMMARY_ERROR = 'FETCH_SUMMARY_ERROR',
-  RESET = 'RESET',
-}
+export const VideoSummaryActionType = {
+  FETCH_SUMMARY_START: 'FETCH_SUMMARY_START',
+  FETCH_SUMMARY_SUCCESS: 'FETCH_SUMMARY_SUCCESS',
+  FETCH_SUMMARY_ERROR: 'FETCH_SUMMARY_ERROR',
+  RESET: 'RESET',
+} as const;
+export type VideoSummaryActionType =
+  (typeof VideoSummaryActionType)[keyof typeof VideoSummaryActionType];
 
 export type VideoSummaryAction =
-  | { type: VideoSummaryActionType.FETCH_SUMMARY_START }
-  | { type: VideoSummaryActionType.FETCH_SUMMARY_SUCCESS; payload: string }
-  | { type: VideoSummaryActionType.FETCH_SUMMARY_ERROR; payload: string }
-  | { type: VideoSummaryActionType.RESET };
+  | { type: 'FETCH_SUMMARY_START' }
+  | { type: 'FETCH_SUMMARY_SUCCESS'; payload: string }
+  | { type: 'FETCH_SUMMARY_ERROR'; payload: string }
+  | { type: 'RESET' };
 
 export const initialState: VideoSummaryState = {
   summary: null,

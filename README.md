@@ -518,6 +518,29 @@ cd chrome-extension && npm run typecheck
 - **Responsywny design** - dostosowanie do różnych rozmiarów ekranów
 - **Rozszerzenie Chrome** - dodawanie filmów do kolejki pobierania wprost z YouTube: wykrywanie wideo na stronie, postęp na żywo (SSE), licznik aktywnych pobrań na ikonie rozszerzenia (szczegóły w [chrome-extension/README.md](chrome-extension/README.md))
 
+## Architektura frontu
+
+Krótki przegląd decyzji architektonicznych klienta i tego, co świadomie **nie** zostało wdrożone:
+
+- **StrictMode** — włączone; dev podwójnie renderuje, żeby wyłapać nieczyste rendery.
+- **Reduktery na `as const`** — typy akcji to `as const` + typ unii zamiast enumów
+  (mniej kodu w runtime, pełna inferencja literałów w `switch`).
+- **`useDebouncedValue`** — jeden hook debounce'u (fraza wyszukiwania i filtr kanału).
+- **Wirtualizacja** — lista filmów kanału (Status) używa react-window
+  (`VariableSizeList`, tysiące wierszy); siatka wyników wyszukiwania jest
+  responsywnym gridem o zmiennej wysokości kart, więc zamiast react-window
+  używa `content-visibility: auto` (przeglądarka pomija render kart poza
+  ekranem).
+- **TanStack Query** — rekomendacja, nie wdrożenie. Około 400 linii ręcznych
+  hooków fetch (useVideoSearch, useVideoDetail, useStatus, useDownloadQueue)
+  pokrywa cache, ponawianie i synchronizację, które TanStack Query daje z
+  pudełka; migrację warto zrobić przy najbliższym większym refaktorze
+  danych, nie przy drobnych zmianach.
+- **React Compiler** — rekomendacja, nie wdrożenie. Auto-memoizacja zdjęłaby
+  ręczne `memo`/`useCallback` (VideoItem, VideoCard, CommentComponent), ale
+  wymaga weryfikacji z react-window i react-i18next; włączać jako osobny,
+  świadomy krok.
+
 ## API Endpoints
 
 ### GET /health (publiczne)

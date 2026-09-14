@@ -7,19 +7,21 @@ export interface VideoSearchState {
   error: string | null;
 }
 
-export enum VideoSearchActionType {
-  SEARCH_START = 'SEARCH_START',
-  SEARCH_SUCCESS = 'SEARCH_SUCCESS',
-  SEARCH_ERROR = 'SEARCH_ERROR',
-}
+export const VideoSearchActionType = {
+  SEARCH_START: 'SEARCH_START',
+  SEARCH_SUCCESS: 'SEARCH_SUCCESS',
+  SEARCH_ERROR: 'SEARCH_ERROR',
+} as const;
+export type VideoSearchActionType =
+  (typeof VideoSearchActionType)[keyof typeof VideoSearchActionType];
 
 export type VideoSearchAction =
-  | { type: VideoSearchActionType.SEARCH_START }
+  | { type: 'SEARCH_START' }
   | {
-      type: VideoSearchActionType.SEARCH_SUCCESS;
+      type: 'SEARCH_SUCCESS';
       payload: { videos: VideoListItem[]; totalCount: number; append?: boolean };
     }
-  | { type: VideoSearchActionType.SEARCH_ERROR; payload: string };
+  | { type: 'SEARCH_ERROR'; payload: string };
 
 export const initialState: VideoSearchState = {
   videos: [],

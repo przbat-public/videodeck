@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import type { SortOption } from '@shared/api';
 import type { SearchState } from '../utils/searchUrlState';
 import { SORT_OPTIONS } from '../utils/searchUrlState';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { Button } from './ui/Button';
 import { Select } from './ui/Select';
 
@@ -64,19 +65,9 @@ export default function SearchBar({
     }
   }
 
-  useEffect(() => {
-    const trimmed = text.trim();
-    if (trimmed === query || !isSearchable(trimmed)) {
-      return undefined;
-    }
-    const handle = window.setTimeout(() => {
-      onChange({ query: trimmed, sort, category, channel, dateFrom, dateTo });
-    }, DEBOUNCE_DELAY);
-    return () => window.clearTimeout(handle);
-  }, [text, query, sort, category, channel, dateFrom, dateTo, onChange]);
-
-  // The channel filter searches on every keystroke otherwise; it commits the
-  // same debounced way the phrase does (`channel` is the committed value).
+  // The debounced copies of what the user is typing (see useDebouncedValue);
+  // the effects below commit them to `onChange` once the typing pauses.
+  const debouncedText = useDebouncedValue(text, DEBOUNCE_DELAY);
   const [channelText, setChannelText] = useState(channel);
   const [seenChannel, setSeenChannel] = useState(channel);
   if (channel !== seenChannel) {
@@ -85,24 +76,45 @@ export default function SearchBar({
       setChannelText(channel);
     }
   }
+  const debouncedChannel = useDebouncedValue(channelText, DEBOUNCE_DELAY);
 
+  // The effects commit only when the debounced value itself changed — the
+  // ref guard stops external prop updates (deep links, history) from
+  // re-committing the stale pending value.
+  const committedTextRef = useRef(debouncedText);
   useEffect(() => {
-    const trimmed = channelText.trim();
-    if (trimmed === channel) {
-      return undefined;
+    if (debouncedText === committedTextRef.current) {
+      return;
     }
-    const handle = window.setTimeout(() => {
-      onChange({
-        query,
-        sort,
-        category,
-        channel: trimmed,
-        dateFrom,
-        dateTo,
-      });
-    }, DEBOUNCE_DELAY);
-    return () => window.clearTimeout(handle);
-  }, [channelText, channel, query, sort, category, dateFrom, dateTo, onChange]);
+    committedTextRef.current = debouncedText;
+    const trimmed = debouncedText.trim();
+    if (trimmed === query || !isSearchable(trimmed)) {
+      return;
+    }
+    onChange({ query: trimmed, sort, category, channel, dateFrom, dateTo });
+  }, [debouncedText, query, sort, category, channel, dateFrom, dateTo, onChange]);
+
+  // The channel filter would otherwise search on every keystroke; it commits
+  // with the same pause as the phrase (`channel` is the committed value).
+  const committedChannelRef = useRef(debouncedChannel);
+  useEffect(() => {
+    if (debouncedChannel === committedChannelRef.current) {
+      return;
+    }
+    committedChannelRef.current = debouncedChannel;
+    const trimmed = debouncedChannel.trim();
+    if (trimmed === channel) {
+      return;
+    }
+    onChange({
+      query,
+      sort,
+      category,
+      channel: trimmed,
+      dateFrom,
+      dateTo,
+    });
+  }, [debouncedChannel, channel, query, sort, category, dateFrom, dateTo, onChange]);
 
   /**
    * Selects commit right away. A phrase still too short to search stays in

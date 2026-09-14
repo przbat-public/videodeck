@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { VariableSizeList } from 'react-window';
 import type { ChannelVideo, FolderListResponse, JobType, QueueJob } from '@shared/api';
 import { VideoItem } from './VideoItem';
-import { Button } from './ui/Button';
+import { VideoListHeader } from './VideoListHeader';
 import { ErrorMessage } from './ui/ErrorMessage';
 import { useDownloadQueue } from '../hooks/useDownloadQueue';
 import { isOlderThanMonth } from '../utils/videoDates';
@@ -269,51 +269,20 @@ export function VideoListSection({
         <p>{t('queue.loadingVideos')}</p>
       ) : videos.length > 0 ? (
         <div className="videos-list">
-          <div className="videos-list-header">
-            <p className="videos-count">
-              {t('queue.videoListCount', { count: videos.length })}
-              {notDownloadedCount > 0 &&
-                ` ${t('queue.notDownloaded', { count: notDownloadedCount })}`}
-              {notUpdatedCount > 0 && ` ${t('queue.notUpdated', { count: notUpdatedCount })}`}
-              {downloadedCount > 0 &&
-                notDownloadedCount === 0 &&
-                notUpdatedCount === 0 &&
-                ` ${t('queue.allDownloaded')}`}
-              {hasActive && (
-                <span className="queue-summary">
-                  {t('queue.inProgress', { running: runningCount, queued: queuedCount })}
-                </span>
-              )}
-            </p>
-            <div className="videos-list-buttons">
-              {notDownloadedCount > 0 && (
-                <Button variant="primary" onClick={() => requestBulk('download')}>
-                  {armedBulk === 'download'
-                    ? t('queue.confirmMany', { count: notDownloadedCount })
-                    : t('queue.downloadAll')}
-                </Button>
-              )}
-              {notUpdatedCount > 0 && (
-                <Button variant="primary" onClick={() => requestBulk('update-old')}>
-                  {armedBulk === 'update-old'
-                    ? t('queue.confirmMany', { count: notUpdatedCount })
-                    : t('queue.updateOld')}
-                </Button>
-              )}
-              {downloadedCount > 0 && (
-                <Button variant="primary" onClick={() => requestBulk('update')}>
-                  {armedBulk === 'update'
-                    ? t('queue.confirmMany', { count: downloadedCount })
-                    : t('queue.updateAll')}
-                </Button>
-              )}
-              {hasActive && (
-                <Button variant="danger" onClick={() => void cancelAll().catch(() => undefined)}>
-                  {t('queue.cancelAll')}
-                </Button>
-              )}
-            </div>
-          </div>
+          <VideoListHeader
+            videosCount={videos.length}
+            notDownloadedCount={notDownloadedCount}
+            downloadedCount={downloadedCount}
+            notUpdatedCount={notUpdatedCount}
+            runningCount={runningCount}
+            queuedCount={queuedCount}
+            hasActive={hasActive}
+            armedBulk={armedBulk}
+            onDownloadAll={() => requestBulk('download')}
+            onUpdateOld={() => requestBulk('update-old')}
+            onUpdateAll={() => requestBulk('update')}
+            onCancelAll={() => void cancelAll().catch(() => undefined)}
+          />
           <div className="videos-list-items">
             <VariableSizeList
               ref={listRef}

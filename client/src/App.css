@@ -256,6 +256,12 @@
   text-decoration: none;
   color: inherit;
   display: block;
+  /* Browser-native virtualization for the results grid: offscreen cards skip
+     layout/paint. The responsive grid (auto-fill) and variable card heights
+     make react-window a poor fit here, and content-visibility keeps the
+     scrollbar stable via the intrinsic-size estimate. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px;
 }
 
 /* Video Detail Page */

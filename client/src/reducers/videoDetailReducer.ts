@@ -7,18 +7,20 @@ export interface VideoDetailState {
   error: string | null;
 }
 
-export enum VideoDetailActionType {
-  FETCH_DETAILS_START = 'FETCH_DETAILS_START',
-  FETCH_DETAILS_SUCCESS = 'FETCH_DETAILS_SUCCESS',
-  FETCH_ERROR = 'FETCH_ERROR',
-  RESET = 'RESET',
-}
+export const VideoDetailActionType = {
+  FETCH_DETAILS_START: 'FETCH_DETAILS_START',
+  FETCH_DETAILS_SUCCESS: 'FETCH_DETAILS_SUCCESS',
+  FETCH_ERROR: 'FETCH_ERROR',
+  RESET: 'RESET',
+} as const;
+export type VideoDetailActionType =
+  (typeof VideoDetailActionType)[keyof typeof VideoDetailActionType];
 
 export type VideoDetailAction =
-  | { type: VideoDetailActionType.FETCH_DETAILS_START }
-  | { type: VideoDetailActionType.FETCH_DETAILS_SUCCESS; payload: VideoDetails }
-  | { type: VideoDetailActionType.FETCH_ERROR; payload: string }
-  | { type: VideoDetailActionType.RESET };
+  | { type: 'FETCH_DETAILS_START' }
+  | { type: 'FETCH_DETAILS_SUCCESS'; payload: VideoDetails }
+  | { type: 'FETCH_ERROR'; payload: string }
+  | { type: 'RESET' };
 
 export const initialState: VideoDetailState = {
   video: null,

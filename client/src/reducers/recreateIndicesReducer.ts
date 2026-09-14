@@ -3,18 +3,20 @@ export interface RecreateIndicesState {
   message: { type: 'success' | 'error'; text: string } | null;
 }
 
-export enum RecreateIndicesActionType {
-  RECREATE_START = 'RECREATE_START',
-  RECREATE_SUCCESS = 'RECREATE_SUCCESS',
-  RECREATE_ERROR = 'RECREATE_ERROR',
-  CLEAR_MESSAGE = 'CLEAR_MESSAGE',
-}
+export const RecreateIndicesActionType = {
+  RECREATE_START: 'RECREATE_START',
+  RECREATE_SUCCESS: 'RECREATE_SUCCESS',
+  RECREATE_ERROR: 'RECREATE_ERROR',
+  CLEAR_MESSAGE: 'CLEAR_MESSAGE',
+} as const;
+export type RecreateIndicesActionType =
+  (typeof RecreateIndicesActionType)[keyof typeof RecreateIndicesActionType];
 
 export type RecreateIndicesAction =
-  | { type: RecreateIndicesActionType.RECREATE_START }
-  | { type: RecreateIndicesActionType.RECREATE_SUCCESS; payload: string }
-  | { type: RecreateIndicesActionType.RECREATE_ERROR; payload: string }
-  | { type: RecreateIndicesActionType.CLEAR_MESSAGE };
+  | { type: 'RECREATE_START' }
+  | { type: 'RECREATE_SUCCESS'; payload: string }
+  | { type: 'RECREATE_ERROR'; payload: string }
+  | { type: 'CLEAR_MESSAGE' };
 
 export const initialState: RecreateIndicesState = {
   loading: false,
