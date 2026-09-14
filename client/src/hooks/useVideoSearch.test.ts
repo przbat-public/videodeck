@@ -28,6 +28,9 @@ const state = (overrides: Partial<SearchState> = {}): SearchState => ({
   query: '',
   sort: 'date-desc',
   category: '',
+  channel: '',
+  dateFrom: '',
+  dateTo: '',
   ...overrides,
 });
 

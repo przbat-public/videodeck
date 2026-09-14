@@ -45,11 +45,14 @@ const flushTimers = async () => {
 /** The bar with a parent that ignores commits — props change only when the test says so */
 function renderBar(
   state: Partial<SearchState> = {},
-  categories: string[] = CATEGORIES
+  categories: string[] = CATEGORIES,
+  channels: string[] = []
 ): { onChange: Mock<(next: SearchState) => void>; update: (patch: Partial<SearchState>) => void } {
   const onChange = vi.fn<(next: SearchState) => void>();
   let current: SearchState = { ...DEFAULT_SEARCH_STATE, ...state };
-  const element = () => <SearchBar {...current} categories={categories} onChange={onChange} />;
+  const element = () => (
+    <SearchBar {...current} categories={categories} channels={channels} onChange={onChange} />
+  );
   const { rerender } = render(element());
   return {
     onChange,
@@ -174,7 +177,14 @@ describe('SearchBar', () => {
 
       await advance(1);
       expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange).toHaveBeenCalledWith({ query: 'abc', sort: 'views-desc', category: 'fpv' });
+      expect(onChange).toHaveBeenCalledWith({
+        query: 'abc',
+        sort: 'views-desc',
+        category: 'fpv',
+        channel: '',
+        dateFrom: '',
+        dateTo: '',
+      });
     });
 
     it('never commits one or two characters', async () => {
@@ -227,7 +237,14 @@ describe('SearchBar', () => {
 
       await advance(300);
       expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange).toHaveBeenCalledWith({ query: '', sort: 'date-desc', category: 'lego' });
+      expect(onChange).toHaveBeenCalledWith({
+        query: '',
+        sort: 'date-desc',
+        category: 'lego',
+        channel: '',
+        dateFrom: '',
+        dateTo: '',
+      });
     });
 
     it('does not commit again when the parent echoes the phrase back', async () => {
@@ -297,6 +314,9 @@ describe('SearchBar', () => {
         query: 'robot',
         sort: 'views-desc',
         category: 'lego',
+        channel: '',
+        dateFrom: '',
+        dateTo: '',
       });
     });
 
@@ -308,6 +328,9 @@ describe('SearchBar', () => {
         query: 'robot',
         sort: 'date-desc',
         category: 'psychology',
+        channel: '',
+        dateFrom: '',
+        dateTo: '',
       });
 
       pick(categorySelect(), 'Wszystkie kategorie');
@@ -315,6 +338,9 @@ describe('SearchBar', () => {
         query: 'robot',
         sort: 'date-desc',
         category: '',
+        channel: '',
+        dateFrom: '',
+        dateTo: '',
       });
       expect(onChange).toHaveBeenCalledTimes(2);
     });
@@ -326,7 +352,14 @@ describe('SearchBar', () => {
       pick(sortSelect(), 'Najwięcej polubień');
 
       expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange).toHaveBeenCalledWith({ query: 'lego', sort: 'likes-desc', category: '' });
+      expect(onChange).toHaveBeenCalledWith({
+        query: 'lego',
+        sort: 'likes-desc',
+        category: '',
+        channel: '',
+        dateFrom: '',
+        dateTo: '',
+      });
 
       await flushTimers();
       expect(onChange).toHaveBeenCalledTimes(1);
@@ -340,7 +373,14 @@ describe('SearchBar', () => {
       pick(categorySelect(), 'fpv');
 
       expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange).toHaveBeenCalledWith({ query: 'robot', sort: 'date-desc', category: 'fpv' });
+      expect(onChange).toHaveBeenCalledWith({
+        query: 'robot',
+        sort: 'date-desc',
+        category: 'fpv',
+        channel: '',
+        dateFrom: '',
+        dateTo: '',
+      });
       expect(input()).toHaveValue('ro');
 
       await flushTimers();
@@ -353,7 +393,14 @@ describe('SearchBar', () => {
       fireEvent.click(clearButton());
 
       expect(input()).toHaveValue('');
-      expect(onChange).toHaveBeenCalledWith({ query: '', sort: 'views-asc', category: 'fpv' });
+      expect(onChange).toHaveBeenCalledWith({
+        query: '',
+        sort: 'views-asc',
+        category: 'fpv',
+        channel: '',
+        dateFrom: '',
+        dateTo: '',
+      });
       expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
 
       await flushTimers();
@@ -365,6 +412,72 @@ describe('SearchBar', () => {
 
       type('a');
       expect(clearButton()).toBeInTheDocument();
+    });
+  });
+
+  describe('channel and date filters', () => {
+    it('hides the channel input when no channels are known', () => {
+      renderBar();
+
+      expect(screen.queryByLabelText('Kanał')).not.toBeInTheDocument();
+    });
+
+    it('commits a channel change at once, keeping the rest of the state', () => {
+      const { onChange } = renderBar({ query: 'robot' }, CATEGORIES, ['Jordan B Peterson']);
+
+      fireEvent.change(screen.getByLabelText('Kanał'), {
+        target: { value: 'Jordan B Peterson' },
+      });
+
+      expect(onChange).toHaveBeenCalledWith({
+        query: 'robot',
+        sort: 'date-desc',
+        category: '',
+        channel: 'Jordan B Peterson',
+        dateFrom: '',
+        dateTo: '',
+      });
+    });
+
+    it('commits well-formed dates and ignores incomplete ones', () => {
+      const { onChange } = renderWithParent({ query: 'robot' });
+
+      fireEvent.change(screen.getByLabelText('Od daty'), { target: { value: '2024-01-05' } });
+      expect(onChange).toHaveBeenLastCalledWith({
+        query: 'robot',
+        sort: 'date-desc',
+        category: '',
+        channel: '',
+        dateFrom: '20240105',
+        dateTo: '',
+      });
+
+      fireEvent.change(screen.getByLabelText('Do daty'), { target: { value: '2025-12-31' } });
+      expect(onChange).toHaveBeenLastCalledWith({
+        query: 'robot',
+        sort: 'date-desc',
+        category: '',
+        channel: '',
+        dateFrom: '20240105',
+        dateTo: '20251231',
+      });
+
+      fireEvent.change(screen.getByLabelText('Od daty'), { target: { value: '2024-1-5' } });
+      expect(onChange).toHaveBeenLastCalledWith({
+        query: 'robot',
+        sort: 'date-desc',
+        category: '',
+        channel: '',
+        dateFrom: '',
+        dateTo: '20251231',
+      });
+    });
+
+    it('displays dates already committed in the URL', () => {
+      renderBar({ dateFrom: '20240105', dateTo: '20251231' });
+
+      expect(screen.getByLabelText('Od daty')).toHaveValue('2024-01-05');
+      expect(screen.getByLabelText('Do daty')).toHaveValue('2025-12-31');
     });
   });
 });

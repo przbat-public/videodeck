@@ -8,16 +8,24 @@ test.describe('wyszukiwarka', () => {
         expect(params.get('q')).toBe('motor');
         expect(params.get('sort')).toBe('views-desc');
         expect(params.get('category')).toBe('fpv');
+        expect(params.get('channel')).toBe('Kanał E2E');
+        expect(params.get('dateFrom')).toBe('20240105');
+        expect(params.get('dateTo')).toBe('20251231');
         expect(params.get('offset')).toBe('0');
         return { videos: [video('v1', 'Silnik krokowy')], totalCount: 1 };
       },
     });
 
-    await page.goto('/videos?q=motor&sort=views-desc&category=fpv');
+    await page.goto(
+      '/videos?q=motor&sort=views-desc&category=fpv&channel=Kana%C5%82+E2E&dateFrom=2024-01-05&dateTo=2025-12-31'
+    );
 
     await expect(page.getByPlaceholder('Szukaj filmów po opisie...')).toHaveValue('motor');
     await expect(page.locator('.sort-select')).toContainText('Najwięcej wyświetleń');
     await expect(page.locator('.category-select')).toContainText('fpv');
+    await expect(page.getByLabel('Kanał')).toHaveValue('Kanał E2E');
+    await expect(page.getByLabel('Od daty')).toHaveValue('2024-01-05');
+    await expect(page.getByLabel('Do daty')).toHaveValue('2025-12-31');
     await expect(page.getByText('Silnik krokowy')).toBeVisible();
     // the URL is not rewritten for valid parameters
     expect(new URL(page.url()).search).toContain('q=motor');

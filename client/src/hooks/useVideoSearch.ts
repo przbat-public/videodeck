@@ -32,7 +32,14 @@ export function useVideoSearch(): UseVideoSearchResult {
   // overwrite the answer to the question the URL is actually asking.
   const latestRequestRef = useRef(0);
   // The search the next loadMore call continues (offset = videos.length)
-  const searchStateRef = useRef<SearchState>({ query: '', sort: 'date-desc', category: '' });
+  const searchStateRef = useRef<SearchState>({
+    query: '',
+    sort: 'date-desc',
+    category: '',
+    channel: '',
+    dateFrom: '',
+    dateTo: '',
+  });
   // The request in flight; a new one aborts it so typing fast does not leave
   // a trail of doomed fetches behind
   const abortRef = useRef<AbortController | null>(null);
@@ -62,6 +69,16 @@ export function useVideoSearch(): UseVideoSearchResult {
         params.set('sort', searchState.sort);
         if (trimmedCategory) {
           params.set('category', trimmedCategory);
+        }
+        const channel = searchState.channel.trim();
+        if (channel) {
+          params.set('channel', channel);
+        }
+        if (/^\d{8}$/.test(searchState.dateFrom)) {
+          params.set('dateFrom', searchState.dateFrom);
+        }
+        if (/^\d{8}$/.test(searchState.dateTo)) {
+          params.set('dateTo', searchState.dateTo);
         }
         params.set('offset', String(offset));
         params.set('limit', String(PAGE_SIZE));

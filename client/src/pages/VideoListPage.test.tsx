@@ -43,6 +43,9 @@ function installFetch(
     if (url === '/api/videos/categories') {
       return json({ categories: handlers.categories ?? CATEGORIES });
     }
+    if (url === '/api/videos/channels') {
+      return json({ channels: ['Kanał A'] });
+    }
     if (url === '/api/videos/recreateIndices' && init?.method === 'POST') {
       return json({ message: 'Recreation started' }, 202);
     }
@@ -184,6 +187,16 @@ describe('VideoListPage', () => {
       ]);
       expect(sortSelect()).toHaveTextContent('Najnowsze');
       expect(searchInput()).toHaveValue('drone');
+    });
+
+    it('passes channel and date filters from the URL to the search', async () => {
+      fetchMock = installFetch({ search: () => ({ videos: [], totalCount: 0 }) });
+      renderAt('/videos?channel=Kana%C5%82+A&dateFrom=2024-01-05&dateTo=2025-12-31');
+
+      expect(await screen.findByText('Brak filmów. Spróbuj innego zapytania.')).toBeInTheDocument();
+      expect(searchUrls(fetchMock).at(-1)).toBe(
+        '/api/videos/search?sort=date-desc&channel=Kana%C5%82+A&dateFrom=20240105&dateTo=20251231&offset=0&limit=100'
+      );
     });
 
     it('trusts a category the server does not list, and shows it in the filter', async () => {

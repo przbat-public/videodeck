@@ -59,6 +59,9 @@ export async function mockApi(
   await context.route('**/api/videos/categories', (route) =>
     route.fulfill(json({ categories: handlers.categories ?? ['fpv', 'lego'] }))
   );
+  await context.route('**/api/videos/channels', (route) =>
+    route.fulfill(json({ channels: ['Kanał E2E'] }))
+  );
   await context.route('**/api/videos/**/details', async (route) => {
     const body = handlers.details ?? {
       details: {

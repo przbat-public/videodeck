@@ -89,6 +89,12 @@ export const VideoListItemSchema = z.object({
   subtitlePath: z.string().optional(),
   // search-only; must be absent from responses (never parsed here)
   transcriptText: z.string().optional(),
+  /** ES highlight fragments (title/description/snippet) with \u0001\u0002 marks */
+  highlights: z.record(z.string(), z.array(z.string())).optional(),
+});
+
+export const ChannelsResponseSchema = z.object({
+  channels: z.array(z.string()),
 });
 
 /** One subtitle file actually on disk, with its language from the file name */
@@ -275,6 +281,7 @@ export const SaveFolderConfigResponseSchema = z.object({
 export type VideoComment = z.infer<typeof VideoCommentSchema>;
 export type CommentWithReplies = z.infer<typeof CommentWithRepliesSchema>;
 export type VideoListItem = z.infer<typeof VideoListItemSchema>;
+export type ChannelsResponse = z.infer<typeof ChannelsResponseSchema>;
 export type VideoDetails = z.infer<typeof VideoDetailsSchema>;
 export type SubtitleTrack = z.infer<typeof SubtitleTrackSchema>;
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;

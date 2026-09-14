@@ -13,6 +13,11 @@ export interface SearchState {
   sort: SortOption;
   /** Trimmed category; '' means "all categories" */
   category: string;
+  /** Exact channel filter; '' means "all channels" */
+  channel: string;
+  /** Upload-date range as yyyyMMdd; '' means unbounded */
+  dateFrom: string;
+  dateTo: string;
 }
 
 export const DEFAULT_SORT: SortOption = 'date-desc';
@@ -21,6 +26,9 @@ export const DEFAULT_SEARCH_STATE: SearchState = {
   query: '',
   sort: DEFAULT_SORT,
   category: '',
+  channel: '',
+  dateFrom: '',
+  dateTo: '',
 };
 
 /** Every sort option with its label, in the order the select shows them */
@@ -48,7 +56,16 @@ export function parseSearchState(params: URLSearchParams): SearchState {
     query: (params.get('q') ?? '').trim(),
     sort: isSortOption(sort) ? sort : DEFAULT_SORT,
     category: (params.get('category') ?? '').trim(),
+    channel: (params.get('channel') ?? '').trim(),
+    dateFrom: toDateDigits(params.get('dateFrom')),
+    dateTo: toDateDigits(params.get('dateTo')),
   };
+}
+
+/** `2024-01-05` → `20240105`; anything malformed is ignored */
+function toDateDigits(value: string | null): string {
+  const digits = (value ?? '').replace(/\D/g, '');
+  return digits.length === 8 ? digits : '';
 }
 
 /**
@@ -68,5 +85,20 @@ export function toSearchParams(state: SearchState): URLSearchParams {
   if (category.length > 0) {
     params.set('category', category);
   }
+  const channel = state.channel.trim();
+  if (channel.length > 0) {
+    params.set('channel', channel);
+  }
+  if (/^\d{8}$/.test(state.dateFrom)) {
+    params.set('dateFrom', toDisplayDate(state.dateFrom));
+  }
+  if (/^\d{8}$/.test(state.dateTo)) {
+    params.set('dateTo', toDisplayDate(state.dateTo));
+  }
   return params;
+}
+
+/** `20240105` → `2024-01-05` (the value a date input displays) */
+function toDisplayDate(digits: string): string {
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
 }

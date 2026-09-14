@@ -64,4 +64,29 @@ describe('VideoCard', () => {
     // Image should be hidden (style.display = 'none')
     expect(img).toHaveStyle({ display: 'none' });
   });
+
+  it('marks the query in the title when there are no server highlights', () => {
+    renderWithRouter(<VideoCard video={mockVideo} searchQuery="Title" />);
+
+    const mark = screen.getByText('Title');
+    expect(mark.tagName).toBe('MARK');
+    expect(mark).toHaveClass('search-highlight');
+  });
+
+  it('renders server-side highlight fragments as marks, title and snippet', () => {
+    const withHighlights: VideoListItem = {
+      ...mockVideo,
+      highlights: {
+        title: ['A \u0001robot\u0002 arm'],
+        description: ['a long \u0001robot\u0002 description'],
+      },
+    };
+
+    renderWithRouter(<VideoCard video={withHighlights} searchQuery="robot" />);
+
+    const marks = screen.getAllByText('robot');
+    expect(marks.length).toBe(2);
+    expect(marks[0]).toHaveClass('search-highlight');
+    expect(screen.getByText('a long ', { exact: false })).toBeInTheDocument();
+  });
 });

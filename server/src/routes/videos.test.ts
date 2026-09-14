@@ -3,6 +3,7 @@ import express from 'express';
 import videosRouter from './videos';
 import { errorHandler } from '../app';
 import {
+  ChannelsResponseSchema,
   ReindexStatusSchema,
   SearchResponseSchema,
   VideoDetailsResponseSchema,
@@ -22,6 +23,7 @@ import type { CommentWithReplies, ReindexStatus, VideoComment, VideoListItem } f
 import type { VideoInfoJson } from '../types';
 import {
   getTotalVideoCount,
+  listChannelNames,
   recreateAllIndices,
   getVideoByBaseName,
   getVideoByVideoId,
@@ -69,6 +71,7 @@ const mockedGetVideoByVideoId = getVideoByVideoId as jest.MockedFunction<typeof 
 const mockedGetVideoByFilePath = getVideoByFilePath as jest.MockedFunction<
   typeof getVideoByFilePath
 >;
+const mockedListChannelNames = listChannelNames as jest.MockedFunction<typeof listChannelNames>;
 const mockedGetFolderPathsForCategory = getFolderPathsForCategory as jest.MockedFunction<
   typeof getFolderPathsForCategory
 >;
@@ -123,6 +126,45 @@ describe('videos router', () => {
         limit: 100,
       });
       expect(mockedGetTotalVideoCount).toHaveBeenCalled();
+    });
+
+    it('passes channel and date filters to the search service', async () => {
+      mockedGetVideos.mockResolvedValue([]);
+      mockedGetTotalVideoCount.mockResolvedValue(0);
+
+      const response = await request(app).get(
+        '/api/videos/search?q=x&channel=Jordan%20B%20Peterson&dateFrom=2024-01-05&dateTo=2025-12-31'
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockedGetVideos).toHaveBeenCalledWith('x', 'date-desc', undefined, {
+        offset: 0,
+        limit: 100,
+        channel: 'Jordan B Peterson',
+        dateFrom: '20240105',
+        dateTo: '20251231',
+      });
+    });
+
+    it('ignores malformed date filters', async () => {
+      mockedGetVideos.mockResolvedValue([]);
+      mockedGetTotalVideoCount.mockResolvedValue(0);
+
+      await request(app).get('/api/videos/search?dateFrom=2024-1-5&dateTo=bogus');
+
+      expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', undefined, {
+        offset: 0,
+        limit: 100,
+      });
+    });
+
+    it('lists distinct channel names for the filter UI', async () => {
+      mockedListChannelNames.mockResolvedValue(['Alpha', 'Beta']);
+
+      const response = await request(app).get('/api/videos/channels');
+
+      expect(response.status).toBe(200);
+      expect(ChannelsResponseSchema.parse(response.body)).toEqual({ channels: ['Alpha', 'Beta'] });
     });
 
     it('should use default sort when sort parameter is not provided', async () => {

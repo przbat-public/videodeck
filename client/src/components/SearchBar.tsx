@@ -10,8 +10,13 @@ interface SearchBarProps {
   query: string;
   sort: SortOption;
   category: string;
+  channel: string;
+  dateFrom: string;
+  dateTo: string;
   /** Categories offered by the server; the filter hides when there is nothing to pick */
   categories?: string[];
+  /** Channel names offered by the server (datalist suggestions) */
+  channels?: string[];
   onChange: (next: SearchState) => void;
 }
 
@@ -22,11 +27,23 @@ const DEBOUNCE_DELAY = 300;
 const isSearchable = (trimmed: string): boolean =>
   trimmed.length === 0 || trimmed.length >= MIN_SEARCH_LENGTH;
 
+/** `20240105` ↔ `2024-01-05` (what a date input displays) */
+const toDisplayDate = (digits: string): string =>
+  digits.length === 8 ? `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}` : '';
+const toDateDigits = (value: string): string => {
+  const digits = value.replace(/\D/g, '');
+  return digits.length === 8 ? digits : '';
+};
+
 export default function SearchBar({
   query,
   sort,
   category,
+  channel,
+  dateFrom,
+  dateTo,
   categories = [],
+  channels = [],
   onChange,
 }: SearchBarProps) {
   // The input is typed into faster than we want to search, so it keeps its
@@ -50,10 +67,10 @@ export default function SearchBar({
       return undefined;
     }
     const handle = window.setTimeout(() => {
-      onChange({ query: trimmed, sort, category });
+      onChange({ query: trimmed, sort, category, channel, dateFrom, dateTo });
     }, DEBOUNCE_DELAY);
     return () => window.clearTimeout(handle);
-  }, [text, query, sort, category, onChange]);
+  }, [text, query, sort, category, channel, dateFrom, dateTo, onChange]);
 
   /**
    * Selects commit right away. A phrase still too short to search stays in
@@ -61,7 +78,15 @@ export default function SearchBar({
    */
   const commitWith = (patch: Partial<SearchState>) => {
     const trimmed = text.trim();
-    onChange({ query: isSearchable(trimmed) ? trimmed : query, sort, category, ...patch });
+    onChange({
+      query: isSearchable(trimmed) ? trimmed : query,
+      sort,
+      category,
+      channel,
+      dateFrom,
+      dateTo,
+      ...patch,
+    });
   };
 
   const handleClear = () => {
@@ -101,6 +126,38 @@ export default function SearchBar({
         className="sort-select"
         aria-label="Sort"
         items={SORT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+      />
+      {channels.length > 0 && (
+        <>
+          <input
+            type="text"
+            list="channel-suggestions"
+            value={channel}
+            onChange={(e) => commitWith({ channel: e.target.value })}
+            placeholder="Kanał..."
+            className="channel-input"
+            aria-label="Kanał"
+          />
+          <datalist id="channel-suggestions">
+            {channels.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        </>
+      )}
+      <input
+        type="date"
+        value={toDisplayDate(dateFrom)}
+        onChange={(e) => commitWith({ dateFrom: toDateDigits(e.target.value) })}
+        className="date-filter"
+        aria-label="Od daty"
+      />
+      <input
+        type="date"
+        value={toDisplayDate(dateTo)}
+        onChange={(e) => commitWith({ dateTo: toDateDigits(e.target.value) })}
+        className="date-filter"
+        aria-label="Do daty"
       />
       {text && (
         <button type="button" onClick={handleClear} className="clear-button">

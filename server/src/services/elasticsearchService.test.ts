@@ -17,6 +17,7 @@ import {
   getVideoByVideoId,
   indexVideo,
   listCachedFolders,
+  listChannelNames,
   promoteIndexVersion,
   recreateIndex,
   SEARCH_FIELDS,
@@ -594,6 +595,80 @@ describe('elasticsearchService', () => {
       const request = mockClient.search.mock.calls[0][0];
       expect(request.from).toBe(200);
       expect(request.size).toBe(25);
+    });
+
+    it('filters by channel and upload-date range', async () => {
+      await searchVideos('q', 'date-desc', undefined, {
+        channel: 'Jordan B Peterson',
+        dateFrom: '20240101',
+        dateTo: '20251231',
+      });
+
+      const request = mockClient.search.mock.calls[0][0];
+      expect(request.query).toEqual({
+        bool: {
+          must: [expect.objectContaining({ multi_match: expect.objectContaining({ query: 'q' }) })],
+          filter: [
+            { term: { 'channelName.keyword': 'Jordan B Peterson' } },
+            { range: { uploadDate: { gte: '20240101' } } },
+            { range: { uploadDate: { lte: '20251231' } } },
+          ],
+        },
+      });
+    });
+
+    it('applies filters to blank queries too', async () => {
+      await searchVideos(undefined, 'date-desc', undefined, { channel: 'X' });
+
+      const request = mockClient.search.mock.calls[0][0];
+      expect(request.query).toEqual({
+        bool: { must: [{ match_all: {} }], filter: [{ term: { 'channelName.keyword': 'X' } }] },
+      });
+    });
+
+    it('maps ES highlight fragments into the response contract', async () => {
+      mockClient.search.mockResolvedValue({
+        hits: {
+          hits: [
+            {
+              _id: 'id',
+              _source: { ...toDocument(video()) },
+              highlight: {
+                title: ['a \u0001robot\u0002 arm'],
+                description: ['desc \u0001robot\u0002 here'],
+                commentsText: ['comment \u0001robot\u0002!'],
+              },
+            },
+          ],
+        },
+      });
+
+      const results = await searchVideos('robot');
+
+      expect(at(results, 0).highlights).toEqual({
+        title: ['a \u0001robot\u0002 arm'],
+        description: ['desc \u0001robot\u0002 here'],
+        snippet: ['comment \u0001robot\u0002!'],
+      });
+    });
+
+    it('requests highlight fragments only for real queries', async () => {
+      await searchVideos('robot');
+      const first = mockClient.search.mock.calls[0][0];
+      expect(first.highlight).toBeDefined();
+      expect(first.highlight?.pre_tags).toEqual(['\u0001']);
+      expect(first.highlight?.post_tags).toEqual(['\u0002']);
+
+      await searchVideos('   ');
+      expect(mockClient.search.mock.calls[1][0].highlight).toBeUndefined();
+    });
+
+    it('lists distinct channel names sorted', async () => {
+      mockClient.search.mockResolvedValue({
+        aggregations: { channels: { buckets: [{ key: 'Beta' }, { key: 'Alpha' }] } },
+      });
+
+      expect(await listChannelNames()).toEqual(['Alpha', 'Beta']);
     });
 
     it('clamps out-of-range paging values', async () => {

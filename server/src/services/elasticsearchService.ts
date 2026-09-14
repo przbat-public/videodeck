@@ -554,7 +554,16 @@ export interface SearchOptions {
   offset?: number;
   /** Results per page; clamped to 1..SEARCH_MAX_LIMIT */
   limit?: number;
+  /** Exact channel filter (matches channelName.keyword) */
+  channel?: string;
+  /** Upload-date range as yyyyMMdd (inclusive bounds) */
+  dateFrom?: string;
+  dateTo?: string;
 }
+
+/** Control chars wrapping highlight fragments — never occur in user content */
+const HIGHLIGHT_OPEN = '\u0001';
+const HIGHLIGHT_CLOSE = '\u0002';
 
 function normalizePaging(options: SearchOptions): { from: number; size: number } {
   const from = Math.max(0, Math.trunc(options.offset ?? 0));
@@ -582,12 +591,13 @@ export async function searchVideos(
   const esClient = getElasticsearchClient();
   const { from, size } = normalizePaging(options);
 
-  let searchQuery: Record<string, unknown> = { match_all: {} };
+  let mustQuery: Record<string, unknown> = { match_all: {} };
+  const hasQuery = Boolean(query && query.trim().length > 0);
 
-  if (query && query.trim().length > 0) {
-    searchQuery = {
+  if (hasQuery) {
+    mustQuery = {
       multi_match: {
-        query: query.trim(),
+        query: query!.trim(),
         fields: SEARCH_FIELDS,
         type: 'best_fields',
         fuzziness: 'AUTO',
@@ -595,25 +605,99 @@ export async function searchVideos(
     };
   }
 
+  // Channel and date filters narrow the result set without touching scoring
+  const filters: Record<string, unknown>[] = [];
+  if (options.channel) {
+    filters.push({ term: { 'channelName.keyword': options.channel } });
+  }
+  if (options.dateFrom) {
+    filters.push({ range: { uploadDate: { gte: options.dateFrom } } });
+  }
+  if (options.dateTo) {
+    filters.push({ range: { uploadDate: { lte: options.dateTo } } });
+  }
+
   // commentsText is search-only; it would dominate the payload otherwise
   const response = await esClient.search<VideoDocument>({
     index: getIndexPattern(folderPaths),
     ignore_unavailable: true,
-    query: searchQuery,
+    query:
+      filters.length > 0
+        ? { bool: { must: [mustQuery], filter: filters } }
+        : hasQuery
+          ? mustQuery
+          : { match_all: {} },
     sort: buildSortOptions(sortOption),
     from,
     size,
     _source: {
       excludes: [...SEARCH_ONLY_SOURCE_FIELDS],
     },
+    // Fragments wrap matches in control chars the client turns into <mark>s;
+    // never HTML from the server into dangerouslySetInnerHTML.
+    ...(hasQuery
+      ? {
+          highlight: {
+            fields: {
+              title: { number_of_fragments: 0 },
+              description: { fragment_size: 160, number_of_fragments: 1 },
+              commentsText: { fragment_size: 160, number_of_fragments: 1 },
+              transcriptText: { fragment_size: 160, number_of_fragments: 1 },
+            },
+            pre_tags: [HIGHLIGHT_OPEN],
+            post_tags: [HIGHLIGHT_CLOSE],
+          },
+        }
+      : {}),
   });
 
   return response.hits.hits.map((hit) => {
     if (!hit._source) {
       throw new Error(`Video document ${hit._id} has no _source field`);
     }
-    return fromDocument(hit._source);
+    const video = fromDocument(hit._source);
+    const highlights = buildHighlights(hit.highlight);
+    return highlights ? { ...video, highlights } : video;
   });
+}
+
+/**
+ * Shape the ES highlight map into the response contract: `title` and
+ * `description` fragments under their own keys, one merged `snippet` from
+ * the search-only text fields (comments/transcript) for the result cards.
+ */
+function buildHighlights(
+  highlight: Record<string, string[]> | undefined
+): Record<string, string[]> | undefined {
+  if (!highlight) {
+    return undefined;
+  }
+  const result: Record<string, string[]> = {};
+  for (const field of ['title', 'description']) {
+    const fragments = highlight[field];
+    if (fragments && fragments.length > 0) {
+      result[field] = fragments.slice(0, 3);
+    }
+  }
+  const snippet = [...(highlight.commentsText ?? []), ...(highlight.transcriptText ?? [])];
+  if (snippet.length > 0) {
+    result.snippet = snippet.slice(0, 2);
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/** Distinct channel names across the configured folders (for the filter UI) */
+export async function listChannelNames(): Promise<string[]> {
+  const esClient = getElasticsearchClient();
+  const response = await esClient.search<VideoDocument>({
+    index: getIndexPattern(),
+    size: 0,
+    aggs: { channels: { terms: { field: 'channelName.keyword', size: 200 } } },
+  });
+  const buckets = (
+    response.aggregations?.channels as { buckets?: Array<{ key: string }> } | undefined
+  )?.buckets;
+  return (buckets ?? []).map((bucket) => bucket.key).sort((a, b) => a.localeCompare(b));
 }
 
 export async function getAllVideos(sortOption: SortOption = 'date-desc'): Promise<VideoListItem[]> {

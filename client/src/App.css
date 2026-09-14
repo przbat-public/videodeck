@@ -1546,3 +1546,39 @@
   color: #333;
   font-size: 0.95rem;
 }
+
+/* Search bar filters: channel + date range */
+.channel-input {
+  padding: 0.72rem 1rem;
+  font-size: 0.95rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  min-width: 160px;
+  transition: border-color 0.2s ease;
+}
+
+.channel-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.date-filter {
+  padding: 0.62rem 0.75rem;
+  font-size: 0.9rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  color: #333;
+  transition: border-color 0.2s ease;
+}
+
+.date-filter:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.video-card-snippet {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  color: #666;
+  line-height: 1.4;
+}

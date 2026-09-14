@@ -50,10 +50,33 @@ const highlightText = (text: string, query?: string): React.ReactNode => {
   );
 };
 
+/**
+ * A server-side highlight fragment: Elasticsearch wraps matches in \u0001…
+ * \u0002 control chars, so odd parts are the matches.
+ */
+const HIGHLIGHT_MARK_RE = new RegExp(`[${String.fromCharCode(1)}${String.fromCharCode(2)}]`);
+
+const renderMarkedFragment = (fragment: string): React.ReactNode => {
+  const parts = fragment.split(HIGHLIGHT_MARK_RE);
+  return parts.map((part, index) =>
+    index % 2 === 1 ? (
+      // eslint-disable-next-line @eslint-react/no-array-index-key
+      <mark key={index} className="search-highlight">
+        {part}
+      </mark>
+    ) : (
+      // eslint-disable-next-line @eslint-react/no-array-index-key
+      <React.Fragment key={index}>{part}</React.Fragment>
+    )
+  );
+};
+
 function VideoCardInner({ video, searchQuery }: VideoCardProps): JSX.Element {
   const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}?folder=${encodeURIComponent(video.folderPath)}`;
 
   const videoIdentifier = video.videoId || video.baseName;
+  const serverTitle = video.highlights?.title?.[0];
+  const serverSnippet = video.highlights?.description?.[0] ?? video.highlights?.snippet?.[0];
 
   return (
     <Link
@@ -87,7 +110,14 @@ function VideoCardInner({ video, searchQuery }: VideoCardProps): JSX.Element {
               <div className="video-card-views">{formatViewCount(video.viewCount)}</div>
             )}
           </div>
-          <h3 className="video-title">{highlightText(video.title, searchQuery)}</h3>
+          <h3 className="video-title">
+            {serverTitle
+              ? renderMarkedFragment(serverTitle)
+              : highlightText(video.title, searchQuery)}
+          </h3>
+          {serverSnippet && (
+            <p className="video-card-snippet">{renderMarkedFragment(serverSnippet)}</p>
+          )}
         </div>
       </div>
     </Link>

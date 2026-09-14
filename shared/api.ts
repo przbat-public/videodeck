@@ -17,6 +17,7 @@ export type {
   ApiError,
   CategoriesResponse,
   ChannelVideo,
+  ChannelsResponse,
   ClearFinishedResponse,
   CommentWithReplies,
   DownloadOptions,

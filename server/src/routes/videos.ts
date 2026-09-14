@@ -4,6 +4,7 @@ import path from 'path';
 import type {
   AcceptedResponse,
   CategoriesResponse,
+  ChannelsResponse,
   ReindexConflictResponse,
   ReindexStatus,
   SearchResponse,
@@ -29,9 +30,11 @@ import {
   getVideoByVideoId,
   getVideoByFilePath,
   getTotalVideoCount,
+  listChannelNames,
   recreateAllIndices,
   SEARCH_DEFAULT_LIMIT,
 } from '../services/elasticsearchService';
+import type { SearchOptions } from '../services/elasticsearchService';
 import { getFolderPathsForCategory, listCategories } from '../services/folderConfig';
 import { generateSummary } from '../services/summaryService';
 import { getVideosFolderPaths } from '../config';
@@ -150,18 +153,33 @@ const search: RouteHandler<NoParams, SearchResponse> = async (req, res) => {
   const category = readString(req.query.category)?.trim();
   const offset = parseNonNegativeInt(readString(req.query.offset), 0);
   const limit = parseNonNegativeInt(readString(req.query.limit), SEARCH_DEFAULT_LIMIT);
+  const channel = readString(req.query.channel)?.trim() || undefined;
+  const dateFrom = parseDateFilter(readString(req.query.dateFrom));
+  const dateTo = parseDateFilter(readString(req.query.dateTo));
 
   const folderPaths = category ? await getFolderPathsForCategory(category) : undefined;
 
-  const videos = await getVideos(query, sort, folderPaths, { offset, limit });
+  const options = stripUndefined<SearchOptions>({ offset, limit, channel, dateFrom, dateTo });
+  const videos = await getVideos(query, sort, folderPaths, options);
   const totalCount = await getTotalVideoCount(folderPaths);
 
   res.json({ videos, totalCount });
 };
 
+/** yyyyMMdd from a user-entered date; anything malformed is ignored */
+function parseDateFilter(value: string | undefined): string | undefined {
+  const digits = (value ?? '').replace(/\D/g, '');
+  return digits.length === 8 ? digits : undefined;
+}
+
 // GET /api/videos/categories
 const getCategories: RouteHandler<NoParams, CategoriesResponse> = async (_req, res) => {
   res.json({ categories: await listCategories() });
+};
+
+// GET /api/videos/channels - distinct channel names for the filter UI
+const getChannelNames: RouteHandler<NoParams, ChannelsResponse> = async (_req, res) => {
+  res.json({ channels: await listChannelNames() });
 };
 
 // GET /api/videos/file/:filename?folder=<folderPath>
@@ -359,6 +377,7 @@ router.get('/refreshCache', startRefresh);
 router.post('/recreateIndices', recreateIndices);
 router.get('/search', search);
 router.get('/categories', getCategories);
+router.get('/channels', getChannelNames);
 router.get('/file/:filename', serveFile);
 router.get('/:identifier/summary', getSummary);
 router.get('/:identifier/details', getDetails);
