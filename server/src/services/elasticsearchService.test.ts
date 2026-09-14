@@ -51,9 +51,12 @@ jest.mock('@elastic/elasticsearch', () => ({
 const FOLDER_A = '/videos/a';
 const FOLDER_B = '/videos/b';
 
+/** Mutable so individual tests can simulate "no folders configured" */
+const mockFolders = { current: ['/videos/a', '/videos/b'] };
+
 jest.mock('../config', () => ({
   ELASTICSEARCH_URL: 'http://localhost:9200',
-  getVideosFolderPaths: () => ['/videos/a', '/videos/b'],
+  getVideosFolderPaths: () => mockFolders.current,
 }));
 
 const ALIAS_A = getIndexNameFromFolderPath(FOLDER_A);
@@ -101,6 +104,7 @@ describe('elasticsearchService', () => {
     jest.clearAllMocks();
     jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockFolders.current = ['/videos/a', '/videos/b'];
 
     mockClient.indices.create.mockResolvedValue({ acknowledged: true });
     mockClient.indices.exists.mockResolvedValue(false);
@@ -527,6 +531,13 @@ describe('elasticsearchService', () => {
       const request = mockClient.search.mock.calls[0][0];
       expect(request.query).toEqual({ match_all: {} });
       expect(request.sort).toEqual([{ uploadDate: { order: 'desc', missing: '_last' } }]);
+    });
+
+    it('refuses to search when no folders are configured (an empty index list would mean all indices)', async () => {
+      mockFolders.current = [];
+
+      await expect(searchVideos('q')).rejects.toThrow(/No video folders configured/);
+      expect(mockClient.search).not.toHaveBeenCalled();
     });
 
     it('omits the sort for relevance, letting Elasticsearch order by score', async () => {

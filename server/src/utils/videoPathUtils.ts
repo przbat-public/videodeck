@@ -1,10 +1,22 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { getVideosFolderPaths } from '../config';
+import { logger } from './logger';
 
 // Validate that all folders exist
 export async function validateVideosFolder(): Promise<void> {
   const folderPaths = getVideosFolderPaths();
+
+  // Glob entries that matched nothing yield an empty list (a drive that is
+  // not mounted) — that is a valid state to boot in: the folders appear as
+  // soon as the drive comes back (the list is re-scanned every few seconds).
+  if (folderPaths.length === 0) {
+    logger.warn(
+      'No video folders found — search, downloads and reindexing stay unavailable until a configured drive is mounted.'
+    );
+    return;
+  }
+
   const errors: string[] = [];
 
   for (const folderPath of folderPaths) {

@@ -55,11 +55,19 @@ export function buildIndexVersionName(folderPath: string, now: Date = new Date()
 /**
  * Alias names to search: the given folders, or every configured folder.
  *
- * Never call this with an empty `folderPaths` array — Elasticsearch reads an
+ * Never called with an empty `folderPaths` array — Elasticsearch reads an
  * empty index list as "all indices", which would silently widen the search
- * instead of narrowing it. Callers filtering by category must short-circuit.
+ * instead of narrowing it. Callers filtering by category must short-circuit,
+ * and the default (`getVideosFolderPaths()` after glob expansion) may be
+ * empty when no drive is mounted — that must fail loudly instead of
+ * searching every index.
  */
 function getIndexPattern(folderPaths: string[] = getVideosFolderPaths()): string | string[] {
+  if (folderPaths.length === 0) {
+    throw new Error(
+      'No video folders configured — refusing to search across all Elasticsearch indices'
+    );
+  }
   return folderPaths.map((folderPath) => getIndexNameFromFolderPath(folderPath));
 }
 

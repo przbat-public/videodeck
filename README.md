@@ -102,6 +102,18 @@ VIDEOS_FOLDER_PATH=/Volumes/MEDIA/folder1;/Volumes/MEDIA/folder2;/Volumes/MEDIA/
 ELASTICSEARCH_URL=http://localhost:9200
 ```
 
+**Foldery na wymiennych dyskach** — zamiast przełączać wiersze przy każdej podmianie dysku, wpisz wzorzec glob. `*` obejmuje jeden segment ścieżki, a za folder kanału uznawany jest katalog zawierający `config.json` lub `*.info.json`:
+
+```
+VIDEOS_FOLDER_PATH=/Volumes/*/*
+```
+
+Ten jeden wiersz sam znajduje wszystkie kanały na każdym aktualnie zamontowanym woluminie — dysk, którego nie ma, po prostu nie dorzuca folderów (serwer startuje z ostrzeżeniem i łapie foldery, gdy dysk wróci; lista jest odświeżana co kilka sekund). Można mieszać wzorce z literałami (`~/` rozwija się do katalogu domowego):
+
+```
+VIDEOS_FOLDER_PATH=/Volumes/MEDIA/drone-*;/Volumes/MEDIA/*;/Users/<user>/Downloads/youtube/youtube-chrome
+```
+
 Opcjonalne zmienne:
 ```
 DOWNLOAD_CONCURRENCY=2   # maks. liczba równoległych pobrań yt-dlp (domyślnie 2, najwyżej jedno na folder)
@@ -357,27 +369,30 @@ video-search-app/
 ├── shared/
 │   ├── api.ts           # Typy kontraktu (z schematów) + typy żądań/zdarzeń — types-only
 │   ├── schemas.ts       # Schematy zod odpowiedzi API (typy z z.infer) — walidacja klienta i testów
-│   └── progress.ts      # Wspólny parser postępu yt-dlp (serwer + rozszerzenie)
+│   ├── progress.ts      # Wspólny parser postępu yt-dlp (serwer + rozszerzenie)
+│   └── youtube.ts       # Wspólne wyciąganie id YouTube z URL (serwer + rozszerzenie)
 ├── server/              # Backend (Node.js/Express)
 │   ├── src/
 │   │   ├── index.ts     # Start serwera
 │   │   ├── app.ts       # Konfiguracja Express (middleware, routery)
-│   │   ├── routes/      # Endpointy API
+│   │   ├── routes/      # Warstwa HTTP — parsowanie żądań, statusy, bez logiki yt-dlp
 │   │   │   ├── videos.ts    # Wyszukiwanie, szczegóły, streszczenia, reindeks
 │   │   │   ├── folder.ts    # Konfiguracja folderów, list.json, kolejka pobierania
-│   │   │   └── http.ts      # RouteHandler, readBody/readString, sendError
-│   │   ├── services/    # Logika biznesowa
+│   │   │   └── http.ts      # RouteHandler, readBody/sendError (narrowery w utils/objectUtils)
+│   │   ├── services/    # Logika biznesowa (nie zależy od routes/)
 │   │   │   ├── videoScanner.ts
 │   │   │   ├── elasticsearchService.ts
-│   │   │   ├── downloadQueue.ts
+│   │   │   ├── downloadQueue.ts  # Kolejka zadań — używa buildYtDlpArgs z ytdlp.ts
+│   │   │   ├── ytdlp.ts         # CAŁA rozmowa z yt-dlp: szablony argumentów + spawn
+│   │   │   ├── channelList.ts   # Odczyt list.json kanału
 │   │   │   ├── folderConfig.ts
 │   │   │   └── folderIndex.ts
 │   │   ├── utils/       # Narzędzia pomocnicze
 │   │   │   ├── commentTreeUtils.ts
 │   │   │   ├── logger.ts        # Jedyny moduł dotykający console (poziom + timestamp)
-│   │   │   ├── objectUtils.ts   # stripUndefined() dla exactOptionalPropertyTypes
+│   │   │   ├── objectUtils.ts   # stripUndefined(), narrowery (isRecord/readString/errnoCode)
 │   │   │   └── videoPathUtils.ts
-│   │   ├── config.ts    # Konfiguracja
+│   │   ├── config.ts    # Konfiguracja (env, glob folderów wideo)
 │   │   ├── types.ts     # Typy wewnętrzne serwera (np. VideoInfoJson z yt-dlp)
 │   │   └── test-utils.ts    # at()/entry() - pomocniki do testów bez `undefined`
 │   ├── tsconfig.json        # Kod + testy (typecheck, IDE)
@@ -662,7 +677,8 @@ Aplikacja automatycznie skanuje wszystkie podane foldery i indeksuje pliki speł
   "category": "fpv",
   "maxHeight": 1080,
   "subLangs": ["pl", "en"],
-  "writeComments": false
+  "writeComments": false,
+  "extraArgs": ["--cookies-from-browser", "chrome"]
 }
 ```
 
@@ -673,6 +689,7 @@ Aplikacja automatycznie skanuje wszystkie podane foldery i indeksuje pliki speł
 | `maxHeight` | `2160` | Maksymalna wysokość wideo (144-4320). Preferowany h264/aac w mp4, potem dowolny kodek |
 | `subLangs` | `["en"]` | Języki napisów dla `--sub-lang` (`pl`, `en`, `en.*`, `all`). Pusta tablica wyłącza napisy |
 | `writeComments` | `true` | Czy pobierać komentarze (`--write-comments`) - są indeksowane do wyszukiwania |
+| `extraArgs` | `[]` | Dodatkowe flagi yt-dlp dopisane po wbudowanych, np. `["--cookies-from-browser", "chrome"]` (oddzielne wpisy jak w argv, bez cudzysłowów). Zarezerwowane są flagi, na których opiera się potok: `-f/--format`, `-o/--output`, `-P/--paths`, `--download-archive`, `--no-download-archive`, `--merge-output-format` — `PUT /api/folder/config` je odrzuca, a w ręcznie edytowanym pliku są ignorowane |
 
 Brakujące klucze biorą wartości domyślne (`GET /api/status` zwraca je w `downloadDefaults`). Wartości nieprawidłowe w ręcznie edytowanym pliku są ignorowane, a `PUT /api/folder/config` je odrzuca. Opcje są odczytywane w momencie dodawania zadania do kolejki. Edytor w UI (strona statusu) pozwala je ustawić bez ręcznej edycji pliku.
 
