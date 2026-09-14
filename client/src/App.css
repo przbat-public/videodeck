@@ -790,14 +790,6 @@
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-.config-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  margin-bottom: 0.5rem;
-}
-
 .config-actions {
   display: flex;
   gap: 0.75rem;
@@ -1348,4 +1340,135 @@
   .cancel-config-button {
     width: 100%;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Reusable form controls (ui/Checkbox, ui/Select)
+--------------------------------------------------------------------------- */
+
+.ui-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #444;
+  user-select: none;
+}
+
+.ui-checkbox-input {
+  /* Hidden but focusable: the box below is what the user sees */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.ui-checkbox-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 2px solid #c8c8d4;
+  border-radius: 4px;
+  background: white;
+  color: white;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.ui-checkbox-mark {
+  width: 12px;
+  height: 10px;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.ui-checkbox:hover .ui-checkbox-box {
+  border-color: #667eea;
+}
+
+.ui-checkbox-input:focus-visible + .ui-checkbox-box {
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+  border-color: #667eea;
+}
+
+.ui-checkbox-input:checked + .ui-checkbox-box,
+.ui-checkbox-input:indeterminate + .ui-checkbox-box {
+  background: #667eea;
+  border-color: #667eea;
+}
+
+.ui-checkbox-input:checked + .ui-checkbox-box .ui-checkbox-mark {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.ui-checkbox--disabled {
+  cursor: not-allowed;
+  color: #999;
+}
+
+.ui-checkbox--disabled .ui-checkbox-box {
+  background: #f0f0f3;
+  border-color: #d8d8e0;
+}
+
+.ui-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ui-select-native {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0.75rem 2.4rem 0.75rem 1rem;
+  font-size: 1rem;
+  font-family: inherit;
+  color: #333;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.ui-select-native:hover:not(:disabled) {
+  border-color: #b9c0f0;
+}
+
+.ui-select-native:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.ui-select-native:disabled {
+  background: #f5f5f7;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.ui-select-arrow {
+  position: absolute;
+  right: 0.85rem;
+  width: 10px;
+  height: 6px;
+  color: #667eea;
+  pointer-events: none;
+}
+
+.ui-select--disabled .ui-select-arrow {
+  color: #bbb;
 }

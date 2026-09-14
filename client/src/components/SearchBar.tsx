@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { SortOption } from '@shared/api';
 import type { SearchState } from '../utils/searchUrlState';
 import { SORT_OPTIONS } from '../utils/searchUrlState';
+import { Select } from './ui/Select';
 
 interface SearchBarProps {
   /** The committed search — what the URL and the results currently reflect */
@@ -83,9 +84,9 @@ export default function SearchBar({
         className="search-input"
       />
       {categoryOptions.length > 0 && (
-        <select
+        <Select
           value={category}
-          onChange={(e) => commitWith({ category: e.target.value })}
+          onChange={(value) => commitWith({ category: value })}
           className="category-select"
           aria-label="Kategoria"
         >
@@ -95,11 +96,11 @@ export default function SearchBar({
               {name}
             </option>
           ))}
-        </select>
+        </Select>
       )}
-      <select
+      <Select
         value={sort}
-        onChange={(e) => commitWith({ sort: e.target.value as SortOption })}
+        onChange={(value) => commitWith({ sort: value as SortOption })}
         className="sort-select"
         aria-label="Sort"
       >
@@ -108,7 +109,7 @@ export default function SearchBar({
             {option.label}
           </option>
         ))}
-      </select>
+      </Select>
       {text && (
         <button type="button" onClick={handleClear} className="clear-button">
           Clear

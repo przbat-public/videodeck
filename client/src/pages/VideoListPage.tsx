@@ -7,6 +7,7 @@ import { useRecreateIndices } from '../hooks/useRecreateIndices';
 import { useSearchUrlState } from '../hooks/useSearchUrlState';
 import SearchBar from '../components/SearchBar';
 import VideoList from '../components/VideoList';
+import { Checkbox } from '../components/ui/Checkbox';
 
 /** Polish plural: 1 film, 2 filmy, 5 filmów */
 function pluralVideos(count: number): string {
@@ -76,17 +77,12 @@ export default function VideoListPage(): JSX.Element {
           >
             {refreshLoading ? 'Odświeżanie...' : 'Odśwież indeks'}
           </button>
-          <label
-            className="toolbar-checkbox"
+          <Checkbox
+            checked={onlyMissing}
+            onChange={setOnlyMissing}
+            label="tylko brakujące (użyj istniejącego indeksu)"
             title="Pomiń foldery, które mają już indeks w Elasticsearch (np. cache poprzednio podpiętego dysku)"
-          >
-            <input
-              type="checkbox"
-              checked={onlyMissing}
-              onChange={(event) => setOnlyMissing(event.target.checked)}
-            />
-            tylko brakujące (użyj istniejącego indeksu)
-          </label>
+          />
           <button
             type="button"
             onClick={handleReload}

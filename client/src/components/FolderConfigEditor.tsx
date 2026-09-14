@@ -7,6 +7,8 @@ import type {
 } from '@shared/api';
 import type { FormState } from '../utils/folderConfigForm';
 import { MAX_HEIGHT_CHOICES, buildConfig, toFormState } from '../utils/folderConfigForm';
+import { Checkbox } from './ui/Checkbox';
+import { Select } from './ui/Select';
 
 interface FolderConfigEditorProps {
   folderPath: string;
@@ -149,10 +151,10 @@ export function FolderConfigEditor({
 
           <div className="config-field">
             <label htmlFor={id('maxHeight')}>Maks. rozdzielczość:</label>
-            <select
+            <Select
               id={id('maxHeight')}
               value={form.maxHeight}
-              onChange={(e) => updateForm({ maxHeight: e.target.value })}
+              onChange={(value) => updateForm({ maxHeight: value })}
               className="config-input"
             >
               <option value="">Domyślnie ({downloadDefaults.maxHeight}p)</option>
@@ -161,18 +163,15 @@ export function FolderConfigEditor({
                   {height}p
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className="config-field">
-            <label className="config-checkbox">
-              <input
-                type="checkbox"
-                checked={form.subtitlesEnabled}
-                onChange={(e) => updateForm({ subtitlesEnabled: e.target.checked })}
-              />
-              Pobieraj napisy
-            </label>
+            <Checkbox
+              checked={form.subtitlesEnabled}
+              onChange={(checked) => updateForm({ subtitlesEnabled: checked })}
+              label="Pobieraj napisy"
+            />
             {form.subtitlesEnabled && (
               <>
                 <label htmlFor={id('subLangs')}>Języki napisów (po przecinku):</label>
@@ -189,14 +188,11 @@ export function FolderConfigEditor({
           </div>
 
           <div className="config-field">
-            <label className="config-checkbox">
-              <input
-                type="checkbox"
-                checked={form.writeComments}
-                onChange={(e) => updateForm({ writeComments: e.target.checked })}
-              />
-              Pobieraj komentarze
-            </label>
+            <Checkbox
+              checked={form.writeComments}
+              onChange={(checked) => updateForm({ writeComments: checked })}
+              label="Pobieraj komentarze"
+            />
           </div>
 
           <div className="config-field">

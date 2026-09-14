@@ -1,0 +1,53 @@
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Checkbox } from './Checkbox';
+
+describe('Checkbox', () => {
+  it('renders with the label as the accessible name', () => {
+    render(<Checkbox checked={false} onChange={vi.fn()} label="tylko brakujące" />);
+
+    const box = screen.getByRole('checkbox', { name: 'tylko brakujące' });
+    expect(box).not.toBeChecked();
+    expect(screen.getByText('tylko brakujące')).toBeInTheDocument();
+  });
+
+  it('reports the toggled state when the box is clicked', () => {
+    const onChange = vi.fn();
+    render(<Checkbox checked={false} onChange={onChange} label="Pobieraj napisy" />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Pobieraj napisy' }));
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it('toggles from a label click too (whole row is the label)', () => {
+    const onChange = vi.fn();
+    render(<Checkbox checked onChange={onChange} label="Pobieraj komentarze" />);
+
+    fireEvent.click(screen.getByText('Pobieraj komentarze'));
+
+    expect(onChange).toHaveBeenCalledWith(false);
+  });
+
+  it('does not report changes when disabled', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<Checkbox checked={false} onChange={onChange} label="wyłączone" disabled />);
+
+    const box = screen.getByRole('checkbox', { name: 'wyłączone' });
+    expect(box).toBeDisabled();
+    await user.click(box);
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps an external class name', () => {
+    const { container } = render(
+      <Checkbox checked={false} onChange={vi.fn()} label="x" className="toolbar-checkbox" />
+    );
+
+    expect(container.querySelector('.ui-checkbox.toolbar-checkbox')).not.toBeNull();
+  });
+});
