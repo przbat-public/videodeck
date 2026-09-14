@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { extractYtDlpProgress } from '@shared/progress';
-import { extractYoutubeVideoId } from '@shared/youtube';
+import { extractYoutubeVideoId, toWatchUrl } from '@shared/youtube';
 import { extractTextFromVttSubtitles } from './services/summaryService';
 import { runPool } from './utils/runPool';
 
@@ -65,6 +65,24 @@ describe('extractYoutubeVideoId', () => {
         if (id !== null) {
           expect(id).toMatch(/^[a-zA-Z0-9_-]{11}$/);
         }
+      })
+    );
+  });
+
+  it('toWatchUrl produces a URL the extractor reads back, for any valid id', () => {
+    fc.assert(
+      fc.property(fc.stringMatching(/^[a-zA-Z0-9_-]{11}$/), (id) => {
+        expect(extractYoutubeVideoId(toWatchUrl(id))).toBe(id);
+      })
+    );
+  });
+
+  it('toWatchUrl never carries playlist context', () => {
+    fc.assert(
+      fc.property(fc.stringMatching(/^[a-zA-Z0-9_-]{11}$/), (id) => {
+        const url = toWatchUrl(id);
+        expect(url).not.toContain('list=');
+        expect(url).not.toContain('index=');
       })
     );
   });

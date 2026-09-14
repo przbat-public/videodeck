@@ -1,4 +1,4 @@
-import { getYouTubeVideoId } from './lib/youtube';
+import { getYouTubeVideoId, toWatchUrl } from './lib/youtube';
 import type { RuntimeMessage, VideoInfo } from './lib/messages';
 
 /**
@@ -47,7 +47,10 @@ function getVideoInfo(): VideoInfo | null {
       }
 
       return {
-        videoUrl: url,
+        // Canonical single-video URL: the page URL may carry &list=…&index=…
+        // (opened from a playlist), which would make the server download the
+        // whole playlist instead of this one video.
+        videoUrl: toWatchUrl(videoId),
         videoTitle: title || 'YouTube Video',
         videoId,
         platform: 'youtube',

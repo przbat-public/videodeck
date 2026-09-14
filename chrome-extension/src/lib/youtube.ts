@@ -1,4 +1,4 @@
-import { extractYoutubeVideoId } from '@shared/youtube';
+import { extractYoutubeVideoId, toWatchUrl } from '@shared/youtube';
 
 /**
  * The extension used to own its own regex copy of the YouTube-id extraction;
@@ -8,3 +8,10 @@ import { extractYoutubeVideoId } from '@shared/youtube';
  * worker.
  */
 export const getYouTubeVideoId = extractYoutubeVideoId;
+
+/**
+ * Canonical single-video URL builder (drops playlist context). Re-exported
+ * for the content script, which must not send page URLs carrying
+ * `&list=…&index=…` — the server would download the whole playlist.
+ */
+export { toWatchUrl };

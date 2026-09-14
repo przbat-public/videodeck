@@ -10,6 +10,15 @@
 
 const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
 
+/**
+ * Canonical watch URL for a video id. Dropping playlist context matters:
+ * yt-dlp treats `watch?v=X&list=Y&index=N` as "walk playlist Y starting at
+ * X", so a page URL copied from a playlist downloads every following video.
+ */
+export function toWatchUrl(videoId: string): string {
+  return `https://www.youtube.com/watch?v=${videoId}`;
+}
+
 /** The 11-character video id from common YouTube URL shapes, or null */
 export function extractYoutubeVideoId(url: string): string | null {
   let candidate: string | null;

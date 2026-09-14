@@ -64,6 +64,7 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
     }
     return [
       '-i',
+      '--no-playlist',
       '--newline',
       '--skip-download',
       '-o',
@@ -75,6 +76,7 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
   return [
     '-c',
     '-i',
+    '--no-playlist',
     '--newline',
     '-o',
     OUTPUT_TEMPLATE,

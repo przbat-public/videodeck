@@ -136,6 +136,7 @@ describe('buildYtDlpArgs', () => {
     expect(args[args.indexOf('--download-archive') + 1]).toBe('archive.txt');
     expect(args).toContain('--restrict-filenames');
     expect(args[args.indexOf('-o') + 1]).toBe('%(upload_date)s_%(title)s.%(ext)s');
+    expect(args).toContain('--no-playlist');
     expect(args).toContain('--write-info-json');
     expect(args).toContain('--write-comments');
     expect(args).not.toContain('--skip-download');
@@ -150,6 +151,7 @@ describe('buildYtDlpArgs', () => {
     });
 
     expect(args).toContain('--skip-download');
+    expect(args).toContain('--no-playlist');
     expect(args[args.indexOf('-o') + 1]).toBe('20240101_Old_Title.%(ext)s');
     expect(args).not.toContain('--download-archive');
     expect(args).not.toContain('--restrict-filenames');

@@ -610,6 +610,29 @@ describe('folder router', () => {
       expect(at(spawnCalls, 0).args).toContain('--download-archive');
     });
 
+    it('canonicalizes URLs carrying playlist context (yt-dlp would walk the whole playlist)', async () => {
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({
+          folderPath: FOLDER,
+          type: 'download',
+          videos: [
+            {
+              url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLDxp123&index=111',
+            },
+          ],
+        });
+
+      expect(response.status).toBe(202);
+      expect(response.body.jobs[0]).toMatchObject({
+        videoId: 'dQw4w9WgXcQ',
+        videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      });
+      const args = at(spawnCalls, 0).args;
+      expect(args).toContain('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+      expect(args.join(' ')).not.toContain('list=');
+    });
+
     it('applies the folder download options to enqueued jobs', async () => {
       mockedLoadDownloadOptions.mockResolvedValue({
         maxHeight: 1080,
@@ -779,6 +802,28 @@ describe('folder router', () => {
         message: 'Download completed successfully',
         done: true,
       });
+    });
+
+    it('strips playlist context from the URL before enqueueing', async () => {
+      const pending = startRequest(
+        request(app)
+          .post('/api/folder/download-video')
+          .send({
+            folderPath: FOLDER,
+            videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLDxp123&index=111',
+          })
+          .buffer(true)
+          .parse(collectStream)
+      );
+      await waitForSpawn();
+
+      expect(spawnCalls).toHaveLength(1);
+      const { args, process } = at(spawnCalls, 0);
+      expect(args).toContain('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+      expect(args.join(' ')).not.toContain('list=');
+      process.emit('close', 0);
+
+      await pending;
     });
 
     it('reports an error event when yt-dlp fails', async () => {

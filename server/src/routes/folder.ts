@@ -21,7 +21,7 @@ import type {
   StatusResponse,
   VideoDownloadedResponse,
 } from '@shared/api';
-import { extractYoutubeVideoId } from '@shared/youtube';
+import { extractYoutubeVideoId, toWatchUrl } from '@shared/youtube';
 import { getVideosFolderPaths } from '../config';
 import {
   findEntryByVideoId,
@@ -333,13 +333,15 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     const skipped: SkippedVideo[] = [];
     for (const video of videos) {
       const videoUrl = readString(video.videoUrl) ?? readString(video.url) ?? '';
-      const videoId =
-        readString(video.videoId) ?? (videoUrl ? extractYoutubeVideoId(videoUrl) : null);
+      const extractedId = videoUrl ? extractYoutubeVideoId(videoUrl) : null;
+      const videoId = readString(video.videoId) ?? extractedId;
       if (!videoId) {
         skipped.push({ videoId: '', reason: 'videoId or videoUrl is required' });
         continue;
       }
-      const url = videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
+      // A watch URL carrying &list=&index= makes yt-dlp walk the whole
+      // playlist from that point — always hand it a canonical single-video URL
+      const url = extractedId ? toWatchUrl(extractedId) : videoUrl || toWatchUrl(videoId);
       const title = readString(video.title);
       if (type === 'update') {
         const entry = folderIndex?.entries[videoId];
@@ -426,9 +428,15 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       };
 
-      const videoId = extractYoutubeVideoId(videoUrl) ?? videoUrl;
+      const extractedId = extractYoutubeVideoId(videoUrl);
+      const videoId = extractedId ?? videoUrl;
+      // Strip playlist context (&list=, &index=) — see the comment in
+      // enqueueJobs; non-YouTube URLs pass through untouched.
+      const queueUrl = extractedId ? toWatchUrl(extractedId) : videoUrl;
       const options = await loadDownloadOptions(folderPath);
-      const [job] = queue.enqueue([{ folderPath, videoId, videoUrl, type: 'download', options }]);
+      const [job] = queue.enqueue([
+        { folderPath, videoId, videoUrl: queueUrl, type: 'download', options },
+      ]);
       if (!job) {
         throw new Error('Queue did not return a job');
       }
