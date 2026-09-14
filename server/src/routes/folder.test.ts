@@ -4,7 +4,8 @@ import { EventEmitter } from 'events';
 import type { IncomingMessage } from 'http';
 import * as fs from 'fs/promises';
 import { spawn } from 'child_process';
-import { createFolderRouter, extractYoutubeVideoId } from './folder';
+import { createFolderRouter } from './folder';
+import { extractYoutubeVideoId } from '@shared/youtube';
 import { errorHandler } from '../app';
 import {
   EnqueueJobsResponseSchema,
@@ -126,15 +127,22 @@ function createApp() {
 
 describe('extractYoutubeVideoId', () => {
   it('handles watch, short, shorts and embed URLs', () => {
-    expect(extractYoutubeVideoId('https://www.youtube.com/watch?v=abc123&t=10')).toBe('abc123');
-    expect(extractYoutubeVideoId('https://youtu.be/abc123?si=x')).toBe('abc123');
-    expect(extractYoutubeVideoId('https://www.youtube.com/shorts/abc123')).toBe('abc123');
-    expect(extractYoutubeVideoId('https://www.youtube.com/embed/abc123')).toBe('abc123');
+    expect(extractYoutubeVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=10')).toBe(
+      'dQw4w9WgXcQ'
+    );
+    expect(extractYoutubeVideoId('https://youtu.be/dQw4w9WgXcQ?si=x')).toBe('dQw4w9WgXcQ');
+    expect(extractYoutubeVideoId('https://www.youtube.com/shorts/dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
+    expect(extractYoutubeVideoId('https://www.youtube.com/embed/dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ');
   });
 
   it('returns null for unknown shapes', () => {
     expect(extractYoutubeVideoId('https://www.youtube.com/@channel/videos')).toBeNull();
     expect(extractYoutubeVideoId('not a url')).toBeNull();
+  });
+
+  it('returns null for ids that are not 11 characters', () => {
+    expect(extractYoutubeVideoId('https://www.youtube.com/watch?v=abc123')).toBeNull();
+    expect(extractYoutubeVideoId('https://youtu.be/short')).toBeNull();
   });
 });
 
@@ -173,7 +181,7 @@ describe('folder router', () => {
           [FOLDER]: { channelUrl: 'https://yt/@a', maxHeight: 1080 },
           [OTHER_FOLDER]: null,
         },
-        downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
+        downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true, extraArgs: [] },
         status: 'ok',
       });
     });
@@ -552,7 +560,7 @@ describe('folder router', () => {
           type: 'download',
           videos: [
             { videoId: 'v1', title: 'One' },
-            { url: 'https://www.youtube.com/watch?v=v2' },
+            { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
             { title: 'no id' },
           ],
         });
@@ -566,7 +574,7 @@ describe('folder router', () => {
         status: 'running',
         folderPath: FOLDER,
       });
-      expect(response.body.jobs[1]).toMatchObject({ videoId: 'v2', status: 'queued' });
+      expect(response.body.jobs[1]).toMatchObject({ videoId: 'dQw4w9WgXcQ', status: 'queued' });
       expect(response.body.skipped).toEqual([
         { videoId: '', reason: 'videoId or videoUrl is required' },
       ]);

@@ -1,13 +1,7 @@
 import { EventEmitter } from 'events';
 import type { QueueJob } from '@shared/api';
-import {
-  DownloadQueue,
-  buildFormatSelector,
-  buildYtDlpArgs,
-  escapeOutputTemplate,
-  indexChangedVideos,
-  readConcurrency,
-} from './downloadQueue';
+import { DownloadQueue, indexChangedVideos, readConcurrency } from './downloadQueue';
+import { buildFormatSelector, buildYtDlpArgs, escapeOutputTemplate } from './ytdlp';
 import type { EnqueueRequest, SpawnedProcess } from './downloadQueue';
 import { refreshIndex } from './folderIndex';
 import { indexVideosFromDisk } from './videoScanner';
@@ -214,6 +208,26 @@ describe('buildYtDlpArgs', () => {
     expect(args[args.indexOf('--sub-lang') + 1]).toBe('pl');
     expect(args).not.toContain('--write-comments');
     expect(args).not.toContain('-f'); // no video → no format selector
+  });
+
+  it('appends per-folder extraArgs right before the URL', () => {
+    const options = {
+      maxHeight: 2160,
+      subLangs: ['en'],
+      writeComments: true,
+      extraArgs: ['--proxy', 'http://127.0.0.1:8080'],
+    };
+
+    const download = buildYtDlpArgs({ type: 'download', videoUrl: 'https://yt/x', options });
+    expect(download.slice(-3)).toEqual(['--proxy', 'http://127.0.0.1:8080', 'https://yt/x']);
+
+    const update = buildYtDlpArgs({
+      type: 'update',
+      videoUrl: 'https://yt/x',
+      baseName: 'stem',
+      options,
+    });
+    expect(update.slice(-3)).toEqual(['--proxy', 'http://127.0.0.1:8080', 'https://yt/x']);
   });
 });
 

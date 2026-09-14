@@ -69,6 +69,29 @@ describe('folderConfig', () => {
       );
     });
 
+    it('validates extraArgs', () => {
+      expect(validateFolderConfig({ extraArgs: '--cookies' })).toMatch(/extraArgs/);
+      expect(validateFolderConfig({ extraArgs: [''] })).toMatch(/invalid argument/);
+      expect(validateFolderConfig({ extraArgs: [42] })).toMatch(/invalid argument/);
+      expect(validateFolderConfig({ extraArgs: ['--cookies-from-browser', 'chrome'] })).toBeNull();
+    });
+
+    it('rejects extraArgs that shadow pipeline-owned flags', () => {
+      expect(validateFolderConfig({ extraArgs: ['-f', 'mp4'] })).toMatch(/built-in argument/);
+      expect(validateFolderConfig({ extraArgs: ['--format=best'] })).toMatch(/built-in argument/);
+      expect(validateFolderConfig({ extraArgs: ['--download-archive', 'other.txt'] })).toMatch(
+        /built-in argument/
+      );
+      expect(validateFolderConfig({ extraArgs: ['--no-download-archive'] })).toMatch(
+        /built-in argument/
+      );
+      expect(validateFolderConfig({ extraArgs: ['-o', 'x.%(ext)s'] })).toMatch(/built-in argument/);
+      expect(validateFolderConfig({ extraArgs: ['--merge-output-format', 'mkv'] })).toMatch(
+        /built-in argument/
+      );
+      expect(validateFolderConfig({ extraArgs: ['--format-sort', 'res'] })).toBeNull();
+    });
+
     it('validates category', () => {
       expect(validateFolderConfig({ category: 'fpv' })).toBeNull();
       expect(validateFolderConfig({ category: 'Zdrowie i sport' })).toBeNull();
@@ -100,11 +123,20 @@ describe('folderConfig', () => {
           subLangs: ['pl', 'en'],
           writeComments: false,
         })
-      ).toEqual({ maxHeight: 1080, subLangs: ['pl', 'en'], writeComments: false });
+      ).toEqual({ maxHeight: 1080, subLangs: ['pl', 'en'], writeComments: false, extraArgs: [] });
     });
 
     it('allows disabling subtitles with an empty array', () => {
       expect(resolveDownloadOptions({ subLangs: [] }).subLangs).toEqual([]);
+    });
+
+    it('passes extra yt-dlp arguments through', () => {
+      expect(resolveDownloadOptions({ extraArgs: ['--cookies-from-browser', 'chrome'] })).toEqual({
+        maxHeight: 2160,
+        subLangs: ['en'],
+        writeComments: true,
+        extraArgs: ['--cookies-from-browser', 'chrome'],
+      });
     });
 
     it('ignores invalid values from a hand-edited file', () => {
@@ -113,8 +145,14 @@ describe('folderConfig', () => {
           maxHeight: 'big' as unknown as number,
           subLangs: ['en', '', 'bad lang', 42 as unknown as string],
           writeComments: 'no' as unknown as boolean,
+          extraArgs: ['', 42 as unknown as string, '-f', 'best', '--proxy', 'http://p'],
         })
-      ).toEqual({ maxHeight: 2160, subLangs: ['en'], writeComments: true });
+      ).toEqual({
+        maxHeight: 2160,
+        subLangs: ['en'],
+        writeComments: true,
+        extraArgs: ['--proxy', 'http://p'],
+      });
     });
   });
 
@@ -153,6 +191,7 @@ describe('folderConfig', () => {
         maxHeight: 1080,
         subLangs: ['pl'],
         writeComments: true,
+        extraArgs: [],
       });
     });
 

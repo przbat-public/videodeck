@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildConfig, collectCategories, parseSubLangs, toFormState } from './folderConfigForm';
+import {
+  buildConfig,
+  collectCategories,
+  parseExtraArgs,
+  parseSubLangs,
+  toFormState,
+} from './folderConfigForm';
 import type { DownloadOptions } from '@shared/api';
 
 const defaults: DownloadOptions = { maxHeight: 2160, subLangs: ['en'], writeComments: true };
@@ -12,6 +18,20 @@ describe('parseSubLangs', () => {
   });
 });
 
+describe('parseExtraArgs', () => {
+  it('splits on whitespace and drops empties', () => {
+    expect(parseExtraArgs('--cookies-from-browser chrome')).toEqual([
+      '--cookies-from-browser',
+      'chrome',
+    ]);
+    expect(parseExtraArgs('  --proxy http://127.0.0.1:8080  ')).toEqual([
+      '--proxy',
+      'http://127.0.0.1:8080',
+    ]);
+    expect(parseExtraArgs('')).toEqual([]);
+  });
+});
+
 describe('toFormState', () => {
   it('uses defaults for a missing config', () => {
     expect(toFormState(null, defaults)).toEqual({
@@ -21,6 +41,7 @@ describe('toFormState', () => {
       subtitlesEnabled: true,
       subLangs: '',
       writeComments: true,
+      extraArgs: '',
     });
   });
 
@@ -33,6 +54,7 @@ describe('toFormState', () => {
           maxHeight: 1080,
           subLangs: ['pl', 'en'],
           writeComments: false,
+          extraArgs: ['--proxy', 'http://p'],
         },
         defaults
       )
@@ -43,6 +65,7 @@ describe('toFormState', () => {
       subtitlesEnabled: true,
       subLangs: 'pl, en',
       writeComments: false,
+      extraArgs: '--proxy http://p',
     });
   });
 
@@ -61,6 +84,7 @@ describe('buildConfig', () => {
         subtitlesEnabled: true,
         subLangs: '',
         writeComments: true,
+        extraArgs: '   ',
       },
       null
     );
@@ -76,6 +100,7 @@ describe('buildConfig', () => {
         subtitlesEnabled: true,
         subLangs: 'pl, en',
         writeComments: false,
+        extraArgs: '',
       },
       null
     );
@@ -88,6 +113,36 @@ describe('buildConfig', () => {
     });
   });
 
+  it('writes extraArgs as an array and clears them when blank', () => {
+    const withArgs = buildConfig(
+      {
+        channelUrl: 'https://yt/@a',
+        category: '',
+        maxHeight: '',
+        subtitlesEnabled: true,
+        subLangs: '',
+        writeComments: true,
+        extraArgs: '--cookies-from-browser chrome',
+      },
+      null
+    );
+    expect(withArgs.extraArgs).toEqual(['--cookies-from-browser', 'chrome']);
+
+    const cleared = buildConfig(
+      {
+        channelUrl: 'https://yt/@a',
+        category: '',
+        maxHeight: '',
+        subtitlesEnabled: true,
+        subLangs: '',
+        writeComments: true,
+        extraArgs: ' ',
+      },
+      { extraArgs: ['--proxy', 'http://p'] }
+    );
+    expect(cleared).not.toHaveProperty('extraArgs');
+  });
+
   it('disables subtitles with an empty array', () => {
     const config = buildConfig(
       {
@@ -97,6 +152,7 @@ describe('buildConfig', () => {
         subtitlesEnabled: false,
         subLangs: 'pl',
         writeComments: true,
+        extraArgs: '',
       },
       null
     );
@@ -118,6 +174,7 @@ describe('buildConfig', () => {
         subtitlesEnabled: true,
         subLangs: '',
         writeComments: true,
+        extraArgs: '',
       },
       existing
     );

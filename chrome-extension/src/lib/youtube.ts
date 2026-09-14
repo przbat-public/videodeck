@@ -1,17 +1,10 @@
-/** The 11-character video id from common YouTube URL shapes, or null */
-export function getYouTubeVideoId(url: string): string | null {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
-    /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/,
-  ];
+import { extractYoutubeVideoId } from '@shared/youtube';
 
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match?.[1] !== undefined) {
-      return match[1];
-    }
-  }
-
-  return null;
-}
+/**
+ * The extension used to own its own regex copy of the YouTube-id extraction;
+ * the logic now lives in shared/youtube.ts (used by the server's folder
+ * routes too), so both sides parse URLs identically — including the
+ * 11-character id check. Re-exported under the old name for the background
+ * worker.
+ */
+export const getYouTubeVideoId = extractYoutubeVideoId;

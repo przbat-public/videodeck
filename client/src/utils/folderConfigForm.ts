@@ -10,6 +10,18 @@ export const parseSubLangs = (value: string): string[] =>
     .filter((lang) => lang.length > 0);
 
 /**
+ * "--cookies-from-browser chrome --proxy http://p" →
+ * ['--cookies-from-browser', 'chrome', '--proxy', 'http://p'].
+ * Simple whitespace split on purpose: flags are passed to yt-dlp as separate
+ * argv entries (no shell), so quoting inside one entry is not supported.
+ */
+export const parseExtraArgs = (value: string): string[] =>
+  value
+    .split(/\s+/)
+    .map((arg) => arg.trim())
+    .filter((arg) => arg.length > 0);
+
+/**
  * Distinct categories already used across the folders, sorted — offered as
  * suggestions so the same topic does not end up spelled three ways.
  */
@@ -34,6 +46,8 @@ export interface FormState {
   /** comma separated; empty with subtitles enabled means "use default" */
   subLangs: string;
   writeComments: boolean;
+  /** whitespace separated yt-dlp flags; '' means "use default" */
+  extraArgs: string;
 }
 
 export const toFormState = (config: FolderConfig | null, defaults: DownloadOptions): FormState => ({
@@ -43,6 +57,7 @@ export const toFormState = (config: FolderConfig | null, defaults: DownloadOptio
   subtitlesEnabled: config?.subLangs ? config.subLangs.length > 0 : defaults.subLangs.length > 0,
   subLangs: config?.subLangs ? config.subLangs.join(', ') : '',
   writeComments: config?.writeComments ?? defaults.writeComments,
+  extraArgs: config?.extraArgs ? config.extraArgs.join(' ') : '',
 });
 
 /**
@@ -85,5 +100,13 @@ export const buildConfig = (form: FormState, existing: FolderConfig | null): Fol
   }
 
   next.writeComments = form.writeComments;
+
+  const extraArgs = parseExtraArgs(form.extraArgs);
+  if (extraArgs.length > 0) {
+    next.extraArgs = extraArgs;
+  } else {
+    delete next.extraArgs;
+  }
+
   return next;
 };

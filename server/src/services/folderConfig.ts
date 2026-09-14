@@ -16,6 +16,7 @@ export const DEFAULT_DOWNLOAD_OPTIONS: DownloadOptions = {
   maxHeight: 2160,
   subLangs: ['en'],
   writeComments: true,
+  extraArgs: [],
 };
 
 export const MIN_MAX_HEIGHT = 144;
@@ -25,6 +26,42 @@ export const MAX_CATEGORY_LENGTH = 64;
 
 /** yt-dlp language selectors: `en`, `pl`, `en-US`, `en.*`, `all`, `-live_chat` */
 const SUB_LANG_RE = /^-?[A-Za-z0-9._*-]+$/;
+
+/**
+ * Flags the download pipeline owns: the archive (`--download-archive`) is
+ * what deduplicates re-uploads under a changed title, the output template
+ * (`-o`) is what the folder index parses, `-f`/`--merge-output-format`
+ * produce the playable mp4, and `--paths` would break the folder layout.
+ * A per-folder config may not override any of them.
+ */
+const RESERVED_EXTRA_ARGS = [
+  '-f',
+  '--format',
+  '-o',
+  '--output',
+  '-P',
+  '--paths',
+  '--download-archive',
+  '--no-download-archive',
+  '--merge-output-format',
+];
+
+/** Reserved flags that take their value as the next entry (`--proxy http://p`) */
+const RESERVED_ARGS_WITH_VALUE = [
+  '-f',
+  '--format',
+  '-o',
+  '--output',
+  '-P',
+  '--paths',
+  '--download-archive',
+  '--merge-output-format',
+];
+
+/** Whether an `extraArgs` entry shadows a pipeline-owned flag (`-f`, `-f=…`) */
+export function isReservedExtraArg(arg: string): boolean {
+  return RESERVED_EXTRA_ARGS.some((reserved) => arg === reserved || arg.startsWith(`${reserved}=`));
+}
 
 /**
  * Validate a config object coming from the client.
@@ -66,6 +103,20 @@ export function validateFolderConfig(config: unknown): string | null {
     return 'writeComments must be a boolean';
   }
 
+  if (c.extraArgs !== undefined) {
+    if (!Array.isArray(c.extraArgs)) {
+      return 'extraArgs must be an array of yt-dlp arguments';
+    }
+    for (const arg of c.extraArgs) {
+      if (typeof arg !== 'string' || arg.trim().length === 0) {
+        return `extraArgs contains an invalid argument: ${JSON.stringify(arg)}`;
+      }
+      if (isReservedExtraArg(arg)) {
+        return `extraArgs must not override the built-in argument: ${arg}`;
+      }
+    }
+  }
+
   if (c.category !== undefined) {
     if (typeof c.category !== 'string') {
       return 'category must be a string';
@@ -94,6 +145,7 @@ export function resolveDownloadOptions(config: FolderConfig | null | undefined):
   const options: DownloadOptions = {
     ...DEFAULT_DOWNLOAD_OPTIONS,
     subLangs: [...DEFAULT_DOWNLOAD_OPTIONS.subLangs],
+    extraArgs: [...(DEFAULT_DOWNLOAD_OPTIONS.extraArgs ?? [])],
   };
   if (!config) {
     return options;
@@ -117,6 +169,31 @@ export function resolveDownloadOptions(config: FolderConfig | null | undefined):
 
   if (typeof config.writeComments === 'boolean') {
     options.writeComments = config.writeComments;
+  }
+
+  if (Array.isArray(config.extraArgs)) {
+    options.extraArgs = [];
+    for (let index = 0; index < config.extraArgs.length; index += 1) {
+      const arg = config.extraArgs[index];
+      if (typeof arg !== 'string' || arg.trim().length === 0) {
+        continue;
+      }
+      if (isReservedExtraArg(arg)) {
+        // A dropped flag like `-f` orphans its value ("best") — drop that too,
+        // unless the value is glued (`-f=best`) or the flag takes none.
+        const next = config.extraArgs[index + 1];
+        if (
+          !arg.includes('=') &&
+          RESERVED_ARGS_WITH_VALUE.includes(arg) &&
+          typeof next === 'string' &&
+          !next.startsWith('-')
+        ) {
+          index += 1;
+        }
+        continue;
+      }
+      options.extraArgs.push(arg);
+    }
   }
 
   return options;

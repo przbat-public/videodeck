@@ -3,10 +3,10 @@ import { spawn as nodeSpawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import type { DownloadOptions, JobStatus, JobType, QueueJob } from '@shared/api';
 import { refreshIndex } from './folderIndex';
-import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 import { indexVideosFromDisk } from './videoScanner';
 import { stripUndefined } from '../utils/objectUtils';
 import { extractYtDlpProgress } from '@shared/progress';
+import { buildYtDlpArgs } from './ytdlp';
 import { logger } from '../utils/logger';
 
 /**
@@ -69,71 +69,6 @@ export interface DownloadQueueOptions {
   /** Called after a job finishes successfully (default: refresh folder index) */
   afterJob?: (job: QueueJob) => Promise<void>;
   ytDlpPath?: string;
-}
-
-const OUTPUT_TEMPLATE = '%(upload_date)s_%(title)s.%(ext)s';
-
-/**
- * Format selector: prefer h264/aac in mp4 (plays everywhere), then any
- * best video+audio, then a single best file — all capped at maxHeight.
- */
-export function buildFormatSelector(maxHeight: number): string {
-  const h = `[height<=${maxHeight}]`;
-  return `bestvideo${h}[ext=mp4]+bestaudio[ext=m4a]/bestvideo${h}+bestaudio/best${h}`;
-}
-
-function buildMetadataArgs(options: DownloadOptions): string[] {
-  const args = ['--write-thumbnail', '--write-description', '--write-info-json'];
-  if (options.subLangs.length > 0) {
-    args.push('--write-subs', '--write-auto-subs', '--sub-lang', options.subLangs.join(','));
-  }
-  if (options.writeComments) {
-    args.push('--write-comments');
-  }
-  return args;
-}
-
-/**
- * yt-dlp output templates treat `%` specially; a literal stem must escape it.
- */
-export function escapeOutputTemplate(literal: string): string {
-  return literal.replace(/%/g, '%%');
-}
-
-export function buildYtDlpArgs(
-  job: Pick<QueueJob, 'type' | 'videoUrl' | 'baseName' | 'options'>
-): string[] {
-  const options = job.options ?? DEFAULT_DOWNLOAD_OPTIONS;
-  if (job.type === 'update') {
-    if (!job.baseName) {
-      throw new Error('update job requires baseName');
-    }
-    return [
-      '-i',
-      '--newline',
-      '--skip-download',
-      '-o',
-      `${escapeOutputTemplate(job.baseName)}.%(ext)s`,
-      ...buildMetadataArgs(options),
-      job.videoUrl,
-    ];
-  }
-  return [
-    '-c',
-    '-i',
-    '--newline',
-    '-o',
-    OUTPUT_TEMPLATE,
-    '--restrict-filenames',
-    '--download-archive',
-    'archive.txt',
-    '-f',
-    buildFormatSelector(options.maxHeight),
-    '--merge-output-format',
-    'mp4',
-    ...buildMetadataArgs(options),
-    job.videoUrl,
-  ];
 }
 
 function isActive(job: QueueJob): boolean {

@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { extractYtDlpProgress } from '@shared/progress';
+import { extractYoutubeVideoId } from '@shared/youtube';
 import { extractTextFromVttSubtitles } from './services/summaryService';
-import { extractYoutubeVideoId } from './routes/folder';
 import { runPool } from './utils/runPool';
 
 /**

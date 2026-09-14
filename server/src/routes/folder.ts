@@ -2,7 +2,6 @@ import express from 'express';
 import type { Response } from 'express';
 import fs from 'fs/promises';
 import path from 'path';
-import { spawn } from 'child_process';
 import type {
   ApiError,
   CancelAllResponse,
@@ -22,6 +21,7 @@ import type {
   StatusResponse,
   VideoDownloadedResponse,
 } from '@shared/api';
+import { extractYoutubeVideoId } from '@shared/youtube';
 import { getVideosFolderPaths } from '../config';
 import {
   findEntryByVideoId,
@@ -29,6 +29,8 @@ import {
   loadIndex,
   rebuildIndex,
 } from '../services/folderIndex';
+import { readListJson } from '../services/channelList';
+import { buildPlaylistArgs, runYtDlp } from '../services/ytdlp';
 import { downloadQueue } from '../services/downloadQueue';
 import type { DownloadQueue } from '../services/downloadQueue';
 import type { EnqueueRequest } from '../services/downloadQueue';
@@ -40,7 +42,7 @@ import {
   validateFolderConfig,
 } from '../services/folderConfig';
 import { stripUndefined } from '../utils/objectUtils';
-import { errnoCode, isRecord, readBody, readString, sendError } from './http';
+import { errnoCode, readBody, readString, sendError } from './http';
 import { configBodySchema, firstZodError, queueBodySchema } from './validation';
 import type { NoParams, RouteHandler } from './http';
 import { logger } from '../utils/logger';
@@ -76,80 +78,6 @@ function readFolderFilter<Res>(
     return false;
   }
   return value;
-}
-
-function toChannelVideo(entry: unknown): ChannelVideo {
-  const record = isRecord(entry) ? entry : {};
-  return {
-    title: readString(record.title) ?? '',
-    url: readString(record.url) ?? readString(record.webpage_url) ?? '',
-    id: readString(record.id) ?? '',
-  };
-}
-
-async function readListJson(folderPath: string): Promise<ChannelVideo[] | null> {
-  const listPath = path.join(folderPath, 'list.json');
-  let raw: string;
-  try {
-    raw = await fs.readFile(listPath, 'utf-8');
-  } catch (error) {
-    if (errnoCode(error) === 'ENOENT') {
-      return null;
-    }
-    throw error;
-  }
-  const data: unknown = JSON.parse(raw);
-  if (!Array.isArray(data)) {
-    throw new Error('list.json is not a valid array');
-  }
-  return data.map(toChannelVideo);
-}
-
-/**
- * Extract the YouTube id from common URL shapes; falls back to null.
- */
-export function extractYoutubeVideoId(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    const v = parsed.searchParams.get('v');
-    if (v) {
-      return v;
-    }
-    const host = parsed.hostname.replace(/^www\./, '');
-    const segments = parsed.pathname.split('/').filter(Boolean);
-    const [first] = segments;
-    if (host === 'youtu.be' && first) {
-      return first;
-    }
-    const marker = segments.findIndex(
-      (s) => s === 'shorts' || s === 'embed' || s === 'live' || s === 'v'
-    );
-    return (marker >= 0 && segments[marker + 1]) || null;
-  } catch {
-    return null;
-  }
-}
-
-function runYtDlp(args: string[], cwd: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn('yt-dlp', args, { cwd });
-    const out: Buffer[] = [];
-    const err: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => out.push(chunk));
-    child.stderr.on('data', (chunk: Buffer) => err.push(chunk));
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve(Buffer.concat(out).toString('utf-8'));
-      } else {
-        reject(
-          new Error(
-            `yt-dlp exited with code ${code}: ${Buffer.concat(err).toString('utf-8').trim()}`
-          )
-        );
-      }
-    });
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -312,7 +240,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
 
     let stdout: string;
     try {
-      stdout = await runYtDlp(['--flat-playlist', '-j', channelUrl], folderPath);
+      stdout = await runYtDlp(buildPlaylistArgs(channelUrl), folderPath);
     } catch (execError) {
       logger.error('Error executing yt-dlp:', execError);
       sendError(res, 500, 'Failed to download playlist', execError);

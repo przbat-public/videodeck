@@ -20,3 +20,18 @@ export function stripUndefined<T extends object>(value: WithUndefinedOptionals<T
   const entries = Object.entries(value).filter(([, item]) => item !== undefined);
   return Object.fromEntries(entries) as T;
 }
+
+/** Narrow `unknown` to a plain object record */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** `value` when it is a non-empty string (query values may also be arrays) */
+export function readString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** `code` of a Node.js filesystem error, when the value is one */
+export function errnoCode(error: unknown): string | undefined {
+  return isRecord(error) && typeof error.code === 'string' ? error.code : undefined;
+}

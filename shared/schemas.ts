@@ -144,6 +144,12 @@ export const DownloadOptionsSchema = z.object({
   maxHeight: z.number(),
   subLangs: z.array(z.string()),
   writeComments: z.boolean(),
+  /**
+   * Extra yt-dlp flags appended after the built-in ones, e.g.
+   * `--cookies-from-browser chrome`. Flags the pipeline depends on are
+   * rejected server-side; see validateFolderConfig.
+   */
+  extraArgs: z.array(z.string()).optional(),
 });
 
 export const FolderConfigSchema = z
@@ -153,6 +159,7 @@ export const FolderConfigSchema = z
     maxHeight: z.number().optional(),
     subLangs: z.array(z.string()).optional(),
     writeComments: z.boolean().optional(),
+    extraArgs: z.array(z.string()).optional(),
   })
   .passthrough();
 

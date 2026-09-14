@@ -129,6 +129,27 @@ describe('FolderConfigEditor', () => {
     });
   });
 
+  it('saves extra yt-dlp arguments as an array', async () => {
+    fetchMock.mockImplementation(async (_url, init) => ({
+      ok: true,
+      json: async () => ({ success: true, config: JSON.parse(String(init?.body)).config }),
+    }));
+    renderEditor({ channelUrl: 'https://yt/@a' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    fireEvent.change(screen.getByLabelText('Dodatkowe argumenty yt-dlp:'), {
+      target: { value: '  --cookies-from-browser chrome --proxy http://127.0.0.1:8080 ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Zapisz' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(lastPutBody(fetchMock).config).toEqual({
+      channelUrl: 'https://yt/@a',
+      writeComments: true,
+      extraArgs: ['--cookies-from-browser', 'chrome', '--proxy', 'http://127.0.0.1:8080'],
+    });
+  });
+
   it('shows the server validation error', async () => {
     fetchMock.mockResolvedValue({
       ok: false,

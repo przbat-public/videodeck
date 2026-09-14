@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process';
-import { buildYtDlpArgs } from './downloadQueue';
+import { buildYtDlpArgs } from './ytdlp';
 
 /**
  * Real-yt-dlp tests for the argument templates the download queue uses.

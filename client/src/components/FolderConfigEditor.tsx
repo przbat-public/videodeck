@@ -199,6 +199,23 @@ export function FolderConfigEditor({
             </label>
           </div>
 
+          <div className="config-field">
+            <label htmlFor={id('extraArgs')}>Dodatkowe argumenty yt-dlp:</label>
+            <input
+              id={id('extraArgs')}
+              type="text"
+              value={form.extraArgs}
+              onChange={(e) => updateForm({ extraArgs: e.target.value })}
+              placeholder="np. --cookies-from-browser chrome --proxy http://127.0.0.1:8080"
+              className="config-input"
+            />
+            <p className="config-hint">
+              {downloadDefaults.extraArgs && downloadDefaults.extraArgs.length > 0
+                ? `domyślnie: ${downloadDefaults.extraArgs.join(' ')}`
+                : 'flagi -f, -o, --download-archive, --merge-output-format i --paths są zarezerwowane'}
+            </p>
+          </div>
+
           <div className="config-actions">
             <button className="save-config-button" onClick={handleSave} disabled={isSaving}>
               {isSaving ? 'Zapisywanie...' : 'Zapisz'}

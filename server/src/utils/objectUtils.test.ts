@@ -1,4 +1,4 @@
-import { stripUndefined } from './objectUtils';
+import { errnoCode, isRecord, readString, stripUndefined } from './objectUtils';
 
 interface Sample {
   id: string;
@@ -39,5 +39,37 @@ describe('stripUndefined', () => {
 
   it('accepts an object without any optional keys', () => {
     expect(stripUndefined<Sample>({ id: 'only' })).toEqual({ id: 'only' });
+  });
+});
+
+describe('isRecord', () => {
+  it('accepts plain objects and rejects arrays, null and primitives', () => {
+    expect(isRecord({})).toBe(true);
+    expect(isRecord({ a: 1 })).toBe(true);
+    expect(isRecord([])).toBe(false);
+    expect(isRecord(null)).toBe(false);
+    expect(isRecord('x')).toBe(false);
+    expect(isRecord(42)).toBe(false);
+    expect(isRecord(undefined)).toBe(false);
+  });
+});
+
+describe('readString', () => {
+  it('returns non-empty strings and undefined otherwise', () => {
+    expect(readString('abc')).toBe('abc');
+    expect(readString('')).toBeUndefined();
+    expect(readString(['a'])).toBeUndefined();
+    expect(readString(42)).toBeUndefined();
+    expect(readString(undefined)).toBeUndefined();
+  });
+});
+
+describe('errnoCode', () => {
+  it('reads the code of a Node.js error and returns undefined otherwise', () => {
+    expect(errnoCode(Object.assign(new Error('nope'), { code: 'ENOENT' }))).toBe('ENOENT');
+    expect(errnoCode(new Error('plain'))).toBeUndefined();
+    expect(errnoCode({ code: 42 })).toBeUndefined();
+    expect(errnoCode('ENOENT')).toBeUndefined();
+    expect(errnoCode(undefined)).toBeUndefined();
   });
 });
