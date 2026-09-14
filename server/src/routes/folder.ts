@@ -13,11 +13,9 @@ import type {
   EnqueueJobsResponse,
   FolderConfig,
   FolderListResponse,
-  JobType,
   ListExistsResponse,
   QueueJob,
   QueueListResponse,
-  QueueVideoInput,
   RebuildIndexResponse,
   SaveFolderConfigResponse,
   SkippedVideo,
@@ -42,6 +40,7 @@ import {
 } from '../services/folderConfig';
 import { stripUndefined } from '../utils/objectUtils';
 import { errnoCode, isRecord, readBody, readString, sendError } from './http';
+import { configBodySchema, firstZodError, queueBodySchema } from './validation';
 import type { NoParams, RouteHandler } from './http';
 import { logger } from '../utils/logger';
 
@@ -152,14 +151,6 @@ function runYtDlp(args: string[], cwd: string): Promise<string> {
   });
 }
 
-function isJobType(value: unknown): value is JobType {
-  return value === 'download' || value === 'update';
-}
-
-function isQueueVideoInput(value: unknown): value is QueueVideoInput {
-  return isRecord(value);
-}
-
 // ---------------------------------------------------------------------------
 // Status / config
 // ---------------------------------------------------------------------------
@@ -183,11 +174,13 @@ const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, res) => {
 };
 
 const saveFolderConfig: RouteHandler<NoParams, SaveFolderConfigResponse> = async (req, res) => {
-  const { folderPath: rawFolderPath, config } = readBody(req);
-  if (readString(rawFolderPath) === undefined) {
-    res.status(400).json({ error: 'folderPath is required' });
+  const parsed = configBodySchema.safeParse(readBody(req));
+  if (!parsed.success) {
+    res.status(400).json({ error: firstZodError(parsed.error) });
     return;
   }
+  const { folderPath: rawFolderPath, config } = parsed.data;
+
   const validationError = validateFolderConfig(config);
   if (validationError !== null) {
     res.status(400).json({ error: validationError });
@@ -370,22 +363,16 @@ const isVideoDownloaded: RouteHandler<NoParams, VideoDownloadedResponse> = async
  */
 const enqueueJobs: RouteHandler<NoParams, EnqueueJobsResponse> = async (req, res) => {
   const body = readBody(req);
+  // Authorization first: an unknown folder is a 403 whatever the body looks like
   const folderPath = requireAllowedFolder(body.folderPath, res);
   if (!folderPath) return;
 
-  const { type, videos } = body;
-  if (!isJobType(type)) {
-    res.status(400).json({ error: "type must be 'download' or 'update'" });
+  const parsed = queueBodySchema.safeParse(body);
+  if (!parsed.success) {
+    res.status(400).json({ error: firstZodError(parsed.error) });
     return;
   }
-  if (!Array.isArray(videos) || videos.length === 0) {
-    res.status(400).json({ error: 'videos must be a non-empty array' });
-    return;
-  }
-  if (!videos.every(isQueueVideoInput)) {
-    res.status(400).json({ error: 'videos must contain objects' });
-    return;
-  }
+  const { type, videos } = parsed.data;
 
   await fs.mkdir(folderPath, { recursive: true });
   const options = await loadDownloadOptions(folderPath);
