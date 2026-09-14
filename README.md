@@ -701,3 +701,18 @@ Aplikacja automatycznie skanuje wszystkie podane foldery i indeksuje pliki speł
 
 Brakujące klucze biorą wartości domyślne (`GET /api/status` zwraca je w `downloadDefaults`). Wartości nieprawidłowe w ręcznie edytowanym pliku są ignorowane, a `PUT /api/folder/config` je odrzuca. Opcje są odczytywane w momencie dodawania zadania do kolejki. Edytor w UI (strona statusu) pozwala je ustawić bez ręcznej edycji pliku.
 
+### Dopisanie napisów w kolejnym języku (bez ponownego pobierania)
+
+Aby dla już pobranego kanału dociągnąć np. polskie napisy obok angielskich:
+
+1. W `config.json` kanału ustaw `subLangs: ["en", "pl"]` i dodaj do `extraArgs`:
+   `["--no-write-comments", "--no-write-info-json", "--no-write-thumbnail", "--no-write-description"]`
+   — aktualizacje pobiorą wtedy **tylko napisy**: bez komentarzy (najwolniejsza część)
+   i bez nadpisywania `info.json` (istniejące komentarze i metadane zostają nietknięte).
+2. W sekcji kanału na stronie statusu kliknij **„Aktualizuj wszystkie"** (albo „Aktualizuj stare"
+   dla filmów starszych niż miesiąc) — kolejka pobierze nowe pliki `.pl.vtt` pod istniejącymi
+   nazwami plików.
+3. Nowe napisy są widoczne w odtwarzaczu od razu (endpoint szczegółów czyta pliki `.vtt` z dysku)
+   — bez reindeksu. Tempo możesz podnieść zmienną `UPDATE_CONCURRENCY` (domyślnie 2 równoległe).
+   Po skończonej akcji wyczyść `extraArgs`, jeśli chcesz wrócić do pełnych aktualizacji.
+

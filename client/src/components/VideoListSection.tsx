@@ -190,6 +190,7 @@ export function VideoListSection({
 
   const handleDownloadAll = () => enqueueVideos(videos.filter(isNotDownloaded), 'download');
   const handleUpdateOld = () => enqueueVideos(videos.filter(isVideoOlderThanMonth), 'update');
+  const handleUpdateAll = () => enqueueVideos(videos.filter(isDownloaded), 'update');
 
   // Don't render anything if list doesn't exist
   if (listExists !== true) {
@@ -243,6 +244,11 @@ export function VideoListSection({
               {notUpdatedCount > 0 && (
                 <button className="update-old-button" onClick={handleUpdateOld} type="button">
                   Aktualizuj stare
+                </button>
+              )}
+              {downloadedCount > 0 && (
+                <button className="update-all-button" onClick={handleUpdateAll} type="button">
+                  Aktualizuj wszystkie
                 </button>
               )}
               {hasActive && (

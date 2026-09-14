@@ -144,6 +144,7 @@ describe('VideoListSection', () => {
     expect(screen.getByText(/1 nie zaktualizowanych od ponad miesiąca/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pobierz wszystkie' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Aktualizuj stare' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aktualizuj wszystkie' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Pobierz' })).toHaveLength(2); // v3 + v4 (disabled)
   });
 
@@ -180,6 +181,25 @@ describe('VideoListSection', () => {
       folderPath: FOLDER,
       type: 'update',
       videos: [{ videoId: 'v2' }],
+    });
+  });
+
+  it('"Aktualizuj wszystkie" enqueues update jobs for every downloaded video', async () => {
+    const fetchMock = installFetch({
+      enqueue: () => ({
+        jobs: [makeJob({ videoId: 'v1', type: 'update', status: 'queued' })],
+        skipped: [],
+      }),
+    });
+    await renderLoaded();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj wszystkie' }));
+
+    await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
+    expect(postCalls(fetchMock)[0]).toEqual({
+      folderPath: FOLDER,
+      type: 'update',
+      videos: [{ videoId: 'v1' }, { videoId: 'v2' }],
     });
   });
 
