@@ -90,7 +90,10 @@ function extractUploadDate(baseName: string): string | undefined {
 export interface FolderFiles {
   videoFile: string | undefined;
   thumbnailFile: string | undefined;
+  /** The English subtitle (summaries and the primary player track) */
   subtitleFile: string | undefined;
+  /** Every subtitle file of the video, any language (`.en.vtt`, `.pl.vtt`, …) */
+  subtitleFiles: string[];
 }
 
 /**
@@ -103,10 +106,14 @@ export function findVideoFiles(baseName: string, visibleFiles: string[]): Folder
   const thumbnailFile = visibleFiles.find(
     (f) => (f.endsWith('.webp') || f.endsWith('.jpg')) && getBaseName(f) === baseName
   );
+  const isSubtitle = (f: string) =>
+    f.endsWith('.vtt') &&
+    (getBaseName(f) === baseName || getBaseName(f).startsWith(`${baseName}.`));
+  const subtitleFiles = visibleFiles.filter(isSubtitle);
   const subtitleFile = visibleFiles.find(
     (f) => f.endsWith('.en.vtt') && getBaseName(f) === `${baseName}.en`
   );
-  return { videoFile, thumbnailFile, subtitleFile };
+  return { videoFile, thumbnailFile, subtitleFile, subtitleFiles };
 }
 
 export type BuildResult =
@@ -122,7 +129,10 @@ export async function buildVideoItem(
   baseName: string,
   visibleFiles: string[]
 ): Promise<BuildResult> {
-  const { videoFile, thumbnailFile, subtitleFile } = findVideoFiles(baseName, visibleFiles);
+  const { videoFile, thumbnailFile, subtitleFile, subtitleFiles } = findVideoFiles(
+    baseName,
+    visibleFiles
+  );
 
   if (!videoFile || !thumbnailFile) {
     const missing = [
@@ -146,16 +156,26 @@ export async function buildVideoItem(
   const title = infoJson.title || infoJson.fulltitle || '';
 
   // Subtitle text is indexed for search ("find the video where he talks
-  // about X"); a read failure only loses the transcript, never the video.
+  // about X") across EVERY language on disk, so Polish subtitles are
+  // searchable too; a read failure only loses the transcript, never the video.
   let transcriptText: string | undefined;
-  if (subtitleFile) {
-    try {
-      const vtt = await fs.readFile(path.join(folderPath, subtitleFile), 'utf-8');
-      const text = extractTextFromVttSubtitles(vtt);
+  if (subtitleFiles.length > 0) {
+    const texts: string[] = [];
+    for (const subtitleFile of subtitleFiles) {
+      try {
+        const vtt = await fs.readFile(path.join(folderPath, subtitleFile), 'utf-8');
+        const text = extractTextFromVttSubtitles(vtt);
+        if (text.length > 0) {
+          texts.push(text);
+        }
+      } catch (error) {
+        logger.error(`Cannot read subtitles of ${baseName} for indexing:`, error);
+      }
+    }
+    const joined = texts.join('\n\n');
+    if (joined.length > 0) {
       transcriptText =
-        text.length > MAX_TRANSCRIPT_CHARS ? text.slice(0, MAX_TRANSCRIPT_CHARS) : text;
-    } catch (error) {
-      logger.error(`Cannot read subtitles of ${baseName} for indexing:`, error);
+        joined.length > MAX_TRANSCRIPT_CHARS ? joined.slice(0, MAX_TRANSCRIPT_CHARS) : joined;
     }
   }
 

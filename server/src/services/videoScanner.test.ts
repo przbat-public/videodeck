@@ -1,6 +1,7 @@
 import {
   buildVideoItem,
   describeError,
+  findVideoFiles,
   getReindexStatus,
   getVideos,
   indexVideosFromDisk,
@@ -111,6 +112,27 @@ describe('videoScanner', () => {
     });
   });
 
+  describe('findVideoFiles', () => {
+    it('collects every subtitle language while keeping the english one primary', () => {
+      const found = findVideoFiles('20231201_X', [
+        '20231201_X.info.json',
+        '20231201_X.mp4',
+        '20231201_X.webp',
+        '20231201_X.en.vtt',
+        '20231201_X.pl.vtt',
+        '20231201_X.de.vtt',
+        '20231201_Other.en.vtt',
+      ]);
+
+      expect(found.subtitleFile).toBe('20231201_X.en.vtt');
+      expect(found.subtitleFiles).toEqual([
+        '20231201_X.en.vtt',
+        '20231201_X.pl.vtt',
+        '20231201_X.de.vtt',
+      ]);
+    });
+  });
+
   describe('buildVideoItem', () => {
     const files = [
       '20231201_TestVideo1.info.json',
@@ -165,6 +187,29 @@ describe('videoScanner', () => {
         `${FOLDER}/20231201_TestVideo1.en.vtt`,
         'utf-8'
       );
+    });
+
+    it('indexes the transcript of every subtitle language on disk', async () => {
+      mockedFs.readFile.mockImplementation(async (filePath: unknown) => {
+        const p = String(filePath);
+        if (p.endsWith('.pl.vtt')) {
+          return 'WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nPo polsku';
+        }
+        if (p.endsWith('.en.vtt')) {
+          return 'WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nIn English';
+        }
+        return JSON.stringify({ id: 'abcdefghijk', title: 'T' });
+      });
+
+      const result = await buildVideoItem(FOLDER, '20231201_TestVideo1', [
+        ...files,
+        '20231201_TestVideo1.pl.vtt',
+      ]);
+
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') return;
+      expect(result.video.transcriptText).toBe('In English\n\nPo polsku');
+      expect(result.video.subtitlePath).toBe('20231201_TestVideo1.en.vtt');
     });
 
     it('falls back to baseName date, uploader and a title derived from the file name', async () => {
