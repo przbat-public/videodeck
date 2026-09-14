@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest an idea for the project
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your request related to a problem?
+      description: A clear description of what you want to do and what blocks you today.
+      placeholder: "I'd like to …, but the app only …"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How could it work? Where would it live (UI, server, extension)?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds or alternative designs you thought about.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: Web UI (client)
+        - label: Server / API
+        - label: Chrome extension
