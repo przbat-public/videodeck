@@ -6,6 +6,8 @@ import folderRouter from './routes/folder';
 import { CORS_ORIGINS } from './config';
 import { createAuthMiddleware, isAllowedCorsOrigin } from './routes/http';
 import { logger } from './utils/logger';
+import { metricsBody, metricsRegistry, recordRequest } from './metrics';
+import { checkElasticsearchConnection } from './services/elasticsearchService';
 import type { ApiError } from '@shared/api';
 
 /**
@@ -20,11 +22,14 @@ export interface CreateAppOptions {
   apiToken?: string;
 }
 
-/** One log line per request: method, path, status and duration */
+/** One log line and one metrics sample per finished request */
 function requestLogger(req: Request, res: Response, next: NextFunction): void {
   const start = Date.now();
   res.on('finish', () => {
-    logger.info(`${req.method} ${req.originalUrl} → ${res.statusCode} (${Date.now() - start}ms)`);
+    const durationMs = Date.now() - start;
+    const route = req.route?.path ?? req.path;
+    recordRequest(req.method, route, res.statusCode, durationMs);
+    logger.info(`${req.method} ${req.originalUrl} → ${res.statusCode} (${durationMs}ms)`);
   });
   next();
 }
@@ -73,15 +78,27 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
   app.use(requestLogger);
 
-  // /health stays public; everything else is behind the token when set
+  // /health and /metrics stay public; everything else is behind the token
+  // when set
   app.use('/api', createAuthMiddleware(options.apiToken));
 
   app.use('/api/videos', videosRouter);
   // /api/status, /api/folder/* (config, list.json, download queue)
   app.use('/api', folderRouter);
 
-  app.get('/health', (_req, res) => {
-    res.json({ status: 'ok' });
+  // Readiness probe: also tells the extension's "Test połączenia" whether
+  // the whole stack (Elasticsearch included) is healthy
+  app.get('/health', async (_req, res) => {
+    const esUp = await checkElasticsearchConnection();
+    res.status(esUp ? 200 : 503).json({
+      status: esUp ? 'ok' : 'degraded',
+      elasticsearch: esUp ? 'ok' : 'down',
+    });
+  });
+
+  app.get('/metrics', async (_req, res) => {
+    res.setHeader('Content-Type', metricsRegistry.contentType);
+    res.end(await metricsBody());
   });
 
   app.use(errorHandler);

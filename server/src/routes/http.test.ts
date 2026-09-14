@@ -2,6 +2,15 @@ import express from 'express';
 import request from 'supertest';
 import { createAuthMiddleware, isAllowedCorsOrigin } from './http';
 import { createApp } from '../app';
+import { checkElasticsearchConnection } from '../services/elasticsearchService';
+
+jest.mock('../services/elasticsearchService', () => ({
+  checkElasticsearchConnection: jest.fn(),
+}));
+
+const mockedCheckElasticsearch = checkElasticsearchConnection as jest.MockedFunction<
+  typeof checkElasticsearchConnection
+>;
 
 // config.ts validates VIDEOS_FOLDER_PATH at import time
 process.env.VIDEOS_FOLDER_PATH = '/test/videos';
@@ -68,6 +77,11 @@ describe('createAuthMiddleware', () => {
 });
 
 describe('createApp auth wiring', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedCheckElasticsearch.mockResolvedValue(true);
+  });
+
   it('guards /api when a token is configured and keeps /health public', async () => {
     const app = createApp({ apiToken: 'integration-token' });
 
@@ -81,12 +95,32 @@ describe('createApp auth wiring', () => {
 
     const health = await request(app).get('/health');
     expect(health.status).toBe(200);
-    expect(health.body).toEqual({ status: 'ok' });
+    expect(health.body).toEqual({ status: 'ok', elasticsearch: 'ok' });
   });
 
   it('leaves /api open without a configured token', async () => {
     const response = await request(createApp()).get('/api/status');
     expect(response.status).not.toBe(401);
+  });
+
+  it('reports a degraded health when Elasticsearch is down', async () => {
+    mockedCheckElasticsearch.mockResolvedValue(false);
+
+    const health = await request(createApp()).get('/health');
+
+    expect(health.status).toBe(503);
+    expect(health.body).toEqual({ status: 'degraded', elasticsearch: 'down' });
+  });
+
+  it('exposes Prometheus metrics', async () => {
+    const app = createApp();
+
+    const response = await request(app).get('/metrics');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('text/plain');
+    expect(response.text).toContain('http_requests_total');
+    expect(response.text).toContain('download_queue_size');
   });
 });
 

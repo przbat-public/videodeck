@@ -32,4 +32,30 @@ describe('logger', () => {
     warn.mockRestore();
     error.mockRestore();
   });
+
+  it('respects LOG_LEVEL', () => {
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      process.env.LOG_LEVEL = 'warn';
+      logger.info('hidden');
+      logger.warn('shown');
+      expect(log).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('shown'));
+
+      process.env.LOG_LEVEL = 'silent';
+      logger.error('also hidden');
+      expect(error).not.toHaveBeenCalled();
+
+      process.env.LOG_LEVEL = 'bogus';
+      logger.info('visible again');
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('visible again'));
+    } finally {
+      delete process.env.LOG_LEVEL;
+      log.mockRestore();
+      warn.mockRestore();
+      error.mockRestore();
+    }
+  });
 });

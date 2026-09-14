@@ -67,6 +67,11 @@ export const getElasticsearchClient = (): Client => {
   if (!client) {
     client = new Client({
       node: ELASTICSEARCH_URL,
+      // Elasticsearch hiccups happen (GC pauses, container restarts) — the
+      // official client retries transient failures instead of failing the
+      // request immediately
+      maxRetries: 3,
+      requestTimeout: 30_000,
     });
   }
   return client;
