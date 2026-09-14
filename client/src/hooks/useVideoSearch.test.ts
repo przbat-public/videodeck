@@ -98,7 +98,7 @@ describe('useVideoSearch', () => {
       await act(() => result.current.search(input));
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(fetchMock).toHaveBeenCalledWith(expectedUrl);
+      expect(fetchMock).toHaveBeenCalledWith(expectedUrl, { signal: expect.any(AbortSignal) });
     });
   });
 
@@ -148,7 +148,8 @@ describe('useVideoSearch', () => {
       expect(result.current.videos).toEqual([video('a'), video('b')]);
       expect(result.current.hasMore).toBe(true);
       expect(fetchMock).toHaveBeenLastCalledWith(
-        '/api/videos/search?sort=date-desc&offset=1&limit=100'
+        '/api/videos/search?sort=date-desc&offset=1&limit=100',
+        { signal: expect.any(AbortSignal) }
       );
     });
 
@@ -172,8 +173,52 @@ describe('useVideoSearch', () => {
       await act(() => result.current.loadMore());
 
       expect(fetchMock).toHaveBeenLastCalledWith(
-        '/api/videos/search?q=drone&sort=date-desc&category=fpv&offset=1&limit=100'
+        '/api/videos/search?q=drone&sort=date-desc&category=fpv&offset=1&limit=100',
+        { signal: expect.any(AbortSignal) }
       );
+    });
+
+    it('ignores a second loadMore while one is in flight', async () => {
+      const page = deferred();
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ videos: [video('a')], totalCount: 3 }))
+        .mockReturnValueOnce(page.promise);
+      const { result } = renderHook(() => useVideoSearch());
+
+      await act(() => result.current.search(state()));
+      let first: Promise<void>;
+      let second: Promise<void>;
+      act(() => {
+        first = result.current.loadMore();
+        second = result.current.loadMore();
+      });
+      page.resolve({ videos: [video('b')], totalCount: 3 });
+      await act(async () => {
+        await first;
+        await second;
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result.current.videos).toEqual([video('a'), video('b')]);
+    });
+
+    it('ignores an aborted request without touching the state', async () => {
+      const abortError = new DOMException('The operation was aborted.', 'AbortError');
+      fetchMock
+        .mockRejectedValueOnce(abortError)
+        .mockResolvedValueOnce(jsonResponse({ videos: [video('fresh')], totalCount: 1 }));
+      const { result } = renderHook(() => useVideoSearch());
+
+      // fired back to back: the second aborts the first before it settles
+      await act(async () => {
+        const stale = result.current.search(state({ query: 'old' }));
+        const fresh = result.current.search(state({ query: 'new' }));
+        await Promise.all([stale, fresh]);
+      });
+
+      expect(result.current.videos).toEqual([video('fresh')]);
+      expect(result.current.error).toBeNull();
+      expect(toast.error).not.toHaveBeenCalled();
     });
   });
 
@@ -189,7 +234,9 @@ describe('useVideoSearch', () => {
     await act(() => result.current.search(state({ query: 'drone' })));
 
     expect(result.current).toMatchObject({ videos: [], totalCount: 0, error: 'Network error' });
-    expect(toast.error).toHaveBeenCalledWith('Nie udało się wyszukać filmów: Network error');
+    expect(toast.error).toHaveBeenCalledWith('Nie udało się wyszukać filmów: Network error', {
+      id: 'video-search-error',
+    });
   });
 
   it('treats a non-2xx response as a failure', async () => {

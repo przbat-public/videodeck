@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Link } from 'react-router-dom';
 import type { VideoListItem } from '@shared/api';
 import React from 'react';
@@ -48,7 +49,7 @@ const highlightText = (text: string, query?: string): React.ReactNode => {
   );
 };
 
-export default function VideoCard({ video, searchQuery }: VideoCardProps): JSX.Element {
+function VideoCardInner({ video, searchQuery }: VideoCardProps): JSX.Element {
   const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}?folder=${encodeURIComponent(video.folderPath)}`;
 
   const videoIdentifier = video.videoId || video.baseName;
@@ -91,3 +92,11 @@ export default function VideoCard({ video, searchQuery }: VideoCardProps): JSX.E
     </Link>
   );
 }
+
+/**
+ * Memoized: the search page renders up to 100 cards and every state change
+ * (loading, load-more) re-renders the list — the video objects themselves
+ * are stable, so the default shallow comparison skips unchanged cards.
+ */
+const VideoCard = memo(VideoCardInner);
+export default VideoCard;

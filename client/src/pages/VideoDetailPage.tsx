@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import VideoSummary from '../components/VideoSummary';
 import VideoComments from '../components/VideoComments';
 import { useVideoDetail } from '../hooks/useVideoDetail';
+import { formatUploadDate } from '../utils/videoDates';
 
 export default function VideoDetailPage(): JSX.Element {
   const { videoId } = useParams<{ videoId: string }>();
@@ -36,11 +37,6 @@ export default function VideoDetailPage(): JSX.Element {
     : '';
   const videoUrl = `/api/videos/file/${encodeURIComponent(state.details.videoPath)}${folderQuery}`;
 
-  const formatDate = (dateStr: string): string => {
-    if (!dateStr || dateStr.length !== 8) return dateStr;
-    return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-  };
-
   return (
     <div className="video-detail-page">
       <div className="video-detail-header">
@@ -73,7 +69,9 @@ export default function VideoDetailPage(): JSX.Element {
                 {state.details.likeCount > 0 && (
                   <span>{state.details.likeCount.toLocaleString('pl-PL')} polubień</span>
                 )}
-                {state.details.uploadDate && <span>{formatDate(state.details.uploadDate)}</span>}
+                {state.details.uploadDate && (
+                  <span>{formatUploadDate(state.details.uploadDate)}</span>
+                )}
               </div>
             )}
           </div>

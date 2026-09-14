@@ -32,11 +32,23 @@ export function useVideoSearch(): UseVideoSearchResult {
   const latestRequestRef = useRef(0);
   // The search the next loadMore call continues (offset = videos.length)
   const searchStateRef = useRef<SearchState>({ query: '', sort: 'date-desc', category: '' });
+  // The request in flight; a new one aborts it so typing fast does not leave
+  // a trail of doomed fetches behind
+  const abortRef = useRef<AbortController | null>(null);
+  // Guards loadMore against double clicks (the disabled state lands a tick
+  // too late to prevent two pages with the same offset)
+  const inFlightRef = useRef(false);
 
   const runSearch = useCallback(
     async (searchState: SearchState, offset: number, append: boolean): Promise<void> => {
       const requestId = ++latestRequestRef.current;
       const isCurrent = () => requestId === latestRequestRef.current;
+
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      inFlightRef.current = true;
+
       const trimmedQuery = searchState.query.trim();
       const trimmedCategory = searchState.category.trim();
       dispatch({ type: VideoSearchActionType.SEARCH_START });
@@ -53,7 +65,9 @@ export function useVideoSearch(): UseVideoSearchResult {
         params.set('offset', String(offset));
         params.set('limit', String(PAGE_SIZE));
 
-        const response = await fetch(`/api/videos/search?${params.toString()}`);
+        const response = await fetch(`/api/videos/search?${params.toString()}`, {
+          signal: controller.signal,
+        });
         if (!response.ok) {
           throw new Error('Failed to search videos');
         }
@@ -70,7 +84,8 @@ export function useVideoSearch(): UseVideoSearchResult {
           },
         });
       } catch (err) {
-        if (!isCurrent()) {
+        // Superseded by a newer request — its own lifecycle reports
+        if (controller.signal.aborted || !isCurrent()) {
           return;
         }
         const errorMessage = err instanceof Error ? err.message : 'An error occurred';
@@ -79,7 +94,14 @@ export function useVideoSearch(): UseVideoSearchResult {
           payload: errorMessage,
         });
 
-        toast.error(`Nie udało się wyszukać filmów: ${errorMessage}`);
+        // One toast slot: rapid typing must not stack a toast per keystroke
+        toast.error(`Nie udało się wyszukać filmów: ${errorMessage}`, {
+          id: 'video-search-error',
+        });
+      } finally {
+        if (isCurrent()) {
+          inFlightRef.current = false;
+        }
       }
     },
     []
@@ -94,6 +116,9 @@ export function useVideoSearch(): UseVideoSearchResult {
   );
 
   const loadMore = useCallback(async (): Promise<void> => {
+    if (inFlightRef.current) {
+      return;
+    }
     await runSearch(searchStateRef.current, state.videos.length, true);
   }, [runSearch, state.videos.length]);
 

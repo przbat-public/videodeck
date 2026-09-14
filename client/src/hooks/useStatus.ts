@@ -1,0 +1,60 @@
+import { useEffect, useReducer } from 'react';
+import type { FolderConfig } from '@shared/api';
+import { statusReducer, initialState, StatusActionType } from '../reducers/statusReducer';
+import type { StatusData } from '../reducers/statusReducer';
+
+interface UseStatusResult {
+  state: { statusData: StatusData | null; loading: boolean; error: string | null };
+  /** Merge a freshly saved folder config into the loaded status */
+  updateFolderConfig: (folderPath: string, config: FolderConfig | null) => void;
+}
+
+/**
+ * GET /api/status state for the StatusPage, with the same pattern as the
+ * other data hooks: a reducer plus one fetch effect (aborted on unmount).
+ */
+export function useStatus(): UseStatusResult {
+  const [state, dispatch] = useReducer(statusReducer, initialState);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const fetchStatus = async (): Promise<void> => {
+      try {
+        dispatch({ type: StatusActionType.FETCH_START });
+        const response = await fetch('/api/status', { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error('Failed to fetch status');
+        }
+        const data: StatusData = await response.json();
+        dispatch({ type: StatusActionType.FETCH_SUCCESS, payload: data });
+      } catch (err) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+        dispatch({ type: StatusActionType.FETCH_ERROR, payload: errorMessage });
+      }
+    };
+
+    void fetchStatus();
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  const updateFolderConfig = (folderPath: string, config: FolderConfig | null): void => {
+    if (state.statusData) {
+      const updatedStatusData: StatusData = {
+        ...state.statusData,
+        folderConfigs: {
+          ...state.statusData.folderConfigs,
+          [folderPath]: config,
+        },
+      };
+      dispatch({ type: StatusActionType.FETCH_SUCCESS, payload: updatedStatusData });
+    }
+  };
+
+  return { state, updateFolderConfig };
+}

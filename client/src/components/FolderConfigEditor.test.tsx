@@ -159,7 +159,7 @@ describe('FolderConfigEditor', () => {
       option.getAttribute('value')
     );
     expect(suggestions).toEqual(['fpv', 'psychology']);
-    expect(input).toHaveAttribute('list', `categories-${FOLDER}`);
+    expect(input).toHaveAttribute('list', 'categories-videos-channel-a');
 
     fireEvent.change(input, { target: { value: '  lego  ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Zapisz' }));

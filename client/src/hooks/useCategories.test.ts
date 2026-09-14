@@ -25,7 +25,9 @@ describe('useCategories', () => {
       expect(result.current.categories).toEqual(['fpv', 'psychology']);
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith('/api/videos/categories');
+    expect(fetchMock).toHaveBeenCalledWith('/api/videos/categories', {
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it('tolerates a response without a categories array', async () => {

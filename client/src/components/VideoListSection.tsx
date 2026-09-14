@@ -1,4 +1,4 @@
-import { useState, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
+import { useState, useRef, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import type { ChannelVideo, FolderListResponse, JobType, QueueJob } from '@shared/api';
 import { VideoItem } from './VideoItem';
@@ -69,7 +69,18 @@ export const VideoListSection = forwardRef<VideoListSectionHandle, VideoListSect
       fetchList().catch((err) => console.error('Error refreshing video list:', err));
     }, [fetchList]);
 
-    const queue = useDownloadQueue(folderPath, {
+    // Destructured so the useCallback dependencies below reference the stable
+    // members directly instead of the whole (freshly created) queue object
+    const {
+      jobs,
+      activeCount,
+      hasActive,
+      error: queueError,
+      cancelAll,
+      enqueue,
+      cancel,
+      jobsByVideoId,
+    } = useDownloadQueue(folderPath, {
       onJobFinished: handleJobFinished,
       onQueueDrained: handleQueueDrained,
     });
@@ -90,35 +101,53 @@ export const VideoListSection = forwardRef<VideoListSectionHandle, VideoListSect
 
     useImperativeHandle(ref, () => ({ loadVideos }), [loadVideos]);
 
-    const enqueueVideos = async (items: ChannelVideo[], type: JobType) => {
-      if (items.length === 0) {
-        return;
-      }
-      try {
-        // ids only: the server derives the URL, and a channel can have
-        // thousands of videos — titles/urls would blow up the request body
-        const result = await queue.enqueue(
-          items.map((video) => ({ videoId: video.id })),
-          type
-        );
-        const verb = type === 'update' ? 'aktualizacji' : 'pobrania';
-        toast.success(`Dodano ${result.jobs.length} filmów do ${verb}`);
-        const [firstSkipped] = result.skipped;
-        if (firstSkipped) {
-          toast.error(`Pominięto ${result.skipped.length}: ${firstSkipped.reason}`);
+    const enqueueVideos = useCallback(
+      async (items: ChannelVideo[], type: JobType) => {
+        if (items.length === 0) {
+          return;
         }
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Nie udało się dodać do kolejki');
-      }
-    };
+        try {
+          // ids only: the server derives the URL, and a channel can have
+          // thousands of videos — titles/urls would blow up the request body
+          const result = await enqueue(
+            items.map((video) => ({ videoId: video.id })),
+            type
+          );
+          const verb = type === 'update' ? 'aktualizacji' : 'pobrania';
+          toast.success(`Dodano ${result.jobs.length} filmów do ${verb}`);
+          const [firstSkipped] = result.skipped;
+          if (firstSkipped) {
+            toast.error(`Pominięto ${result.skipped.length}: ${firstSkipped.reason}`);
+          }
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Nie udało się dodać do kolejki');
+        }
+      },
+      [enqueue]
+    );
 
-    const handleEnqueueOne = (video: ChannelVideo, type: JobType) => {
-      void enqueueVideos([video], type);
-    };
+    // Stable per-render callbacks: VideoItem is memoized and a new callback
+    // identity on every queue poll would defeat the memo
+    const handleEnqueueOne = useCallback(
+      (video: ChannelVideo, type: JobType) => {
+        void enqueueVideos([video], type);
+      },
+      [enqueueVideos]
+    );
 
-    const handleCancel = (jobId: string) => {
-      queue.cancel(jobId).catch((err) => console.error('Error cancelling job:', err));
-    };
+    const handleCancel = useCallback(
+      (jobId: string) => {
+        cancel(jobId).catch((err) => console.error('Error cancelling job:', err));
+      },
+      [cancel]
+    );
+
+    // Rows carry their "last updated" date; memoized so a queue poll does not
+    // rebuild every row object (VideoItem is memoized on prop identity)
+    const rows = useMemo(
+      () => videos.map((video) => ({ ...video, lastUpdated: lastUpdatedDates[video.id] })),
+      [videos, lastUpdatedDates]
+    );
 
     const isNotDownloaded = (video: ChannelVideo) => !downloadStatuses[video.id] && !!video.url;
     const isDownloaded = (video: ChannelVideo) => !!downloadStatuses[video.id] && !!video.url;
@@ -136,8 +165,8 @@ export const VideoListSection = forwardRef<VideoListSectionHandle, VideoListSect
     const notDownloadedCount = videos.filter(isNotDownloaded).length;
     const downloadedCount = videos.filter(isDownloaded).length;
     const notUpdatedCount = videos.filter(isVideoOlderThanMonth).length;
-    const runningCount = queue.jobs.filter((job) => job.status === 'running').length;
-    const queuedCount = queue.activeCount - runningCount;
+    const runningCount = jobs.filter((job) => job.status === 'running').length;
+    const queuedCount = activeCount - runningCount;
 
     return (
       <div className="videos-list-section">
@@ -146,9 +175,9 @@ export const VideoListSection = forwardRef<VideoListSectionHandle, VideoListSect
             <p>Błąd: {videosError}</p>
           </div>
         )}
-        {queue.error && (
+        {queueError && (
           <div className="config-error">
-            <p>Błąd kolejki: {queue.error}</p>
+            <p>Błąd kolejki: {queueError}</p>
           </div>
         )}
         {isLoadingVideos ? (
@@ -165,7 +194,7 @@ export const VideoListSection = forwardRef<VideoListSectionHandle, VideoListSect
                   notDownloadedCount === 0 &&
                   notUpdatedCount === 0 &&
                   ' (wszystkie pobrane)'}
-                {queue.hasActive && (
+                {hasActive && (
                   <span className="queue-summary">
                     kolejka: {runningCount} w toku, {queuedCount} czeka
                   </span>
@@ -182,10 +211,10 @@ export const VideoListSection = forwardRef<VideoListSectionHandle, VideoListSect
                     Aktualizuj stare
                   </button>
                 )}
-                {queue.hasActive && (
+                {hasActive && (
                   <button
                     className="cancel-all-button"
-                    onClick={() => queue.cancelAll().catch(() => undefined)}
+                    onClick={() => cancelAll().catch(() => undefined)}
                     type="button"
                   >
                     Anuluj wszystko
@@ -194,14 +223,14 @@ export const VideoListSection = forwardRef<VideoListSectionHandle, VideoListSect
               </div>
             </div>
             <div className="videos-list-items" ref={videosListContainerRef}>
-              {videos.map((video, index) => {
+              {rows.map((video, index) => {
                 const key = video.id || `index-${index}`;
                 return (
                   <VideoItem
                     key={key}
-                    video={{ ...video, lastUpdated: lastUpdatedDates[video.id] }}
+                    video={video}
                     isDownloaded={downloadStatuses[video.id] || false}
-                    job={video.id ? queue.jobsByVideoId[video.id] : undefined}
+                    job={video.id ? jobsByVideoId[video.id] : undefined}
                     onEnqueue={handleEnqueueOne}
                     onCancel={handleCancel}
                     scrollContainerRef={videosListContainerRef}

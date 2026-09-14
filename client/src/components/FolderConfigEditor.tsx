@@ -83,7 +83,12 @@ export function FolderConfigEditor({
     setError(null);
   };
 
-  const id = (field: string) => `${field}-${folderPath}`;
+  // Folder paths contain slashes (and may contain spaces), which are not
+  // valid HTML ids — slug them so label[htmlFor] ↔ input[id] keep matching.
+  const id = (field: string): string => {
+    const slug = folderPath.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+    return `${field}-${slug}`;
+  };
 
   return (
     <div className="folder-config">

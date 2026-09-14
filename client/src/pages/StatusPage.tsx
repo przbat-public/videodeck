@@ -1,45 +1,10 @@
-import { useEffect, useReducer } from 'react';
 import { Link } from 'react-router-dom';
-import type { FolderConfig } from '@shared/api';
-import { statusReducer, initialState, StatusActionType } from '../reducers/statusReducer';
-import type { StatusData } from '../reducers/statusReducer';
+import { useStatus } from '../hooks/useStatus';
 import { FolderSection } from '../components/FolderSection';
 import { collectCategories } from '../utils/folderConfigForm';
 
 export default function StatusPage(): JSX.Element {
-  const [state, dispatch] = useReducer(statusReducer, initialState);
-
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        dispatch({ type: StatusActionType.FETCH_START });
-        const response = await fetch('/api/status');
-        if (!response.ok) {
-          throw new Error('Failed to fetch status');
-        }
-        const data: StatusData = await response.json();
-        dispatch({ type: StatusActionType.FETCH_SUCCESS, payload: data });
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'An error occurred';
-        dispatch({ type: StatusActionType.FETCH_ERROR, payload: errorMessage });
-      }
-    };
-
-    fetchStatus();
-  }, []);
-
-  const handleConfigUpdate = (folderPath: string, config: FolderConfig | null) => {
-    if (state.statusData) {
-      const updatedStatusData: StatusData = {
-        ...state.statusData,
-        folderConfigs: {
-          ...state.statusData.folderConfigs,
-          [folderPath]: config,
-        },
-      };
-      dispatch({ type: StatusActionType.FETCH_SUCCESS, payload: updatedStatusData });
-    }
-  };
+  const { state, updateFolderConfig } = useStatus();
 
   return (
     <main className="app-main">
@@ -73,7 +38,7 @@ export default function StatusPage(): JSX.Element {
                           initialConfig={statusData.folderConfigs[path] || null}
                           downloadDefaults={statusData.downloadDefaults}
                           knownCategories={knownCategories}
-                          onConfigUpdate={handleConfigUpdate}
+                          onConfigUpdate={updateFolderConfig}
                         />
                       ))
                     ) : (

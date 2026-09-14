@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import type { ChannelVideo, JobType, QueueJob } from '@shared/api';
 
@@ -50,7 +50,7 @@ const describeJob = (job: QueueJob): string => {
   }
 };
 
-export function VideoItem({
+export function VideoItemInner({
   video,
   isDownloaded,
   job,
@@ -170,4 +170,11 @@ export function VideoItem({
   );
 }
 
-VideoItem.displayName = 'VideoItem';
+/**
+ * Memoized: channel lists hold thousands of items and the download queue
+ * polls every 1.5 s while anything runs — without memo every poll re-rendered
+ * every row. The parent passes stable rows/callbacks (see VideoListSection),
+ * so the default shallow comparison skips everything but genuinely changed
+ * rows (their own job/log updates still re-render this item).
+ */
+export const VideoItem = memo(VideoItemInner);
