@@ -12,12 +12,14 @@ Aplikacja webowa do wyszukiwania i przeglądania filmów pobranych przez yt-dlp.
 ## Technologie
 
 ### Backend
+
 - **Node.js** + **Express** - serwer HTTP i API REST
 - **TypeScript 6** - typowane rozszerzenie JavaScript (ostre flagi, patrz [Typowanie](#typowanie))
 - **Elasticsearch** - silnik wyszukiwania i indeksowania filmów
 - **Jest** - framework do testowania
 
 ### Frontend
+
 - **React** - biblioteka UI
 - **TypeScript 6** - typowane rozszerzenie JavaScript
 - **Vite** - narzędzie do budowania i dev server
@@ -25,11 +27,13 @@ Aplikacja webowa do wyszukiwania i przeglądania filmów pobranych przez yt-dlp.
 - **HTML5 Video API** - odtwarzanie filmów
 
 ### Chrome extension
+
 - **TypeScript 6** - strict, te same ostre flagi co reszta repo
 - **esbuild** - budowanie do klasycznych skryptów MV3 (`background.js`, `content.js`, `popup.js`, `options.js`)
 - **Vitest** - testy jednostkowe czystej logiki (framing SSE, postęp yt-dlp, id YouTube)
 
 ### Narzędzia
+
 - **ESLint** - linter kodu (z `--max-warnings 0`, patrz [Linting](#linting-i-formatowanie))
 - **Prettier** - formatter kodu
 
@@ -54,10 +58,12 @@ cd ../chrome-extension && npm install
 **Opcja A: Docker (zalecane)**
 
 Najpierw upewnij się, że Docker Desktop jest uruchomiony:
+
 - Na macOS: Otwórz aplikację "Docker Desktop" z folderu Applications lub użyj Spotlight (Cmd+Space → "Docker")
 - Sprawdź czy Docker działa: `docker ps` (powinno działać bez błędów)
 
 Następnie uruchom Elasticsearch (porty bindowane na loopback — bez hasła ES nie może być osiągalny z sieci):
+
 ```bash
 docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.0
 ```
@@ -65,6 +71,7 @@ docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=s
 **Opcja B: Homebrew (macOS)**
 
 Jeśli wolisz zainstalować Elasticsearch lokalnie bez Dockera:
+
 ```bash
 brew install elasticsearch
 brew services start elasticsearch
@@ -75,6 +82,7 @@ brew services start elasticsearch
 Zgodnie z [oficjalną dokumentacją Elasticsearch](https://www.elastic.co/guide/en/elasticsearch/reference/current/install-elasticsearch.html).
 
 **Sprawdzenie czy Elasticsearch działa:**
+
 ```bash
 curl http://localhost:9200
 ```
@@ -91,12 +99,14 @@ ELASTICSEARCH_URL=http://localhost:9200
 ```
 
 Przykład dla jednego folderu:
+
 ```
 VIDEOS_FOLDER_PATH=/Volumes/MEDIA/example-channel
 ELASTICSEARCH_URL=http://localhost:9200
 ```
 
 Przykład dla wielu folderów (oddzielone średnikiem lub przecinkiem):
+
 ```
 VIDEOS_FOLDER_PATH=/Volumes/MEDIA/folder1;/Volumes/MEDIA/folder2;/Volumes/MEDIA/folder3
 ELASTICSEARCH_URL=http://localhost:9200
@@ -115,6 +125,7 @@ VIDEOS_FOLDER_PATH=/Volumes/MEDIA/drone-*;/Volumes/MEDIA/*;/Users/<user>/Downloa
 ```
 
 Opcjonalne zmienne:
+
 ```
 DOWNLOAD_CONCURRENCY=2   # maks. liczba równoległych pobrań yt-dlp (domyślnie 2, najwyżej jedno na folder)
 UPDATE_CONCURRENCY=2     # maks. liczba równoległych aktualizacji metadanych (domyślnie 2, bez limitu na folder)
@@ -130,7 +141,8 @@ RATE_LIMIT_MAX=2000      # limit żądań HTTP na okno czasowe na IP (domyślnie
 RATE_LIMIT_WINDOW_MS=600000  # długość okna rate-limitu w ms (domyślnie 10 minut)
 ```
 
-**Uwaga:** 
+**Uwaga:**
+
 - Jeśli Elasticsearch działa na innym hoście lub porcie, zaktualizuj `ELASTICSEARCH_URL` odpowiednio.
 - Jeśli używasz Docker i otrzymujesz błąd "Cannot connect to the Docker daemon", upewnij się że Docker Desktop jest uruchomiony.
 - Po pierwszym uruchomieniu serwera, musisz ręcznie wywołać endpoint `/api/videos/refreshCache` aby zindeksować filmy do Elasticsearch (może to potrwać chwilę w zależności od liczby filmów). To samo po aktualizacji, która zmienia analizator wyszukiwania (patrz niżej).
@@ -198,6 +210,7 @@ przełączanie języka w obie strony.
 W dwóch osobnych terminalach:
 
 **Terminal 1 - Backend:**
+
 ```bash
 npm run dev:server
 ```
@@ -205,6 +218,7 @@ npm run dev:server
 Serwer backend będzie dostępny na `http://localhost:3001`
 
 **Terminal 2 - Frontend:**
+
 ```bash
 npm run dev:client
 ```
@@ -214,6 +228,7 @@ Aplikacja frontendowa będzie dostępna na `http://localhost:3000`
 ### Production build
 
 **Backend:**
+
 ```bash
 npm run build:server
 cd server && npm run start:prod
@@ -222,12 +237,14 @@ cd server && npm run start:prod
 Build używa `server/tsconfig.build.json` (bez testów i `test-utils.ts`). Ponieważ serwer kompiluje też wspólne typy z `shared/`, `rootDir` wskazuje na katalog główny repo i wynik ląduje w `server/dist/server/src/index.js` — `start:prod` i pole `main` w `package.json` już to uwzględniają.
 
 **Frontend:**
+
 ```bash
 npm run build:client
 cd client && npm run preview
 ```
 
 **Chrome extension:**
+
 ```bash
 npm run build:extension   # esbuild → background/content/popup/options.js
 ```
@@ -292,11 +309,13 @@ Projekt używa **Jest** dla backendu oraz **Vitest** dla frontendu i rozszerzeni
 ### Uruchamianie testów
 
 **Wszystkie projekty:**
+
 ```bash
 npm test
 ```
 
 **Tylko backend:**
+
 ```bash
 cd server && npm test
 cd server && npm run test:watch  # Tryb watch
@@ -304,6 +323,7 @@ cd server && npm run test:coverage  # Z raportem pokrycia
 ```
 
 **Tylko frontend:**
+
 ```bash
 cd client && npm test  # Tryb watch
 cd client && npm run test:run  # Jednorazowe uruchomienie
@@ -312,6 +332,7 @@ cd client && npm run test:coverage  # Z raportem pokrycia
 ```
 
 **Tylko rozszerzenie Chrome:**
+
 ```bash
 cd chrome-extension && npm test  # Jednorazowe uruchomienie
 cd chrome-extension && npm run test:watch  # Tryb watch
@@ -320,6 +341,7 @@ cd chrome-extension && npm run test:watch  # Tryb watch
 **Testy integracyjne z prawdziwym Elasticsearchem** (przepływ reindeksu z
 przełączaniem aliasów, składanie diakrytyków, wyszukiwanie po transkryptach —
 pomijane w zwykłym `npm test`):
+
 ```bash
 cd server && npm run test:integration  # wymaga działającego ES (ELASTICSEARCH_URL)
 ```
@@ -327,6 +349,7 @@ cd server && npm run test:integration  # wymaga działającego ES (ELASTICSEARCH
 **Testy integracyjne z prawdziwym yt-dlp** — szablony argumentów kolejki
 pobierania sprawdzane przeciw zainstalowanemu binarium (`--simulate`, bez
 pobierania; pomijane w zwykłym `npm test`):
+
 ```bash
 cd server && npm run test:ytdlp-integration  # wymaga yt-dlp w PATH
 ```
@@ -339,6 +362,7 @@ minimalizowaniem kontrprzykładów; po stronie serwera i rozszerzenia.
 API na poziomie przeglądarki; bez backendu i Elasticsearcha. Scenariusze:
 wyszukiwanie sterowane URL, paginacja „Pokaż więcej", strona szczegółów z
 odtwarzaczem i napisami, strona statusu:
+
 ```bash
 npm run test:e2e  # pierwszy raz: cd client && npx playwright install chromium
 ```
@@ -368,6 +392,7 @@ Chrome ma testy jednostkowe bez progów — to niewielka, czysta logika w
 ## Dobre praktyki rozwoju
 
 ### Architektura
+
 - **Separacja odpowiedzialności** - podział na warstwy: routes, services, utils
 - **Zarządzanie stanem** - reducery dla złożonego stanu w React
 - **Custom hooks** - reużywalna logika (useVideoSearch, useVideoDetail, useDownloadQueue)
@@ -381,6 +406,7 @@ Chrome ma testy jednostkowe bez progów — to niewielka, czysta logika w
 - **Graceful shutdown** - `SIGINT`/`SIGTERM` anuluje zadania kolejki (ubija yt-dlp), zamyka serwer i wymusza exit po 10 s (`server/src/shutdown.ts`)
 
 ### Jakość kodu
+
 - **TypeScript** - silne typowanie w całym projekcie (szczegóły niżej)
 - **Testy jednostkowe** - wysoka pokrycie testami (Jest + Vitest)
 - **Linting** - ESLint do sprawdzania jakości kodu
@@ -388,6 +414,7 @@ Chrome ma testy jednostkowe bez progów — to niewielka, czysta logika w
 - **Walidacja** - sprawdzanie parametrów API i ścieżek plików
 
 ### Bezpieczeństwo
+
 - **Path traversal protection** - sanityzacja nazw plików
 - **Walidacja ścieżek** - sprawdzanie istnienia plików przed serwowaniem
 - **Rozdzielenie środowisk** - osobna konfiguracja dla dev i prod
@@ -397,13 +424,13 @@ Chrome ma testy jednostkowe bez progów — to niewielka, czysta logika w
 
 Wszystkie trzy projekty kompiluje TypeScript 6.0 (ta sama wersja, którą Cursor używa do podświetlania błędów). Poza `strict` włączone są:
 
-| Flaga | Skutek w praktyce |
-|-------|-------------------|
-| `noUncheckedIndexedAccess` | `tablica[0]` i `rekord[klucz]` mają typ `T \| undefined` - trzeba sprawdzić, zanim się użyje |
-| `exactOptionalPropertyTypes` | pole `x?: string` można pominąć, ale nie wolno wpisać do niego `undefined`; obiekty z opcjonalnymi polami buduje `stripUndefined()` z `server/src/utils/objectUtils.ts` |
-| `noImplicitReturns`, `noImplicitOverride`, `noFallthroughCasesInSwitch` | handlery Express kończą się `res.json(...); return;`, nie `return res.json(...)` |
-| `noUnusedLocals`, `noUnusedParameters` | nieużywane zmienne to błąd kompilacji (parametry celowo ignorowane zaczynają się od `_`) |
-| `verbatimModuleSyntax` (klient, rozszerzenie) | typy importuje się przez `import type`; na serwerze to samo wymusza ESLint (`consistent-type-imports`) |
+| Flaga                                                                   | Skutek w praktyce                                                                                                                                                       |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `noUncheckedIndexedAccess`                                              | `tablica[0]` i `rekord[klucz]` mają typ `T \| undefined` - trzeba sprawdzić, zanim się użyje                                                                            |
+| `exactOptionalPropertyTypes`                                            | pole `x?: string` można pominąć, ale nie wolno wpisać do niego `undefined`; obiekty z opcjonalnymi polami buduje `stripUndefined()` z `server/src/utils/objectUtils.ts` |
+| `noImplicitReturns`, `noImplicitOverride`, `noFallthroughCasesInSwitch` | handlery Express kończą się `res.json(...); return;`, nie `return res.json(...)`                                                                                        |
+| `noUnusedLocals`, `noUnusedParameters`                                  | nieużywane zmienne to błąd kompilacji (parametry celowo ignorowane zaczynają się od `_`)                                                                                |
+| `verbatimModuleSyntax` (klient, rozszerzenie)                           | typy importuje się przez `import type`; na serwerze to samo wymusza ESLint (`consistent-type-imports`)                                                                  |
 
 **Wspólny kontrakt API** leży w `shared/`: schematy zod (`schemas.ts`) to jedyne źródło prawdy o kształtach odpowiedzi, a `api.ts` reeksportuje typy wyprowadzone przez `z.infer` (plus typy żądań i zdarzeń SSE). Serwer, klient i rozszerzenie importują typy jako `@shared/api`; klient **parsuje** każdą odpowiedź schematem (parse, don't trust), a testy tras serwera sprawdzają odpowiedzi tymi samymi schematami — typy i walidacja nie mogą się rozjechać. `api.ts` pozostaje types-only (`import type` wymuszany przez ESLint), a `schemas.ts` i `progress.ts` to celowe moduły runtime'owe wspólne dla serwera i rozszerzenia.
 
@@ -541,21 +568,38 @@ Krótki przegląd decyzji architektonicznych klienta i tego, co świadomie **nie
   wymaga weryfikacji z react-window i react-i18next; włączać jako osobny,
   świadomy krok.
 
+## Narzędzia deweloperskie
+
+- **Wspólny TypeScript** — `tsconfig.base.json` u korzenia trzyma wspólne
+  rygory (strict, exactOptionalPropertyTypes, noUncheckedIndexedAccess, …);
+  client/server/rozszerzenie dziedziczą i dodają tylko swoje opcje. Serwer ma
+  `isolatedModules` (typecheck per plik), a rozszerzenie typecheckuje cały
+  katalog `../shared`, a nie wybrane pliki.
+- **Husky + commitlint + lint-staged** — `pre-commit` formatuje i lintuje
+  zmienione pliki (prettier + eslint --max-warnings 0), `commit-msg` wymusza
+  konwencję conventional commits (`feat:`, `fix:`, `chore(tooling):`, …) —
+  to koniec mieszanych stylów w historii.
+
 ## API Endpoints
 
 ### GET /health (publiczne)
+
 Readiness probe: pinguje Elasticsearch i zwraca `200 { status: 'ok', elasticsearch: 'ok' }`, a gdy ES nie odpowiada — `503 { status: 'degraded', elasticsearch: 'down' }`. Rozszerzenie Chrome używa go w „Test połączenia". Wynik pingowania jest cache'owany przez 5 s, więc częste odpytywanie nie obciąża ES.
 
 ### GET /health/live (publiczne)
+
 Liveness probe bez zależności: `200 { status: 'ok' }`, gdy proces serwera odpowiada.
 
 ### GET /metrics (publiczne)
+
 Prometheus: `http_requests_total` i `http_request_duration_seconds` (etykiety method/route/status; nieznane ścieżki trafiają do etykiety `unmatched`, żeby nie mnożyć serii per URL), `download_queue_size` oraz metryki kosztów streszczeń: `openai_summary_requests_total`, `openai_summary_tokens_total`, `openai_summary_estimated_cost_cents_total` (szacunek $ wg przybliżonego cennika modeli).
 
 ### GET /api/videos/refreshCache
+
 Odświeża i reindeksuje wszystkie filmy z skonfigurowanych folderów do Elasticsearch.
 
 **Odpowiedź:**
+
 ```json
 {
   "message": "Cache refresh process started",
@@ -574,6 +618,7 @@ GET /api/videos/refreshCache?onlyMissing=1
 **Uwaga:** Ten endpoint uruchamia proces indeksowania w tle i od razu zwraca odpowiedź. Jeśli reindeks już trwa, zwraca `409` z aktualnym statusem. Postęp można śledzić przez `GET /api/videos/refreshCache/status` (klient robi to sam i pokazuje go w toaście).
 
 ### GET /api/videos/refreshCache/status
+
 Stan trwającego (lub ostatniego) reindeksu.
 
 ```json
@@ -613,9 +658,11 @@ wprowadzenie `polish_folded`), uruchom `GET /api/videos/refreshCache` — nowe
 indeksy dostaną nowy analizator, a aliasy przełączą się atomowo.
 
 ### GET /api/videos/search
+
 Wyszukuje filmy po frazie w nazwie pliku (`baseName.text^4`), tytule (`^3`), opisie (`^2`), transkrypcie napisów (`transcriptText^2`) i komentarzach (`commentsText`). Tekst jest analizowany z **składaniem znaków diakrytycznych** (customowy analizator `polish_folded`: `standard` + `lowercase` + `asciifolding`), więc `srodek` znajduje `środek` bez wpisywania polskich znaków. Polskie stemming/stopwordy wymagałyby pluginu `analysis-stempel` (nie ma go w domyślnym obrazie Dockera), więc analizator używa wyłącznie wbudowanych komponentów. Transkrypty i komentarze to pola wyłącznie wyszukiwawcze — nigdy nie wracają w odpowiedziach.
 
 **Parametry zapytania:**
+
 - `q` (opcjonalny) - fraza do wyszukania
 - `sort` (opcjonalny) - sposób sortowania:
   - `relevance` - po trafności (domyślne zachowanie Elasticsearch, `_score`; sensowne tylko z frazą)
@@ -632,6 +679,7 @@ Wyszukuje filmy po frazie w nazwie pliku (`baseName.text^4`), tytule (`^3`), opi
 Klient dokłada kolejne strony przyciskiem „Pokaż więcej" dopóki `videos.length < totalCount`.
 
 **Odpowiedź:**
+
 ```json
 {
   "videos": [
@@ -653,6 +701,7 @@ Klient dokłada kolejne strony przyciskiem „Pokaż więcej" dopóki `videos.le
 ```
 
 ### GET /api/videos/categories
+
 Kategorie zadeklarowane w plikach `config.json` skonfigurowanych folderów - posortowane, bez duplikatów (warianty różniące się wielkością liter są scalane). Zasila listę wyboru w wyszukiwaniu.
 
 ```json
@@ -664,19 +713,24 @@ Kategoria **nie trafia do Elasticsearcha**. Każdy folder ma własny alias indek
 Pliki `config.json` są czytane równolegle, a mapa folder → kategoria jest trzymana w pamięci przez 5 s (`CATEGORY_CACHE_TTL_MS`), bo na zewnętrznym dysku sekwencyjny odczyt 56 plików przy każdym wyszukiwaniu kosztował 0,7–3 s. Zapis przez `PUT /api/folder/config` czyści cache od razu; plik zmieniony ręcznie na dysku jest widoczny po najwyżej 5 s.
 
 ### GET /api/videos/file/:filename?folder=<ścieżka>
+
 Serwuje pliki video (.mp4) i miniaturki (.webp).
 
 **Parametry:**
+
 - `filename` - nazwa pliku (np. `video.mp4`, `thumbnail.webp`)
 - `folder` (opcjonalny, zalecany) - folder, w którym leży plik; musi być jednym ze skonfigurowanych w `VIDEOS_FOLDER_PATH` (inaczej 403). Bez tego parametru plik jest wyszukiwany po nazwie w Elasticsearch.
 
 ### GET /api/videos/:baseName/details
+
 Zwraca szczegółowe informacje o filmie wraz z komentarzami.
 
 **Parametry:**
+
 - `baseName` - bazowa nazwa pliku bez rozszerzenia
 
 **Odpowiedź:**
+
 ```json
 {
   "details": {
@@ -709,24 +763,25 @@ Zwraca szczegółowe informacje o filmie wraz z komentarzami.
 
 Endpointy do zarządzania folderem kanału (wszystkie wymagają `folderPath` z listy `VIDEOS_FOLDER_PATH`):
 
-| Endpoint | Opis |
-| --- | --- |
-| `GET /api/status` | Lista folderów i ich `config.json` |
-| `PUT /api/folder/config` | Zapis `config.json` (`{ folderPath, config: { channelUrl, category, ... } }`) |
-| `POST /api/folder/download-playlist` | `yt-dlp --flat-playlist -j` → `list.json` |
-| `GET /api/folder/list-exists?folderPath=` | Czy `list.json` istnieje |
-| `GET /api/folder/list?folderPath=` | Zawartość `list.json` + statusy pobrania (z indeksu folderu) |
-| `GET /api/folder/video-downloaded?folderPath=&videoId=` | Czy film jest pobrany |
-| `POST /api/folder/rebuild-index` | Przebudowa indeksu folderu i `archive.txt` z dysku |
-| `POST /api/folder/queue` | Dodanie zadań do kolejki: `{ folderPath, type: "download" \| "update", videos: [{ videoId, videoUrl?, title? }] }` → `202 { jobs, skipped }` |
-| `GET /api/folder/queue?folderPath=` | Stan kolejki (`queued/running/done/error/cancelled`, postęp, ogon logu) |
-| `DELETE /api/folder/queue/:jobId` | Anulowanie zadania (zabija proces, jeśli trwa) |
-| `DELETE /api/folder/queue?folderPath=` | Anulowanie wszystkich zadań folderu |
-| `POST /api/folder/download-video` | Pojedyncze pobranie ze strumieniem SSE (używane przez rozszerzenie Chrome); zadanie i tak trafia do kolejki, zamknięcie połączenia nie przerywa pobierania |
+| Endpoint                                                | Opis                                                                                                                                                       |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/status`                                       | Lista folderów i ich `config.json`                                                                                                                         |
+| `PUT /api/folder/config`                                | Zapis `config.json` (`{ folderPath, config: { channelUrl, category, ... } }`)                                                                              |
+| `POST /api/folder/download-playlist`                    | `yt-dlp --flat-playlist -j` → `list.json`                                                                                                                  |
+| `GET /api/folder/list-exists?folderPath=`               | Czy `list.json` istnieje                                                                                                                                   |
+| `GET /api/folder/list?folderPath=`                      | Zawartość `list.json` + statusy pobrania (z indeksu folderu)                                                                                               |
+| `GET /api/folder/video-downloaded?folderPath=&videoId=` | Czy film jest pobrany                                                                                                                                      |
+| `POST /api/folder/rebuild-index`                        | Przebudowa indeksu folderu i `archive.txt` z dysku                                                                                                         |
+| `POST /api/folder/queue`                                | Dodanie zadań do kolejki: `{ folderPath, type: "download" \| "update", videos: [{ videoId, videoUrl?, title? }] }` → `202 { jobs, skipped }`               |
+| `GET /api/folder/queue?folderPath=`                     | Stan kolejki (`queued/running/done/error/cancelled`, postęp, ogon logu)                                                                                    |
+| `DELETE /api/folder/queue/:jobId`                       | Anulowanie zadania (zabija proces, jeśli trwa)                                                                                                             |
+| `DELETE /api/folder/queue?folderPath=`                  | Anulowanie wszystkich zadań folderu                                                                                                                        |
+| `POST /api/folder/download-video`                       | Pojedyncze pobranie ze strumieniem SSE (używane przez rozszerzenie Chrome); zadanie i tak trafia do kolejki, zamknięcie połączenia nie przerywa pobierania |
 
 **Kolejka pobierań** działa po stronie serwera (`server/src/services/downloadQueue.ts`): zadania nie są związane z żądaniem HTTP, więc zamknięcie karty nie przerywa `yt-dlp`. Pobrania i aktualizacje mają osobne limity. Pobrań działa równolegle najwyżej `DOWNLOAD_CONCURRENCY` (domyślnie 2) i tylko jedno na folder, bo każde dopisuje do `archive.txt` w tym folderze. Aktualizacji metadanych — najwyżej `UPDATE_CONCURRENCY` (domyślnie 2), także w jednym folderze: każda pisze wyłącznie pod własnym stemem pliku, a odświeżenie indeksu folderu po zadaniu idzie w kolejce per folder, więc równoległe zadania nie nadpisują sobie `.videos-index.json`. Podnosząc ten limit pamiętaj, że każdy proces `yt-dlp` (zwłaszcza z `--write-comments`) to wiele żądań do YouTube z jednego adresu IP; błędy 429 albo prośba o zalogowanie to sygnał, żeby wrócić do mniejszej wartości. Klient odpytuje `GET /api/folder/queue` co 1,5 s, tylko gdy coś jest w kolejce. Kolejka jest trzymana w pamięci — restart serwera ją czyści.
 
 **Dwa rodzaje zadań:**
+
 - `download` - pełne pobranie z `--download-archive archive.txt`; film, którego id jest już w `archive.txt`, nie zostanie pobrany drugi raz nawet jeśli zmienił tytuł na YouTube.
 - `update` - tylko metadane (`--skip-download`), zapisywane pod **istniejącą** nazwą bazową pliku (`-o "<baseName>.%(ext)s"`), więc `info.json`, opis, miniaturka i napisy są nadpisywane w miejscu, a nie tworzone pod nowym tytułem.
 
@@ -763,14 +818,14 @@ Aplikacja automatycznie skanuje wszystkie podane foldery i indeksuje pliki speł
 }
 ```
 
-| Klucz | Domyślnie | Znaczenie |
-| --- | --- | --- |
-| `channelUrl` | - | Adres kanału; z niego powstaje `list.json` |
-| `category` | - | Kategoria kanału (max 64 znaki, jedna linia); pozwala zawężyć wyszukiwanie do jednego tematu |
-| `maxHeight` | `2160` | Maksymalna wysokość wideo (144-4320). Preferowany h264/aac w mp4, potem dowolny kodek |
-| `subLangs` | `["en"]` | Języki napisów dla `--sub-lang` (`pl`, `en`, `en.*`, `all`). Pusta tablica wyłącza napisy |
-| `writeComments` | `true` | Czy pobierać komentarze (`--write-comments`) - są indeksowane do wyszukiwania |
-| `extraArgs` | `[]` | Dodatkowe flagi yt-dlp dopisane po wbudowanych, np. `["--no-playlist"]` (oddzielne wpisy jak w argv, bez cudzysłowów). Zarezerwowane są flagi, na których opiera się potok: `-f/--format`, `-o/--output`, `-P/--paths`, `--download-archive`, `--no-download-archive`, `--merge-output-format`, a zabronione (bezpieczeństwo): `--exec`, `--config-locations`, `--cookies`/`--load-cookies`/`--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`, `--video-password` — `PUT /api/folder/config` je odrzuca, a w ręcznie edytowanym pliku są ignorowane (wraz z wartością) |
+| Klucz           | Domyślnie | Znaczenie                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `channelUrl`    | -         | Adres kanału; z niego powstaje `list.json`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `category`      | -         | Kategoria kanału (max 64 znaki, jedna linia); pozwala zawężyć wyszukiwanie do jednego tematu                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `maxHeight`     | `2160`    | Maksymalna wysokość wideo (144-4320). Preferowany h264/aac w mp4, potem dowolny kodek                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `subLangs`      | `["en"]`  | Języki napisów dla `--sub-lang` (`pl`, `en`, `en.*`, `all`). Pusta tablica wyłącza napisy                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `writeComments` | `true`    | Czy pobierać komentarze (`--write-comments`) - są indeksowane do wyszukiwania                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `extraArgs`     | `[]`      | Dodatkowe flagi yt-dlp dopisane po wbudowanych, np. `["--no-playlist"]` (oddzielne wpisy jak w argv, bez cudzysłowów). Zarezerwowane są flagi, na których opiera się potok: `-f/--format`, `-o/--output`, `-P/--paths`, `--download-archive`, `--no-download-archive`, `--merge-output-format`, a zabronione (bezpieczeństwo): `--exec`, `--config-locations`, `--cookies`/`--load-cookies`/`--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`, `--video-password` — `PUT /api/folder/config` je odrzuca, a w ręcznie edytowanym pliku są ignorowane (wraz z wartością) |
 
 Brakujące klucze biorą wartości domyślne (`GET /api/status` zwraca je w `downloadDefaults`). Wartości nieprawidłowe w ręcznie edytowanym pliku są ignorowane, a `PUT /api/folder/config` je odrzuca. Opcje są odczytywane w momencie dodawania zadania do kolejki. Edytor w UI (strona statusu) pozwala je ustawić bez ręcznej edycji pliku.
 
@@ -788,4 +843,3 @@ Aby dla już pobranego kanału dociągnąć np. polskie napisy obok angielskich:
 3. Nowe napisy są widoczne w odtwarzaczu od razu (endpoint szczegółów czyta pliki `.vtt` z dysku)
    — bez reindeksu. Tempo możesz podnieść zmienną `UPDATE_CONCURRENCY` (domyślnie 2 równoległe).
    Po skończonej akcji wyczyść `extraArgs`, jeśli chcesz wrócić do pełnych aktualizacji.
-
