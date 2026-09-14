@@ -1,74 +1,81 @@
 # Chrome Extension - Video Downloader
 
-Rozszerzenie Chrome do pobierania wideo z przeglądarki używając endpointu z projektu video-search-app.
+A Chrome extension that enqueues videos from the browser into the
+video-search-app server's download queue.
 
-## Instalacja
+## Installation
 
-1. Zainstaluj zależności i zbuduj rozszerzenie (kod źródłowy to TypeScript w `src/`, Chrome ładuje wygenerowane `*.js` z katalogu głównego):
+1. Install dependencies and build the extension (the source is TypeScript in
+   `src/`; Chrome loads the generated `*.js` files from this directory):
 
    ```bash
    npm install
    npm run build
    ```
 
-2. Otwórz Chrome i przejdź do `chrome://extensions/`
-3. Włącz "Tryb deweloperski" (Developer mode) w prawym górnym rogu
-4. Kliknij "Załaduj rozpakowane" (Load unpacked)
-5. Wybierz folder `chrome-extension` z tego projektu
+2. Open Chrome and go to `chrome://extensions/`
+3. Enable "Developer mode" in the top right corner
+4. Click "Load unpacked"
+5. Select the `chrome-extension` folder of this project
 
-Po zmianie kodu w `src/` uruchom ponownie `npm run build` i kliknij ikonę odświeżenia przy rozszerzeniu w `chrome://extensions/`.
+After changing code in `src/`, re-run `npm run build` and click the refresh
+icon next to the extension in `chrome://extensions/`.
 
-## Konfiguracja
+## Configuration
 
-1. Kliknij prawym przyciskiem na ikonę rozszerzenia i wybierz "Opcje"
-2. Wprowadź:
-   - **URL serwera**: URL serwera video-search-app (np. `http://localhost:3001`)
-   - **Ścieżka folderu**: Ścieżka do folderu gdzie mają być zapisywane wideo (musi być w `VIDEOS_FOLDER_PATH` środowiska serwera)
-   - **Token API** (opcjonalny): wartość `API_TOKEN` serwera — wysyłany jako `Authorization: Bearer ...`; wypełnij tylko, gdy serwer ma ustawiony token
-3. Kliknij "Test połączenia" aby sprawdzić czy serwer odpowiada
-4. Kliknij "Zapisz" aby zapisać ustawienia
+1. Right-click the extension icon and choose "Options"
+2. Fill in:
+   - **Server URL**: the video-search-app server URL (e.g. `http://localhost:3001`)
+   - **Folder path**: the folder videos should be saved to (must be listed in
+     the server's `VIDEOS_FOLDER_PATH`)
+   - **API token** (optional): the server's `API_TOKEN` value — sent as
+     `Authorization: Bearer ...`; fill in only when the server has a token set
+3. Click "Test connection" to check whether the server responds
+4. Click "Save" to store the settings
 
-## Użycie
+## Usage
 
-1. Otwórz stronę z wideo (np. YouTube)
-2. Kliknij na ikonę rozszerzenia w pasku narzędzi
-3. Kliknij "Pobierz wideo"
-4. Postęp pobierania będzie wyświetlany w popupie
+1. Open a page with a video (e.g. YouTube)
+2. Click the extension icon in the toolbar
+3. Click "Download video"
+4. The download progress is shown live in the popup
 
-## Funkcje
+## Features
 
-- Automatyczne wykrywanie wideo na stronie (YouTube, bezpośrednie linki do wideo)
-- Pobieranie wideo przez endpoint `/api/folder/download-video` (zadanie trafia do kolejki po stronie serwera — zamknięcie popupu nie przerywa pobierania)
-- Wyświetlanie postępu pobierania w czasie rzeczywistym (SSE)
-- Lista równoległych pobrań z anulowaniem z poziomu popupu i licznik na ikonie rozszerzenia
-- Konfiguracja URL serwera i ścieżki folderu z testem połączenia
+- Automatic video detection on the page (YouTube, direct video links)
+- Downloads through `/api/folder/download-video` (the job runs in the
+  server-side queue — closing the popup does not stop the download)
+- Real-time download progress (SSE)
+- List of parallel downloads with cancel buttons in the popup and an active-
+  job counter on the extension icon
+- Server URL and folder path configuration with a connection test
 
-## Wymagania
+## Requirements
 
-- Chrome 88 lub nowszy (Manifest V3)
-- Serwer video-search-app musi być uruchomiony
-- FolderPath musi być w `VIDEOS_FOLDER_PATH` środowiska serwera
-- Serwer musi być dostępny z przeglądarki (CORS musi być skonfigurowany)
+- Chrome 88 or newer (Manifest V3)
+- The video-search-app server must be running
+- The folder path must be in the server's `VIDEOS_FOLDER_PATH`
+- The server must be reachable from the browser (CORS configured)
 
-## Rozwój
+## Development
 
-- Kod źródłowy: `src/*.ts` (TypeScript, strict, te same ostre flagi co reszta
-  repo). Czysta logika (parsowanie SSE, wyciąganie postępu, wykrywanie id
-  YouTube) leży w `src/lib/` i ma testy jednostkowe (Vitest): `npm test`.
-- Kontrakt zdarzeń SSE (`DownloadVideoEvent`) i parser postępu yt-dlp
-  pochodzą ze wspólnego `shared/` (`api.ts` — typy przez `import type`;
-  `progress.ts` — logika jako zwykły import, esbuild bundluje co trzeba).
-- `npm run typecheck` sprawdza typy, `npm run build` generuje `background.js`,
-  `content.js`, `popup.js` i `options.js` (wygenerowane pliki nie są
-  commitowane). Z katalogu głównego repo działają też `npm run build:extension`,
-  `npm run typecheck` i `npm test` (obejmują wszystkie projekty).
+- Source code: `src/*.ts` (TypeScript, strict, the same strict flags as the
+  rest of the repo). Pure logic (SSE framing, progress extraction, YouTube id
+  detection) lives in `src/lib/` with unit tests (Vitest): `npm test`.
+- The SSE event contract (`DownloadVideoEvent`) and the yt-dlp progress parser
+  come from `shared/` (`api.ts` — types via `import type`; `progress.ts` — real
+  logic, bundled by esbuild).
+- `npm run typecheck` checks the types, `npm run build` generates
+  `background.js`, `content.js`, `popup.js` and `options.js` (generated files
+  are not committed). From the repo root, `npm run build:extension`,
+  `npm run typecheck` and `npm test` also work (they cover all packages).
 
-## Ikony
+## Icons
 
-Dodaj ikony w folderze `icons/`:
+Place icons in the `icons/` folder:
+
 - `icon16.png` (16x16)
 - `icon48.png` (48x48)
 - `icon128.png` (128x128)
 
-Możesz użyć placeholder ikon lub stworzyć własne.
-
+You can use placeholder icons or create your own.
