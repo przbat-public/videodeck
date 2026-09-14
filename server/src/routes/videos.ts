@@ -238,13 +238,21 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
 
   if (ext === '.mp4') {
     contentType = 'video/mp4';
+    // Videos are content-addressed by their yt-dlp file stem: a new version
+    // gets a new name, so the same URL always serves the same bytes.
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   } else if (ext === '.webp') {
     contentType = 'image/webp';
+    // Thumbnails follow the same stem — immutable like the video files.
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   } else if (ext === '.vtt') {
     // yt-dlp auto captions carry `align:start position:0%` on every cue,
     // pinning the text to the left edge — strip the settings so the browser
     // centers the cues the way it does for plain WebVTT.
     contentType = 'text/vtt; charset=utf-8';
+    // Subtitles are re-downloaded in place on metadata updates — always
+    // revalidate, never serve a stale cue file.
+    res.setHeader('Cache-Control', 'no-cache');
     try {
       const vtt = await fs.readFile(filePath, 'utf-8');
       res.setHeader('Content-Type', contentType);

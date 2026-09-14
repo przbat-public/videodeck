@@ -16,7 +16,6 @@ export interface VideoItemProps {
   job?: QueueJob | undefined;
   onEnqueue: (video: ChannelVideoRow, type: JobType) => void;
   onCancel: (jobId: string) => void;
-  scrollContainerRef?: React.RefObject<HTMLDivElement>;
 }
 
 /** Date of the last local update, formatted in the current UI language */
@@ -39,33 +38,12 @@ export function VideoItemInner({
   job,
   onEnqueue,
   onCancel,
-  scrollContainerRef,
 }: VideoItemProps): JSX.Element {
   const { t, i18n } = useTranslation();
-  const itemRef = useRef<HTMLDivElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
 
   const isActive = job?.status === 'queued' || job?.status === 'running';
   const isRunning = job?.status === 'running';
-
-  // Bring the item into view when its job starts running
-  useEffect(() => {
-    if (!isRunning || !itemRef.current) {
-      return;
-    }
-    const item = itemRef.current;
-    const container = scrollContainerRef?.current;
-    if (container && typeof container.scrollTo === 'function') {
-      const containerRect = container.getBoundingClientRect();
-      const itemRect = item.getBoundingClientRect();
-      container.scrollTo({
-        top: container.scrollTop + (itemRect.top - containerRect.top),
-        behavior: 'smooth',
-      });
-    } else if (typeof item.scrollIntoView === 'function') {
-      item.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [isRunning, scrollContainerRef]);
 
   // Keep the log scrolled to the bottom
   useEffect(() => {
@@ -105,7 +83,7 @@ export function VideoItemInner({
   const showLog = job && (isRunning || job.status === 'error') && job.log.length > 0;
 
   return (
-    <div className={`video-item${isActive ? ' video-item--active' : ''}`} ref={itemRef}>
+    <div className={`video-item${isActive ? ' video-item--active' : ''}`}>
       <div className="video-item-header">
         {isDownloaded && video.id ? (
           <Link to={`/video/${encodeURIComponent(video.id)}`} className="video-title-link">

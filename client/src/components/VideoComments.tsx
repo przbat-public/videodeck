@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { useTranslation } from 'react-i18next';
 import CommentComponent from './CommentComponent';
@@ -27,6 +27,10 @@ export default function VideoComments({
   const [previousComments, setPreviousComments] = useState(comments);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  /** One page at a time: a double click must not fire two fetches */
+  const inFlightRef = useRef(false);
+  /** Cancelled when a newer page starts or the component unmounts */
+  const abortRef = useRef<AbortController | null>(null);
 
   // The details payload was replaced (identifier or subtitle state changed):
   // start over from its first page. Adjusted during render, not in an effect.
@@ -36,6 +40,10 @@ export default function VideoComments({
     setLoadError(false);
   }
 
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
+
   if (items.length === 0) {
     return null;
   }
@@ -43,11 +51,19 @@ export default function VideoComments({
   const hasMore = commentCount !== undefined && items.length < commentCount;
 
   const loadMore = async (): Promise<void> => {
+    if (inFlightRef.current) {
+      return;
+    }
+    inFlightRef.current = true;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoadingMore(true);
     setLoadError(false);
     try {
       const response = await fetch(
-        `/api/videos/${encodeURIComponent(videoId)}/comments?offset=${items.length}&limit=${COMMENTS_PAGE_SIZE}`
+        `/api/videos/${encodeURIComponent(videoId)}/comments?offset=${items.length}&limit=${COMMENTS_PAGE_SIZE}`,
+        { signal: controller.signal }
       );
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -55,9 +71,16 @@ export default function VideoComments({
       const page = CommentsResponseSchema.parse(await response.json());
       setItems((current) => [...current, ...page.comments]);
     } catch (error) {
+      if (controller.signal.aborted) {
+        return; // superseded by a newer page or an unmount — not an error
+      }
       console.error('Error loading comments:', error);
       setLoadError(true);
     } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
+      inFlightRef.current = false;
       setLoadingMore(false);
     }
   };

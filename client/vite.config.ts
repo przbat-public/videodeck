@@ -1,13 +1,41 @@
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import { visualizer } from 'rollup-plugin-visualizer'
+
+// `ANALYZE=1 npm run build` writes a bundle report (dist/stats.html).
+// Off by default: the report is a one-off inspection, not a build artifact.
+const analyze = process.env.ANALYZE === '1'
+
+const vendorChunks: Record<string, string[]> = {
+  'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+  'i18n-vendor': ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
+  'ui-vendor': ['@radix-ui/react-select', 'react-hot-toast', 'react-window'],
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), ...(analyze ? [visualizer({ gzipSize: true })] : [])],
   resolve: {
     alias: {
       // Types-only module shared with the server (see shared/api.ts)
       '@shared': fileURLToPath(new URL('../shared', import.meta.url)),
+    },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // Stable vendor chunks: framework code changes far less often than
+        // app code, so returning users download only the small app chunk.
+        manualChunks(id: string): string | undefined {
+          if (!id.includes('node_modules')) {
+            return undefined
+          }
+          const chunk = Object.entries(vendorChunks).find(([, packages]) =>
+            packages.some((pkg) => id.includes(`/node_modules/${pkg}/`))
+          )
+          return chunk?.[0]
+        },
+      },
     },
   },
   server: {
@@ -44,4 +72,3 @@ export default defineConfig({
     },
   },
 })
-

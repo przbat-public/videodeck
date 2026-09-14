@@ -648,6 +648,7 @@ describe('videos router', () => {
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toBe('video/mp4');
+      expect(response.headers['cache-control']).toBe('public, max-age=31536000, immutable');
     });
 
     it('should serve subtitle files with cue settings stripped (centered captions)', async () => {
@@ -665,6 +666,8 @@ describe('videos router', () => {
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toContain('text/vtt');
+      // Subtitles change in place on updates — the client must revalidate
+      expect(response.headers['cache-control']).toBe('no-cache');
       expect(response.text).toBe('WEBVTT\n\n00:00:03.360 --> 00:00:05.200\ntext\n');
     });
 
@@ -680,6 +683,7 @@ describe('videos router', () => {
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toBe('image/webp');
+      expect(response.headers['cache-control']).toBe('public, max-age=31536000, immutable');
     });
 
     it('should use default Content-Type for unknown extensions', async () => {

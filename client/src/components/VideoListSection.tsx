@@ -39,7 +39,6 @@ export function VideoListSection({
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [videosError, setVideosError] = useState<string | null>(null);
   const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
-  const videosListContainerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<VariableSizeList>(null);
 
   const fetchList = useCallback(async () => {
@@ -189,6 +188,24 @@ export function VideoListSection({
     listRef.current?.resetAfterIndex(0);
   }, [jobs, getRowHeight]);
 
+  // When a job starts running, bring its row into view. The windowed list is
+  // the source of truth — scrollToItem knows the row's exact offset (the
+  // per-item scrollIntoView fallback that used to live in VideoItem could
+  // not, and never ran because no container ref was passed down).
+  const runningJobVideoId = useMemo(
+    () => jobs.find((job) => job.status === 'running')?.videoId,
+    [jobs]
+  );
+  useEffect(() => {
+    if (!runningJobVideoId) {
+      return;
+    }
+    const index = rows.findIndex((row) => row.id === runningJobVideoId);
+    if (index >= 0) {
+      listRef.current?.scrollToItem(index, 'auto');
+    }
+  }, [runningJobVideoId, rows]);
+
   const isNotDownloaded = (video: ChannelVideo) => !downloadStatuses[video.id] && !!video.url;
   const isDownloaded = (video: ChannelVideo) => !!downloadStatuses[video.id] && !!video.url;
   const isVideoOlderThanMonth = (video: ChannelVideo) =>
@@ -297,7 +314,7 @@ export function VideoListSection({
               )}
             </div>
           </div>
-          <div className="videos-list-items" ref={videosListContainerRef}>
+          <div className="videos-list-items">
             <VariableSizeList
               ref={listRef}
               height={LIST_HEIGHT}

@@ -75,6 +75,35 @@ export default function SearchBar({
     return () => window.clearTimeout(handle);
   }, [text, query, sort, category, channel, dateFrom, dateTo, onChange]);
 
+  // The channel filter searches on every keystroke otherwise; it commits the
+  // same debounced way the phrase does (`channel` is the committed value).
+  const [channelText, setChannelText] = useState(channel);
+  const [seenChannel, setSeenChannel] = useState(channel);
+  if (channel !== seenChannel) {
+    setSeenChannel(channel);
+    if (channel !== channelText.trim()) {
+      setChannelText(channel);
+    }
+  }
+
+  useEffect(() => {
+    const trimmed = channelText.trim();
+    if (trimmed === channel) {
+      return undefined;
+    }
+    const handle = window.setTimeout(() => {
+      onChange({
+        query,
+        sort,
+        category,
+        channel: trimmed,
+        dateFrom,
+        dateTo,
+      });
+    }, DEBOUNCE_DELAY);
+    return () => window.clearTimeout(handle);
+  }, [channelText, channel, query, sort, category, dateFrom, dateTo, onChange]);
+
   /**
    * Selects commit right away. A phrase still too short to search stays in
    * the input, and the commit keeps the query the results already show.
@@ -85,7 +114,7 @@ export default function SearchBar({
       query: isSearchable(trimmed) ? trimmed : query,
       sort,
       category,
-      channel,
+      channel: channelText.trim(),
       dateFrom,
       dateTo,
       ...patch,
@@ -138,8 +167,8 @@ export default function SearchBar({
           <input
             type="text"
             list="channel-suggestions"
-            value={channel}
-            onChange={(e) => commitWith({ channel: e.target.value })}
+            value={channelText}
+            onChange={(e) => setChannelText(e.target.value)}
             placeholder={t('search.channelPlaceholder')}
             className="channel-input"
             aria-label={t('search.channel')}

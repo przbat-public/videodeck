@@ -39,7 +39,10 @@ describe('VideoComments', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/3)' }));
 
     await waitFor(() => expect(screen.getByText('Comment c3')).toBeInTheDocument());
-    expect(fetchMock).toHaveBeenCalledWith('/api/videos/v1/comments?offset=1&limit=50');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/videos/v1/comments?offset=1&limit=50',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(screen.queryByRole('button', { name: /Pokaż więcej/ })).toBeNull();
   });
 
@@ -58,5 +61,40 @@ describe('VideoComments', () => {
     render(<VideoComments videoId="v1" comments={[comment('c1')]} commentCount={1} />);
 
     expect(screen.queryByRole('button', { name: /Pokaż więcej/ })).toBeNull();
+  });
+
+  it('ignores a second click while a page is already loading', async () => {
+    render(<VideoComments videoId="v1" comments={[comment('c1')]} commentCount={5} />);
+
+    let resolveFetch: (response: MockResponse) => void = () => {};
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        })
+    );
+
+    const button = screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/5)' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resolveFetch(json({ comments: [comment('c2')], totalCount: 5, offset: 1 }));
+    await waitFor(() => expect(screen.getByText('Comment c2')).toBeInTheDocument());
+  });
+
+  it('aborts the pending page when the component unmounts', () => {
+    const { unmount } = render(
+      <VideoComments videoId="v1" comments={[comment('c1')]} commentCount={5} />
+    );
+
+    fetchMock.mockResolvedValueOnce(json({ comments: [comment('c2')], totalCount: 5, offset: 1 }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/5)' }));
+    unmount();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0] as [string, { signal: AbortSignal }];
+    expect(options.signal.aborted).toBe(true);
   });
 });

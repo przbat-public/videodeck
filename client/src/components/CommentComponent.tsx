@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import type { JSX } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -43,9 +43,13 @@ interface CommentComponentProps {
 }
 
 /**
- * Recursive component for rendering comments with nested replies
+ * Recursive component for rendering comments with nested replies. Memoized:
+ * loading another page re-renders the comments section, and without memo
+ * every already-visible comment (a tree with dozens of nodes) would render
+ * again — the comment objects are stable, so the shallow comparison skips
+ * them. useTranslation still re-renders on a language switch.
  */
-export default function CommentComponent({
+const CommentComponent = memo(function CommentComponent({
   comment,
   depth = 0,
 }: CommentComponentProps): JSX.Element {
@@ -124,4 +128,6 @@ export default function CommentComponent({
       )}
     </div>
   );
-}
+});
+
+export default CommentComponent;

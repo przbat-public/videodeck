@@ -4,6 +4,8 @@
     "error": "Error: {{message}}",
     "unexpectedError": "Something went wrong.",
     "refreshPage": "Refresh the page",
+    "routeErrorText": "This page could not be loaded.",
+    "backToStart": "Back to the start page",
     "language": "Language",
     "download": "Download",
     "update": "Update",

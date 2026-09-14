@@ -430,13 +430,16 @@ describe('SearchBar', () => {
       expect(screen.queryByLabelText('Kanał')).not.toBeInTheDocument();
     });
 
-    it('commits a channel change at once, keeping the rest of the state', () => {
+    it('commits a channel change after the typing pause, keeping the rest of the state', async () => {
       const { onChange } = renderBar({ query: 'robot' }, CATEGORIES, ['Jordan B Peterson']);
 
       fireEvent.change(screen.getByLabelText('Kanał'), {
         target: { value: 'Jordan B Peterson' },
       });
+      await advance(299);
+      expect(onChange).not.toHaveBeenCalled();
 
+      await advance(1);
       expect(onChange).toHaveBeenCalledWith({
         query: 'robot',
         sort: 'date-desc',
@@ -445,6 +448,21 @@ describe('SearchBar', () => {
         dateFrom: '',
         dateTo: '',
       });
+    });
+
+    it('commits the final channel value only, after the typing pause', async () => {
+      const { onChange } = renderBar({}, CATEGORIES, ['Jordan B Peterson']);
+      const channelInput = screen.getByLabelText('Kanał');
+
+      fireEvent.change(channelInput, { target: { value: 'J' } });
+      await advance(200);
+      fireEvent.change(channelInput, { target: { value: 'Jo' } });
+      await advance(200);
+      fireEvent.change(channelInput, { target: { value: 'Jordan' } });
+      await advance(300);
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SEARCH_STATE, channel: 'Jordan' });
     });
 
     it('commits well-formed dates and ignores incomplete ones', () => {

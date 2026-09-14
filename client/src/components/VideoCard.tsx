@@ -7,6 +7,8 @@ import React from 'react';
 interface VideoCardProps {
   video: VideoListItem;
   searchQuery?: string | undefined;
+  /** Position in the result list: the first rows are the LCP, keep them eager */
+  index?: number | undefined;
 }
 
 const formatVideoDate = (dateStr?: string): string => {
@@ -71,7 +73,7 @@ const renderMarkedFragment = (fragment: string): React.ReactNode => {
   );
 };
 
-function VideoCardInner({ video, searchQuery }: VideoCardProps): JSX.Element {
+function VideoCardInner({ video, searchQuery, index }: VideoCardProps): JSX.Element {
   const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}?folder=${encodeURIComponent(video.folderPath)}`;
 
   const videoIdentifier = video.videoId || video.baseName;
@@ -89,7 +91,12 @@ function VideoCardInner({ video, searchQuery }: VideoCardProps): JSX.Element {
           <img
             src={thumbnailUrl}
             alt={video.title}
-            loading="lazy"
+            // The first visible cards are the LCP: keep them eager (the top
+            // one with high fetch priority), lazy-load everything below the
+            // fold, decode every thumbnail off the main thread.
+            loading={index !== undefined && index < 4 ? 'eager' : 'lazy'}
+            decoding="async"
+            fetchPriority={index === 0 ? 'high' : undefined}
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
             }}

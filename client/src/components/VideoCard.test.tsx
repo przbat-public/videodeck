@@ -40,6 +40,23 @@ describe('VideoCard', () => {
     );
   });
 
+  it('keeps the first thumbnail eager with high priority for the LCP', () => {
+    renderWithRouter(<VideoCard video={mockVideo} index={0} />);
+    const img = screen.getByAltText('Test Video Title');
+
+    expect(img).toHaveAttribute('loading', 'eager');
+    expect(img).toHaveAttribute('fetchpriority', 'high');
+    expect(img).toHaveAttribute('decoding', 'async');
+  });
+
+  it('lazy-loads thumbnails below the first rows', () => {
+    renderWithRouter(<VideoCard video={mockVideo} index={10} />);
+    const img = screen.getByAltText('Test Video Title');
+
+    expect(img).toHaveAttribute('loading', 'lazy');
+    expect(img).not.toHaveAttribute('fetchpriority', 'high');
+  });
+
   it('should have link to video detail page', () => {
     renderWithRouter(<VideoCard video={mockVideo} />);
     const link = screen.getByRole('link');

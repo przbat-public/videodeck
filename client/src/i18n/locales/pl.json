@@ -4,6 +4,8 @@
     "error": "Błąd: {{message}}",
     "unexpectedError": "Coś poszło nie tak.",
     "refreshPage": "Odśwież stronę",
+    "routeErrorText": "Nie udało się załadować tej strony.",
+    "backToStart": "Wróć do strony startowej",
     "language": "Język",
     "download": "Pobierz",
     "update": "Aktualizuj",
