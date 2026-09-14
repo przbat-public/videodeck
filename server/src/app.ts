@@ -1,9 +1,12 @@
 import express from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import videosRouter from './routes/videos';
 import folderRouter from './routes/folder';
 import { CORS_ORIGINS } from './config';
 import { createAuthMiddleware, isAllowedCorsOrigin } from './routes/http';
+import { logger } from './utils/logger';
+import type { ApiError } from '@shared/api';
 
 /**
  * Largest expected JSON body: bulk enqueue for a channel with thousands of
@@ -15,6 +18,39 @@ export const JSON_BODY_LIMIT = '1mb';
 export interface CreateAppOptions {
   /** Bearer token guarding /api; undefined means the API is open */
   apiToken?: string;
+}
+
+/** One log line per request: method, path, status and duration */
+function requestLogger(req: Request, res: Response, next: NextFunction): void {
+  const start = Date.now();
+  res.on('finish', () => {
+    logger.info(`${req.method} ${req.originalUrl} → ${res.statusCode} (${Date.now() - start}ms)`);
+  });
+  next();
+}
+
+/**
+ * Safety net for anything a handler did not catch itself. Express 5 forwards
+ * rejected async handlers here, so the boilerplate `try/catch + sendError`
+ * blocks are gone: a 500 now looks the same everywhere and the full error
+ * lands in the log with its route.
+ */
+export function errorHandler(
+  error: unknown,
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  if (res.headersSent) {
+    next(error); // streaming response (SSE, sendFile) — let Express tear it down
+    return;
+  }
+  logger.error(`Unhandled error in ${req.method} ${req.originalUrl}:`, error);
+  const body: ApiError = {
+    error: 'Internal server error',
+    message: error instanceof Error ? error.message : 'Unknown error',
+  };
+  res.status(500).json(body);
 }
 
 export function createApp(options: CreateAppOptions = {}): express.Express {
@@ -35,6 +71,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
     })
   );
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
+  app.use(requestLogger);
 
   // /health stays public; everything else is behind the token when set
   app.use('/api', createAuthMiddleware(options.apiToken));
@@ -46,6 +83,8 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
+
+  app.use(errorHandler);
 
   return app;
 }

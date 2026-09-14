@@ -5,6 +5,7 @@ import type { IncomingMessage } from 'http';
 import * as fs from 'fs/promises';
 import { spawn } from 'child_process';
 import folderRouter, { extractYoutubeVideoId } from './folder';
+import { errorHandler } from '../app';
 import { createApp as createRealApp } from '../app';
 import { getVideosFolderPaths } from '../config';
 import { findEntryByVideoId, getDownloadStatuses, rebuildIndex } from '../services/folderIndex';
@@ -104,6 +105,7 @@ function createApp() {
   const app = express();
   app.use(express.json());
   app.use('/api', folderRouter);
+  app.use(errorHandler);
   return app;
 }
 

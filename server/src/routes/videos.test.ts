@@ -1,6 +1,7 @@
 import request from 'supertest';
 import express from 'express';
 import videosRouter from './videos';
+import { errorHandler } from '../app';
 import {
   getVideos,
   getReindexStatus,
@@ -75,6 +76,7 @@ describe('videos router', () => {
     app = express();
     app.use(express.json());
     app.use('/api/videos', videosRouter);
+    app.use(errorHandler);
   });
 
   afterEach(() => {
@@ -204,7 +206,7 @@ describe('videos router', () => {
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
-        error: 'Failed to search videos',
+        error: 'Internal server error',
         message: 'Failed to load videos',
       });
       expect(mockedGetTotalVideoCount).not.toHaveBeenCalled();
@@ -219,7 +221,7 @@ describe('videos router', () => {
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
-        error: 'Failed to search videos',
+        error: 'Internal server error',
         message: 'Failed to get count',
       });
     });
@@ -231,7 +233,7 @@ describe('videos router', () => {
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
-        error: 'Failed to search videos',
+        error: 'Internal server error',
         message: 'Unknown error',
       });
     });
@@ -298,7 +300,7 @@ describe('videos router', () => {
       const response = await request(app).get('/api/videos/categories');
 
       expect(response.status).toBe(500);
-      expect(response.body).toEqual({ error: 'Failed to list categories', message: 'disk gone' });
+      expect(response.body).toEqual({ error: 'Internal server error', message: 'disk gone' });
     });
   });
 
@@ -604,9 +606,9 @@ describe('videos router', () => {
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(500);
       expect(response.body).toEqual({
-        error: 'Failed to serve file',
+        error: 'Internal server error',
         message: 'Failed to read file',
       });
     });
@@ -932,7 +934,7 @@ And another one`;
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
-        error: 'Failed to get video summary',
+        error: 'Internal server error',
         message: expect.stringContaining('Rate limit exceeded for all models'),
       });
       // one attempt per model, no artificial waiting afterwards
@@ -1007,7 +1009,7 @@ And another one`;
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
-        error: 'Failed to get video summary',
+        error: 'Internal server error',
         message: 'Subtitle file not found',
       });
     });
@@ -1028,7 +1030,7 @@ And another one`;
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
-        error: 'Failed to get video summary',
+        error: 'Internal server error',
         message: 'OpenAI API error',
       });
     });
@@ -1307,7 +1309,7 @@ And another one`;
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
-        error: 'Failed to load video details',
+        error: 'Internal server error',
         message: 'Permission denied',
       });
     });
@@ -1322,7 +1324,7 @@ And another one`;
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({
-        error: 'Failed to load video details',
+        error: 'Internal server error',
         message: 'Failed to load video',
       });
     });

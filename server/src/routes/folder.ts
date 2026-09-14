@@ -160,59 +160,51 @@ function isQueueVideoInput(value: unknown): value is QueueVideoInput {
 // ---------------------------------------------------------------------------
 
 const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, res) => {
-  try {
-    const videosFolderPaths = getVideosFolderPaths();
-    // Configs live on an external disk: 56 folders read one after another
-    // cost up to 3 s (the same reason categories are read in parallel).
-    // readFolderConfig never throws, so the whole list is always built.
-    const configs = await Promise.all(videosFolderPaths.map(readFolderConfig));
-    const folderConfigs: Record<string, FolderConfig | null> = {};
-    videosFolderPaths.forEach((folderPath, index) => {
-      folderConfigs[folderPath] = configs[index] ?? null;
-    });
-    res.json({
-      videosFolderPath: videosFolderPaths,
-      folderConfigs,
-      downloadDefaults: DEFAULT_DOWNLOAD_OPTIONS,
-      status: 'ok',
-    });
-  } catch (error) {
-    sendError(res, 500, 'Failed to get status', error);
-  }
+  const videosFolderPaths = getVideosFolderPaths();
+  // Configs live on an external disk: 56 folders read one after another
+  // cost up to 3 s (the same reason categories are read in parallel).
+  // readFolderConfig never throws, so the whole list is always built.
+  const configs = await Promise.all(videosFolderPaths.map(readFolderConfig));
+  const folderConfigs: Record<string, FolderConfig | null> = {};
+  videosFolderPaths.forEach((folderPath, index) => {
+    folderConfigs[folderPath] = configs[index] ?? null;
+  });
+  res.json({
+    videosFolderPath: videosFolderPaths,
+    folderConfigs,
+    downloadDefaults: DEFAULT_DOWNLOAD_OPTIONS,
+    status: 'ok',
+  });
 };
 
 const saveFolderConfig: RouteHandler<NoParams, SaveFolderConfigResponse> = async (req, res) => {
-  try {
-    const { folderPath: rawFolderPath, config } = readBody(req);
-    if (readString(rawFolderPath) === undefined) {
-      res.status(400).json({ error: 'folderPath is required' });
-      return;
-    }
-    const validationError = validateFolderConfig(config);
-    if (validationError !== null) {
-      res.status(400).json({ error: validationError });
-      return;
-    }
-    // validateFolderConfig accepted it, so `config` is a plain object
-    const validConfig: FolderConfig = { ...(config as FolderConfig) };
-    if (typeof validConfig.category === 'string') {
-      // Stored trimmed so the file matches what search compares against
-      validConfig.category = validConfig.category.trim();
-    }
-    const folderPath = requireAllowedFolder(rawFolderPath, res);
-    if (!folderPath) return;
-
-    await fs.mkdir(folderPath, { recursive: true });
-    await fs.writeFile(
-      path.join(folderPath, 'config.json'),
-      JSON.stringify(validConfig, null, 2),
-      'utf-8'
-    );
-    invalidateCategoryCache();
-    res.json({ success: true, config: validConfig });
-  } catch (error) {
-    sendError(res, 500, 'Failed to save folder config', error);
+  const { folderPath: rawFolderPath, config } = readBody(req);
+  if (readString(rawFolderPath) === undefined) {
+    res.status(400).json({ error: 'folderPath is required' });
+    return;
   }
+  const validationError = validateFolderConfig(config);
+  if (validationError !== null) {
+    res.status(400).json({ error: validationError });
+    return;
+  }
+  // validateFolderConfig accepted it, so `config` is a plain object
+  const validConfig: FolderConfig = { ...(config as FolderConfig) };
+  if (typeof validConfig.category === 'string') {
+    // Stored trimmed so the file matches what search compares against
+    validConfig.category = validConfig.category.trim();
+  }
+  const folderPath = requireAllowedFolder(rawFolderPath, res);
+  if (!folderPath) return;
+
+  await fs.mkdir(folderPath, { recursive: true });
+  await fs.writeFile(
+    path.join(folderPath, 'config.json'),
+    JSON.stringify(validConfig, null, 2),
+    'utf-8'
+  );
+  invalidateCategoryCache();
+  res.json({ success: true, config: validConfig });
 };
 
 // ---------------------------------------------------------------------------
@@ -220,22 +212,18 @@ const saveFolderConfig: RouteHandler<NoParams, SaveFolderConfigResponse> = async
 // ---------------------------------------------------------------------------
 
 const listExists: RouteHandler<NoParams, ListExistsResponse> = async (req, res) => {
-  try {
-    const folderPath = requireAllowedFolder(req.query.folderPath, res);
-    if (!folderPath) return;
+  const folderPath = requireAllowedFolder(req.query.folderPath, res);
+  if (!folderPath) return;
 
-    try {
-      await fs.access(path.join(folderPath, 'list.json'));
-      res.json({ exists: true });
-    } catch (error) {
-      if (errnoCode(error) === 'ENOENT') {
-        res.json({ exists: false });
-        return;
-      }
-      throw error;
-    }
+  try {
+    await fs.access(path.join(folderPath, 'list.json'));
+    res.json({ exists: true });
   } catch (error) {
-    sendError(res, 500, 'Failed to check list.json', error);
+    if (errnoCode(error) === 'ENOENT') {
+      res.json({ exists: false });
+      return;
+    }
+    throw error;
   }
 };
 
@@ -244,50 +232,42 @@ const listExists: RouteHandler<NoParams, ListExistsResponse> = async (req, res) 
  * index (`.videos-index.json`) instead of parsing every info.json.
  */
 const getFolderList: RouteHandler<NoParams, FolderListResponse> = async (req, res) => {
-  try {
-    const folderPath = requireAllowedFolder(req.query.folderPath, res);
-    if (!folderPath) return;
+  const folderPath = requireAllowedFolder(req.query.folderPath, res);
+  if (!folderPath) return;
 
-    let videos: ChannelVideo[] | null;
-    try {
-      videos = await readListJson(folderPath);
-    } catch (error) {
-      if (error instanceof Error && error.message === 'list.json is not a valid array') {
-        res.status(400).json({ error: error.message });
-        return;
-      }
-      throw error;
-    }
-    if (!videos) {
-      res.status(404).json({ error: 'list.json not found' });
+  let videos: ChannelVideo[] | null;
+  try {
+    videos = await readListJson(folderPath);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'list.json is not a valid array') {
+      res.status(400).json({ error: error.message });
       return;
     }
-
-    let downloadStatuses: Record<string, boolean> = {};
-    let lastUpdatedDates: Record<string, string> = {};
-    try {
-      ({ downloadStatuses, lastUpdatedDates } = await getDownloadStatuses(folderPath));
-    } catch (error) {
-      // Folder unreadable — treat everything as not downloaded
-      logger.error(`Error loading folder index for ${folderPath}:`, error);
-    }
-
-    res.json({ videos, downloadStatuses, lastUpdatedDates });
-  } catch (error) {
-    sendError(res, 500, 'Failed to read list.json', error);
+    throw error;
   }
+  if (!videos) {
+    res.status(404).json({ error: 'list.json not found' });
+    return;
+  }
+
+  let downloadStatuses: Record<string, boolean> = {};
+  let lastUpdatedDates: Record<string, string> = {};
+  try {
+    ({ downloadStatuses, lastUpdatedDates } = await getDownloadStatuses(folderPath));
+  } catch (error) {
+    // Folder unreadable — treat everything as not downloaded
+    logger.error(`Error loading folder index for ${folderPath}:`, error);
+  }
+
+  res.json({ videos, downloadStatuses, lastUpdatedDates });
 };
 
 const rebuildFolderIndex: RouteHandler<NoParams, RebuildIndexResponse> = async (req, res) => {
-  try {
-    const folderPath = requireAllowedFolder(readBody(req).folderPath, res);
-    if (!folderPath) return;
+  const folderPath = requireAllowedFolder(readBody(req).folderPath, res);
+  if (!folderPath) return;
 
-    const index = await rebuildIndex(folderPath);
-    res.json({ success: true, count: Object.keys(index.entries).length, builtAt: index.builtAt });
-  } catch (error) {
-    sendError(res, 500, 'Failed to rebuild folder index', error);
-  }
+  const index = await rebuildIndex(folderPath);
+  res.json({ success: true, count: Object.keys(index.entries).length, builtAt: index.builtAt });
 };
 
 /**
@@ -295,67 +275,61 @@ const rebuildFolderIndex: RouteHandler<NoParams, RebuildIndexResponse> = async (
  * it as a JSON array in list.json.
  */
 const downloadPlaylist: RouteHandler<NoParams, DownloadPlaylistResponse> = async (req, res) => {
-  try {
-    const folderPath = requireAllowedFolder(readBody(req).folderPath, res);
-    if (!folderPath) return;
+  const folderPath = requireAllowedFolder(readBody(req).folderPath, res);
+  if (!folderPath) return;
 
-    const config = await readFolderConfig(folderPath);
-    if (!config) {
-      res.status(404).json({
-        error: 'config.json not found',
-        message: 'Please create config.json file with channelUrl first',
-      });
-      return;
-    }
-    const configuredUrl = readString(config.channelUrl);
-    if (configuredUrl === undefined) {
-      res.status(400).json({
-        error: 'channelUrl is not configured',
-        message: 'Please set channelUrl in config.json file',
-      });
-      return;
-    }
-
-    await fs.mkdir(folderPath, { recursive: true });
-    const channelUrl = configuredUrl.endsWith('/videos')
-      ? configuredUrl
-      : `${configuredUrl}/videos`;
-
-    let stdout: string;
-    try {
-      stdout = await runYtDlp(['--flat-playlist', '-j', channelUrl], folderPath);
-    } catch (execError) {
-      logger.error('Error executing yt-dlp:', execError);
-      sendError(res, 500, 'Failed to download playlist', execError);
-      return;
-    }
-
-    const entries: unknown[] = stdout
-      .split('\n')
-      .filter((line) => line.trim().length > 0)
-      .map((line): unknown => {
-        try {
-          return JSON.parse(line);
-        } catch (parseError) {
-          logger.error('Error parsing JSON line:', line.substring(0, 100));
-          throw new Error(
-            `Failed to parse JSON line: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
-            { cause: parseError }
-          );
-        }
-      });
-
-    const listPath = path.join(folderPath, 'list.json');
-    await fs.writeFile(listPath, JSON.stringify(entries, null, 2), 'utf-8');
-    res.json({
-      success: true,
-      message: 'Playlist downloaded successfully',
-      listPath,
-      videoCount: entries.length,
+  const config = await readFolderConfig(folderPath);
+  if (!config) {
+    res.status(404).json({
+      error: 'config.json not found',
+      message: 'Please create config.json file with channelUrl first',
     });
-  } catch (error) {
-    sendError(res, 500, 'Failed to download playlist', error);
+    return;
   }
+  const configuredUrl = readString(config.channelUrl);
+  if (configuredUrl === undefined) {
+    res.status(400).json({
+      error: 'channelUrl is not configured',
+      message: 'Please set channelUrl in config.json file',
+    });
+    return;
+  }
+
+  await fs.mkdir(folderPath, { recursive: true });
+  const channelUrl = configuredUrl.endsWith('/videos') ? configuredUrl : `${configuredUrl}/videos`;
+
+  let stdout: string;
+  try {
+    stdout = await runYtDlp(['--flat-playlist', '-j', channelUrl], folderPath);
+  } catch (execError) {
+    logger.error('Error executing yt-dlp:', execError);
+    sendError(res, 500, 'Failed to download playlist', execError);
+    return;
+  }
+
+  const entries: unknown[] = stdout
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .map((line): unknown => {
+      try {
+        return JSON.parse(line);
+      } catch (parseError) {
+        logger.error('Error parsing JSON line:', line.substring(0, 100));
+        throw new Error(
+          `Failed to parse JSON line: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
+          { cause: parseError }
+        );
+      }
+    });
+
+  const listPath = path.join(folderPath, 'list.json');
+  await fs.writeFile(listPath, JSON.stringify(entries, null, 2), 'utf-8');
+  res.json({
+    success: true,
+    message: 'Playlist downloaded successfully',
+    listPath,
+    videoCount: entries.length,
+  });
 };
 
 // ---------------------------------------------------------------------------
@@ -363,27 +337,23 @@ const downloadPlaylist: RouteHandler<NoParams, DownloadPlaylistResponse> = async
 // ---------------------------------------------------------------------------
 
 const isVideoDownloaded: RouteHandler<NoParams, VideoDownloadedResponse> = async (req, res) => {
+  const folderPath = requireAllowedFolder(req.query.folderPath, res);
+  if (!folderPath) return;
+  const videoId = readString(req.query.videoId);
+  if (videoId === undefined) {
+    res.status(400).json({ error: 'videoId is required' });
+    return;
+  }
+
   try {
-    const folderPath = requireAllowedFolder(req.query.folderPath, res);
-    if (!folderPath) return;
-    const videoId = readString(req.query.videoId);
-    if (videoId === undefined) {
-      res.status(400).json({ error: 'videoId is required' });
+    const entry = await findEntryByVideoId(folderPath, videoId);
+    res.json({ downloaded: entry !== null });
+  } catch (error) {
+    if (errnoCode(error) === 'ENOENT') {
+      res.json({ downloaded: false });
       return;
     }
-
-    try {
-      const entry = await findEntryByVideoId(folderPath, videoId);
-      res.json({ downloaded: entry !== null });
-    } catch (error) {
-      if (errnoCode(error) === 'ENOENT') {
-        res.json({ downloaded: false });
-        return;
-      }
-      throw error;
-    }
-  } catch (error) {
-    sendError(res, 500, 'Failed to check video download status', error);
+    throw error;
   }
 };
 
@@ -394,76 +364,72 @@ const isVideoDownloaded: RouteHandler<NoParams, VideoDownloadedResponse> = async
  * stem is reused); others are reported in `skipped`.
  */
 const enqueueJobs: RouteHandler<NoParams, EnqueueJobsResponse> = async (req, res) => {
-  try {
-    const body = readBody(req);
-    const folderPath = requireAllowedFolder(body.folderPath, res);
-    if (!folderPath) return;
+  const body = readBody(req);
+  const folderPath = requireAllowedFolder(body.folderPath, res);
+  if (!folderPath) return;
 
-    const { type, videos } = body;
-    if (!isJobType(type)) {
-      res.status(400).json({ error: "type must be 'download' or 'update'" });
-      return;
-    }
-    if (!Array.isArray(videos) || videos.length === 0) {
-      res.status(400).json({ error: 'videos must be a non-empty array' });
-      return;
-    }
-    if (!videos.every(isQueueVideoInput)) {
-      res.status(400).json({ error: 'videos must contain objects' });
-      return;
-    }
+  const { type, videos } = body;
+  if (!isJobType(type)) {
+    res.status(400).json({ error: "type must be 'download' or 'update'" });
+    return;
+  }
+  if (!Array.isArray(videos) || videos.length === 0) {
+    res.status(400).json({ error: 'videos must be a non-empty array' });
+    return;
+  }
+  if (!videos.every(isQueueVideoInput)) {
+    res.status(400).json({ error: 'videos must contain objects' });
+    return;
+  }
 
-    await fs.mkdir(folderPath, { recursive: true });
-    const options = await loadDownloadOptions(folderPath);
+  await fs.mkdir(folderPath, { recursive: true });
+  const options = await loadDownloadOptions(folderPath);
 
-    const requests: EnqueueRequest[] = [];
-    const skipped: SkippedVideo[] = [];
-    for (const video of videos) {
-      const videoUrl = readString(video.videoUrl) ?? readString(video.url) ?? '';
-      const videoId =
-        readString(video.videoId) ?? (videoUrl ? extractYoutubeVideoId(videoUrl) : null);
-      if (!videoId) {
-        skipped.push({ videoId: '', reason: 'videoId or videoUrl is required' });
+  const requests: EnqueueRequest[] = [];
+  const skipped: SkippedVideo[] = [];
+  for (const video of videos) {
+    const videoUrl = readString(video.videoUrl) ?? readString(video.url) ?? '';
+    const videoId =
+      readString(video.videoId) ?? (videoUrl ? extractYoutubeVideoId(videoUrl) : null);
+    if (!videoId) {
+      skipped.push({ videoId: '', reason: 'videoId or videoUrl is required' });
+      continue;
+    }
+    const url = videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
+    const title = readString(video.title);
+    if (type === 'update') {
+      const entry = await findEntryByVideoId(folderPath, videoId);
+      if (!entry) {
+        skipped.push({ videoId, reason: 'not downloaded' });
         continue;
       }
-      const url = videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
-      const title = readString(video.title);
-      if (type === 'update') {
-        const entry = await findEntryByVideoId(folderPath, videoId);
-        if (!entry) {
-          skipped.push({ videoId, reason: 'not downloaded' });
-          continue;
-        }
-        requests.push(
-          stripUndefined<EnqueueRequest>({
-            folderPath,
-            videoId,
-            videoUrl: url,
-            title,
-            type,
-            baseName: entry.baseName,
-            options,
-          })
-        );
-      } else {
-        requests.push(
-          stripUndefined<EnqueueRequest>({
-            folderPath,
-            videoId,
-            videoUrl: url,
-            title,
-            type,
-            options,
-          })
-        );
-      }
+      requests.push(
+        stripUndefined<EnqueueRequest>({
+          folderPath,
+          videoId,
+          videoUrl: url,
+          title,
+          type,
+          baseName: entry.baseName,
+          options,
+        })
+      );
+    } else {
+      requests.push(
+        stripUndefined<EnqueueRequest>({
+          folderPath,
+          videoId,
+          videoUrl: url,
+          title,
+          type,
+          options,
+        })
+      );
     }
-
-    const jobs = requests.length > 0 ? downloadQueue.enqueue(requests) : [];
-    res.status(202).json({ jobs, skipped });
-  } catch (error) {
-    sendError(res, 500, 'Failed to enqueue downloads', error);
   }
+
+  const jobs = requests.length > 0 ? downloadQueue.enqueue(requests) : [];
+  res.status(202).json({ jobs, skipped });
 };
 
 const listJobs: RouteHandler<NoParams, QueueListResponse> = (req, res) => {
