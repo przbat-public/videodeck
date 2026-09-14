@@ -26,6 +26,10 @@ module.exports = {
     },
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
+  // runtime imports from shared/ (progress, schemas)
+  moduleNameMapper: {
+    '^@shared/(.*)$': '<rootDir>/../shared/$1',
+  },
   testTimeout: 10000,
   setupFiles: ['<rootDir>/src/test-env.ts'],
   setupFilesAfterEnv: [],

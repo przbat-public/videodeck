@@ -186,6 +186,35 @@ describe('videoScanner', () => {
       expect(result.video.subtitlePath).toBeUndefined();
     });
 
+    it('parses a real yt-dlp info.json fixture', async () => {
+      const realFs = jest.requireActual('fs/promises') as typeof import('fs/promises');
+      const info = await realFs.readFile(`${__dirname}/../test/fixtures/ytdlp-info.json`, 'utf-8');
+      mockedFs.readFile.mockResolvedValue(info);
+
+      const result = await buildVideoItem(FOLDER, '20060429_Fighting_moonlighters', [
+        '20060429_Fighting_moonlighters.info.json',
+        '20060429_Fighting_moonlighters.mp4',
+        '20060429_Fighting_moonlighters.webp',
+      ]);
+
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') return;
+      expect(result.video).toMatchObject({
+        videoId: '4wLuvRB3axg',
+        title: 'Fighting moonlighters',
+        uploadDate: '20060429',
+        viewCount: 1363,
+        likeCount: 12,
+        channelName: 'Andrew Newton',
+      });
+      expect(result.video.comments).toHaveLength(2);
+      expect(result.video.comments[0]).toMatchObject({ id: 'Ugx1comment1', parent: 'root' });
+      expect(result.video.comments[1]).toMatchObject({
+        id: 'Ugx2comment2',
+        parent: 'Ugx1comment1',
+      });
+    });
+
     it('skips when the video file is missing', async () => {
       const result = await buildVideoItem(FOLDER, '20231201_TestVideo1', [
         '20231201_TestVideo1.info.json',

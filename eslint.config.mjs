@@ -35,9 +35,9 @@ const commonRules = {
     {
       patterns: [
         {
-          group: ['@shared/*'],
+          group: ['@shared/api'],
           allowTypeImports: true,
-          message: 'shared/ contains types only; use `import type`.',
+          message: 'shared/api.ts contains types only; use `import type`.',
         },
       ],
     },

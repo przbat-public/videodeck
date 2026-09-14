@@ -6,7 +6,9 @@ import type { VideoComment } from '@shared/api';
  */
 
 /**
- * yt-dlp `.info.json` metadata file.
+ * yt-dlp `.info.json` metadata file. The fields are the ones yt-dlp actually
+ * writes (verified against real files from the configured folders); anything
+ * else lands in the index signature.
  */
 export interface VideoInfoJson {
   id?: string;
@@ -35,14 +37,25 @@ export interface VideoInfoJson {
     height?: number;
   }>;
   webpage_url?: string;
-  formats?: unknown[];
-  categories?: string[];
-  tags?: string[];
-  availability?: string;
+  webpage_url_basename?: string;
+  webpage_url_domain?: string;
+  display_id?: string;
+  extractor?: string;
+  extractor_key?: string;
+  epoch?: number;
+  is_live?: boolean;
+  was_live?: boolean;
   live_status?: string;
-  media_type?: string;
+  availability?: string;
   age_limit?: number;
   playable_in_embed?: boolean;
+  _type?: string;
+  /** yt-dlp version that wrote the file, e.g. { version: '2026.08.19', ... } */
+  _version?: Record<string, unknown>;
+  _format_sort_fields?: string[];
+  categories?: string[];
+  tags?: string[];
+  formats?: unknown[];
   automatic_captions?: Record<string, unknown[]>;
   subtitles?: Record<string, unknown[]>;
   /** yt-dlp writes many more fields than we model */

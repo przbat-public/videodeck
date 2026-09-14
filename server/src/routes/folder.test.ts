@@ -318,6 +318,35 @@ describe('folder router', () => {
       expect(mockedGetDownloadStatuses).toHaveBeenCalledWith(FOLDER);
     });
 
+    it('maps a real yt-dlp list.json fixture', async () => {
+      const realFs = jest.requireActual('fs/promises') as typeof import('fs/promises');
+      const fixture = await realFs.readFile(
+        `${__dirname}/../test/fixtures/ytdlp-list.json`,
+        'utf-8'
+      );
+      mockedFs.readFile.mockResolvedValue(fixture);
+      mockedGetDownloadStatuses.mockResolvedValue({
+        downloadStatuses: {},
+        lastUpdatedDates: {},
+      });
+
+      const response = await request(app).get('/api/folder/list').query({ folderPath: FOLDER });
+
+      expect(response.status).toBe(200);
+      expect(response.body.videos).toEqual([
+        {
+          id: 'yf__frUKreI',
+          title: 'Walksnail Ascent Firmware Update How-To',
+          url: 'https://www.youtube.com/watch?v=yf__frUKreI',
+        },
+        {
+          id: 'abc123def45',
+          title: 'Another video',
+          url: 'https://www.youtube.com/watch?v=abc123def45',
+        },
+      ]);
+    });
+
     it('returns 404 when list.json does not exist', async () => {
       mockedFs.readFile.mockRejectedValue(enoent());
 

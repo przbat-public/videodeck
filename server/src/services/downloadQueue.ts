@@ -6,6 +6,7 @@ import { refreshIndex } from './folderIndex';
 import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 import { indexVideosFromDisk } from './videoScanner';
 import { stripUndefined } from '../utils/objectUtils';
+import { extractYtDlpProgress } from '@shared/progress';
 import { logger } from '../utils/logger';
 
 /**
@@ -91,8 +92,6 @@ function buildMetadataArgs(options: DownloadOptions): string[] {
   }
   return args;
 }
-
-const PROGRESS_RE = /\[download\]\s+(\d{1,3}(?:\.\d+)?)%/;
 
 /**
  * yt-dlp output templates treat `%` specially; a literal stem must escape it.
@@ -461,9 +460,9 @@ export class DownloadQueue extends EventEmitter {
       return;
     }
     for (const line of lines) {
-      const percent = PROGRESS_RE.exec(line)?.[1];
-      if (percent !== undefined) {
-        job.progress = Math.min(100, parseFloat(percent));
+      const progress = extractYtDlpProgress(line);
+      if (progress !== undefined) {
+        job.progress = progress;
       }
     }
     job.log.push(...lines);

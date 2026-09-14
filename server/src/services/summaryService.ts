@@ -24,6 +24,9 @@ export const SUMMARY_MAX_INPUT_TOKENS = 25000;
 /**
  * Extracts plain text from VTT subtitle content by removing timestamps and
  * metadata. This significantly reduces token count for OpenAI API calls.
+ *
+ * Built against real yt-dlp output, which carries a `Kind:`/`Language:`
+ * header block and inline timing tags like `<00:00:03.360>`.
  */
 export function extractTextFromVttSubtitles(vttContent: string): string {
   const lines = vttContent.split('\n');
@@ -35,10 +38,12 @@ export function extractTextFromVttSubtitles(vttContent: string): string {
     // Skip empty lines
     if (!line) continue;
 
-    // Skip WEBVTT header
+    // Skip WEBVTT header and the yt-dlp metadata lines that follow it
     if (line === 'WEBVTT' || line.startsWith('WEBVTT')) continue;
+    if (/^(Kind|Language|Style):/i.test(line)) continue;
 
-    // Skip timestamp lines (format: 00:00:01.000 --> 00:00:04.000)
+    // Skip timestamp lines (format: 00:00:01.000 --> 00:00:04.000,
+    // optionally with `align:start position:0%` after the arrow)
     if (line.includes('-->')) continue;
 
     // Skip cue identifiers (numeric lines that appear before timestamps)
@@ -53,17 +58,19 @@ export function extractTextFromVttSubtitles(vttContent: string): string {
       continue;
     }
 
-    // This is actual subtitle text
-    textLines.push(line);
+    // This is actual subtitle text; strip the inline tags yt-dlp writes:
+    // <c>/</c> word timings and <00:00:03.360> absolute timings
+    textLines.push(
+      line
+        .replace(/<\d+:\d{2}:\d{2}\.\d{3}>/g, ' ')
+        .replace(/<\d{2}:\d{2}\.\d{3}>/g, ' ')
+        .replace(/<\/?c>/g, ' ')
+    );
   }
 
   // Join lines with spaces, removing excessive whitespace
   // Multiple consecutive lines from same cue become one paragraph
-  return textLines
-    .join(' ')
-    .replace(/<c>/g, ' ') // Replace opening <c> tags with spaces
-    .replace(/<\/c>/g, ' ') // Replace closing </c> tags with spaces
-    .trim();
+  return textLines.join(' ').replace(/\s+/g, ' ').trim();
 }
 
 /**

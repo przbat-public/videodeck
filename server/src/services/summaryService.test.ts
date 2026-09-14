@@ -83,7 +83,22 @@ More text`;
 
 00:00:01.000 --> 00:00:04.000
 Hello<c> there</c> friend`;
-    expect(extractTextFromVttSubtitles(vtt)).toBe('Hello  there  friend');
+    expect(extractTextFromVttSubtitles(vtt)).toBe('Hello there friend');
+  });
+
+  it('handles a real yt-dlp VTT with header lines and inline timing tags', async () => {
+    const realFs = jest.requireActual('fs/promises') as typeof import('fs/promises');
+    const vtt = await realFs.readFile(`${__dirname}/../test/fixtures/ytdlp-real.vtt`, 'utf-8');
+
+    const text = extractTextFromVttSubtitles(vtt);
+
+    expect(text).not.toContain('Kind:');
+    expect(text).not.toContain('Language:');
+    expect(text).not.toMatch(/<\d/);
+    expect(text).not.toContain('-->');
+    expect(text).toContain("well here's the project in a little more");
+    expect(text).toContain('closer to finished form');
+    expect(text).toContain('breadboard');
   });
 });
 
