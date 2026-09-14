@@ -1,7 +1,6 @@
 import express from 'express';
 import fs from 'fs/promises';
 import path from 'path';
-import OpenAI from 'openai';
 import type {
   AcceptedResponse,
   CategoriesResponse,
@@ -33,109 +32,11 @@ import {
   SEARCH_DEFAULT_LIMIT,
 } from '../services/elasticsearchService';
 import { getFolderPathsForCategory, listCategories } from '../services/folderConfig';
-import { OPENAI_API_KEY, getVideosFolderPaths } from '../config';
+import { generateSummary } from '../services/summaryService';
+import { getVideosFolderPaths } from '../config';
 import { readString } from './http';
 import type { NoParams, RouteHandler } from './http';
 import { logger } from '../utils/logger';
-
-// ---------------------------------------------------------------------------
-// Subtitle text helpers (summary generation)
-// ---------------------------------------------------------------------------
-
-/**
- * Extracts plain text from VTT subtitle file by removing timestamps and metadata
- * This significantly reduces token count for OpenAI API calls
- */
-function extractTextFromVttSubtitles(vttContent: string): string {
-  const lines = vttContent.split('\n');
-  const textLines: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = (lines[i] ?? '').trim();
-
-    // Skip empty lines
-    if (!line) continue;
-
-    // Skip WEBVTT header
-    if (line === 'WEBVTT' || line.startsWith('WEBVTT')) continue;
-
-    // Skip timestamp lines (format: 00:00:01.000 --> 00:00:04.000)
-    if (line.includes('-->')) continue;
-
-    // Skip cue identifiers (numeric lines that appear before timestamps)
-    if (/^\d+$/.test(line)) continue;
-
-    // Skip style/note blocks
-    if (line.startsWith('NOTE') || line.startsWith('STYLE')) {
-      // Skip until empty line
-      while (i < lines.length - 1 && (lines[i + 1] ?? '').trim()) {
-        i++;
-      }
-      continue;
-    }
-
-    // This is actual subtitle text
-    textLines.push(line);
-  }
-
-  // Join lines with spaces, removing excessive whitespace
-  // Multiple consecutive lines from same cue become one paragraph
-  return textLines
-    .join(' ')
-    .replace(/<c>/g, ' ') // Replace opening <c> tags with spaces
-    .replace(/<\/c>/g, ' ') // Replace closing </c> tags with spaces
-    .trim();
-}
-
-/**
- * Estimates approximate token count (rough estimate: 1 token ≈ 4 characters for Polish text)
- * This is a conservative estimate to avoid exceeding API limits
- */
-function estimateTokenCount(text: string): number {
-  // Rough estimate: Polish text typically uses ~4 characters per token
-  return Math.ceil(text.length / 4);
-}
-
-/**
- * Truncates text to fit within token limit, keeping complete sentences when possible
- * Leaves some buffer for system prompt and response tokens
- */
-function truncateTextToTokenLimit(text: string, maxTokens: number): string {
-  const estimatedTokens = estimateTokenCount(text);
-
-  if (estimatedTokens <= maxTokens) {
-    return text;
-  }
-
-  // Calculate max characters based on token limit
-  const maxChars = maxTokens * 4;
-
-  // Try to truncate at sentence boundary
-  const truncated = text.substring(0, maxChars);
-  const lastSentenceEnd = Math.max(
-    truncated.lastIndexOf('.'),
-    truncated.lastIndexOf('!'),
-    truncated.lastIndexOf('?'),
-    truncated.lastIndexOf('\n')
-  );
-
-  // If we found a sentence boundary in the last 20% of text, use it
-  if (lastSentenceEnd > maxChars * 0.8) {
-    return text.substring(0, lastSentenceEnd + 1).trim();
-  }
-
-  // Otherwise, just truncate at character limit
-  return truncated.trim();
-}
-
-/** HTTP 429 from the OpenAI SDK (`APIError.status`) or a wrapped response */
-function isRateLimitError(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) {
-    return false;
-  }
-  const { status, response } = error as { status?: unknown; response?: { status?: unknown } };
-  return status === 429 || response?.status === 429;
-}
 
 // ---------------------------------------------------------------------------
 // Request parsing
@@ -308,13 +209,6 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
   res.sendFile(path.resolve(filePath));
 };
 
-// Models in order of preference (higher TPM limits first)
-const SUMMARY_MODELS = ['gpt-4o', 'gpt-4-turbo', 'gpt-4o-mini', 'gpt-4'];
-
-// Reserve tokens for: system prompt (~50), user prompt (~100), response (2000), and buffer
-// TPM limit is 30000, but we want to be safe with ~25000 tokens for input
-const SUMMARY_MAX_INPUT_TOKENS = 25000;
-
 // GET /api/videos/:identifier/summary - supports both baseName and videoId
 const getSummary: RouteHandler<{ identifier: string }, VideoSummaryResponse> = async (req, res) => {
   const video = await findVideo(req.params.identifier);
@@ -329,121 +223,17 @@ const getSummary: RouteHandler<{ identifier: string }, VideoSummaryResponse> = a
     return;
   }
 
-  // Check if summary file already exists
-  const summaryFilePath = path.join(video.folderPath, `${video.baseName}.summary.txt`);
-
-  try {
-    // Try to read existing summary
-    const existingSummary = await fs.readFile(summaryFilePath, 'utf-8');
-    if (existingSummary.trim()) {
-      res.json({ summary: existingSummary.trim() });
-      return;
-    }
-  } catch {
-    // File doesn't exist, continue to generate new summary
-  }
-
-  if (!OPENAI_API_KEY) {
-    res.status(500).json({
-      error: 'OpenAI API key not configured',
-      message: 'OPENAI_API_KEY environment variable is required',
-    });
-    return;
-  }
-
-  const subtitleFilePath = path.join(video.folderPath, video.subtitlePath);
-  const subtitleFileContent = await fs.readFile(subtitleFilePath, 'utf-8');
-
-  // Extract only text content from VTT, removing timestamps and metadata
-  // This significantly reduces token count for OpenAI API
-  let subtitleText = extractTextFromVttSubtitles(subtitleFileContent);
-
-  const estimatedTokens = estimateTokenCount(subtitleText);
-  const wasTruncated = estimatedTokens > SUMMARY_MAX_INPUT_TOKENS;
-
-  if (wasTruncated) {
-    logger.warn(
-      `Subtitle text is too long (estimated ${estimatedTokens} tokens). Truncating to ${SUMMARY_MAX_INPUT_TOKENS} tokens.`
-    );
-    subtitleText = truncateTextToTokenLimit(subtitleText, SUMMARY_MAX_INPUT_TOKENS);
-  }
-
-  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-
-  let completion: OpenAI.Chat.Completions.ChatCompletion | undefined;
-  let lastError: unknown;
-
-  for (const model of SUMMARY_MODELS) {
-    try {
-      // Call OpenAI API to generate summary in Polish
-      completion = await openai.chat.completions.create({
-        model,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Jesteś pomocnym asystentem, który tworzy zwięzłe podsumowania napisów filmowych w języku polskim.',
-          },
-          {
-            role: 'user',
-            content: `Przeanalizuj poniższe napisy filmowe i stwórz zwięzłe podsumowanie w języku polskim. Podsumowanie powinno zawierać główne tematy i kluczowe punkty omawiane w filmie. Nie umieszczaj na początku podsumowania o tym że jest to podsumowanie filmu.\n\nNapisy:\n${subtitleText}`,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 2000,
-      });
-      break; // Success, exit loop
-    } catch (error) {
-      lastError = error;
-      if (!isRateLimitError(error)) {
-        // For other errors, rethrow immediately
-        throw error;
-      }
-      logger.warn(`Rate limit hit for model ${model}, trying next model...`);
-      if (model === SUMMARY_MODELS[SUMMARY_MODELS.length - 1]) {
-        // Every model is rate limited — fail fast, the client decides when to retry
-        const detail = error instanceof Error ? error.message : String(error);
-        throw new Error(
-          `Rate limit exceeded for all models. Please try again later. Original error: ${detail}`,
-          { cause: error }
-        );
-      }
-    }
-  }
-
-  if (!completion) {
-    res.status(500).json({
-      error: 'Failed to generate summary',
-      message:
-        lastError instanceof Error && lastError.message
-          ? lastError.message
-          : 'OpenAI API did not return a response',
-    });
-    return;
-  }
-
-  // Defensive `?.` on message: the API has returned choices without one
-  const summary = completion.choices[0]?.message?.content;
-
-  if (!summary) {
-    res.status(500).json({
-      error: 'Failed to generate summary',
-      message: 'OpenAI API did not return a summary',
-    });
-    return;
-  }
-
-  // Save summary to disk for future use
-  try {
-    await fs.writeFile(summaryFilePath, summary, 'utf-8');
-  } catch (writeError) {
-    logger.error('Error saving summary to disk:', writeError);
-    // Continue even if save fails - still return the summary
-  }
+  // Cached summaries, VTT cleaning, OpenAI fallback and disk caching live in
+  // the service; failures bubble up to the error handler middleware.
+  const { summary, truncated } = await generateSummary({
+    folderPath: video.folderPath,
+    baseName: video.baseName,
+    subtitlePath: video.subtitlePath,
+  });
 
   // `truncated` is only present when true
   res.json(
-    stripUndefined<VideoSummaryResponse>({ summary, truncated: wasTruncated ? true : undefined })
+    stripUndefined<VideoSummaryResponse>({ summary, truncated: truncated ? true : undefined })
   );
 };
 

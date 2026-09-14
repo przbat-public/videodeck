@@ -84,10 +84,11 @@ export function fromDocument(document: VideoDocument): VideoListItem {
 }
 
 /**
- * Text analysis for search: Polish stemming plus diacritics folding, so
- * `srodek` finds `środek`, `środka`, `środki`, … without the user having to
- * type diacritics. Indices created before this analyzer existed keep the old
- * `standard` mapping until the next reindex (refreshCache).
+ * Text analysis for search: diacritics folding, so `srodek` finds `środek`
+ * and `ŚRODEK` without the user typing diacritics. Polish stemming/stopwords
+ * would need the `analysis-stempel` plugin (not in the stock docker image),
+ * so this analyzer sticks to built-in components only; indices created before
+ * it existed keep the old `standard` mapping until the next reindex.
  */
 const SEARCH_ANALYZER = 'polish_folded';
 
@@ -156,7 +157,7 @@ export async function createIndexVersion(folderPath: string): Promise<string> {
           [SEARCH_ANALYZER]: {
             type: 'custom',
             tokenizer: 'standard',
-            filter: ['lowercase', 'asciifolding', 'polish_stop', 'polish_stem'],
+            filter: ['lowercase', 'asciifolding'],
           },
         },
       },

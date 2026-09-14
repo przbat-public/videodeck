@@ -11,7 +11,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:integration": "RUN_ES_INTEGRATION=1 jest src/services/elasticsearch.integration.test.ts"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^9.2.0",

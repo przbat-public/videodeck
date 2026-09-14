@@ -173,8 +173,6 @@ describe('elasticsearchService', () => {
       expect(request.settings.analysis.analyzer.polish_folded.filter).toEqual([
         'lowercase',
         'asciifolding',
-        'polish_stop',
-        'polish_stem',
       ]);
       expect(request.mappings.properties).not.toHaveProperty('comments');
       expect(request.settings.index).not.toHaveProperty('mapping');

@@ -10,7 +10,10 @@ if (!VIDEOS_FOLDER_PATH) {
 
 export const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL || 'http://localhost:9200';
 
-export const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+/** Lazily read OpenAI key (env may change in tests; only summaries need it) */
+export function getOpenAiApiKey(): string | undefined {
+  return process.env.OPENAI_API_KEY;
+}
 
 /** Bind address of the HTTP server. Loopback by default — see API_TOKEN. */
 export const HOST = process.env.HOST || '127.0.0.1';
