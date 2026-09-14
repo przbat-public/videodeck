@@ -42,6 +42,9 @@ describe('toFormState', () => {
       subLangs: '',
       writeComments: true,
       extraArgs: '',
+      impersonate: false,
+      sponsorblockRemove: false,
+      concurrentFragments: '',
     });
   });
 
@@ -55,6 +58,9 @@ describe('toFormState', () => {
           subLangs: ['pl', 'en'],
           writeComments: false,
           extraArgs: ['--proxy', 'http://p'],
+          impersonate: true,
+          sponsorblockRemove: true,
+          concurrentFragments: 4,
         },
         defaults
       )
@@ -66,11 +72,29 @@ describe('toFormState', () => {
       subLangs: 'pl, en',
       writeComments: false,
       extraArgs: '--proxy http://p',
+      impersonate: true,
+      sponsorblockRemove: true,
+      concurrentFragments: '4',
     });
   });
 
   it('shows subtitles as disabled for an empty subLangs array', () => {
     expect(toFormState({ subLangs: [] }, defaults).subtitlesEnabled).toBe(false);
+  });
+
+  it('takes the yt-dlp feature defaults from the server defaults', () => {
+    const state = toFormState(null, {
+      maxHeight: 2160,
+      subLangs: ['en'],
+      writeComments: true,
+      impersonate: true,
+      concurrentFragments: 4,
+      sponsorblockRemove: true,
+    });
+
+    expect(state.impersonate).toBe(true);
+    expect(state.sponsorblockRemove).toBe(true);
+    expect(state.concurrentFragments).toBe(''); // "use default" — nothing chosen yet
   });
 });
 
@@ -85,10 +109,17 @@ describe('buildConfig', () => {
         subLangs: '',
         writeComments: true,
         extraArgs: '   ',
+        impersonate: false,
+        sponsorblockRemove: false,
+        concurrentFragments: '',
       },
       null
     );
-    expect(config).toEqual({ writeComments: true });
+    expect(config).toEqual({
+      writeComments: true,
+      impersonate: false,
+      sponsorblockRemove: false,
+    });
   });
 
   it('writes explicit choices with proper types', () => {
@@ -101,6 +132,9 @@ describe('buildConfig', () => {
         subLangs: 'pl, en',
         writeComments: false,
         extraArgs: '',
+        impersonate: false,
+        sponsorblockRemove: false,
+        concurrentFragments: '',
       },
       null
     );
@@ -110,6 +144,34 @@ describe('buildConfig', () => {
       maxHeight: 1080,
       subLangs: ['pl', 'en'],
       writeComments: false,
+      impersonate: false,
+      sponsorblockRemove: false,
+    });
+  });
+
+  it('writes the yt-dlp feature toggles', () => {
+    const config = buildConfig(
+      {
+        channelUrl: 'https://yt/@a',
+        category: '',
+        maxHeight: '',
+        subtitlesEnabled: true,
+        subLangs: '',
+        writeComments: true,
+        extraArgs: '',
+        impersonate: true,
+        sponsorblockRemove: true,
+        concurrentFragments: '4',
+      },
+      null
+    );
+
+    expect(config).toEqual({
+      channelUrl: 'https://yt/@a',
+      writeComments: true,
+      impersonate: true,
+      sponsorblockRemove: true,
+      concurrentFragments: 4,
     });
   });
 
@@ -123,6 +185,9 @@ describe('buildConfig', () => {
         subLangs: '',
         writeComments: true,
         extraArgs: '--cookies-from-browser chrome',
+        impersonate: false,
+        sponsorblockRemove: false,
+        concurrentFragments: '',
       },
       null
     );
@@ -137,6 +202,9 @@ describe('buildConfig', () => {
         subLangs: '',
         writeComments: true,
         extraArgs: ' ',
+        impersonate: false,
+        sponsorblockRemove: false,
+        concurrentFragments: '',
       },
       { extraArgs: ['--proxy', 'http://p'] }
     );
@@ -153,6 +221,9 @@ describe('buildConfig', () => {
         subLangs: 'pl',
         writeComments: true,
         extraArgs: '',
+        impersonate: false,
+        sponsorblockRemove: false,
+        concurrentFragments: '',
       },
       null
     );
@@ -175,10 +246,18 @@ describe('buildConfig', () => {
         subLangs: '',
         writeComments: true,
         extraArgs: '',
+        impersonate: false,
+        sponsorblockRemove: false,
+        concurrentFragments: '',
       },
       existing
     );
-    expect(config).toEqual({ custom: 'keep', writeComments: true });
+    expect(config).toEqual({
+      custom: 'keep',
+      writeComments: true,
+      impersonate: false,
+      sponsorblockRemove: false,
+    });
     expect(existing.maxHeight).toBe(720); // input not mutated
     expect(existing.category).toBe('fpv');
   });

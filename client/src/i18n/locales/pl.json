@@ -167,6 +167,10 @@
     "subtitleLangs": "Języki napisów (po przecinku):",
     "subtitleLangsPlaceholder": "domyślnie: {{langs}}",
     "comments": "Pobieraj komentarze",
+    "impersonate": "Podszywaj się pod przeglądarkę (yt-dlp --impersonate chrome)",
+    "sponsorblock": "Usuwaj segmenty sponsorskie (SponsorBlock: sponsor/selfpromo/interaction)",
+    "concurrentFragments": "Równoległe fragmenty pobierania:",
+    "concurrentFragmentsDefault": "Domyślnie ({{count}})",
     "extraArgs": "Dodatkowe argumenty yt-dlp:",
     "extraArgsPlaceholder": "np. --no-playlist --match-filter \"duration < 7200\"",
     "extraArgsReserved": "flagi -f, -o, --download-archive, --merge-output-format i --paths są zarezerwowane; --exec, --proxy i --cookies* są zabronione"

@@ -147,6 +147,10 @@
     "subtitleLangs": "Subtitle languages (comma separated):",
     "subtitleLangsPlaceholder": "default: {{langs}}",
     "comments": "Download comments",
+    "impersonate": "Impersonate a browser (yt-dlp --impersonate chrome)",
+    "sponsorblock": "Remove sponsor segments (SponsorBlock: sponsor/selfpromo/interaction)",
+    "concurrentFragments": "Concurrent download fragments:",
+    "concurrentFragmentsDefault": "Default ({{count}})",
     "extraArgs": "Extra yt-dlp arguments:",
     "extraArgsPlaceholder": "e.g. --no-playlist --match-filter \"duration < 7200\"",
     "extraArgsReserved": "the -f, -o, --download-archive, --merge-output-format and --paths flags are reserved; --exec, --proxy and --cookies* are forbidden"

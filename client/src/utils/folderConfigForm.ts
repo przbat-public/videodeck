@@ -2,6 +2,9 @@ import type { DownloadOptions, FolderConfig } from '@shared/api';
 
 export const MAX_HEIGHT_CHOICES = [720, 1080, 1440, 2160];
 
+/** `-N` values offered by the editor (yt-dlp caps fragments at 16) */
+export const FRAGMENT_CHOICES = [1, 2, 4, 8, 16];
+
 /** "en, pl" → ['en', 'pl'] */
 export const parseSubLangs = (value: string): string[] =>
   value
@@ -48,6 +51,12 @@ export interface FormState {
   writeComments: boolean;
   /** whitespace separated yt-dlp flags; '' means "use default" */
   extraArgs: string;
+  /** --impersonate chrome */
+  impersonate: boolean;
+  /** --sponsorblock-remove sponsor,selfpromo,interaction */
+  sponsorblockRemove: boolean;
+  /** '' means "use default" */
+  concurrentFragments: string;
 }
 
 export const toFormState = (config: FolderConfig | null, defaults: DownloadOptions): FormState => ({
@@ -58,6 +67,10 @@ export const toFormState = (config: FolderConfig | null, defaults: DownloadOptio
   subLangs: config?.subLangs ? config.subLangs.join(', ') : '',
   writeComments: config?.writeComments ?? defaults.writeComments,
   extraArgs: config?.extraArgs ? config.extraArgs.join(' ') : '',
+  impersonate: config?.impersonate ?? defaults.impersonate ?? false,
+  sponsorblockRemove: config?.sponsorblockRemove ?? defaults.sponsorblockRemove ?? false,
+  concurrentFragments:
+    config?.concurrentFragments !== undefined ? String(config.concurrentFragments) : '',
 });
 
 /**
@@ -100,6 +113,14 @@ export const buildConfig = (form: FormState, existing: FolderConfig | null): Fol
   }
 
   next.writeComments = form.writeComments;
+  next.impersonate = form.impersonate;
+  next.sponsorblockRemove = form.sponsorblockRemove;
+
+  if (form.concurrentFragments) {
+    next.concurrentFragments = Number(form.concurrentFragments);
+  } else {
+    delete next.concurrentFragments;
+  }
 
   const extraArgs = parseExtraArgs(form.extraArgs);
   if (extraArgs.length > 0) {

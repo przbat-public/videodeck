@@ -86,6 +86,8 @@ describe('FolderConfigEditor', () => {
       maxHeight: 1080,
       subLangs: ['pl', 'en'],
       writeComments: false,
+      impersonate: false,
+      sponsorblockRemove: false,
     };
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, config: saved }) });
     const { onConfigUpdate } = renderEditor({ channelUrl: 'https://yt/@a' });
@@ -132,6 +134,8 @@ describe('FolderConfigEditor', () => {
       channelUrl: 'https://yt/@new',
       subLangs: [],
       writeComments: true,
+      impersonate: false,
+      sponsorblockRemove: false,
     });
   });
 
@@ -154,6 +158,8 @@ describe('FolderConfigEditor', () => {
       channelUrl: 'https://yt/@a',
       writeComments: true,
       extraArgs: ['--cookies-from-browser', 'chrome', '--proxy', 'http://127.0.0.1:8080'],
+      impersonate: false,
+      sponsorblockRemove: false,
     });
   });
 
@@ -200,6 +206,8 @@ describe('FolderConfigEditor', () => {
       channelUrl: 'https://yt/@a',
       category: 'lego',
       writeComments: true,
+      impersonate: false,
+      sponsorblockRemove: false,
     });
   });
 
@@ -232,5 +240,30 @@ describe('FolderConfigEditor', () => {
     expect(screen.queryByLabelText('Maks. rozdzielczość:')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
     expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('720p');
+  });
+
+  it('saves the yt-dlp feature toggles (impersonate, SponsorBlock, fragments)', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(async (_url, init) => ({
+      ok: true,
+      json: async () => ({ success: true, config: JSON.parse(String(init?.body)).config }),
+    }));
+    renderEditor({ channelUrl: 'https://yt/@a' });
+
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    await user.click(screen.getByRole('checkbox', { name: /Podszywaj się pod przeglądarkę/ }));
+    await user.click(screen.getByRole('checkbox', { name: /segmenty sponsorskie/ }));
+    await user.click(screen.getByLabelText('Równoległe fragmenty pobierania:'));
+    await user.click(await screen.findByRole('option', { name: '4' }));
+    await user.click(screen.getByRole('button', { name: 'Zapisz' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(lastPutBody(fetchMock).config).toEqual({
+      channelUrl: 'https://yt/@a',
+      writeComments: true,
+      impersonate: true,
+      sponsorblockRemove: true,
+      concurrentFragments: 4,
+    });
   });
 });

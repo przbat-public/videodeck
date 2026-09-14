@@ -7,7 +7,12 @@ import type {
   SaveFolderConfigResponse,
 } from '@shared/api';
 import type { FormState } from '../utils/folderConfigForm';
-import { MAX_HEIGHT_CHOICES, buildConfig, toFormState } from '../utils/folderConfigForm';
+import {
+  FRAGMENT_CHOICES,
+  MAX_HEIGHT_CHOICES,
+  buildConfig,
+  toFormState,
+} from '../utils/folderConfigForm';
 import { Button } from './ui/Button';
 import { Checkbox } from './ui/Checkbox';
 import { ErrorMessage } from './ui/ErrorMessage';
@@ -197,6 +202,44 @@ export function FolderConfigEditor({
               checked={form.writeComments}
               onChange={(checked) => updateForm({ writeComments: checked })}
               label={t('config.comments')}
+            />
+          </div>
+
+          <div className="config-field">
+            <Checkbox
+              checked={form.impersonate}
+              onChange={(checked) => updateForm({ impersonate: checked })}
+              label={t('config.impersonate')}
+            />
+          </div>
+
+          <div className="config-field">
+            <Checkbox
+              checked={form.sponsorblockRemove}
+              onChange={(checked) => updateForm({ sponsorblockRemove: checked })}
+              label={t('config.sponsorblock')}
+            />
+          </div>
+
+          <div className="config-field">
+            <label htmlFor={id('concurrentFragments')}>{t('config.concurrentFragments')}</label>
+            <Select
+              id={id('concurrentFragments')}
+              value={form.concurrentFragments}
+              onChange={(value) => updateForm({ concurrentFragments: value })}
+              className="config-input"
+              items={[
+                {
+                  value: '',
+                  label: t('config.concurrentFragmentsDefault', {
+                    count: downloadDefaults.concurrentFragments ?? 1,
+                  }),
+                },
+                ...FRAGMENT_CHOICES.map((fragments) => ({
+                  value: String(fragments),
+                  label: String(fragments),
+                })),
+              ]}
             />
           </div>
 
