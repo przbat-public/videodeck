@@ -1,9 +1,23 @@
-import { useState, useRef, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
+import {
+  useState,
+  useRef,
+  useEffect,
+  useImperativeHandle,
+  forwardRef,
+  useCallback,
+  useMemo,
+} from 'react';
 import toast from 'react-hot-toast';
+import { VariableSizeList } from 'react-window';
 import type { ChannelVideo, FolderListResponse, JobType, QueueJob } from '@shared/api';
 import { VideoItem } from './VideoItem';
 import { useDownloadQueue } from '../hooks/useDownloadQueue';
 import { isOlderThanMonth } from '../utils/videoDates';
+
+/** Fixed viewport of the windowed list and the two row heights */
+const LIST_HEIGHT = 400;
+const ITEM_HEIGHT = 58;
+const ITEM_HEIGHT_WITH_LOG = 220;
 
 interface VideoListSectionProps {
   folderPath: string;
@@ -23,6 +37,7 @@ export const VideoListSection = forwardRef<VideoListSectionHandle, VideoListSect
     const [videosError, setVideosError] = useState<string | null>(null);
     const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
     const videosListContainerRef = useRef<HTMLDivElement>(null);
+    const listRef = useRef<VariableSizeList>(null);
 
     const fetchList = useCallback(async () => {
       const response = await fetch(`/api/folder/list?folderPath=${encodeURIComponent(folderPath)}`);
@@ -149,6 +164,26 @@ export const VideoListSection = forwardRef<VideoListSectionHandle, VideoListSect
       [videos, lastUpdatedDates]
     );
 
+    // Windowed list: only the visible rows (plus overscan) exist in the DOM,
+    // so a channel with thousands of videos stays responsive. Rows with an
+    // active/errored job are taller to fit the log.
+    const getRowHeight = useCallback(
+      (index: number): number => {
+        const row = rows[index];
+        const job = row?.id ? jobsByVideoId[row.id] : undefined;
+        const showLog =
+          job && (job.status === 'running' || job.status === 'error') && job.log.length > 0;
+        return showLog ? ITEM_HEIGHT_WITH_LOG : ITEM_HEIGHT;
+      },
+      [rows, jobsByVideoId]
+    );
+
+    // A job gaining/losing its log changes the row height — let the list
+    // re-measure instead of keeping stale offsets.
+    useEffect(() => {
+      listRef.current?.resetAfterIndex(0);
+    }, [jobs, getRowHeight]);
+
     const isNotDownloaded = (video: ChannelVideo) => !downloadStatuses[video.id] && !!video.url;
     const isDownloaded = (video: ChannelVideo) => !!downloadStatuses[video.id] && !!video.url;
     const isVideoOlderThanMonth = (video: ChannelVideo) =>
@@ -223,20 +258,33 @@ export const VideoListSection = forwardRef<VideoListSectionHandle, VideoListSect
               </div>
             </div>
             <div className="videos-list-items" ref={videosListContainerRef}>
-              {rows.map((video, index) => {
-                const key = video.id || `index-${index}`;
-                return (
-                  <VideoItem
-                    key={key}
-                    video={video}
-                    isDownloaded={downloadStatuses[video.id] || false}
-                    job={video.id ? jobsByVideoId[video.id] : undefined}
-                    onEnqueue={handleEnqueueOne}
-                    onCancel={handleCancel}
-                    scrollContainerRef={videosListContainerRef}
-                  />
-                );
-              })}
+              <VariableSizeList
+                ref={listRef}
+                height={LIST_HEIGHT}
+                width="100%"
+                itemCount={rows.length}
+                itemSize={getRowHeight}
+                itemKey={(index) => rows[index]?.id ?? `index-${index}`}
+                overscanCount={8}
+              >
+                {({ index, style }) => {
+                  const video = rows[index];
+                  if (!video) {
+                    return null;
+                  }
+                  return (
+                    <div style={style}>
+                      <VideoItem
+                        video={video}
+                        isDownloaded={downloadStatuses[video.id] || false}
+                        job={video.id ? jobsByVideoId[video.id] : undefined}
+                        onEnqueue={handleEnqueueOne}
+                        onCancel={handleCancel}
+                      />
+                    </div>
+                  );
+                }}
+              </VariableSizeList>
             </div>
           </div>
         ) : hasLoadedVideos ? (

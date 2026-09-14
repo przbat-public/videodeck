@@ -60,6 +60,10 @@ export interface DownloadQueueOptions {
   logTail?: number;
   /** Keep finished jobs for this long before pruning (ms) */
   retainFinishedMs?: number;
+  /** How many times a failed yt-dlp run is retried (default 3) */
+  maxAttempts?: number;
+  /** Backoff between attempts (ms, default 30 s) */
+  retryDelayMs?: number;
   spawnFn?: SpawnFn;
   /** Called after a job finishes successfully (default: refresh folder index) */
   afterJob?: (job: QueueJob) => Promise<void>;
@@ -166,9 +170,15 @@ export class DownloadQueue extends EventEmitter {
   private readonly maxConcurrentUpdates: number;
   private readonly logTail: number;
   private readonly retainFinishedMs: number;
+  private readonly maxAttempts: number;
+  private readonly retryDelayMs: number;
   private readonly spawnFn: SpawnFn;
   private readonly afterJob: (job: QueueJob) => Promise<void>;
   private readonly ytDlpPath: string;
+  /** Spawns already used by a job (cleared when it finishes) */
+  private readonly attempts = new Map<string, number>();
+  /** Pending retry timers, keyed by job id (cleared on cancel) */
+  private readonly retryTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(options: DownloadQueueOptions = {}) {
     super();
@@ -176,6 +186,8 @@ export class DownloadQueue extends EventEmitter {
     this.maxConcurrentUpdates = Math.max(1, options.maxConcurrentUpdates ?? 2);
     this.logTail = options.logTail ?? 40;
     this.retainFinishedMs = options.retainFinishedMs ?? 60 * 60 * 1000;
+    this.maxAttempts = Math.max(1, options.maxAttempts ?? 3);
+    this.retryDelayMs = options.retryDelayMs ?? 30_000;
     this.spawnFn = options.spawnFn ?? nodeSpawn;
     this.afterJob = options.afterJob ?? indexChangedVideos;
     this.ytDlpPath = options.ytDlpPath ?? 'yt-dlp';
@@ -242,6 +254,12 @@ export class DownloadQueue extends EventEmitter {
       job.status = 'cancelled';
       job.finishedAt = new Date().toISOString();
       this.emitJob(job);
+      // Stop a pending retry from resurrecting the job
+      const timer = this.retryTimers.get(id);
+      if (timer) {
+        clearTimeout(timer);
+        this.retryTimers.delete(id);
+      }
       child?.kill('SIGTERM');
       // 'close' handler will clean up the process map and pump the queue
       return true;
@@ -267,6 +285,11 @@ export class DownloadQueue extends EventEmitter {
   /** Cancel everything and forget all jobs (used by tests). */
   clear(): void {
     this.cancelAll();
+    for (const timer of this.retryTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.retryTimers.clear();
+    this.attempts.clear();
     this.jobs.clear();
     this.processes.clear();
   }
@@ -342,6 +365,7 @@ export class DownloadQueue extends EventEmitter {
       return;
     }
     this.processes.set(job.id, child);
+    this.attempts.set(job.id, (this.attempts.get(job.id) ?? 0) + 1);
 
     const onData = (chunk: Buffer | string) => this.appendLog(job, chunk.toString());
     child.stdout?.on('data', onData);
@@ -350,6 +374,7 @@ export class DownloadQueue extends EventEmitter {
     child.on('error', (error) => {
       this.appendLog(job, `spawn error: ${error.message}`);
       if (job.status === 'running') {
+        // A spawn error is permanent (yt-dlp missing, bad args) — no retry
         this.finish(job, 'error', error.message, null);
       }
     });
@@ -364,9 +389,33 @@ export class DownloadQueue extends EventEmitter {
       if (code === 0) {
         job.progress = 100;
         void this.runAfterJob(job).then(() => this.finish(job, 'done', undefined, code));
-      } else {
-        this.finish(job, 'error', `yt-dlp exited with code ${code}`, code);
+        return;
       }
+
+      // YouTube throttles (429) and transient network failures are common:
+      // retry a few times with a backoff before declaring the job failed.
+      const attempts = this.attempts.get(job.id) ?? 1;
+      if (attempts < this.maxAttempts) {
+        const delay = this.retryDelayMs;
+        job.progress = 0;
+        this.appendLog(
+          job,
+          `yt-dlp exited with code ${code} — retrying in ${Math.round(delay / 1000)}s (attempt ${attempts}/${this.maxAttempts})`
+        );
+        const timer = setTimeout(() => {
+          this.retryTimers.delete(job.id);
+          if (job.status === 'running') {
+            this.start(job);
+          } else {
+            this.pump();
+          }
+        }, delay);
+        this.retryTimers.set(job.id, timer);
+        this.pump();
+        return;
+      }
+
+      this.finish(job, 'error', `yt-dlp exited with code ${code} after ${attempts} attempts`, code);
     });
   }
 
@@ -401,6 +450,7 @@ export class DownloadQueue extends EventEmitter {
     }
     job.exitCode = code;
     job.finishedAt = new Date().toISOString();
+    this.attempts.delete(job.id);
     this.emitJob(job);
     this.pump();
   }
@@ -443,4 +493,5 @@ export function readConcurrency(value: string | undefined, fallback: number): nu
 export const downloadQueue = new DownloadQueue({
   maxConcurrent: readConcurrency(process.env.DOWNLOAD_CONCURRENCY, 2),
   maxConcurrentUpdates: readConcurrency(process.env.UPDATE_CONCURRENCY, 2),
+  maxAttempts: readConcurrency(process.env.DOWNLOAD_MAX_ATTEMPTS, 3),
 });

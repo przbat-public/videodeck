@@ -233,6 +233,7 @@ describe('DownloadQueue', () => {
       maxConcurrent: 2,
       maxConcurrentUpdates: 3,
       logTail: 5,
+      maxAttempts: 1,
       spawnFn: spawn.spawnFn,
       afterJob,
     });
@@ -583,10 +584,76 @@ describe('DownloadQueue', () => {
     expect(queue.get(job.id)).toMatchObject({
       status: 'error',
       exitCode: 1,
-      error: 'yt-dlp exited with code 1',
+      error: 'yt-dlp exited with code 1 after 1 attempts',
       log: ['ERROR: video unavailable'],
     });
     expect(afterJob).not.toHaveBeenCalled();
+  });
+
+  describe('retries', () => {
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+    let retryQueue: DownloadQueue;
+    beforeEach(() => {
+      retryQueue = new DownloadQueue({
+        maxConcurrent: 1,
+        maxAttempts: 3,
+        retryDelayMs: 5,
+        spawnFn: spawn.spawnFn,
+        afterJob,
+      });
+    });
+
+    it('retries a failed run and succeeds on the second attempt', async () => {
+      const job = at(retryQueue.enqueue([request('a')]), 0);
+
+      spawned(0).process.exit(1);
+      await flush();
+      expect(retryQueue.get(job.id)?.status).toBe('running'); // waiting out the backoff
+
+      await sleep(15);
+      await flush();
+      expect(spawn.calls).toHaveLength(2);
+
+      spawned(1).process.exit(0);
+      await flush();
+      await flush();
+      expect(retryQueue.get(job.id)?.status).toBe('done');
+    });
+
+    it('gives up after maxAttempts failures', async () => {
+      const job = at(retryQueue.enqueue([request('a')]), 0);
+
+      spawned(0).process.exit(1);
+      await flush();
+      await sleep(15);
+      await flush();
+      spawned(1).process.exit(1);
+      await flush();
+      await sleep(15);
+      await flush();
+      spawned(2).process.exit(1);
+      await flush();
+
+      expect(spawn.calls).toHaveLength(3);
+      const finalJob = retryQueue.get(job.id);
+      expect(finalJob?.status).toBe('error');
+      expect(finalJob?.error).toContain('after 3 attempts');
+    });
+
+    it('cancelling during the backoff stops the retry', async () => {
+      const job = at(retryQueue.enqueue([request('a')]), 0);
+
+      spawned(0).process.exit(1);
+      await flush();
+      retryQueue.cancel(job.id);
+
+      await sleep(15);
+      await flush();
+
+      expect(spawn.calls).toHaveLength(1);
+      expect(retryQueue.get(job.id)?.status).toBe('cancelled');
+    });
   });
 
   it('marks a job as error when the process cannot be spawned', async () => {
@@ -693,6 +760,7 @@ describe('DownloadQueue', () => {
       spawnFn: spawn.spawnFn,
       afterJob,
       retainFinishedMs: 1000,
+      maxAttempts: 1,
     });
     const job = at(shortQueue.enqueue([request('a')]), 0);
     spawned().process.exit(1);
