@@ -121,7 +121,7 @@ VIDEOS_FOLDER_PATH=/Volumes/*/*
 Ten jeden wiersz sam znajduje wszystkie kanały na każdym aktualnie zamontowanym woluminie — dysk, którego nie ma, po prostu nie dorzuca folderów (serwer startuje z ostrzeżeniem i łapie foldery, gdy dysk wróci; lista jest odświeżana co kilka sekund). Można mieszać wzorce z literałami (`~/` rozwija się do katalogu domowego):
 
 ```
-VIDEOS_FOLDER_PATH=/Volumes/MEDIA/drone-*;/Volumes/MEDIA/*;/Users/<user>/Downloads/youtube/youtube-chrome
+VIDEOS_FOLDER_PATH=/Volumes/MEDIA/example-channel-*;/Volumes/MEDIA/*;/Users/<user>/Downloads/youtube/youtube-chrome
 ```
 
 Opcjonalne zmienne:
@@ -131,7 +131,7 @@ DOWNLOAD_CONCURRENCY=2   # maks. liczba równoległych pobrań yt-dlp (domyślni
 UPDATE_CONCURRENCY=2     # maks. liczba równoległych aktualizacji metadanych (domyślnie 2, bez limitu na folder)
 DOWNLOAD_MAX_ATTEMPTS=3  # ile razy powtórzyć nieudany yt-dlp (backoff 30 s; 429 YouTube itp.)
 LOG_LEVEL=info           # poziom logów: info (domyślny), warn, error, silent
-OPENAI_API_KEY=sk-REPLACE-ME    # klucz dla AI streszczeń (GET /api/videos/:id/summary)HOST=127.0.0.1           # adres bindowania serwera (domyślnie loopback)
+OPENAI_API_KEY=sk-REPLACE-ME # klucz dla AI streszczeń (GET /api/videos/:id/summary)HOST=127.0.0.1           # adres bindowania serwera (domyślnie loopback)
 API_TOKEN=sekret         # bearer token chroniący /api (patrz Bezpieczeństwo niżej)
 CORS_ORIGINS=https://example.com  # dodatkowe originy CORS (przecinkami), poza localhost i chrome-extension://
 ALLOWED_HOSTS=nas.local,192.168.0.10  # dodatkowe nazwy/IP dozwolone w nagłówku Host (potrzebne przy HOST=0.0.0.0)
