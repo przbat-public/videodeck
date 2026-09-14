@@ -106,12 +106,29 @@ Opcjonalne zmienne:
 ```
 DOWNLOAD_CONCURRENCY=2   # maks. liczba równoległych pobrań yt-dlp (domyślnie 2, najwyżej jedno na folder)
 UPDATE_CONCURRENCY=2     # maks. liczba równoległych aktualizacji metadanych (domyślnie 2, bez limitu na folder)
+OPENAI_API_KEY=sk-REPLACE-ME    # klucz dla AI streszczeń (GET /api/videos/:id/summary)
+HOST=127.0.0.1           # adres bindowania serwera (domyślnie loopback)
+API_TOKEN=sekret         # bearer token chroniący /api (patrz Bezpieczeństwo niżej)
+CORS_ORIGINS=https://example.com  # dodatkowe originy CORS (przecinkami), poza localhost i chrome-extension://
 ```
 
 **Uwaga:** 
 - Jeśli Elasticsearch działa na innym hoście lub porcie, zaktualizuj `ELASTICSEARCH_URL` odpowiednio.
 - Jeśli używasz Docker i otrzymujesz błąd "Cannot connect to the Docker daemon", upewnij się że Docker Desktop jest uruchomiony.
-- Po pierwszym uruchomieniu serwera, musisz ręcznie wywołać endpoint `/api/videos/refreshCache` aby zindeksować filmy do Elasticsearch (może to potrwać chwilę w zależności od liczby filmów).
+- Po pierwszym uruchomieniu serwera, musisz ręcznie wywołać endpoint `/api/videos/refreshCache` aby zindeksować filmy do Elasticsearch (może to potrwać chwilę w zależności od liczby filmów). To samo po aktualizacji, która zmienia analizator wyszukiwania (patrz niżej).
+
+## Bezpieczeństwo
+
+Serwer słucha domyślnie tylko na `127.0.0.1`, a CORS przepuszcza wyłącznie
+localne originy (`localhost`/`127.0.0.1`) i rozszerzenia Chrome. Bez
+`API_TOKEN` API jest otwarte dla lokalnych procesów, ale żądania przeglądarki
+z obcych stron są odrzucane (`Sec-Fetch-Site: cross-site` → 403), więc złośliwa
+strona WWW nie wywoła reindeksu ani nie dopisze zadań do kolejki.
+
+Dla zdalnego dostępu ustaw `API_TOKEN` (i ewentualnie `HOST=0.0.0.0` +
+`CORS_ORIGINS`): każdy request na `/api` musi wtedy nieść
+`Authorization: Bearer <token>`. Rozszerzenie Chrome ma pole „Token API" w
+opcjach; `/health` pozostaje publiczne do testów połączenia.
 
 ## Uruchomienie
 
@@ -239,6 +256,12 @@ cd chrome-extension && npm test  # Jednorazowe uruchomienie
 cd chrome-extension && npm run test:watch  # Tryb watch
 ```
 
+**Testy integracyjne z prawdziwym Elasticsearchem** (przepływ reindeksu z
+przełączaniem aliasów, składanie diakrytyków — pomijane w zwykłym `npm test`):
+```bash
+cd server && npm run test:integration  # wymaga działającego ES (ELASTICSEARCH_URL)
+```
+
 ### Pokrycie testami
 
 ```bash
@@ -267,7 +290,8 @@ Chrome ma testy jednostkowe bez progów — to niewielka, czysta logika w
 - **Elasticsearch** - indeksowanie i wyszukiwanie filmów z pełnotekstowym wyszukiwaniem i sortowaniem
 - **Rekursywne struktury** - zagnieżdżone drzewo komentarzy
 - **Toast notifications** - nieinwazyjne komunikaty o sukcesie/błędach (react-hot-toast)
-- **Strukturyzowany logger** - `server/src/utils/logger.ts` to jedyne miejsce dotykające `console`; reszta kodu loguje przez niego (poziom + timestamp)
+- **Strukturyzowany logger** - `server/src/utils/logger.ts` to jedyne miejsce dotykające `console`; reszta kodu loguje przez niego (poziom + timestamp), a middleware loguje każde żądanie (metoda, ścieżka, status, czas)
+- **Centralna obsługa błędów** - Express 5 przekazuje odrzucone handlery do jednego middleware'a (`server/src/app.ts`), więc każdy nieobsłużony błąd to spójne 500 w JSON i pełny log z trasą — bez try/catch w każdym handlerze
 
 ### Jakość kodu
 - **TypeScript** - silne typowanie w całym projekcie (szczegóły niżej)
@@ -378,7 +402,7 @@ cd chrome-extension && npm run typecheck
 
 ## Funkcjonalności
 
-- **Wyszukiwanie filmów** - wyszukiwanie pełnotekstowe po nazwie pliku, tytule, opisie i komentarzach z wykorzystaniem Elasticsearch
+- **Wyszukiwanie filmów** - wyszukiwanie pełnotekstowe po nazwie pliku, tytule, opisie i komentarzach z wykorzystaniem Elasticsearch; polskie znaki działają bez diakrytyków (`srodek` = `środek`), wyniki są stronicowane („Pokaż więcej")
 - **Wsparcie dla wielu folderów** - możliwość skanowania filmów z wielu katalogów jednocześnie
 - **Odświeżanie cache** - przycisk "Refresh Cache" do ręcznego reindeksu filmów z dysku, z postępem w toaście; wyszukiwanie działa w trakcie na poprzedniej wersji indeksu
 - **Przeładowanie listy** - przycisk "Reload" do przeładowania aktualnie wyświetlanych filmów
@@ -451,8 +475,13 @@ Komentarze **nie** są trzymane w ES jako obiekty — tylko jako jedno pole teks
 
 Po każdym zadaniu z kolejki pobierań (`download`/`update`) zmienione filmy są indeksowane przyrostowo, więc nowy film jest widoczny w wyszukiwaniu bez pełnego reindeksu.
 
+**Zmiana analizatora wymaga reindeksu:** istniejące indeksy zachowują mappingi
+z chwili utworzenia, więc po aktualizacji, która zmienia analizę tekstu (np.
+wprowadzenie `polish_folded`), uruchom `GET /api/videos/refreshCache` — nowe
+indeksy dostaną nowy analizator, a aliasy przełączą się atomowo.
+
 ### GET /api/videos/search
-Wyszukuje filmy po frazie w nazwie pliku (`baseName^4`), tytule (`^3`), opisie (`^2`) i komentarzach (`commentsText`). Zwraca maks. 100 wyników w podanym sortowaniu.
+Wyszukuje filmy po frazie w nazwie pliku (`baseName.text^4`), tytule (`^3`), opisie (`^2`) i komentarzach (`commentsText`). Tekst jest analizowany z **składaniem znaków diakrytycznych** (customowy analizator `polish_folded`: `standard` + `lowercase` + `asciifolding`), więc `srodek` znajduje `środek` bez wpisywania polskich znaków. Polskie stemming/stopwordy wymagałyby pluginu `analysis-stempel` (nie ma go w domyślnym obrazie Dockera), więc analizator używa wyłącznie wbudowanych komponentów.
 
 **Parametry zapytania:**
 - `q` (opcjonalny) - fraza do wyszukania
@@ -464,6 +493,10 @@ Wyszukuje filmy po frazie w nazwie pliku (`baseName^4`), tytule (`^3`), opisie (
   - `likes-desc` - po liczbie polubień, malejąco
   - `likes-asc` - po liczbie polubień, rosnąco
 - `category` (opcjonalny) - zawęża wyszukiwanie do kanałów z tą kategorią (porównanie bez względu na wielkość liter). `totalCount` dotyczy wtedy samej kategorii. Kategoria, której nie ma w żadnym `config.json`, zwraca zero wyników - nigdy całości.
+- `offset` (opcjonalny, domyślnie 0) - pierwszy wynik do zwrócenia (paginacja)
+- `limit` (opcjonalny, domyślnie 100, maks. 500) - liczba wyników na stronę
+
+Klient dokłada kolejne strony przyciskiem „Pokaż więcej" dopóki `videos.length < totalCount`.
 
 **Odpowiedź:**
 ```json

@@ -74,6 +74,9 @@ npm run build
      - Przykład: `/Users/<user>/Videos/youtube`
      - **WAŻNE:** Ta ścieżka musi być w zmiennej środowiskowej `VIDEOS_FOLDER_PATH` serwera!
 
+   - **Token API (opcjonalny):** Wypełnij tylko, gdy serwer ma ustawione
+     `API_TOKEN` — podaj tę samą wartość (wysyłana jako `Authorization: Bearer`).
+
 3. **Przetestuj połączenie:**
    - Kliknij przycisk **"Test połączenia"**
    - Jeśli wszystko działa, zobaczysz komunikat: "Połączenie z serwerem działa poprawnie!"

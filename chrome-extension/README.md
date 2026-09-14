@@ -24,6 +24,7 @@ Po zmianie kodu w `src/` uruchom ponownie `npm run build` i kliknij ikonę odśw
 2. Wprowadź:
    - **URL serwera**: URL serwera video-search-app (np. `http://localhost:3001`)
    - **Ścieżka folderu**: Ścieżka do folderu gdzie mają być zapisywane wideo (musi być w `VIDEOS_FOLDER_PATH` środowiska serwera)
+   - **Token API** (opcjonalny): wartość `API_TOKEN` serwera — wysyłany jako `Authorization: Bearer ...`; wypełnij tylko, gdy serwer ma ustawiony token
 3. Kliknij "Test połączenia" aby sprawdzić czy serwer odpowiada
 4. Kliknij "Zapisz" aby zapisać ustawienia
 
