@@ -184,12 +184,22 @@ describe('buildYtDlpArgs', () => {
 
     const format = args[args.indexOf('-f') + 1];
     expect(format).toBe(
-      'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]'
+      'bestvideo[height<=1080][vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]'
     );
     expect(format).not.toContain('2160');
+    expect(format).toContain('[vcodec^=avc1]');
     expect(args[args.indexOf('--sub-lang') + 1]).toBe('pl,en');
     expect(args).toContain('--write-subs');
     expect(args).not.toContain('--write-comments');
+  });
+
+  it('prefers h264/avc1 mp4 before falling back to other codecs', () => {
+    const selector = buildFormatSelector(2160);
+
+    const [preferred, mp4, anyVideo] = selector.split('/');
+    expect(preferred).toBe('bestvideo[height<=2160][vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]');
+    expect(mp4).toBe('bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]');
+    expect(anyVideo).toBe('bestvideo[height<=2160]+bestaudio');
   });
 
   it('skips all subtitle flags when subLangs is empty', () => {

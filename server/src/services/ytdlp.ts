@@ -12,12 +12,19 @@ import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 export const OUTPUT_TEMPLATE = '%(upload_date)s_%(title)s.%(ext)s';
 
 /**
- * Format selector: prefer h264/aac in mp4 (plays everywhere), then any
- * best video+audio, then a single best file — all capped at maxHeight.
+ * Format selector: prefer h264/aac in mp4 (plays everywhere — YouTube is
+ * increasingly serving AV1 in mp4, which Safari and older devices cannot
+ * decode), then any mp4 video+audio, then any codec, then a single best
+ * file — all capped at maxHeight.
  */
 export function buildFormatSelector(maxHeight: number): string {
   const h = `[height<=${maxHeight}]`;
-  return `bestvideo${h}[ext=mp4]+bestaudio[ext=m4a]/bestvideo${h}+bestaudio/best${h}`;
+  const h264 = '[vcodec^=avc1]';
+  return (
+    `bestvideo${h}${h264}[ext=mp4]+bestaudio[ext=m4a]/` +
+    `bestvideo${h}[ext=mp4]+bestaudio[ext=m4a]/` +
+    `bestvideo${h}+bestaudio/best${h}`
+  );
 }
 
 /**
