@@ -55,9 +55,9 @@ Po zmianie kodu w `src/` uruchom ponownie `npm run build` i kliknij ikonę odśw
 - Kod źródłowy: `src/*.ts` (TypeScript, strict, te same ostre flagi co reszta
   repo). Czysta logika (parsowanie SSE, wyciąganie postępu, wykrywanie id
   YouTube) leży w `src/lib/` i ma testy jednostkowe (Vitest): `npm test`.
-- Kontrakt zdarzeń SSE (`DownloadVideoEvent`) pochodzi ze wspólnego
-  `shared/api.ts` — typy są importowane jako `import type`, więc nie trafiają
-  do zbudowanego kodu.
+- Kontrakt zdarzeń SSE (`DownloadVideoEvent`) i parser postępu yt-dlp
+  pochodzą ze wspólnego `shared/` (`api.ts` — typy przez `import type`;
+  `progress.ts` — logika jako zwykły import, esbuild bundluje co trzeba).
 - `npm run typecheck` sprawdza typy, `npm run build` generuje `background.js`,
   `content.js`, `popup.js` i `options.js` (wygenerowane pliki nie są
   commitowane). Z katalogu głównego repo działają też `npm run build:extension`,

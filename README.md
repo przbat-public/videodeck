@@ -265,6 +265,17 @@ pomijane w zwykłym `npm test`):
 cd server && npm run test:integration  # wymaga działającego ES (ELASTICSEARCH_URL)
 ```
 
+**Testy integracyjne z prawdziwym yt-dlp** — szablony argumentów kolejki
+pobierania sprawdzane przeciw zainstalowanemu binarium (`--simulate`, bez
+pobierania; pomijane w zwykłym `npm test`):
+```bash
+cd server && npm run test:ytdlp-integration  # wymaga yt-dlp w PATH
+```
+
+**Testy property-based (fast-check)** — inwarianty parserów (VTT, SSE,
+postęp yt-dlp, id YouTube, runPool) dla dowolnych wejść, z automatycznym
+minimalizowaniem kontrprzykładów; po stronie serwera i rozszerzenia.
+
 **Testy end-to-end (Playwright)** — prawdziwa aplikacja (Vite) z zamockowanym
 API na poziomie przeglądarki; bez backendu i Elasticsearcha. Scenariusze:
 wyszukiwanie sterowane URL, paginacja „Pokaż więcej", strona szczegółów z
@@ -272,6 +283,9 @@ odtwarzaczem i napisami, strona statusu:
 ```bash
 npm run test:e2e  # pierwszy raz: cd client && npx playwright install chromium
 ```
+
+Testy tras serwera sprawdzają odpowiedzi schematami kontraktu (`shared/schemas.ts`),
+a parser VTT jest przypięty fixture'ami z prawdziwych plików yt-dlp.
 
 ### Pokrycie testami
 
@@ -332,7 +346,7 @@ Wszystkie trzy projekty kompiluje TypeScript 6.0 (ta sama wersja, którą Cursor
 | `noUnusedLocals`, `noUnusedParameters` | nieużywane zmienne to błąd kompilacji (parametry celowo ignorowane zaczynają się od `_`) |
 | `verbatimModuleSyntax` (klient, rozszerzenie) | typy importuje się przez `import type`; na serwerze to samo wymusza ESLint (`consistent-type-imports`) |
 
-**Wspólny kontrakt API** leży w `shared/api.ts` - jeden plik z typami odpowiedzi i żądań (`SearchResponse`, `QueueJob`, `StatusResponse`, `DownloadVideoEvent`, ...), importowany jako `@shared/api` przez serwer, klienta i rozszerzenie Chrome. Plik zawiera wyłącznie typy: importy `import type` znikają przy kompilacji, więc ani `node dist/...`, ani bundle Vite, ani build esbuilda rozszerzenia nie potrzebują aliasu w runtime. ESLint (`no-restricted-imports`) blokuje zwykły `import` z `@shared/*`, żeby nikt tam przypadkiem nie wrzucił kodu.
+**Wspólny kontrakt API** leży w `shared/`: schematy zod (`schemas.ts`) to jedyne źródło prawdy o kształtach odpowiedzi, a `api.ts` reeksportuje typy wyprowadzone przez `z.infer` (plus typy żądań i zdarzeń SSE). Serwer, klient i rozszerzenie importują typy jako `@shared/api`; klient **parsuje** każdą odpowiedź schematem (parse, don't trust), a testy tras serwera sprawdzają odpowiedzi tymi samymi schematami — typy i walidacja nie mogą się rozjechać. `api.ts` pozostaje types-only (`import type` wymuszany przez ESLint), a `schemas.ts` i `progress.ts` to celowe moduły runtime'owe wspólne dla serwera i rozszerzenia.
 
 Routery Express używają `RouteHandler<Params, Response>` z `server/src/routes/http.ts`: parametry ścieżki są wyprowadzane z wzorca trasy, `req.body` ma typ `unknown` i jest zawężany helperami `readBody`/`readString`, a `res.json()` przyjmuje tylko typ z kontraktu (albo `ApiError`). `any` jest zabronione lintem (`no-explicit-any: error`) w kodzie i w testach.
 
@@ -341,7 +355,9 @@ Routery Express używają `RouteHandler<Params, Response>` z `server/src/routes/
 ```
 video-search-app/
 ├── shared/
-│   └── api.ts           # Kontrakt HTTP API (tylko typy) wspólny dla serwera, klienta i rozszerzenia
+│   ├── api.ts           # Typy kontraktu (z schematów) + typy żądań/zdarzeń — types-only
+│   ├── schemas.ts       # Schematy zod odpowiedzi API (typy z z.infer) — walidacja klienta i testów
+│   └── progress.ts      # Wspólny parser postępu yt-dlp (serwer + rozszerzenie)
 ├── server/              # Backend (Node.js/Express)
 │   ├── src/
 │   │   ├── index.ts     # Start serwera
