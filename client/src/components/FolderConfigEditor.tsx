@@ -156,14 +156,14 @@ export function FolderConfigEditor({
               value={form.maxHeight}
               onChange={(value) => updateForm({ maxHeight: value })}
               className="config-input"
-            >
-              <option value="">Domyślnie ({downloadDefaults.maxHeight}p)</option>
-              {MAX_HEIGHT_CHOICES.map((height) => (
-                <option key={height} value={String(height)}>
-                  {height}p
-                </option>
-              ))}
-            </Select>
+              items={[
+                { value: '', label: `Domyślnie (${downloadDefaults.maxHeight}p)` },
+                ...MAX_HEIGHT_CHOICES.map((height) => ({
+                  value: String(height),
+                  label: `${height}p`,
+                })),
+              ]}
+            />
           </div>
 
           <div className="config-field">

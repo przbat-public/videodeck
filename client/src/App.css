@@ -1422,18 +1422,18 @@
   border-color: #d8d8e0;
 }
 
-.ui-select {
-  position: relative;
+/* Radix Select trigger — a button styled like the app's inputs */
+.ui-select-native {
   display: inline-flex;
   align-items: center;
-}
-
-.ui-select-native {
-  appearance: none;
-  -webkit-appearance: none;
-  padding: 0.75rem 2.4rem 0.75rem 1rem;
+  justify-content: space-between;
+  gap: 1.5rem;
+  min-width: 200px;
+  padding: 0.75rem 1rem;
   font-size: 1rem;
   font-family: inherit;
+  line-height: 1.2;
+  text-align: left;
   color: #333;
   border: 2px solid #e0e0e0;
   border-radius: 6px;
@@ -1448,7 +1448,7 @@
   border-color: #b9c0f0;
 }
 
-.ui-select-native:focus {
+.ui-select-native:focus-visible {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
@@ -1460,15 +1460,70 @@
   cursor: not-allowed;
 }
 
-.ui-select-arrow {
-  position: absolute;
-  right: 0.85rem;
-  width: 10px;
-  height: 6px;
-  color: #667eea;
-  pointer-events: none;
+.ui-select-native[data-state='open'] {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
 }
 
-.ui-select--disabled .ui-select-arrow {
+.ui-select-icon {
+  display: inline-flex;
+  align-items: center;
+  color: #667eea;
+}
+
+.ui-select-arrow {
+  width: 10px;
+  height: 6px;
+  pointer-events: none;
+  transition: transform 0.15s ease;
+}
+
+.ui-select-native[data-state='open'] .ui-select-arrow {
+  transform: rotate(180deg);
+}
+
+.ui-select--disabled .ui-select-icon {
   color: #bbb;
+}
+
+/* Radix Select dropdown (portal) */
+.ui-select-content {
+  z-index: 50;
+  min-width: var(--radix-select-trigger-width);
+  max-height: 320px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #e4e4ec;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(30, 30, 60, 0.16);
+  padding: 4px;
+}
+
+.ui-select-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  color: #333;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.ui-select-item[data-highlighted] {
+  background: #eef0ff;
+  color: #222;
+}
+
+.ui-select-item[data-state='checked'] {
+  color: #667eea;
+  font-weight: 500;
+}
+
+.ui-select-item-indicator {
+  color: #667eea;
+  font-size: 0.85rem;
 }

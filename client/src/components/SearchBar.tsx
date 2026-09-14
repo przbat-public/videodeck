@@ -89,27 +89,19 @@ export default function SearchBar({
           onChange={(value) => commitWith({ category: value })}
           className="category-select"
           aria-label="Kategoria"
-        >
-          <option value="">Wszystkie kategorie</option>
-          {categoryOptions.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </Select>
+          items={[
+            { value: '', label: 'Wszystkie kategorie' },
+            ...categoryOptions.map((name) => ({ value: name, label: name })),
+          ]}
+        />
       )}
       <Select
         value={sort}
         onChange={(value) => commitWith({ sort: value as SortOption })}
         className="sort-select"
         aria-label="Sort"
-      >
-        {SORT_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </Select>
+        items={SORT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+      />
       {text && (
         <button type="button" onClick={handleClear} className="clear-button">
           Clear

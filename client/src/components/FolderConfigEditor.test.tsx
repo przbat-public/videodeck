@@ -51,8 +51,7 @@ describe('FolderConfigEditor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
 
-    expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveValue('');
-    expect(screen.getByText('Domyślnie (2160p)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('Domyślnie (2160p)');
     expect(screen.getByLabelText('Pobieraj napisy')).toBeChecked();
     expect(screen.getByLabelText('Języki napisów (po przecinku):')).toHaveAttribute(
       'placeholder',
@@ -71,7 +70,7 @@ describe('FolderConfigEditor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
 
-    expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveValue('1080');
+    expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('1080p');
     expect(screen.getByLabelText('Pobieraj napisy')).not.toBeChecked();
     expect(screen.getByLabelText('Pobieraj komentarze')).not.toBeChecked();
   });
@@ -87,7 +86,8 @@ describe('FolderConfigEditor', () => {
     const { onConfigUpdate } = renderEditor({ channelUrl: 'https://yt/@a' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
-    fireEvent.change(screen.getByLabelText('Maks. rozdzielczość:'), { target: { value: '1080' } });
+    fireEvent.click(screen.getByLabelText('Maks. rozdzielczość:'));
+    fireEvent.click(screen.getByRole('option', { name: '1080p' }));
     fireEvent.change(screen.getByLabelText('Języki napisów (po przecinku):'), {
       target: { value: 'pl, en' },
     });
@@ -102,7 +102,7 @@ describe('FolderConfigEditor', () => {
     expect(lastPutBody(fetchMock)).toEqual({ folderPath: FOLDER, config: saved });
 
     fireEvent.click(await screen.findByRole('button', { name: 'Edytuj konfigurację' }));
-    expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveValue('1080');
+    expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('1080p');
     expect(screen.getByLabelText('Języki napisów (po przecinku):')).toHaveValue('pl, en');
   });
 
@@ -212,11 +212,12 @@ describe('FolderConfigEditor', () => {
     renderEditor({ channelUrl: 'https://yt/@a', maxHeight: 720 });
 
     fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
-    fireEvent.change(screen.getByLabelText('Maks. rozdzielczość:'), { target: { value: '2160' } });
+    fireEvent.click(screen.getByLabelText('Maks. rozdzielczość:'));
+    fireEvent.click(screen.getByRole('option', { name: '2160p' }));
     fireEvent.click(screen.getByRole('button', { name: 'Anuluj' }));
 
     expect(screen.queryByLabelText('Maks. rozdzielczość:')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
-    expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveValue('720');
+    expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('720p');
   });
 });

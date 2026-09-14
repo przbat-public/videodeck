@@ -18,8 +18,17 @@ const clearButton = () => screen.getByRole('button', { name: 'Clear' });
 // and a value change is all the component cares about anyway.
 const type = (value: string) => fireEvent.change(input(), { target: { value } });
 const clearInput = () => fireEvent.change(input(), { target: { value: '' } });
-const pick = (select: HTMLElement, value: string) =>
-  fireEvent.change(select, { target: { value } });
+
+// Radix Select opens on click and picks on click, so plain fireEvent keeps
+// the select interactions independent of timers too. Options live in a
+// portal and are found by role.
+const openSelect = (select: HTMLElement) => fireEvent.click(select);
+const optionLabels = () =>
+  screen.getAllByRole('option').map((option) => (option.textContent ?? '').replace('✓', ''));
+const pick = (select: HTMLElement, label: string) => {
+  openSelect(select);
+  fireEvent.click(screen.getByRole('option', { name: label }));
+};
 
 const advance = async (ms: number) => {
   await act(async () => {
@@ -104,17 +113,17 @@ describe('SearchBar', () => {
       renderBar({ query: 'robot arm', sort: 'views-desc', category: 'lego' });
 
       expect(input()).toHaveValue('robot arm');
-      expect(sortSelect()).toHaveValue('views-desc');
-      expect(categorySelect()).toHaveValue('lego');
+      expect(sortSelect()).toHaveTextContent('Najwięcej wyświetleń');
+      expect(categorySelect()).toHaveTextContent('lego');
       expect(clearButton()).toBeInTheDocument();
     });
 
     it('offers every sort option in order', () => {
       renderBar();
 
-      const options = Array.from(sortSelect().querySelectorAll('option'));
-      expect(options.map((option) => option.value)).toEqual(SORT_OPTIONS.map((o) => o.value));
-      expect(options.map((option) => option.textContent)).toEqual(SORT_OPTIONS.map((o) => o.label));
+      openSelect(sortSelect());
+
+      expect(optionLabels()).toEqual(SORT_OPTIONS.map((o) => o.label));
     });
 
     it('hides the category filter when there is nothing to pick from', () => {
@@ -127,26 +136,23 @@ describe('SearchBar', () => {
     it('lists "Wszystkie kategorie" first, then the categories it is given', () => {
       renderBar();
 
-      const options = Array.from(categorySelect().querySelectorAll('option'));
-      expect(options.map((option) => option.value)).toEqual(['', ...CATEGORIES]);
-      expect(options[0]?.textContent).toBe('Wszystkie kategorie');
+      openSelect(categorySelect());
+
+      expect(optionLabels()).toEqual(['Wszystkie kategorie', ...CATEGORIES]);
     });
 
     it('keeps a category from the URL selectable even when the server list lacks it', () => {
       renderBar({ category: 'archive' }, ['fpv']);
 
-      expect(categorySelect()).toHaveValue('archive');
-      expect(Array.from(categorySelect().querySelectorAll('option')).map((o) => o.value)).toEqual([
-        '',
-        'fpv',
-        'archive',
-      ]);
+      expect(categorySelect()).toHaveTextContent('archive');
+      openSelect(categorySelect());
+      expect(optionLabels()).toEqual(['Wszystkie kategorie', 'fpv', 'archive']);
     });
 
     it('shows the filter for a URL category even before any categories have loaded', () => {
       renderBar({ category: 'lego' }, []);
 
-      expect(categorySelect()).toHaveValue('lego');
+      expect(categorySelect()).toHaveTextContent('lego');
     });
   });
 
@@ -275,8 +281,8 @@ describe('SearchBar', () => {
 
       update({ sort: 'likes-desc', category: 'psychology' });
 
-      expect(sortSelect()).toHaveValue('likes-desc');
-      expect(categorySelect()).toHaveValue('psychology');
+      expect(sortSelect()).toHaveTextContent('Najwięcej polubień');
+      expect(categorySelect()).toHaveTextContent('psychology');
     });
   });
 
@@ -284,7 +290,7 @@ describe('SearchBar', () => {
     it('commits a sort change at once, keeping the committed query', () => {
       const { onChange } = renderBar({ query: 'robot', category: 'lego' });
 
-      pick(sortSelect(), 'views-desc');
+      pick(sortSelect(), 'Najwięcej wyświetleń');
 
       expect(onChange).toHaveBeenCalledTimes(1);
       expect(onChange).toHaveBeenCalledWith({
@@ -304,7 +310,7 @@ describe('SearchBar', () => {
         category: 'psychology',
       });
 
-      pick(categorySelect(), '');
+      pick(categorySelect(), 'Wszystkie kategorie');
       expect(onChange).toHaveBeenLastCalledWith({
         query: 'robot',
         sort: 'date-desc',
@@ -317,7 +323,7 @@ describe('SearchBar', () => {
       const { onChange } = renderWithParent();
 
       type('lego');
-      pick(sortSelect(), 'likes-desc');
+      pick(sortSelect(), 'Najwięcej polubień');
 
       expect(onChange).toHaveBeenCalledTimes(1);
       expect(onChange).toHaveBeenCalledWith({ query: 'lego', sort: 'likes-desc', category: '' });

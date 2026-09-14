@@ -105,6 +105,12 @@ const searchInput = () => screen.getByPlaceholderText('Szukaj filmów po opisie.
 const sortSelect = () => screen.getByRole('combobox', { name: 'Sort' });
 const categorySelect = () => screen.findByRole('combobox', { name: 'Kategoria' });
 
+/** Opens the Radix select and clicks the option with the given label */
+const pick = async (select: HTMLElement, label: string) => {
+  fireEvent.click(select);
+  fireEvent.click(await screen.findByRole('option', { name: label }));
+};
+
 const searchUrls = (fetchMock: FetchMock): string[] =>
   fetchMock.mock.calls.map(([url]) => url).filter((url) => url.startsWith('/api/videos/search'));
 
@@ -151,8 +157,8 @@ describe('VideoListPage', () => {
       ]);
 
       expect(searchInput()).toHaveValue('robot arm');
-      expect(sortSelect()).toHaveValue('views-desc');
-      expect(await categorySelect()).toHaveValue('lego');
+      expect(sortSelect()).toHaveTextContent('Najwięcej wyświetleń');
+      expect(await categorySelect()).toHaveTextContent('lego');
     });
 
     it('highlights the phrase from the URL in the results', async () => {
@@ -176,7 +182,7 @@ describe('VideoListPage', () => {
       expect(searchUrls(fetchMock)).toEqual([
         '/api/videos/search?q=drone&sort=date-desc&category=fpv&offset=0&limit=100',
       ]);
-      expect(sortSelect()).toHaveValue('date-desc');
+      expect(sortSelect()).toHaveTextContent('Najnowsze');
       expect(searchInput()).toHaveValue('drone');
     });
 
@@ -188,7 +194,7 @@ describe('VideoListPage', () => {
       expect(searchUrls(fetchMock)).toEqual([
         '/api/videos/search?sort=date-desc&category=archive&offset=0&limit=100',
       ]);
-      expect(await categorySelect()).toHaveValue('archive');
+      expect(await categorySelect()).toHaveTextContent('archive');
     });
 
     it('keeps the URL filter visible when the category list fails to load', async () => {
@@ -202,7 +208,7 @@ describe('VideoListPage', () => {
 
       await screen.findByText('First');
 
-      expect(await categorySelect()).toHaveValue('lego');
+      expect(await categorySelect()).toHaveTextContent('lego');
       expect(searchUrls(fetchMock)).toEqual([
         '/api/videos/search?sort=date-desc&category=lego&offset=0&limit=100',
       ]);
@@ -214,7 +220,7 @@ describe('VideoListPage', () => {
       renderAt('/videos');
       await screen.findByText('First');
 
-      fireEvent.change(await categorySelect(), { target: { value: 'lego' } });
+      await pick(await categorySelect(), 'lego');
 
       await waitFor(() => expect(currentUrl()).toBe('/videos?category=lego'));
       await waitFor(() =>
@@ -229,10 +235,10 @@ describe('VideoListPage', () => {
       renderAt('/videos?q=drone');
       await screen.findByText('First');
 
-      fireEvent.change(sortSelect(), { target: { value: 'likes-asc' } });
+      await pick(sortSelect(), 'Najmniej polubień');
       await waitFor(() => expect(currentUrl()).toBe('/videos?q=drone&sort=likes-asc'));
 
-      fireEvent.change(sortSelect(), { target: { value: 'date-desc' } });
+      await pick(sortSelect(), 'Najnowsze');
       await waitFor(() => expect(currentUrl()).toBe('/videos?q=drone'));
 
       expect(searchUrls(fetchMock)).toEqual([
@@ -277,8 +283,8 @@ describe('VideoListPage', () => {
       await screen.findByText('First');
 
       fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
-      fireEvent.change(sortSelect(), { target: { value: 'date-desc' } });
-      fireEvent.change(await categorySelect(), { target: { value: '' } });
+      await pick(sortSelect(), 'Najnowsze');
+      await pick(await categorySelect(), 'Wszystkie kategorie');
 
       await waitFor(() => expect(currentUrl()).toBe('/videos'));
       await waitFor(() =>
@@ -294,9 +300,9 @@ describe('VideoListPage', () => {
       renderAt('/videos');
       await screen.findByText('First');
 
-      fireEvent.change(await categorySelect(), { target: { value: 'lego' } });
+      await pick(await categorySelect(), 'lego');
       await waitFor(() => expect(currentUrl()).toBe('/videos?category=lego'));
-      fireEvent.change(sortSelect(), { target: { value: 'views-desc' } });
+      await pick(sortSelect(), 'Najwięcej wyświetleń');
       await waitFor(() => expect(currentUrl()).toBe('/videos?sort=views-desc&category=lego'));
 
       // A real push, then Back: the page's entry must hold the latest filters…
@@ -309,8 +315,8 @@ describe('VideoListPage', () => {
           '/api/videos/search?sort=views-desc&category=lego&offset=0&limit=100'
         )
       );
-      expect(sortSelect()).toHaveValue('views-desc');
-      expect(await categorySelect()).toHaveValue('lego');
+      expect(sortSelect()).toHaveTextContent('Najwięcej wyświetleń');
+      expect(await categorySelect()).toHaveTextContent('lego');
 
       // …and be the only one: another Back has nowhere earlier to go.
       fireEvent.click(screen.getByRole('button', { name: 'back' }));
@@ -330,8 +336,8 @@ describe('VideoListPage', () => {
         )
       );
       expect(searchInput()).toHaveValue('');
-      expect(sortSelect()).toHaveValue('likes-desc');
-      expect(await categorySelect()).toHaveValue('fpv');
+      expect(sortSelect()).toHaveTextContent('Najwięcej polubień');
+      expect(await categorySelect()).toHaveTextContent('fpv');
       expect(currentUrl()).toBe('/videos?category=fpv&sort=likes-desc');
     });
   });

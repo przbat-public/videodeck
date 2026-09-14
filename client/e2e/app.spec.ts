@@ -16,11 +16,28 @@ test.describe('wyszukiwarka', () => {
     await page.goto('/videos?q=motor&sort=views-desc&category=fpv');
 
     await expect(page.getByPlaceholder('Szukaj filmów po opisie...')).toHaveValue('motor');
-    await expect(page.locator('.sort-select')).toHaveValue('views-desc');
-    await expect(page.locator('.category-select')).toHaveValue('fpv');
+    await expect(page.locator('.sort-select')).toContainText('Najwięcej wyświetleń');
+    await expect(page.locator('.category-select')).toContainText('fpv');
     await expect(page.getByText('Silnik krokowy')).toBeVisible();
     // the URL is not rewritten for valid parameters
     expect(new URL(page.url()).search).toContain('q=motor');
+  });
+
+  test('select sortowania otwiera listę i zmienia sortowanie', async ({ page }) => {
+    const sorts: (string | null)[] = [];
+    await mockApi(page, {
+      search: (params) => {
+        sorts.push(params.get('sort'));
+        return { videos: [], totalCount: 0 };
+      },
+    });
+
+    await page.goto('/videos');
+    await page.locator('.sort-select').click();
+    await page.getByRole('option', { name: 'Najnowsze' }).click();
+
+    await expect(page.locator('.sort-select')).toContainText('Najnowsze');
+    await expect.poll(() => sorts).toContain('date-desc');
   });
 
   test('„Pokaż więcej" dokłada kolejną stronę', async ({ page }) => {

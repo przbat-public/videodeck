@@ -3,67 +3,96 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Select } from './Select';
 
-const options = (
-  <>
-    <option value="">Wszystkie kategorie</option>
-    <option value="fpv">fpv</option>
-    <option value="lego">lego</option>
-  </>
-);
+const items = [
+  { value: '', label: 'Wszystkie kategorie' },
+  { value: 'fpv', label: 'fpv' },
+  { value: 'lego', label: 'lego' },
+];
 
 describe('Select', () => {
-  it('renders a native combobox with the aria-label as the name', () => {
+  it('renders a combobox showing the selected label', () => {
+    render(<Select value="fpv" onChange={vi.fn()} aria-label="Kategoria" items={items} />);
+
+    const combobox = screen.getByRole('combobox', { name: 'Kategoria' });
+    expect(combobox).toHaveTextContent('fpv');
+    // the list is not mounted until the trigger is opened
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('maps the empty value to the "none" option and back', () => {
+    render(<Select value="" onChange={vi.fn()} aria-label="Kategoria" items={items} />);
+
+    expect(screen.getByRole('combobox', { name: 'Kategoria' })).toHaveTextContent(
+      'Wszystkie kategorie'
+    );
+  });
+
+  it('opens on click and reports the chosen option', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<Select value="fpv" onChange={onChange} aria-label="Kategoria" items={items} />);
+
+    await user.click(screen.getByRole('combobox', { name: 'Kategoria' }));
+    await user.click(await screen.findByRole('option', { name: 'lego' }));
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('lego');
+  });
+
+  it('reports "" when the "none" option is picked', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<Select value="fpv" onChange={onChange} aria-label="Kategoria" items={items} />);
+
+    await user.click(screen.getByRole('combobox', { name: 'Kategoria' }));
+    await user.click(await screen.findByRole('option', { name: 'Wszystkie kategorie' }));
+
+    expect(onChange).toHaveBeenCalledWith('');
+  });
+
+  it('does not open and reports nothing when disabled', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
     render(
-      <Select value="" onChange={vi.fn()} aria-label="Kategoria">
-        {options}
-      </Select>
+      <Select value="fpv" onChange={onChange} disabled aria-label="Kategoria" items={items} />
     );
 
     const combobox = screen.getByRole('combobox', { name: 'Kategoria' });
-    expect(combobox).toHaveValue('');
-    expect(combobox.querySelectorAll('option')).toHaveLength(3);
-  });
-
-  it('reports the chosen value', () => {
-    const onChange = vi.fn();
-    render(
-      <Select value="" onChange={onChange} aria-label="Sort">
-        <option value="a">A</option>
-        <option value="b">B</option>
-      </Select>
-    );
-
-    fireEvent.change(screen.getByRole('combobox', { name: 'Sort' }), { target: { value: 'b' } });
-
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenCalledWith('b');
-  });
-
-  it('does not report changes when disabled', async () => {
-    const onChange = vi.fn();
-    const user = userEvent.setup();
-    render(
-      <Select value="a" onChange={onChange} disabled aria-label="Sort">
-        <option value="a">A</option>
-        <option value="b">B</option>
-      </Select>
-    );
-
-    const combobox = screen.getByRole('combobox', { name: 'Sort' });
     expect(combobox).toBeDisabled();
-    await user.selectOptions(combobox, 'b');
+    await user.click(combobox);
 
+    expect(screen.queryByRole('option')).not.toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('keeps external classes on the native select', () => {
-    const { container } = render(
-      <Select value="" onChange={vi.fn()} className="sort-select" aria-label="Sort">
-        {options}
-      </Select>
+  it('closes after picking and keeps external classes on the trigger', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <Select
+        value="fpv"
+        onChange={onChange}
+        className="sort-select"
+        aria-label="Sort"
+        items={items}
+      />
     );
 
-    const combobox = container.querySelector('select.ui-select-native.sort-select');
-    expect(combobox).not.toBeNull();
+    const combobox = screen.getByRole('combobox', { name: 'Sort' });
+    expect(combobox.className).toContain('sort-select');
+
+    await user.click(combobox);
+    await user.click(await screen.findByRole('option', { name: 'lego' }));
+
+    expect(onChange).toHaveBeenCalledWith('lego');
+    expect(screen.queryByRole('option')).not.toBeInTheDocument();
+  });
+
+  it('opens via a plain click event (no pointer event needed in jsdom)', () => {
+    render(<Select value="" onChange={vi.fn()} aria-label="Sort" items={items} />);
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Sort' }));
+
+    expect(screen.getAllByRole('option')).toHaveLength(3);
   });
 });
