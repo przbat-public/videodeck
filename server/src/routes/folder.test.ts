@@ -519,7 +519,7 @@ describe('folder router', () => {
       });
       expect(mockedSpawn).toHaveBeenCalledWith(
         'yt-dlp',
-        ['--flat-playlist', '-j', 'https://www.youtube.com/@a/videos'],
+        ['--flat-playlist', '-i', '-j', 'https://www.youtube.com/@a/videos'],
         { cwd: FOLDER }
       );
       expect(mockedFs.writeFile).toHaveBeenCalledWith(

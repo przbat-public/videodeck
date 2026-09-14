@@ -6,6 +6,20 @@ describe('extractProgress', () => {
     expect(extractProgress('[download]  45.2% of 123.45MiB at 1.23MiB/s ETA 00:45')).toBe(45.2);
   });
 
+  it('reads the percentage from our --progress-template line', () => {
+    expect(extractProgress('download  45.2% (123.45MiB @ 1.23MiB/s, ETA 00:45)')).toBe(45.2);
+    expect(extractProgress('download  100.0% (10.00MiB @ 5.0MiB/s, ETA 00:00)')).toBe(100);
+  });
+
+  it('clamps template percentages to 0..100', () => {
+    expect(extractProgress('download  150% (10MiB @ 5MiB/s, ETA 00:00)')).toBe(100);
+    expect(extractProgress('download  -5% (10MiB @ 5MiB/s, ETA 00:00)')).toBe(0);
+  });
+
+  it('does not confuse template-looking text for progress', () => {
+    expect(extractProgress('download Destination: video.mp4')).toBeUndefined();
+  });
+
   it('reads integer percentages', () => {
     expect(extractProgress('[download] 100.0% of 10MiB')).toBe(100);
   });

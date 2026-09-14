@@ -4,6 +4,7 @@ import { validateVideosFolder } from './utils/videoPathUtils';
 import { createApp } from './app';
 import { getApiToken, getHost } from './config';
 import { downloadQueue } from './services/downloadQueue';
+import { getYtDlpVersion } from './services/ytdlp';
 import { installShutdownHandlers } from './shutdown';
 import { logger } from './utils/logger';
 
@@ -20,6 +21,17 @@ async function startServer() {
     await validateVideosFolder();
     logger.info('Videos folder(s) validated');
     logger.info('Server ready. Use GET /api/videos/refreshCache to index videos.');
+
+    // YouTube changes break old yt-dlp releases regularly — the version in the
+    // boot log is the first thing to check when downloads start failing.
+    const ytDlpVersion = await getYtDlpVersion();
+    if (ytDlpVersion !== null) {
+      logger.info(`yt-dlp version: ${ytDlpVersion}`);
+    } else {
+      logger.warn(
+        'yt-dlp not found (yt-dlp --version failed) — downloads will fail until it is installed'
+      );
+    }
 
     const apiToken = getApiToken();
     const host = getHost();

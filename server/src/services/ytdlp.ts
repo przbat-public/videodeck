@@ -12,6 +12,34 @@ import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 export const OUTPUT_TEMPLATE = '%(upload_date)s_%(title)s.%(ext)s';
 
 /**
+ * Machine-readable progress line (yt-dlp `--progress-template`). Starts with
+ * a literal `download ` marker so shared/progress.ts can parse it
+ * unambiguously, but still shows size/speed/ETA in the job log the queue UI
+ * displays.
+ */
+export const PROGRESS_TEMPLATE =
+  'download %(progress._percent_str)s (%(progress._total_bytes_str)s @ %(progress._speed_str)s, ETA %(progress._eta_str)s)';
+
+/**
+ * Runtime resilience flags shared by downloads and updates:
+ *  - `--file-access-retries`: videos land on swappable external drives;
+ *    transient file access errors (USB/network hiccups) retry up to 10 times
+ *    with an exponential 1..10 s sleep instead of failing the whole job.
+ *  - `--progress-delta 1`: at most one progress line per second — the queue
+ *    tail-keeps 40 log lines, and a fast link used to flood them.
+ */
+const RUNTIME_ARGS = [
+  '--file-access-retries',
+  '10',
+  '--retry-sleep',
+  'file_access:exp=1:10',
+  '--progress-delta',
+  '1',
+  '--progress-template',
+  PROGRESS_TEMPLATE,
+];
+
+/**
  * Format selector: prefer h264/aac in mp4 (plays everywhere — YouTube is
  * increasingly serving AV1 in mp4, which Safari and older devices cannot
  * decode), then any mp4 video+audio, then any codec, then a single best
@@ -73,6 +101,7 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
       '-i',
       '--no-playlist',
       '--newline',
+      ...RUNTIME_ARGS,
       '--skip-download',
       '-o',
       `${escapeOutputTemplate(job.baseName)}.%(ext)s`,
@@ -85,6 +114,7 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
     '-i',
     '--no-playlist',
     '--newline',
+    ...RUNTIME_ARGS,
     '-o',
     OUTPUT_TEMPLATE,
     '--restrict-filenames',
@@ -99,9 +129,14 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
   ];
 }
 
-/** Fetch a channel's video list as NDJSON (`yt-dlp --flat-playlist -j`). */
+/**
+ * Fetch a channel's video list as NDJSON (`yt-dlp --flat-playlist -j`).
+ * `-i` turns per-video failures (private/deleted entries) into a successful
+ * run: yt-dlp still exits non-zero without it, and the endpoint used to
+ * answer 500 even though every remaining video was fetched.
+ */
 export function buildPlaylistArgs(channelUrl: string): string[] {
-  return ['--flat-playlist', '-j', channelUrl];
+  return ['--flat-playlist', '-i', '-j', channelUrl];
 }
 
 /**
@@ -134,4 +169,17 @@ export function runYtDlp(
       }
     });
   });
+}
+
+/**
+ * The installed yt-dlp version (`yt-dlp --version`), trimmed — or null when
+ * the binary is missing or broken. Logged at startup: YouTube changes break
+ * old yt-dlp releases regularly, so the version belongs in the boot log.
+ */
+export async function getYtDlpVersion(command = 'yt-dlp'): Promise<string | null> {
+  try {
+    return (await runYtDlp(['--version'], process.cwd(), { command })).trim();
+  } catch {
+    return null;
+  }
 }

@@ -1,7 +1,12 @@
 import { EventEmitter } from 'events';
 import type { QueueJob } from '@shared/api';
 import { DownloadQueue, indexChangedVideos, readConcurrency } from './downloadQueue';
-import { buildFormatSelector, buildYtDlpArgs, escapeOutputTemplate } from './ytdlp';
+import {
+  buildFormatSelector,
+  buildYtDlpArgs,
+  escapeOutputTemplate,
+  PROGRESS_TEMPLATE,
+} from './ytdlp';
 import type { EnqueueRequest, SpawnedProcess } from './downloadQueue';
 import { refreshIndex } from './folderIndex';
 import { indexVideosFromDisk } from './videoScanner';
@@ -248,6 +253,18 @@ describe('buildYtDlpArgs', () => {
       options,
     });
     expect(update.slice(-2)).toEqual(['--no-warnings', 'https://yt/x']);
+  });
+
+  it('adds file-access retries and the progress template to both job types', () => {
+    const download = buildYtDlpArgs({ type: 'download', videoUrl: 'u' });
+    const update = buildYtDlpArgs({ type: 'update', videoUrl: 'u', baseName: 'x' });
+
+    for (const args of [download, update]) {
+      expect(args[args.indexOf('--file-access-retries') + 1]).toBe('10');
+      expect(args[args.indexOf('--retry-sleep') + 1]).toBe('file_access:exp=1:10');
+      expect(args[args.indexOf('--progress-delta') + 1]).toBe('1');
+      expect(args[args.indexOf('--progress-template') + 1]).toBe(PROGRESS_TEMPLATE);
+    }
   });
 });
 
