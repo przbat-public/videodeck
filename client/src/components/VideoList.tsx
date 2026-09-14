@@ -10,7 +10,7 @@ export default function VideoList({ videos, searchQuery }: VideoListProps): JSX.
   if (videos.length === 0) {
     return (
       <div className="video-list-empty">
-        <p>No videos found. Try a different search query.</p>
+        <p>Brak filmów. Spróbuj innego zapytania.</p>
       </div>
     );
   }

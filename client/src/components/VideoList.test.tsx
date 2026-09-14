@@ -40,7 +40,7 @@ describe('VideoList', () => {
 
   it('should render empty state when no videos', () => {
     renderWithRouter(<VideoList videos={[]} />);
-    expect(screen.getByText('No videos found. Try a different search query.')).toBeInTheDocument();
+    expect(screen.getByText('Brak filmów. Spróbuj innego zapytania.')).toBeInTheDocument();
   });
 
   it('should render correct number of video cards', () => {

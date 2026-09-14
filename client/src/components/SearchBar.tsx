@@ -79,7 +79,7 @@ export default function SearchBar({
         type="text"
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Search videos by description..."
+        placeholder="Szukaj filmów po opisie..."
         className="search-input"
       />
       {categoryOptions.length > 0 && (
@@ -87,9 +87,9 @@ export default function SearchBar({
           value={category}
           onChange={(e) => commitWith({ category: e.target.value })}
           className="category-select"
-          aria-label="Category"
+          aria-label="Kategoria"
         >
-          <option value="">All categories</option>
+          <option value="">Wszystkie kategorie</option>
           {categoryOptions.map((name) => (
             <option key={name} value={name}>
               {name}

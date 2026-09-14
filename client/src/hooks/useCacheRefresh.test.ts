@@ -75,28 +75,30 @@ const statusCalls = () => fetchMock.mock.calls.filter(([url]) => url === STATUS_
 describe('formatReindexProgress', () => {
   it('shows folder, file progress and indexed count', () => {
     expect(formatReindexProgress(running())).toBe(
-      'Reindexing · folder 1/2 · channel-a · 3/10 files · 3 indexed'
+      'Indeksowanie · folder 1/2 · channel-a · 3/10 plików · 3 zindeksowanych'
     );
   });
 
   it('omits parts that are not known yet', () => {
     expect(
       formatReindexProgress(withoutFolder(running({ foldersTotal: 0, filesTotal: 0, indexed: 0 })))
-    ).toBe('Reindexing · 0 indexed');
+    ).toBe('Indeksowanie · 0 zindeksowanych');
   });
 });
 
 describe('formatReindexResult', () => {
   it('summarises a clean run', () => {
-    expect(formatReindexResult(finished())).toBe('Reindex finished: 20 videos indexed');
+    expect(formatReindexResult(finished())).toBe(
+      'Indeksowanie zakończone: 20 filmów zindeksowanych'
+    );
   });
 
   it('mentions skipped files and folder errors', () => {
     expect(formatReindexResult(finished({ skipped: 2, errors: ['a', 'b'] }))).toBe(
-      'Reindex finished: 20 videos indexed, 2 skipped, 2 folder errors'
+      'Indeksowanie zakończone: 20 filmów zindeksowanych, 2 pominiętych, 2 błędów folderów'
     );
     expect(formatReindexResult(finished({ errors: ['a'] }))).toBe(
-      'Reindex finished: 20 videos indexed, 1 folder error'
+      'Indeksowanie zakończone: 20 filmów zindeksowanych, 1 błąd folderu'
     );
   });
 });
@@ -150,10 +152,13 @@ describe('useCacheRefresh', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(START_URL);
     expect(fetchMock).toHaveBeenCalledWith(STATUS_URL);
-    expect(toast.loading).toHaveBeenCalledWith('Starting cache refresh process...');
-    expect(toast.success).toHaveBeenCalledWith('Reindex finished: 2561 videos indexed, 2 skipped', {
-      id: LOADING_TOAST_ID,
-    });
+    expect(toast.loading).toHaveBeenCalledWith('Rozpoczynanie odświeżania indeksu...');
+    expect(toast.success).toHaveBeenCalledWith(
+      'Indeksowanie zakończone: 2561 filmów zindeksowanych, 2 pominiętych',
+      {
+        id: LOADING_TOAST_ID,
+      }
+    );
     expect(toast.error).not.toHaveBeenCalled();
     expect(result.current.status).toEqual(finished({ indexed: 2561, skipped: 2 }));
   });
@@ -180,7 +185,7 @@ describe('useCacheRefresh', () => {
     });
     expect(statusCalls()).toBe(1);
     expect(toast.loading).toHaveBeenLastCalledWith(
-      'Reindexing · folder 1/2 · channel-a · 3/10 files · 3 indexed',
+      'Indeksowanie · folder 1/2 · channel-a · 3/10 plików · 3 zindeksowanych',
       { id: LOADING_TOAST_ID }
     );
     expect(result.current.loading).toBe(true);
@@ -191,7 +196,7 @@ describe('useCacheRefresh', () => {
     });
     expect(statusCalls()).toBe(2);
     expect(toast.loading).toHaveBeenLastCalledWith(
-      'Reindexing · folder 2/2 · channel-b · 5/10 files · 15 indexed',
+      'Indeksowanie · folder 2/2 · channel-b · 5/10 plików · 15 zindeksowanych',
       { id: LOADING_TOAST_ID }
     );
     expect(toast.success).not.toHaveBeenCalled();
@@ -201,9 +206,12 @@ describe('useCacheRefresh', () => {
       await done!;
     });
     expect(statusCalls()).toBe(3);
-    expect(toast.success).toHaveBeenCalledWith('Reindex finished: 20 videos indexed', {
-      id: LOADING_TOAST_ID,
-    });
+    expect(toast.success).toHaveBeenCalledWith(
+      'Indeksowanie zakończone: 20 filmów zindeksowanych',
+      {
+        id: LOADING_TOAST_ID,
+      }
+    );
     expect(result.current.loading).toBe(false);
     expect(result.current.status?.running).toBe(false);
   });
@@ -217,12 +225,15 @@ describe('useCacheRefresh', () => {
       await result.current.refreshCache();
     });
 
-    expect(toast.loading).toHaveBeenCalledWith('A reindex is already running, following it...', {
+    expect(toast.loading).toHaveBeenCalledWith('Indeksowanie już trwa — śledzę postęp...', {
       id: LOADING_TOAST_ID,
     });
-    expect(toast.success).toHaveBeenCalledWith('Reindex finished: 20 videos indexed', {
-      id: LOADING_TOAST_ID,
-    });
+    expect(toast.success).toHaveBeenCalledWith(
+      'Indeksowanie zakończone: 20 filmów zindeksowanych',
+      {
+        id: LOADING_TOAST_ID,
+      }
+    );
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -243,7 +254,7 @@ describe('useCacheRefresh', () => {
     });
 
     expect(toast.error).toHaveBeenCalledWith(
-      'Reindex finished: 20 videos indexed, 1 folder error. Error scanning folder /videos/x: ENOENT',
+      'Indeksowanie zakończone: 20 filmów zindeksowanych, 1 błąd folderu. Error scanning folder /videos/x: ENOENT',
       { id: LOADING_TOAST_ID }
     );
     expect(toast.success).not.toHaveBeenCalled();
@@ -307,9 +318,12 @@ describe('useCacheRefresh', () => {
       await result.current.refreshCache();
     });
 
-    expect(toast.error).toHaveBeenCalledWith('Failed to read reindex status (HTTP 500)', {
-      id: LOADING_TOAST_ID,
-    });
+    expect(toast.error).toHaveBeenCalledWith(
+      'Nie udało się odczytać statusu indeksowania (HTTP 500)',
+      {
+        id: LOADING_TOAST_ID,
+      }
+    );
     expect(result.current.loading).toBe(false);
   });
 
@@ -336,7 +350,7 @@ describe('useCacheRefresh', () => {
       await result.current.refreshCache();
     });
 
-    expect(toast.error).toHaveBeenCalledWith('Failed to start cache refresh', {
+    expect(toast.error).toHaveBeenCalledWith('Nie udało się rozpocząć odświeżania indeksu', {
       id: LOADING_TOAST_ID,
     });
     expect(result.current.loading).toBe(false);

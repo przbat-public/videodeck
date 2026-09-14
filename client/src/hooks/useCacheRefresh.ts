@@ -33,20 +33,24 @@ export function formatReindexProgress(status: ReindexStatus): string {
   const folder = folderName(status.currentFolder);
   const folderPart =
     status.foldersTotal > 0 ? `folder ${status.foldersDone + 1}/${status.foldersTotal}` : '';
-  const filesPart = status.filesTotal > 0 ? `${status.filesDone}/${status.filesTotal} files` : '';
-  const parts = ['Reindexing', folderPart, folder, filesPart, `${status.indexed} indexed`].filter(
-    Boolean
-  );
+  const filesPart = status.filesTotal > 0 ? `${status.filesDone}/${status.filesTotal} plików` : '';
+  const parts = [
+    'Indeksowanie',
+    folderPart,
+    folder,
+    filesPart,
+    `${status.indexed} zindeksowanych`,
+  ].filter(Boolean);
   return parts.join(' · ');
 }
 
 /** Final message once the run is over */
 export function formatReindexResult(status: ReindexStatus): string {
-  const base = `Reindex finished: ${status.indexed} videos indexed`;
-  const skipped = status.skipped > 0 ? `, ${status.skipped} skipped` : '';
+  const base = `Indeksowanie zakończone: ${status.indexed} filmów zindeksowanych`;
+  const skipped = status.skipped > 0 ? `, ${status.skipped} pominiętych` : '';
   const errors =
     status.errors.length > 0
-      ? `, ${status.errors.length} folder error${status.errors.length === 1 ? '' : 's'}`
+      ? `, ${status.errors.length} ${status.errors.length === 1 ? 'błąd folderu' : 'błędów folderów'}`
       : '';
   return `${base}${skipped}${errors}`;
 }
@@ -56,7 +60,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 async function fetchStatus(): Promise<ReindexStatus> {
   const response = await fetch('/api/videos/refreshCache/status');
   if (!response.ok) {
-    throw new Error(`Failed to read reindex status (HTTP ${response.status})`);
+    throw new Error(`Nie udało się odczytać statusu indeksowania (HTTP ${response.status})`);
   }
   return response.json();
 }
@@ -68,7 +72,7 @@ export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheR
 
   const refreshCache = useCallback(async (): Promise<void> => {
     dispatch({ type: CacheRefreshActionType.REFRESH_START });
-    const loadingToastId = toast.loading('Starting cache refresh process...');
+    const loadingToastId = toast.loading('Rozpoczynanie odświeżania indeksu...');
 
     try {
       const response = await fetch('/api/videos/refreshCache');
@@ -79,7 +83,7 @@ export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheR
       }
 
       if (response.status === 409) {
-        toast.loading('A reindex is already running, following it...', { id: loadingToastId });
+        toast.loading('Indeksowanie już trwa — śledzę postęp...', { id: loadingToastId });
       }
 
       // Follow the background job until the server says it is done
@@ -101,7 +105,8 @@ export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheR
         toast.success(summary, { id: loadingToastId });
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to start cache refresh';
+      const errorMessage =
+        err instanceof Error ? err.message : 'Nie udało się rozpocząć odświeżania indeksu';
       dispatch({
         type: CacheRefreshActionType.REFRESH_ERROR,
         payload: errorMessage,

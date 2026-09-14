@@ -73,16 +73,16 @@ export default function CommentComponent({
       style={{ marginLeft: `${depth * 1.5}rem` }}
     >
       <div className="comment-header">
-        <strong>{comment.author || 'Anonymous'}</strong>
+        <strong>{comment.author || 'Anonim'}</strong>
         {comment.like_count !== undefined && comment.like_count > 0 && (
-          <span className="comment-likes">{comment.like_count} likes</span>
+          <span className="comment-likes">{comment.like_count} polubień</span>
         )}
       </div>
       <p className="comment-text">
         {displayText}
         {isLong && (
           <button className="comment-expand-btn" onClick={() => setIsExpanded(!isExpanded)}>
-            {isExpanded ? ' Show less' : ' Read more'}
+            {isExpanded ? ' Zwiń' : ' Czytaj więcej'}
           </button>
         )}
       </p>
@@ -104,11 +104,11 @@ export default function CommentComponent({
           <button
             className="comment-replies-toggle"
             onClick={() => setIsRepliesExpanded(!isRepliesExpanded)}
-            title={isRepliesExpanded ? 'Hide replies' : 'Show replies'}
+            title={isRepliesExpanded ? 'Ukryj odpowiedzi' : 'Pokaż odpowiedzi'}
           >
             {isRepliesExpanded ? '▼' : '▶'}
             <span className="comment-replies-count">
-              ({totalRepliesCount} {totalRepliesCount === 1 ? 'reply' : 'replies'})
+              ({totalRepliesCount} {totalRepliesCount === 1 ? 'odpowiedź' : 'odpowiedzi'})
             </span>
           </button>
         )}

@@ -189,7 +189,7 @@ describe('useVideoSearch', () => {
     await act(() => result.current.search(state({ query: 'drone' })));
 
     expect(result.current).toMatchObject({ videos: [], totalCount: 0, error: 'Network error' });
-    expect(toast.error).toHaveBeenCalledWith('Failed to search videos: Network error');
+    expect(toast.error).toHaveBeenCalledWith('Nie udało się wyszukać filmów: Network error');
   });
 
   it('treats a non-2xx response as a failure', async () => {

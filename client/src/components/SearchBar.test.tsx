@@ -9,9 +9,9 @@ import SearchBar from './SearchBar';
 
 const CATEGORIES = ['fpv', 'lego', 'psychology'];
 
-const input = () => screen.getByPlaceholderText('Search videos by description...');
+const input = () => screen.getByPlaceholderText('Szukaj filmów po opisie...');
 const sortSelect = () => screen.getByRole('combobox', { name: 'Sort' });
-const categorySelect = () => screen.getByRole('combobox', { name: 'Category' });
+const categorySelect = () => screen.getByRole('combobox', { name: 'Kategoria' });
 const clearButton = () => screen.getByRole('button', { name: 'Clear' });
 
 const setupUser = () => userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
@@ -115,16 +115,16 @@ describe('SearchBar', () => {
     it('hides the category filter when there is nothing to pick from', () => {
       renderBar({}, []);
 
-      expect(screen.queryByRole('combobox', { name: 'Category' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('combobox', { name: 'Kategoria' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
     });
 
-    it('lists "All categories" first, then the categories it is given', () => {
+    it('lists "Wszystkie kategorie" first, then the categories it is given', () => {
       renderBar();
 
       const options = Array.from(categorySelect().querySelectorAll('option'));
       expect(options.map((option) => option.value)).toEqual(['', ...CATEGORIES]);
-      expect(options[0]?.textContent).toBe('All categories');
+      expect(options[0]?.textContent).toBe('Wszystkie kategorie');
     });
 
     it('keeps a category from the URL selectable even when the server list lacks it', () => {
@@ -299,7 +299,7 @@ describe('SearchBar', () => {
       });
     });
 
-    it('commits a category change at once and "All categories" as an empty category', async () => {
+    it('commits a category change at once and "Wszystkie kategorie" as an empty category', async () => {
       const user = setupUser();
       const { onChange } = renderWithParent({ query: 'robot' });
 

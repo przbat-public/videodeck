@@ -16,7 +16,10 @@ export function useVideoDetail(baseName: string | undefined): UseVideoDetailResu
 
   useEffect(() => {
     if (!baseName) {
-      dispatch({ type: VideoDetailActionType.FETCH_ERROR, payload: 'Invalid video ID' });
+      dispatch({
+        type: VideoDetailActionType.FETCH_ERROR,
+        payload: 'Nieprawidłowy identyfikator filmu',
+      });
       return;
     }
 

@@ -33,7 +33,7 @@ describe('CommentComponent', () => {
         text: 'Comment without author',
       };
       render(<CommentComponent comment={comment} />);
-      expect(screen.getByText('Anonymous')).toBeInTheDocument();
+      expect(screen.getByText('Anonim')).toBeInTheDocument();
     });
 
     it('should render like count when present and greater than 0', () => {
@@ -44,7 +44,7 @@ describe('CommentComponent', () => {
         like_count: 42,
       };
       render(<CommentComponent comment={comment} />);
-      expect(screen.getByText('42 likes')).toBeInTheDocument();
+      expect(screen.getByText('42 polubień')).toBeInTheDocument();
     });
 
     it('should not render like count when 0', () => {
@@ -55,7 +55,7 @@ describe('CommentComponent', () => {
         like_count: 0,
       };
       render(<CommentComponent comment={comment} />);
-      expect(screen.queryByText(/likes/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/polubień/)).not.toBeInTheDocument();
     });
 
     it('should not render like count when undefined', () => {
@@ -65,7 +65,7 @@ describe('CommentComponent', () => {
         text: 'Test comment',
       };
       render(<CommentComponent comment={comment} />);
-      expect(screen.queryByText(/likes/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/polubień/)).not.toBeInTheDocument();
     });
   });
 
@@ -84,19 +84,19 @@ describe('CommentComponent', () => {
       expect(commentText).toBeInTheDocument();
     });
 
-    it('should show "Read more" button for long comments', () => {
+    it('should show "Czytaj więcej" button for long comments', () => {
       const comment = createLongComment(300);
       render(<CommentComponent comment={comment} />);
 
-      expect(screen.getByRole('button', { name: /read more/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /czytaj więcej/i })).toBeInTheDocument();
     });
 
-    it('should expand long comment when "Read more" is clicked', async () => {
+    it('should expand long comment when "Czytaj więcej" is clicked', async () => {
       const user = userEvent.setup();
       const comment = createLongComment(300);
       render(<CommentComponent comment={comment} />);
 
-      const readMoreBtn = screen.getByRole('button', { name: /read more/i });
+      const readMoreBtn = screen.getByRole('button', { name: /czytaj więcej/i });
       await act(async () => {
         await user.click(readMoreBtn);
       });
@@ -104,20 +104,20 @@ describe('CommentComponent', () => {
       await waitFor(() => {
         expect(screen.getByText(new RegExp(`^a{300}$`))).toBeInTheDocument();
       });
-      expect(await screen.findByRole('button', { name: /show less/i })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /zwiń/i })).toBeInTheDocument();
     });
 
-    it('should collapse long comment when "Show less" is clicked', async () => {
+    it('should collapse long comment when "Zwiń" is clicked', async () => {
       const user = userEvent.setup();
       const comment = createLongComment(300);
       render(<CommentComponent comment={comment} />);
 
-      const readMoreBtn = screen.getByRole('button', { name: /read more/i });
+      const readMoreBtn = screen.getByRole('button', { name: /czytaj więcej/i });
       await act(async () => {
         await user.click(readMoreBtn);
       });
 
-      const showLessBtn = await screen.findByRole('button', { name: /show less/i });
+      const showLessBtn = await screen.findByRole('button', { name: /zwiń/i });
       await act(async () => {
         await user.click(showLessBtn);
       });
@@ -125,7 +125,7 @@ describe('CommentComponent', () => {
       await waitFor(() => {
         expect(screen.getByText(/^a{250}\.\.\.$/)).toBeInTheDocument();
       });
-      expect(await screen.findByRole('button', { name: /read more/i })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /czytaj więcej/i })).toBeInTheDocument();
     });
 
     it('should not truncate short comments', () => {
@@ -133,7 +133,7 @@ describe('CommentComponent', () => {
       render(<CommentComponent comment={comment} />);
 
       expect(screen.getByText(new RegExp(`^a{100}$`))).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /read more/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /czytaj więcej/i })).not.toBeInTheDocument();
     });
   });
 
@@ -331,10 +331,10 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      expect(screen.getByText('(2 replies)')).toBeInTheDocument();
+      expect(screen.getByText('(2 odpowiedzi)')).toBeInTheDocument();
     });
 
-    it('should show singular "reply" for one reply', () => {
+    it('should show singularną "odpowiedź" dla jednej odpowiedzi', () => {
       const comment: CommentWithReplies = {
         id: '1',
         author: 'Test User',
@@ -343,7 +343,7 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      expect(screen.getByText('(1 reply)')).toBeInTheDocument();
+      expect(screen.getByText('(1 odpowiedź)')).toBeInTheDocument();
     });
 
     it('should not show replies button when there are no replies', () => {
@@ -355,7 +355,7 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      expect(screen.queryByText(/reply|replies/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/odpowiedź|odpowiedzi/)).not.toBeInTheDocument();
     });
 
     it('should not render replies by default', () => {
@@ -380,7 +380,7 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      const toggleBtn = screen.getByTitle('Show replies');
+      const toggleBtn = screen.getByTitle('Pokaż odpowiedzi');
       expect(toggleBtn).toHaveTextContent('▶');
     });
 
@@ -395,7 +395,7 @@ describe('CommentComponent', () => {
 
       render(<CommentComponent comment={comment} />);
 
-      const toggleBtn = screen.getByTitle('Show replies');
+      const toggleBtn = screen.getByTitle('Pokaż odpowiedzi');
       await act(async () => {
         await user.click(toggleBtn);
       });
@@ -404,7 +404,7 @@ describe('CommentComponent', () => {
         expect(screen.getByText('Reply text')).toBeInTheDocument();
         expect(screen.getByText('Reply Author')).toBeInTheDocument();
         expect(toggleBtn).toHaveTextContent('▼');
-        expect(toggleBtn).toHaveAttribute('title', 'Hide replies');
+        expect(toggleBtn).toHaveAttribute('title', 'Ukryj odpowiedzi');
       });
     });
 
@@ -419,7 +419,7 @@ describe('CommentComponent', () => {
 
       render(<CommentComponent comment={comment} />);
 
-      const toggleBtn = screen.getByTitle('Show replies');
+      const toggleBtn = screen.getByTitle('Pokaż odpowiedzi');
       await act(async () => {
         await user.click(toggleBtn);
       });
@@ -435,7 +435,7 @@ describe('CommentComponent', () => {
       await waitFor(() => {
         expect(screen.queryByText('Reply text')).not.toBeInTheDocument();
         expect(toggleBtn).toHaveTextContent('▶');
-        expect(toggleBtn).toHaveAttribute('title', 'Show replies');
+        expect(toggleBtn).toHaveAttribute('title', 'Pokaż odpowiedzi');
       });
     });
 
@@ -451,7 +451,7 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      expect(screen.getByText('(2 replies)')).toBeInTheDocument();
+      expect(screen.getByText('(2 odpowiedzi)')).toBeInTheDocument();
     });
   });
 
@@ -521,7 +521,7 @@ describe('CommentComponent', () => {
 
       render(<CommentComponent comment={comment} />);
 
-      const toggleBtn = screen.getByTitle('Show replies');
+      const toggleBtn = screen.getByTitle('Pokaż odpowiedzi');
       await act(async () => {
         await user.click(toggleBtn);
       });
@@ -540,7 +540,7 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      expect(screen.queryByText(/reply|replies/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/odpowiedź|odpowiedzi/)).not.toBeInTheDocument();
     });
   });
 });

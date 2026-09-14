@@ -1,5 +1,4 @@
 import { useParams, Link } from 'react-router-dom';
-import ReactPlayer from 'react-player';
 
 import VideoSummary from '../components/VideoSummary';
 import VideoComments from '../components/VideoComments';
@@ -13,7 +12,7 @@ export default function VideoDetailPage(): JSX.Element {
     return (
       <div className="video-detail-page">
         <div className="loading">
-          <p>Loading video...</p>
+          <p>Ładowanie filmu...</p>
         </div>
       </div>
     );
@@ -23,9 +22,9 @@ export default function VideoDetailPage(): JSX.Element {
     return (
       <div className="video-detail-page">
         <div className="error-message">
-          <p>Error: {state.error || 'Video not found'}</p>
+          <p>Błąd: {state.error || 'Nie znaleziono filmu'}</p>
           <Link to="/videos" className="back-link">
-            ← Back to search
+            ← Wróć do wyszukiwania
           </Link>
         </div>
       </div>
@@ -46,20 +45,20 @@ export default function VideoDetailPage(): JSX.Element {
     <div className="video-detail-page">
       <div className="video-detail-header">
         <Link to="/videos" className="back-link">
-          ← Back to search
+          ← Wróć do wyszukiwania
         </Link>
       </div>
 
       <div className="video-detail-container">
         <div className="video-detail-main">
           <div className="video-player-section">
-            <ReactPlayer
+            {/* Native HTML5 video: the files are plain mp4s and the server
+                supports Range requests — no react-player dependency needed */}
+            <video
               src={videoUrl}
               controls
-              playing={false}
-              width="100%"
-              height="100%"
               className="video-player-full"
+              data-testid="video-player"
             />
           </div>
 
@@ -69,10 +68,10 @@ export default function VideoDetailPage(): JSX.Element {
             {state.details && (
               <div className="video-meta">
                 {state.details.viewCount > 0 && (
-                  <span>{state.details.viewCount.toLocaleString('en-US')} views</span>
+                  <span>{state.details.viewCount.toLocaleString('pl-PL')} wyświetleń</span>
                 )}
                 {state.details.likeCount > 0 && (
-                  <span>{state.details.likeCount.toLocaleString('en-US')} likes</span>
+                  <span>{state.details.likeCount.toLocaleString('pl-PL')} polubień</span>
                 )}
                 {state.details.uploadDate && <span>{formatDate(state.details.uploadDate)}</span>}
               </div>
@@ -87,7 +86,7 @@ export default function VideoDetailPage(): JSX.Element {
         />
 
         <div className="video-description-full">
-          <h2>Original description</h2>
+          <h2>Oryginalny opis</h2>
           <p>{state.details?.description}</p>
         </div>
 

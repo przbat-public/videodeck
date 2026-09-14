@@ -7,6 +7,19 @@ import { useSearchUrlState } from '../hooks/useSearchUrlState';
 import SearchBar from '../components/SearchBar';
 import VideoList from '../components/VideoList';
 
+/** Polish plural: 1 film, 2 filmy, 5 filmów */
+function pluralVideos(count: number): string {
+  if (count === 1) {
+    return 'film';
+  }
+  const lastDigit = count % 10;
+  const lastTwo = count % 100;
+  if (lastDigit >= 2 && lastDigit <= 4 && !(lastTwo >= 12 && lastTwo <= 14)) {
+    return 'filmy';
+  }
+  return 'filmów';
+}
+
 export default function VideoListPage(): JSX.Element {
   const { searchState, setSearchState } = useSearchUrlState();
   const { query, sort, category } = searchState;
@@ -48,34 +61,34 @@ export default function VideoListPage(): JSX.Element {
             onClick={handleRecreateIndices}
             disabled={recreateIndicesLoading}
             className="clear-button"
-            title="Recreate all Elasticsearch indices"
+            title="Odbuduj wszystkie indeksy Elasticsearch"
           >
-            {recreateIndicesLoading ? 'Recreating...' : 'Recreate Indices'}
+            {recreateIndicesLoading ? 'Odbudowywanie...' : 'Odbuduj indeksy'}
           </button>
           <button
             type="button"
             onClick={handleRefreshCache}
             disabled={refreshLoading}
             className="clear-button"
-            title="Refresh video cache from disk"
+            title="Odśwież indeks filmów z dysku"
           >
-            {refreshLoading ? 'Refreshing...' : 'Refresh Cache'}
+            {refreshLoading ? 'Odświeżanie...' : 'Odśwież indeks'}
           </button>
           <button
             type="button"
             onClick={handleReload}
             disabled={videoLoading}
             className="clear-button"
-            title="Reload video list"
+            title="Odśwież listę filmów"
           >
-            {videoLoading ? 'Loading...' : 'Reload'}
+            {videoLoading ? 'Ładowanie...' : 'Odśwież'}
           </button>
         </div>
         <div className="toolbar-right">
           <span className="video-count">
             {videoLoading
-              ? 'Loading...'
-              : `${videos.length} video${videos.length !== 1 ? 's' : ''}${totalCount > 0 ? ` / ${totalCount} total` : ''}`}
+              ? 'Ładowanie...'
+              : `${videos.length} ${pluralVideos(videos.length)}${totalCount > 0 ? ` / ${totalCount} łącznie` : ''}`}
           </span>
         </div>
       </div>
@@ -90,7 +103,7 @@ export default function VideoListPage(): JSX.Element {
 
       {videoLoading && videos.length === 0 ? (
         <div className="loading">
-          <p>Loading videos...</p>
+          <p>Ładowanie filmów...</p>
         </div>
       ) : (
         <>
@@ -103,7 +116,7 @@ export default function VideoListPage(): JSX.Element {
                 disabled={videoLoading}
                 className="clear-button"
               >
-                {videoLoading ? 'Loading...' : 'Show more'}
+                {videoLoading ? 'Ładowanie...' : 'Pokaż więcej'}
               </button>
             </div>
           )}

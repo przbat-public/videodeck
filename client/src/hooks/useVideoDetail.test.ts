@@ -67,7 +67,7 @@ describe('useVideoDetail', () => {
       expect(result.current.state.loading).toBe(false);
     });
 
-    expect(result.current.state.error).toBe('Invalid video ID');
+    expect(result.current.state.error).toBe('Nieprawidłowy identyfikator filmu');
     expect(result.current.state.details).toBeNull();
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
@@ -80,7 +80,7 @@ describe('useVideoDetail', () => {
     });
 
     // Empty string is falsy, so it should trigger error
-    expect(result.current.state.error).toBe('Invalid video ID');
+    expect(result.current.state.error).toBe('Nieprawidłowy identyfikator filmu');
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
@@ -239,7 +239,7 @@ describe('useVideoDetail', () => {
     );
 
     await waitFor(() => {
-      expect(result.current.state.error).toBe('Invalid video ID');
+      expect(result.current.state.error).toBe('Nieprawidłowy identyfikator filmu');
     });
 
     await act(async () => {
@@ -291,7 +291,7 @@ describe('useVideoDetail', () => {
     });
 
     await waitFor(() => {
-      expect(result.current.state.error).toBe('Invalid video ID');
+      expect(result.current.state.error).toBe('Nieprawidłowy identyfikator filmu');
     });
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);

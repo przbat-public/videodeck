@@ -9,11 +9,6 @@ vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn(), loading: vi.fn(() => 'toast-id') },
 }));
 
-// The real player pulls in media APIs jsdom does not implement
-vi.mock('react-player', () => ({
-  default: ({ src }: { src: string }) => <div data-testid="player" data-src={src} />,
-}));
-
 const details: VideoDetails = {
   title: 'A talk about hedgehogs',
   description: 'Everything about hedgehogs',
@@ -67,15 +62,16 @@ describe('VideoDetailPage', () => {
   it('shows a spinner while loading', () => {
     renderPage();
 
-    expect(screen.getByText('Loading video...')).toBeInTheDocument();
+    expect(screen.getByText('Ładowanie filmu...')).toBeInTheDocument();
   });
 
   it('renders the title, metadata and description', async () => {
     renderPage();
 
     expect(await screen.findByText('A talk about hedgehogs')).toBeInTheDocument();
-    expect(screen.getByText('1,234 views')).toBeInTheDocument();
-    expect(screen.getByText('56 likes')).toBeInTheDocument();
+    // pl-PL does not group four-digit numbers
+    expect(screen.getByText('1234 wyświetleń')).toBeInTheDocument();
+    expect(screen.getByText('56 polubień')).toBeInTheDocument();
     expect(screen.getByText('2024-06-15')).toBeInTheDocument();
     expect(screen.getByText('Everything about hedgehogs')).toBeInTheDocument();
   });
@@ -83,9 +79,9 @@ describe('VideoDetailPage', () => {
   it('points the player at the file endpoint, folder included', async () => {
     renderPage();
 
-    const player = await screen.findByTestId('player');
+    const player = await screen.findByTestId('video-player');
     expect(player).toHaveAttribute(
-      'data-src',
+      'src',
       `/api/videos/file/hedgehogs.mp4?folder=${encodeURIComponent('/videos/a')}`
     );
   });
@@ -97,8 +93,8 @@ describe('VideoDetailPage', () => {
     renderPage();
 
     await screen.findByText('A talk about hedgehogs');
-    expect(screen.queryByText(/views/)).toBeNull();
-    expect(screen.queryByText(/likes/)).toBeNull();
+    expect(screen.queryByText(/wyświetleń/)).toBeNull();
+    expect(screen.queryByText(/polubień/)).toBeNull();
   });
 
   it('shows the summary once it arrives', async () => {
@@ -114,8 +110,8 @@ describe('VideoDetailPage', () => {
     installFetch({ details: () => json({ error: 'nope' }, 500) });
     renderPage();
 
-    expect(await screen.findByText(/^Error:/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '← Back to search' })).toHaveAttribute(
+    expect(await screen.findByText(/^Błąd:/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '← Wróć do wyszukiwania' })).toHaveAttribute(
       'href',
       '/videos'
     );

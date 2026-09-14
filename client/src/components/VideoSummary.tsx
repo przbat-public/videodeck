@@ -17,7 +17,7 @@ export default function VideoSummary({
 
   return (
     <div className="video-summary-section">
-      <h2>Summary</h2>
+      <h2>Streszczenie</h2>
       <div className="summary-content">
         <p>{summaryState.summary}</p>
       </div>

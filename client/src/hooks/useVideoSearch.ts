@@ -79,7 +79,7 @@ export function useVideoSearch(): UseVideoSearchResult {
           payload: errorMessage,
         });
 
-        toast.error(`Failed to search videos: ${errorMessage}`);
+        toast.error(`Nie udało się wyszukać filmów: ${errorMessage}`);
       }
     },
     []

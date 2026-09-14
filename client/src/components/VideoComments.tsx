@@ -16,7 +16,7 @@ export default function VideoComments({
 
   return (
     <div className="video-comments-section">
-      <h2>Comments {commentCount ? `(${commentCount})` : ''}</h2>
+      <h2>Komentarze {commentCount ? `(${commentCount})` : ''}</h2>
 
       <div className="comments-list">
         {comments

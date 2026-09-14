@@ -87,9 +87,9 @@ const renderAt = (url: string) =>
   );
 
 const currentUrl = () => screen.getByTestId('url').textContent;
-const searchInput = () => screen.getByPlaceholderText('Search videos by description...');
+const searchInput = () => screen.getByPlaceholderText('Szukaj filmów po opisie...');
 const sortSelect = () => screen.getByRole('combobox', { name: 'Sort' });
-const categorySelect = () => screen.findByRole('combobox', { name: 'Category' });
+const categorySelect = () => screen.findByRole('combobox', { name: 'Kategoria' });
 
 const searchUrls = (fetchMock: FetchMock): string[] =>
   fetchMock.mock.calls.map(([url]) => url).filter((url) => url.startsWith('/api/videos/search'));
@@ -109,8 +109,8 @@ describe('VideoListPage', () => {
       renderAt('/videos');
 
       expect(await screen.findByText('First')).toBeInTheDocument();
-      expect(screen.getByText('1 video / 1 total')).toBeInTheDocument();
-      await screen.findByRole('combobox', { name: 'Category' }); // categories loaded too
+      expect(screen.getByText('1 film / 1 łącznie')).toBeInTheDocument();
+      await screen.findByRole('combobox', { name: 'Kategoria' }); // categories loaded too
       await sleep(350); // past the search bar's debounce: nothing else may fire
 
       expect(searchUrls(fetchMock)).toEqual([
@@ -131,7 +131,7 @@ describe('VideoListPage', () => {
       });
       renderAt('/videos?q=robot+arm&sort=views-desc&category=lego');
 
-      expect(await screen.findByText('2 videos / 7 total')).toBeInTheDocument();
+      expect(await screen.findByText('2 filmy / 7 łącznie')).toBeInTheDocument();
       expect(searchUrls(fetchMock)).toEqual([
         '/api/videos/search?q=robot+arm&sort=views-desc&category=lego&offset=0&limit=100',
       ]);
@@ -170,9 +170,7 @@ describe('VideoListPage', () => {
       fetchMock = installFetch({ search: () => ({ videos: [], totalCount: 0 }) });
       renderAt('/videos?category=archive');
 
-      expect(
-        await screen.findByText('No videos found. Try a different search query.')
-      ).toBeInTheDocument();
+      expect(await screen.findByText('Brak filmów. Spróbuj innego zapytania.')).toBeInTheDocument();
       expect(searchUrls(fetchMock)).toEqual([
         '/api/videos/search?sort=date-desc&category=archive&offset=0&limit=100',
       ]);
@@ -329,7 +327,7 @@ describe('VideoListPage', () => {
       renderAt('/videos?q=drone&category=lego');
       await screen.findByText('First');
 
-      fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Odśwież' }));
 
       await waitFor(() =>
         expect(searchUrls(fetchMock)).toEqual([
@@ -343,7 +341,7 @@ describe('VideoListPage', () => {
       renderAt('/videos');
       await screen.findByText('First');
 
-      fireEvent.click(screen.getByRole('button', { name: 'Recreate Indices' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Odbuduj indeksy' }));
 
       await waitFor(() =>
         expect(fetchMock).toHaveBeenCalledWith('/api/videos/recreateIndices', { method: 'POST' })
@@ -358,16 +356,14 @@ describe('VideoListPage', () => {
       });
       renderAt('/videos');
 
-      expect(await screen.findByText('2 videos / 5 total')).toBeInTheDocument();
+      expect(await screen.findByText('2 filmy / 5 łącznie')).toBeInTheDocument();
     });
 
     it('shows the empty-list message when nothing matches', async () => {
       fetchMock = installFetch({ search: () => ({ videos: [], totalCount: 0 }) });
       renderAt('/videos');
 
-      expect(
-        await screen.findByText('No videos found. Try a different search query.')
-      ).toBeInTheDocument();
+      expect(await screen.findByText('Brak filmów. Spróbuj innego zapytania.')).toBeInTheDocument();
     });
   });
 
@@ -382,7 +378,7 @@ describe('VideoListPage', () => {
       renderAt('/videos');
 
       expect(await screen.findByText('First')).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Pokaż więcej' }));
 
       expect(await screen.findByText('Second')).toBeInTheDocument();
       expect(searchUrls(fetchMock).at(-1)).toBe(
@@ -397,7 +393,7 @@ describe('VideoListPage', () => {
       renderAt('/videos');
 
       expect(await screen.findByText('First')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Pokaż więcej' })).toBeNull();
     });
   });
 });

@@ -1,10 +1,16 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { RouterProvider, createBrowserRouter } from 'react-router-dom';
 import type { DefaultToastOptions } from 'react-hot-toast';
 import { Toaster } from 'react-hot-toast';
 import StatusPage from './pages/StatusPage';
 import VideoListPage from './pages/VideoListPage';
 import VideoDetailPage from './pages/VideoDetailPage';
 import './App.css';
+
+const router = createBrowserRouter([
+  { path: '/', element: <StatusPage /> },
+  { path: '/videos', element: <VideoListPage /> },
+  { path: '/video/:videoId', element: <VideoDetailPage /> },
+]);
 
 function App() {
   const toastOptions: DefaultToastOptions = {
@@ -30,16 +36,10 @@ function App() {
   };
 
   return (
-    <Router>
-      <div className="app">
-        <Toaster position="bottom-right" toastOptions={toastOptions} />
-        <Routes>
-          <Route path="/" element={<StatusPage />} />
-          <Route path="/videos" element={<VideoListPage />} />
-          <Route path="/video/:videoId" element={<VideoDetailPage />} />
-        </Routes>
-      </div>
-    </Router>
+    <div className="app">
+      <Toaster position="bottom-right" toastOptions={toastOptions} />
+      <RouterProvider router={router} />
+    </div>
   );
 }
 
