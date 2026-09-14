@@ -1,5 +1,5 @@
 import { useEffect, useReducer } from 'react';
-import type { VideoDetailsResponse } from '@shared/api';
+import { VideoDetailsResponseSchema } from '@shared/schemas';
 import type { VideoDetailState } from '../reducers/videoDetailReducer';
 import {
   videoDetailReducer,
@@ -31,7 +31,7 @@ export function useVideoDetail(baseName: string | undefined): UseVideoDetailResu
           signal: controller.signal,
         });
         if (!detailsResponse.ok) throw new Error('Failed to load video details');
-        const detailsData: VideoDetailsResponse = await detailsResponse.json();
+        const detailsData = VideoDetailsResponseSchema.parse(await detailsResponse.json());
         dispatch({
           type: VideoDetailActionType.FETCH_DETAILS_SUCCESS,
           payload: detailsData.details,

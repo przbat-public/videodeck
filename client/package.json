@@ -19,7 +19,8 @@
     "react-dom": "^19.3.0",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.9.5",
-    "react-window": "^1.8.11"
+    "react-window": "^1.8.11",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

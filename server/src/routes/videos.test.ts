@@ -3,6 +3,12 @@ import express from 'express';
 import videosRouter from './videos';
 import { errorHandler } from '../app';
 import {
+  ReindexStatusSchema,
+  SearchResponseSchema,
+  VideoDetailsResponseSchema,
+  VideoSummaryResponseSchema,
+} from '@shared/schemas';
+import {
   getVideos,
   getReindexStatus,
   isReindexRunning,
@@ -103,7 +109,10 @@ describe('videos router', () => {
       const response = await request(app).get('/api/videos/search?q=test');
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({ videos: mockVideos, totalCount: 100 });
+      expect(SearchResponseSchema.parse(response.body)).toEqual({
+        videos: mockVideos,
+        totalCount: 100,
+      });
       expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
         offset: 0,
         limit: 100,
@@ -394,7 +403,7 @@ describe('videos router', () => {
       const response = await request(app).get('/api/videos/refreshCache/status');
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual(status);
+      expect(ReindexStatusSchema.parse(response.body)).toEqual(status);
     });
   });
 
@@ -715,7 +724,9 @@ describe('videos router', () => {
       const response = await request(app).get(`/api/videos/${baseName}/summary`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({ summary: 'Generated summary' });
+      expect(VideoSummaryResponseSchema.parse(response.body)).toEqual({
+        summary: 'Generated summary',
+      });
       expect(mockedGetVideoByBaseName).toHaveBeenCalledWith(baseName);
       expect(mockedGenerateSummary).toHaveBeenCalledWith({
         folderPath: '/test/videos',
@@ -827,7 +838,7 @@ describe('videos router', () => {
       const response = await request(app).get(`/api/videos/${baseName}/details`);
 
       expect(response.status).toBe(200);
-      expect(response.body.details).toMatchObject({
+      expect(VideoDetailsResponseSchema.parse(response.body).details).toMatchObject({
         title: 'Test Video Title',
         description: 'Test Description',
         uploadDate: '20231201',

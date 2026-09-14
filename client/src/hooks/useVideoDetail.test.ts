@@ -42,6 +42,7 @@ describe('useVideoDetail', () => {
       commentCount: 0,
       videoPath: 'test-video.mp4',
       thumbnailPath: 'test-video.webp',
+      folderPath: '/videos/a',
     };
 
     fetchMock.mockResolvedValueOnce({
@@ -161,6 +162,7 @@ describe('useVideoDetail', () => {
       commentCount: 0,
       videoPath: 'video1.mp4',
       thumbnailPath: 'video1.webp',
+      folderPath: '/videos/a',
     };
 
     const mockDetails2 = {
@@ -175,6 +177,7 @@ describe('useVideoDetail', () => {
       commentCount: 0,
       videoPath: 'video2.mp4',
       thumbnailPath: 'video2.webp',
+      folderPath: '/videos/a',
     };
 
     fetchMock
@@ -231,6 +234,7 @@ describe('useVideoDetail', () => {
       commentCount: 0,
       videoPath: 'test-video.mp4',
       thumbnailPath: 'test-video.webp',
+      folderPath: '/videos/a',
     };
 
     fetchMock.mockResolvedValueOnce({
@@ -275,6 +279,7 @@ describe('useVideoDetail', () => {
       commentCount: 0,
       videoPath: 'test-video.mp4',
       thumbnailPath: 'test-video.webp',
+      folderPath: '/videos/a',
     };
 
     fetchMock.mockResolvedValueOnce({

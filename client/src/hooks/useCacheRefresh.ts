@@ -2,6 +2,7 @@ import { useReducer, useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 
 import type { ReindexStatus } from '@shared/api';
+import { ReindexStatusSchema } from '@shared/schemas';
 import {
   cacheRefreshReducer,
   initialState,
@@ -62,7 +63,7 @@ async function fetchStatus(signal: AbortSignal): Promise<ReindexStatus> {
   if (!response.ok) {
     throw new Error(`Nie udało się odczytać statusu indeksowania (HTTP ${response.status})`);
   }
-  return response.json();
+  return ReindexStatusSchema.parse(await response.json());
 }
 
 export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheRefreshResult {

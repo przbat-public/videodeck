@@ -1,5 +1,6 @@
 import { useEffect, useReducer } from 'react';
 import type { FolderConfig } from '@shared/api';
+import { StatusResponseSchema } from '@shared/schemas';
 import { statusReducer, initialState, StatusActionType } from '../reducers/statusReducer';
 import type { StatusData } from '../reducers/statusReducer';
 
@@ -26,7 +27,7 @@ export function useStatus(): UseStatusResult {
         if (!response.ok) {
           throw new Error('Failed to fetch status');
         }
-        const data: StatusData = await response.json();
+        const data = StatusResponseSchema.parse(await response.json()) as StatusData;
         dispatch({ type: StatusActionType.FETCH_SUCCESS, payload: data });
       } catch (err) {
         if (controller.signal.aborted) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CategoriesResponse } from '@shared/api';
+import { CategoriesResponseSchema } from '@shared/schemas';
 
 interface UseCategoriesResult {
   categories: string[];
@@ -23,7 +23,7 @@ export function useCategories(): UseCategoriesResult {
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        const data: CategoriesResponse = await response.json();
+        const data = CategoriesResponseSchema.parse(await response.json());
         setCategories(data.categories || []);
       } catch (err) {
         if (controller.signal.aborted) {

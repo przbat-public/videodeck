@@ -6,6 +6,12 @@ import * as fs from 'fs/promises';
 import { spawn } from 'child_process';
 import { createFolderRouter, extractYoutubeVideoId } from './folder';
 import { errorHandler } from '../app';
+import {
+  EnqueueJobsResponseSchema,
+  FolderListResponseSchema,
+  StatusResponseSchema,
+  VideoDownloadedResponseSchema,
+} from '@shared/schemas';
 import { createApp as createRealApp } from '../app';
 import { getVideosFolderPaths } from '../config';
 import {
@@ -161,7 +167,7 @@ describe('folder router', () => {
       const response = await request(app).get('/api/status');
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({
+      expect(StatusResponseSchema.parse(response.body)).toEqual({
         videosFolderPath: [FOLDER, OTHER_FOLDER],
         folderConfigs: {
           [FOLDER]: { channelUrl: 'https://yt/@a', maxHeight: 1080 },
@@ -307,7 +313,7 @@ describe('folder router', () => {
       const response = await request(app).get('/api/folder/list').query({ folderPath: FOLDER });
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({
+      expect(FolderListResponseSchema.parse(response.body)).toEqual({
         videos: [
           { id: 'v1', title: 'One', url: 'https://yt/watch?v=v1' },
           { id: 'v2', title: 'Two', url: 'https://yt/watch?v=v2' },
@@ -486,11 +492,13 @@ describe('folder router', () => {
     it('answers from the folder index', async () => {
       mockedFindEntry.mockResolvedValueOnce({ baseName: 'x', videoFile: 'x.mp4', infoMtime: 'm' });
       expect(
-        (
-          await request(app)
-            .get('/api/folder/video-downloaded')
-            .query({ folderPath: FOLDER, videoId: 'v1' })
-        ).body
+        VideoDownloadedResponseSchema.parse(
+          (
+            await request(app)
+              .get('/api/folder/video-downloaded')
+              .query({ folderPath: FOLDER, videoId: 'v1' })
+          ).body
+        )
       ).toEqual({ downloaded: true });
 
       mockedFindEntry.mockResolvedValueOnce(null);
@@ -550,7 +558,7 @@ describe('folder router', () => {
         });
 
       expect(response.status).toBe(202);
-      expect(response.body.jobs).toHaveLength(2);
+      expect(EnqueueJobsResponseSchema.parse(response.body).jobs).toHaveLength(2);
       expect(response.body.jobs[0]).toMatchObject({
         videoId: 'v1',
         videoUrl: 'https://www.youtube.com/watch?v=v1',

@@ -1,5 +1,5 @@
 import { useEffect, useReducer } from 'react';
-import type { VideoSummaryResponse } from '@shared/api';
+import { VideoSummaryResponseSchema } from '@shared/schemas';
 import toast from 'react-hot-toast';
 import type { VideoSummaryState } from '../reducers/videoSummaryReducer';
 import {
@@ -35,7 +35,7 @@ export function useVideoSummary(
         if (!summaryResponse.ok) {
           throw new Error('Failed to load summary');
         }
-        const summaryData: VideoSummaryResponse = await summaryResponse.json();
+        const summaryData = VideoSummaryResponseSchema.parse(await summaryResponse.json());
         dispatch({
           type: VideoSummaryActionType.FETCH_SUMMARY_SUCCESS,
           payload: summaryData.summary,

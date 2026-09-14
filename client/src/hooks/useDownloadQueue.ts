@@ -4,9 +4,9 @@ import type {
   EnqueueJobsResponse,
   JobType,
   QueueJob,
-  QueueListResponse,
   QueueVideoInput,
 } from '@shared/api';
+import { EnqueueJobsResponseSchema, QueueListResponseSchema } from '@shared/schemas';
 
 export interface UseDownloadQueueOptions {
   /** Poll interval while jobs are active (ms) */
@@ -58,7 +58,7 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
       if (!response.ok) {
         throw new Error('Failed to load download queue');
       }
-      const data: QueueListResponse = await response.json();
+      const data = QueueListResponseSchema.parse(await response.json());
       setJobs(Array.isArray(data.jobs) ? data.jobs : []);
       setError(null);
     } catch (err) {
@@ -89,7 +89,7 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
         }
         throw new Error(message);
       }
-      const result: EnqueueJobsResponse = await response.json();
+      const result = EnqueueJobsResponseSchema.parse(await response.json());
       await refresh();
       return result;
     },

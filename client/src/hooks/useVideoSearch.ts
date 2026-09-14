@@ -1,6 +1,7 @@
 import { useReducer, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
-import type { SearchResponse, VideoListItem } from '@shared/api';
+import type { VideoListItem } from '@shared/api';
+import { SearchResponseSchema } from '@shared/schemas';
 import type { SearchState } from '../utils/searchUrlState';
 import {
   videoSearchReducer,
@@ -71,7 +72,7 @@ export function useVideoSearch(): UseVideoSearchResult {
         if (!response.ok) {
           throw new Error('Failed to search videos');
         }
-        const data: SearchResponse = await response.json();
+        const data = SearchResponseSchema.parse(await response.json());
         if (!isCurrent()) {
           return;
         }

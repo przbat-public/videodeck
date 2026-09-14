@@ -4,11 +4,13 @@ import type { Page } from '@playwright/test';
 export interface E2eVideo {
   baseName: string;
   title: string;
+  description?: string;
   videoPath: string;
   thumbnailPath: string;
   folderPath: string;
   videoId?: string;
   subtitlePath?: string;
+  comments?: unknown[];
 }
 
 export const video = (
@@ -18,9 +20,11 @@ export const video = (
 ): E2eVideo => ({
   baseName,
   title,
+  description: 'A description',
   videoPath: `${baseName}.mp4`,
   thumbnailPath: `${baseName}.webp`,
   folderPath: '/videos/e2e',
+  comments: [],
   ...overrides,
 });
 
