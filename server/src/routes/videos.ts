@@ -43,6 +43,7 @@ import { logger } from '../utils/logger';
 // ---------------------------------------------------------------------------
 
 const SORT_OPTIONS: readonly SortOption[] = [
+  'relevance',
   'date-desc',
   'date-asc',
   'views-desc',
@@ -203,6 +204,8 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
     contentType = 'video/mp4';
   } else if (ext === '.webp') {
     contentType = 'image/webp';
+  } else if (ext === '.vtt') {
+    contentType = 'text/vtt; charset=utf-8';
   }
 
   res.setHeader('Content-Type', contentType);

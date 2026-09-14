@@ -143,7 +143,7 @@ describe('round trip', () => {
 
 describe('isSortOption', () => {
   it('knows every option the select offers and nothing else', () => {
-    expect(SORT_OPTIONS.length).toBe(6);
+    expect(SORT_OPTIONS.length).toBe(7);
     for (const option of SORT_OPTIONS) {
       expect(isSortOption(option.value)).toBe(true);
     }

@@ -25,6 +25,12 @@ export type VideoDocument = Omit<VideoListItem, 'comments'> & {
   commentsText?: string;
 };
 
+/**
+ * Fields that are search-only and must never leak back into responses:
+ * comments and transcripts are indexed as one text blob each.
+ */
+const SEARCH_ONLY_SOURCE_FIELDS = ['commentsText', 'transcriptText'] as const;
+
 let client: Client | null = null;
 
 /**
@@ -86,8 +92,9 @@ export function toDocument(video: VideoListItem): VideoDocument {
 
 /** Convert a stored document back into the API shape */
 export function fromDocument(document: VideoDocument): VideoListItem {
+  // Search-only blobs never leave the server
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { commentsText, ...rest } = document;
+  const { commentsText, transcriptText, ...rest } = document;
   return { ...rest, comments: [] };
 }
 
@@ -136,6 +143,10 @@ const INDEX_MAPPINGS = {
       },
     },
     commentsText: {
+      type: 'text',
+      analyzer: SEARCH_ANALYZER,
+    },
+    transcriptText: {
       type: 'text',
       analyzer: SEARCH_ANALYZER,
     },
@@ -424,6 +435,7 @@ export async function bulkIndexDocuments(
 export function estimateDocumentBytes(document: VideoDocument): number {
   return (
     (document.commentsText?.length ?? 0) +
+    (document.transcriptText?.length ?? 0) +
     (document.description?.length ?? 0) +
     (document.title?.length ?? 0) +
     512
@@ -456,6 +468,10 @@ export async function deleteAllVideos(): Promise<void> {
 
 function buildSortOptions(sortOption: SortOption): estypes.SortCombinations[] {
   switch (sortOption) {
+    case 'relevance':
+      // No explicit sort: Elasticsearch orders by _score (only meaningful
+      // with a query; match_all scores are all equal)
+      return [];
     case 'date-desc':
       return [{ uploadDate: { order: 'desc', missing: '_last' } }];
     case 'date-asc':
@@ -473,7 +489,13 @@ function buildSortOptions(sortOption: SortOption): estypes.SortCombinations[] {
   }
 }
 
-export const SEARCH_FIELDS = ['baseName.text^4', 'title^3', 'description^2', 'commentsText'];
+export const SEARCH_FIELDS = [
+  'baseName.text^4',
+  'title^3',
+  'description^2',
+  'transcriptText^2',
+  'commentsText',
+];
 
 /** How many results one page holds by default */
 export const SEARCH_DEFAULT_LIMIT = 100;
@@ -535,7 +557,7 @@ export async function searchVideos(
     from,
     size,
     _source: {
-      excludes: ['commentsText'],
+      excludes: [...SEARCH_ONLY_SOURCE_FIELDS],
     },
   });
 
@@ -559,7 +581,7 @@ async function findOne(query: Record<string, unknown>): Promise<VideoListItem | 
     query,
     size: 1,
     _source: {
-      excludes: ['commentsText'],
+      excludes: [...SEARCH_ONLY_SOURCE_FIELDS],
     },
   });
   const hit = response.hits.hits[0];

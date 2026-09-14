@@ -86,6 +86,29 @@ describe('VideoDetailPage', () => {
     );
   });
 
+  it('renders a subtitle track when the video has subtitles', async () => {
+    installFetch({
+      details: () => json({ details: { ...details, subtitlePath: 'hedgehogs.en.vtt' } }),
+    });
+    renderPage();
+
+    const player = await screen.findByTestId('video-player');
+    const track = player.querySelector('track');
+    expect(track).not.toBeNull();
+    expect(track).toHaveAttribute('kind', 'subtitles');
+    expect(track).toHaveAttribute(
+      'src',
+      `/api/videos/file/hedgehogs.en.vtt?folder=${encodeURIComponent('/videos/a')}`
+    );
+  });
+
+  it('renders no subtitle track without subtitles', async () => {
+    renderPage();
+
+    const player = await screen.findByTestId('video-player');
+    expect(player.querySelector('track')).toBeNull();
+  });
+
   it('hides counters that are zero', async () => {
     installFetch({
       details: () => json({ details: { ...details, viewCount: 0, likeCount: 0 } }),

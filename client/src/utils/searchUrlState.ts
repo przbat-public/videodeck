@@ -25,6 +25,7 @@ export const DEFAULT_SEARCH_STATE: SearchState = {
 
 /** Every sort option with its label, in the order the select shows them */
 export const SORT_OPTIONS: ReadonlyArray<{ value: SortOption; label: string }> = [
+  { value: 'relevance', label: 'Trafność' },
   { value: 'date-desc', label: 'Najnowsze' },
   { value: 'date-asc', label: 'Najstarsze' },
   { value: 'views-desc', label: 'Najwięcej wyświetleń' },

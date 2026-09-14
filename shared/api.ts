@@ -30,7 +30,7 @@ export interface AcceptedResponse {
 // ---------------------------------------------------------------------------
 
 export type SortOption =
-  'date-desc' | 'date-asc' | 'views-desc' | 'views-asc' | 'likes-desc' | 'likes-asc';
+  'relevance' | 'date-desc' | 'date-asc' | 'views-desc' | 'views-asc' | 'likes-desc' | 'likes-asc';
 
 /** Flat comment as yt-dlp writes it into info.json (`parent` links replies) */
 export interface VideoComment {
@@ -92,6 +92,11 @@ export interface VideoListItem {
   /** Always empty in search results (comments are indexed as text only) */
   comments: VideoComment[];
   subtitlePath?: string;
+  /**
+   * Cleaned subtitle text, search-only: indexed as a text field but stripped
+   * from every response (like comments). Never sent to clients.
+   */
+  transcriptText?: string;
 }
 
 export interface VideoDetails {

@@ -141,6 +141,19 @@ describe('videos router', () => {
       expect(mockedGetTotalVideoCount).toHaveBeenCalled();
     });
 
+    it('accepts relevance as a sort option', async () => {
+      mockedGetVideos.mockResolvedValue([]);
+      mockedGetTotalVideoCount.mockResolvedValue(0);
+
+      const response = await request(app).get('/api/videos/search?q=test&sort=relevance');
+
+      expect(response.status).toBe(200);
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'relevance', undefined, {
+        offset: 0,
+        limit: 100,
+      });
+    });
+
     it('passes offset and limit through to the search', async () => {
       mockedGetVideos.mockResolvedValue([]);
       mockedGetTotalVideoCount.mockResolvedValue(0);
@@ -449,6 +462,8 @@ describe('videos router', () => {
           this.setHeader('Content-Type', 'video/mp4');
         } else if (ext === '.webp') {
           this.setHeader('Content-Type', 'image/webp');
+        } else if (ext === '.vtt') {
+          this.setHeader('Content-Type', 'text/vtt; charset=utf-8');
         } else {
           this.setHeader('Content-Type', 'application/octet-stream');
         }
@@ -565,6 +580,20 @@ describe('videos router', () => {
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toBe('video/mp4');
+    });
+
+    it('should set text/vtt Content-Type for subtitle files', async () => {
+      const filename = 'test.en.vtt';
+      const mockFilePath = '/test/videos/test.en.vtt';
+
+      mockedGetVideoByFilePath.mockResolvedValue(mockVideo);
+      mockedGetVideoFilePath.mockReturnValue(mockFilePath);
+      mockedFs.access.mockResolvedValue(undefined);
+
+      const response = await request(app).get(`/api/videos/file/${filename}`);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/vtt');
     });
 
     it('should set correct Content-Type for .webp files', async () => {

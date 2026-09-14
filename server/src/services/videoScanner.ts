@@ -7,6 +7,7 @@ import { stripUndefined } from '../utils/objectUtils';
 import { listVisibleFiles } from '../utils/fsUtils';
 import { runPool } from '../utils/runPool';
 import { logger } from '../utils/logger';
+import { extractTextFromVttSubtitles } from './summaryService';
 import {
   bulkIndexDocuments,
   checkElasticsearchConnection,
@@ -31,6 +32,9 @@ export const REINDEX_BATCH_BYTES = 16 * 1024 * 1024;
 
 /** How many info.json files are read/parsed at once during a folder scan */
 export const REINDEX_CONCURRENCY = 4;
+
+/** Transcripts are search-only; cap them so one video cannot bloat the index */
+export const MAX_TRANSCRIPT_CHARS = 100_000;
 
 // ---------------------------------------------------------------------------
 // Reindex status (single process-wide job; shape: ReindexStatus in shared/api.ts)
@@ -140,6 +144,20 @@ export async function buildVideoItem(
 
   const title = infoJson.title || infoJson.fulltitle || '';
 
+  // Subtitle text is indexed for search ("find the video where he talks
+  // about X"); a read failure only loses the transcript, never the video.
+  let transcriptText: string | undefined;
+  if (subtitleFile) {
+    try {
+      const vtt = await fs.readFile(path.join(folderPath, subtitleFile), 'utf-8');
+      const text = extractTextFromVttSubtitles(vtt);
+      transcriptText =
+        text.length > MAX_TRANSCRIPT_CHARS ? text.slice(0, MAX_TRANSCRIPT_CHARS) : text;
+    } catch (error) {
+      logger.error(`Cannot read subtitles of ${baseName} for indexing:`, error);
+    }
+  }
+
   return {
     status: 'ok',
     video: stripUndefined<VideoListItem>({
@@ -156,6 +174,7 @@ export async function buildVideoItem(
       channelName: infoJson.channel || infoJson.uploader,
       comments: infoJson.comments || [],
       subtitlePath: subtitleFile,
+      transcriptText: transcriptText || undefined,
     }),
   };
 }

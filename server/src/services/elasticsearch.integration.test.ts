@@ -63,6 +63,24 @@ describeIntegration('Elasticsearch integration', () => {
     expect(folded.map((item) => item.baseName)).toContain('20240101_czyszczenie');
   });
 
+  it('finds videos by their transcript and never returns the transcript itself', async () => {
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      indexName,
+      [toDocument(video('20240101_wyklad', 'Wykład o historii'))].map((document) => ({
+        ...document,
+        transcriptText: 'mówimy tutaj o bitwie pod Grunwaldem i jej skutkach',
+      })),
+      false
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, indexName);
+
+    const results = await searchVideos('grunwaldem', 'relevance', [SCRATCH_FOLDER]);
+    expect(results).toHaveLength(1);
+    expect(results[0]?.baseName).toBe('20240101_wyklad');
+    expect(results[0]).not.toHaveProperty('transcriptText');
+  });
+
   it('swaps the alias atomically and serves only the new index version', async () => {
     const v1 = await createIndexVersion(SCRATCH_FOLDER);
     await bulkIndexDocuments(v1, documentsOf([video('20240101_old', 'Old')]), false);

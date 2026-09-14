@@ -156,6 +156,15 @@ describe('elasticsearchService', () => {
       expect(item.comments).toEqual([]);
       expect(item.baseName).toBe('20240101_Video');
     });
+
+    it('keeps transcripts in the stored document and strips them on the way back', () => {
+      const document = toDocument({ ...video(), transcriptText: 'spoken words' });
+      expect(document.transcriptText).toBe('spoken words');
+
+      const item = fromDocument(document);
+      expect(item).not.toHaveProperty('transcriptText');
+      expect(item.baseName).toBe('20240101_Video');
+    });
   });
 
   describe('createIndexVersion', () => {
@@ -505,7 +514,7 @@ describe('elasticsearchService', () => {
       expect(request.sort).toEqual([{ viewCount: { order: 'desc', missing: '_last' } }]);
       expect(request.from).toBe(0);
       expect(request.size).toBe(100);
-      expect(request._source).toEqual({ excludes: ['commentsText'] });
+      expect(request._source).toEqual({ excludes: ['commentsText', 'transcriptText'] });
 
       expect(results).toHaveLength(1);
       expect(at(results, 0)).not.toHaveProperty('commentsText');
@@ -518,6 +527,13 @@ describe('elasticsearchService', () => {
       const request = mockClient.search.mock.calls[0][0];
       expect(request.query).toEqual({ match_all: {} });
       expect(request.sort).toEqual([{ uploadDate: { order: 'desc', missing: '_last' } }]);
+    });
+
+    it('omits the sort for relevance, letting Elasticsearch order by score', async () => {
+      await searchVideos('q', 'relevance');
+
+      const request = mockClient.search.mock.calls[0][0];
+      expect(request.sort).toEqual([]);
     });
 
     it('fails loudly on hits without _source', async () => {

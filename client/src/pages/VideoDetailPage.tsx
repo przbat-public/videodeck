@@ -36,6 +36,9 @@ export default function VideoDetailPage(): JSX.Element {
     ? `?folder=${encodeURIComponent(state.details.folderPath)}`
     : '';
   const videoUrl = `/api/videos/file/${encodeURIComponent(state.details.videoPath)}${folderQuery}`;
+  const subtitleUrl = state.details.subtitlePath
+    ? `/api/videos/file/${encodeURIComponent(state.details.subtitlePath)}${folderQuery}`
+    : undefined;
 
   return (
     <div className="video-detail-page">
@@ -50,12 +53,9 @@ export default function VideoDetailPage(): JSX.Element {
           <div className="video-player-section">
             {/* Native HTML5 video: the files are plain mp4s and the server
                 supports Range requests — no react-player dependency needed */}
-            <video
-              src={videoUrl}
-              controls
-              className="video-player-full"
-              data-testid="video-player"
-            />
+            <video src={videoUrl} controls className="video-player-full" data-testid="video-player">
+              {subtitleUrl && <track kind="subtitles" src={subtitleUrl} srcLang="pl" default />}
+            </video>
           </div>
 
           <div className="video-detail-info">

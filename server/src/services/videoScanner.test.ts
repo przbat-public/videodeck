@@ -120,8 +120,12 @@ describe('videoScanner', () => {
     ];
 
     it('builds a full item from info.json and sidecar files', async () => {
-      mockedFs.readFile.mockResolvedValue(
-        JSON.stringify({
+      mockedFs.readFile.mockImplementation(async (filePath: unknown) => {
+        const path = String(filePath);
+        if (path.endsWith('.vtt')) {
+          return 'WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nHello transcript world';
+        }
+        return JSON.stringify({
           id: 'abcdefghijk',
           title: 'Test Video 1',
           description: 'Desc',
@@ -130,8 +134,8 @@ describe('videoScanner', () => {
           like_count: 50,
           channel: 'Test Channel',
           comments: [{ id: 'c1', text: 'hello' }],
-        })
-      );
+        });
+      });
 
       const result = await buildVideoItem(FOLDER, '20231201_TestVideo1', files);
 
@@ -150,10 +154,15 @@ describe('videoScanner', () => {
         viewCount: 1000,
         likeCount: 50,
         channelName: 'Test Channel',
+        transcriptText: 'Hello transcript world',
       });
       expect(result.video.comments).toHaveLength(1);
       expect(mockedFs.readFile).toHaveBeenCalledWith(
         `${FOLDER}/20231201_TestVideo1.info.json`,
+        'utf-8'
+      );
+      expect(mockedFs.readFile).toHaveBeenCalledWith(
+        `${FOLDER}/20231201_TestVideo1.en.vtt`,
         'utf-8'
       );
     });
