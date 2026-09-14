@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import CommentComponent from './CommentComponent';
 import type { CommentWithReplies } from '@shared/api';
 

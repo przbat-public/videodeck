@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { useParams, Link } from 'react-router-dom';
 
 import VideoSummary from '../components/VideoSummary';

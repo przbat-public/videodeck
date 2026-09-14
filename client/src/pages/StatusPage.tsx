@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
 import { useStatus } from '../hooks/useStatus';
 import { FolderSection } from '../components/FolderSection';

@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from 'react';
+import type { JSX } from 'react';
 import { useVideoSearch } from '../hooks/useVideoSearch';
 import { useCacheRefresh } from '../hooks/useCacheRefresh';
 import { useCategories } from '../hooks/useCategories';

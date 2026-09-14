@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { act, useState } from 'react';
-import userEvent from '@testing-library/user-event';
 import type { SearchState } from '../utils/searchUrlState';
 import { DEFAULT_SEARCH_STATE, SORT_OPTIONS } from '../utils/searchUrlState';
 import SearchBar from './SearchBar';
@@ -14,7 +13,13 @@ const sortSelect = () => screen.getByRole('combobox', { name: 'Sort' });
 const categorySelect = () => screen.getByRole('combobox', { name: 'Kategoria' });
 const clearButton = () => screen.getByRole('button', { name: 'Clear' });
 
-const setupUser = () => userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+// The debounce tests drive the input with fireEvent instead of userEvent:
+// userEvent's internal waits deadlock with fake timers (vitest 5 + React 19),
+// and a value change is all the component cares about anyway.
+const type = (value: string) => fireEvent.change(input(), { target: { value } });
+const clearInput = () => fireEvent.change(input(), { target: { value: '' } });
+const pick = (select: HTMLElement, value: string) =>
+  fireEvent.change(select, { target: { value } });
 
 const advance = async (ms: number) => {
   await act(async () => {
@@ -155,10 +160,9 @@ describe('SearchBar', () => {
     });
 
     it('commits a phrase of three or more characters once the typing pauses', async () => {
-      const user = setupUser();
       const { onChange } = renderBar({ sort: 'views-desc', category: 'fpv' });
 
-      await act(() => user.type(input(), 'abc'));
+      type('abc');
       await advance(299);
       expect(onChange).not.toHaveBeenCalled();
 
@@ -168,10 +172,9 @@ describe('SearchBar', () => {
     });
 
     it('never commits one or two characters', async () => {
-      const user = setupUser();
       const { onChange } = renderBar();
 
-      await act(() => user.type(input(), 'ab'));
+      type('ab');
       await flushTimers();
 
       expect(onChange).not.toHaveBeenCalled();
@@ -179,12 +182,11 @@ describe('SearchBar', () => {
     });
 
     it('restarts the pause with every keystroke and commits the final phrase only', async () => {
-      const user = setupUser();
       const { onChange } = renderBar();
 
-      await act(() => user.type(input(), 'abc'));
+      type('abc');
       await advance(200);
-      await act(() => user.type(input(), 'd'));
+      type('abcd');
       await advance(200);
       expect(onChange).not.toHaveBeenCalled();
 
@@ -194,30 +196,27 @@ describe('SearchBar', () => {
     });
 
     it('trims the phrase it commits', async () => {
-      const user = setupUser();
       const { onChange } = renderBar();
 
-      await act(() => user.type(input(), '  robot  '));
+      type('  robot  ');
       await flushTimers();
 
       expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SEARCH_STATE, query: 'robot' });
     });
 
     it('does not treat whitespace alone as a new search', async () => {
-      const user = setupUser();
       const { onChange } = renderBar();
 
-      await act(() => user.type(input(), '   '));
+      type('   ');
       await flushTimers();
 
       expect(onChange).not.toHaveBeenCalled();
     });
 
     it('commits the empty phrase when the text is deleted', async () => {
-      const user = setupUser();
       const { onChange } = renderWithParent({ query: 'robot', category: 'lego' });
 
-      await act(() => user.clear(input()));
+      clearInput();
       expect(onChange).not.toHaveBeenCalled();
 
       await advance(300);
@@ -226,10 +225,9 @@ describe('SearchBar', () => {
     });
 
     it('does not commit again when the parent echoes the phrase back', async () => {
-      const user = setupUser();
       const { onChange } = renderWithParent();
 
-      await act(() => user.type(input(), 'robot'));
+      type('robot');
       await flushTimers();
       await flushTimers();
 
@@ -237,10 +235,9 @@ describe('SearchBar', () => {
     });
 
     it('leaves a trailing space alone when its own commit comes back', async () => {
-      const user = setupUser();
       const { onChange } = renderWithParent();
 
-      await act(() => user.type(input(), 'robot '));
+      type('robot ');
       await flushTimers();
 
       expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SEARCH_STATE, query: 'robot' });
@@ -260,11 +257,10 @@ describe('SearchBar', () => {
     });
 
     it('replaces a half-typed phrase when the committed query changes underneath it', async () => {
-      const user = setupUser();
       const { onChange, update } = renderBar({ query: 'robot' });
 
-      await act(() => user.clear(input()));
-      await act(() => user.type(input(), 'ar'));
+      clearInput();
+      type('ar');
       expect(input()).toHaveValue('ar');
 
       update({ query: 'drone' });
@@ -285,11 +281,10 @@ describe('SearchBar', () => {
   });
 
   describe('selects and the clear button', () => {
-    it('commits a sort change at once, keeping the committed query', async () => {
-      const user = setupUser();
+    it('commits a sort change at once, keeping the committed query', () => {
       const { onChange } = renderBar({ query: 'robot', category: 'lego' });
 
-      await act(() => user.selectOptions(sortSelect(), 'views-desc'));
+      pick(sortSelect(), 'views-desc');
 
       expect(onChange).toHaveBeenCalledTimes(1);
       expect(onChange).toHaveBeenCalledWith({
@@ -299,18 +294,17 @@ describe('SearchBar', () => {
       });
     });
 
-    it('commits a category change at once and "Wszystkie kategorie" as an empty category', async () => {
-      const user = setupUser();
+    it('commits a category change at once and "Wszystkie kategorie" as an empty category', () => {
       const { onChange } = renderWithParent({ query: 'robot' });
 
-      await act(() => user.selectOptions(categorySelect(), 'psychology'));
+      pick(categorySelect(), 'psychology');
       expect(onChange).toHaveBeenLastCalledWith({
         query: 'robot',
         sort: 'date-desc',
         category: 'psychology',
       });
 
-      await act(() => user.selectOptions(categorySelect(), ''));
+      pick(categorySelect(), '');
       expect(onChange).toHaveBeenLastCalledWith({
         query: 'robot',
         sort: 'date-desc',
@@ -320,11 +314,10 @@ describe('SearchBar', () => {
     });
 
     it('takes a searchable phrase along with a sort change instead of waiting for the pause', async () => {
-      const user = setupUser();
       const { onChange } = renderWithParent();
 
-      await act(() => user.type(input(), 'lego'));
-      await act(() => user.selectOptions(sortSelect(), 'likes-desc'));
+      type('lego');
+      pick(sortSelect(), 'likes-desc');
 
       expect(onChange).toHaveBeenCalledTimes(1);
       expect(onChange).toHaveBeenCalledWith({ query: 'lego', sort: 'likes-desc', category: '' });
@@ -334,12 +327,11 @@ describe('SearchBar', () => {
     });
 
     it('keeps the committed query when the phrase is still too short to search', async () => {
-      const user = setupUser();
       const { onChange } = renderWithParent({ query: 'robot' });
 
-      await act(() => user.clear(input()));
-      await act(() => user.type(input(), 'ro'));
-      await act(() => user.selectOptions(categorySelect(), 'fpv'));
+      clearInput();
+      type('ro');
+      pick(categorySelect(), 'fpv');
 
       expect(onChange).toHaveBeenCalledTimes(1);
       expect(onChange).toHaveBeenCalledWith({ query: 'robot', sort: 'date-desc', category: 'fpv' });
@@ -350,10 +342,9 @@ describe('SearchBar', () => {
     });
 
     it('Clear empties the input and commits the empty phrase at once, exactly once', async () => {
-      const user = setupUser();
       const { onChange } = renderWithParent({ query: 'robot', sort: 'views-asc', category: 'fpv' });
 
-      await act(() => user.click(clearButton()));
+      fireEvent.click(clearButton());
 
       expect(input()).toHaveValue('');
       expect(onChange).toHaveBeenCalledWith({ query: '', sort: 'views-asc', category: 'fpv' });
@@ -363,12 +354,10 @@ describe('SearchBar', () => {
       expect(onChange).toHaveBeenCalledTimes(1);
     });
 
-    it('shows Clear for text that has not been committed yet', async () => {
-      const user = setupUser();
+    it('shows Clear for text that has not been committed yet', () => {
       renderBar();
 
-      await act(() => user.type(input(), 'a'));
-
+      type('a');
       expect(clearButton()).toBeInTheDocument();
     });
   });

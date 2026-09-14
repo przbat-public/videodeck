@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { JSX } from 'react';
 import type { CommentWithReplies } from '@shared/api';
 
 const MAX_COMMENT_LENGTH = 250;

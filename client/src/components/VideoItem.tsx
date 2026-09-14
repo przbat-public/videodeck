@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef } from 'react';
+import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
 import type { ChannelVideo, JobType, QueueJob } from '@shared/api';
 

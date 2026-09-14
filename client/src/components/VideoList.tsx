@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import type { VideoListItem } from '@shared/api';
 import VideoCard from './VideoCard';
 

@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { useVideoSummary } from '../hooks/useVideoSummary';
 
 interface VideoSummaryProps {

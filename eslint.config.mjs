@@ -84,9 +84,9 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
-    // The project is on React 18; without an explicit version the plugin
-    // assumes 19 and flags patterns that are still required here (forwardRef).
-    settings: { 'react-x': { version: '18.2.0' } },
+    // Tell the plugin which React version the code targets; React 19 ref-as-
+    // prop means forwardRef is gone from the codebase.
+    settings: { 'react-x': { version: '19.0.0' } },
     // react-hooks 7 still ships its presets in eslintrc shape, so the plugin is
     // registered by hand. Its `recommended-latest` adds the whole React
     // Compiler rule set — enable that as a separate, deliberate change.
