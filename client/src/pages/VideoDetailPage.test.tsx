@@ -169,6 +169,25 @@ describe('VideoDetailPage', () => {
     expect(await screen.findByText('Hedgehogs are nocturnal.')).toBeInTheDocument();
   });
 
+  it('offers to page through the comments when more are known', async () => {
+    installFetch({
+      details: () =>
+        json({
+          details: {
+            ...details,
+            comments: [{ id: 'c1', text: 'First' }],
+            commentCount: 3,
+          },
+        }),
+    });
+    renderPage();
+
+    expect(await screen.findByText('Komentarze (3)')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/3)' })
+    ).toBeInTheDocument();
+  });
+
   it('shows an error with a way back when the request fails', async () => {
     installFetch({ details: () => json({ error: 'nope' }, 500) });
     renderPage();

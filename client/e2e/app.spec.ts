@@ -92,8 +92,8 @@ test.describe('szczegóły filmu', () => {
           viewCount: 1234,
           likeCount: 0,
           channelName: 'Kanał E2E',
-          comments: [],
-          commentCount: 0,
+          comments: [{ id: 'e2e-c1', text: 'Komentarz pierwszy' }],
+          commentCount: 2,
           videoPath: 'v1.mp4',
           thumbnailPath: 'v1.webp',
           subtitlePath: 'v1.en.vtt',
@@ -128,6 +128,13 @@ test.describe('szczegóły filmu', () => {
       `/api/videos/file/v1.en.vtt?folder=${encodeURIComponent('/videos/e2e')}`
     );
     await expect(detailPage.getByText('Streszczenie E2E')).toBeVisible();
+
+    // the first page of comments comes with details; more are paged in
+    await expect(detailPage.getByText('Komentarz pierwszy')).toBeVisible();
+    await detailPage
+      .getByRole('button', { name: 'Pokaż więcej komentarzy (1/2)' })
+      .click();
+    await expect(detailPage.getByText('Komentarz drugi')).toBeVisible();
 
     await detailPage.getByRole('link', { name: '← Wróć do wyszukiwania' }).click();
     await expect(detailPage).toHaveURL(/\/videos/);

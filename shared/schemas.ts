@@ -135,6 +135,13 @@ export const VideoDetailsResponseSchema = z.object({
   details: VideoDetailsSchema,
 });
 
+/** GET /api/videos/:identifier/comments — one page of the comment tree */
+export const CommentsResponseSchema = z.object({
+  comments: z.array(CommentWithRepliesSchema),
+  totalCount: z.number(),
+  offset: z.number(),
+});
+
 export const VideoSummaryResponseSchema = z.object({
   summary: z.string(),
   truncated: z.literal(true).optional(),
@@ -287,6 +294,7 @@ export type SubtitleTrack = z.infer<typeof SubtitleTrackSchema>;
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 export type CategoriesResponse = z.infer<typeof CategoriesResponseSchema>;
 export type VideoDetailsResponse = z.infer<typeof VideoDetailsResponseSchema>;
+export type CommentsResponse = z.infer<typeof CommentsResponseSchema>;
 export type VideoSummaryResponse = z.infer<typeof VideoSummaryResponseSchema>;
 export type ReindexStatus = z.infer<typeof ReindexStatusSchema>;
 export type DownloadOptions = z.infer<typeof DownloadOptionsSchema>;

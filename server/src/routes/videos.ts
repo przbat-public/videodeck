@@ -5,6 +5,7 @@ import type {
   AcceptedResponse,
   CategoriesResponse,
   ChannelsResponse,
+  CommentsResponse,
   ReindexConflictResponse,
   ReindexStatus,
   SearchResponse,
@@ -23,7 +24,6 @@ import {
   refreshVideosCache,
 } from '../services/videoScanner';
 import { getVideoFilePath, normalizeFolderPath } from '../utils/videoPathUtils';
-import { buildCommentTree } from '../utils/commentTreeUtils';
 import { stripUndefined } from '../utils/objectUtils';
 import {
   getVideoByBaseName,
@@ -37,6 +37,7 @@ import {
 import type { SearchOptions } from '../services/elasticsearchService';
 import { getFolderPathsForCategory, listCategories } from '../services/folderConfig';
 import { generateSummary } from '../services/summaryService';
+import { loadCommentTree } from '../services/commentStore';
 import { getVideosFolderPaths } from '../config';
 import { readString } from './http';
 import type { NoParams, RouteHandler } from './http';
@@ -171,6 +172,9 @@ function parseDateFilter(value: string | undefined): string | undefined {
   const digits = (value ?? '').replace(/\D/g, '');
   return digits.length === 8 ? digits : undefined;
 }
+
+/** Top-level comments per page (details response and /comments endpoint) */
+export const COMMENTS_PAGE_SIZE = 50;
 
 // GET /api/videos/categories
 const getCategories: RouteHandler<NoParams, CategoriesResponse> = async (_req, res) => {
@@ -321,7 +325,12 @@ const getDetails: RouteHandler<{ identifier: string }, VideoDetailsResponse> = a
     throw parseError;
   }
 
-  const comments = buildCommentTree(infoJson.comments || []);
+  const commentsTree = await loadCommentTree(video.folderPath, video.baseName);
+  // The details response carries only the first page; the rest comes from
+  // GET /:identifier/comments — huge info.json files are parsed once and
+  // cached by mtime (services/commentStore).
+  const comments = commentsTree === null ? [] : commentsTree.slice(0, COMMENTS_PAGE_SIZE);
+  const commentCount = commentsTree?.length ?? 0;
 
   // Every subtitle file the folder actually holds for this video, so the
   // player can offer each language instead of one hardcoded track.
@@ -355,7 +364,7 @@ const getDetails: RouteHandler<{ identifier: string }, VideoDetailsResponse> = a
     likeCount: infoJson.like_count || 0,
     channelName: infoJson.channel || infoJson.uploader || '',
     comments,
-    commentCount: infoJson.comment_count || comments.length,
+    commentCount,
     videoPath: video.videoPath,
     thumbnailPath: video.thumbnailPath,
     subtitlePath: video.subtitlePath,
@@ -364,6 +373,31 @@ const getDetails: RouteHandler<{ identifier: string }, VideoDetailsResponse> = a
   });
 
   res.json({ details });
+};
+
+// GET /api/videos/:identifier/comments?offset=&limit= - one page of the
+// comment tree; the same mtime-keyed cache as the details endpoint serves it
+const getComments: RouteHandler<{ identifier: string }, CommentsResponse> = async (req, res) => {
+  const video = await findVideo(req.params.identifier);
+
+  if (!video) {
+    res.status(404).json({ error: 'Video not found' });
+    return;
+  }
+
+  const tree = await loadCommentTree(video.folderPath, video.baseName);
+  if (tree === null) {
+    res.json({ comments: [], totalCount: 0, offset: 0 });
+    return;
+  }
+
+  const offset = parseNonNegativeInt(readString(req.query.offset), 0);
+  const limit = Math.min(
+    500,
+    Math.max(1, parseNonNegativeInt(readString(req.query.limit), COMMENTS_PAGE_SIZE))
+  );
+
+  res.json({ comments: tree.slice(offset, offset + limit), totalCount: tree.length, offset });
 };
 
 // ---------------------------------------------------------------------------
@@ -380,6 +414,7 @@ router.get('/categories', getCategories);
 router.get('/channels', getChannelNames);
 router.get('/file/:filename', serveFile);
 router.get('/:identifier/summary', getSummary);
+router.get('/:identifier/comments', getComments);
 router.get('/:identifier/details', getDetails);
 
 export default router;

@@ -18,6 +18,7 @@ export type {
   CategoriesResponse,
   ChannelVideo,
   ChannelsResponse,
+  CommentsResponse,
   ClearFinishedResponse,
   CommentWithReplies,
   DownloadOptions,

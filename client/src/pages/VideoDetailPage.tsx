@@ -107,6 +107,8 @@ export default function VideoDetailPage(): JSX.Element {
         </div>
 
         <VideoComments
+          key={`${videoId}-${state.details?.subtitlePath}`}
+          videoId={videoId ?? ''}
           comments={state.details.comments || []}
           commentCount={state.details.commentCount}
         />

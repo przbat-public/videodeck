@@ -85,6 +85,15 @@ export async function mockApi(
   await context.route('**/api/videos/**/summary', (route) =>
     route.fulfill(json({ summary: 'Streszczenie E2E' }))
   );
+  await context.route('**/api/videos/**/comments**', (route) =>
+    route.fulfill(
+      json({
+        comments: [{ id: 'e2e-c2', text: 'Komentarz drugi' }],
+        totalCount: 2,
+        offset: 1,
+      })
+    )
+  );
   await context.route('**/api/status', (route) =>
     route.fulfill(
       json(
