@@ -25,7 +25,7 @@ import type {
   VideoDownloadedResponse,
 } from '@shared/api';
 import { getVideosFolderPaths } from '../config';
-import { findEntryByVideoId, getDownloadStatuses, rebuildIndex } from '../services/folderIndex';
+import { findEntryByVideoId, getDownloadStatuses, loadIndex, rebuildIndex } from '../services/folderIndex';
 import { downloadQueue } from '../services/downloadQueue';
 import type { EnqueueRequest } from '../services/downloadQueue';
 import {
@@ -385,6 +385,11 @@ const enqueueJobs: RouteHandler<NoParams, EnqueueJobsResponse> = async (req, res
   await fs.mkdir(folderPath, { recursive: true });
   const options = await loadDownloadOptions(folderPath);
 
+  // Update jobs check every video against the folder index — loading it once
+  // here instead of per video turns O(n) file reads into one plus in-memory
+  // lookups (channels have thousands of videos).
+  const folderIndex = type === 'update' ? await loadIndex(folderPath) : null;
+
   const requests: EnqueueRequest[] = [];
   const skipped: SkippedVideo[] = [];
   for (const video of videos) {
@@ -398,7 +403,7 @@ const enqueueJobs: RouteHandler<NoParams, EnqueueJobsResponse> = async (req, res
     const url = videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
     const title = readString(video.title);
     if (type === 'update') {
-      const entry = await findEntryByVideoId(folderPath, videoId);
+      const entry = folderIndex?.entries[videoId];
       if (!entry) {
         skipped.push({ videoId, reason: 'not downloaded' });
         continue;

@@ -8,7 +8,7 @@ import folderRouter, { extractYoutubeVideoId } from './folder';
 import { errorHandler } from '../app';
 import { createApp as createRealApp } from '../app';
 import { getVideosFolderPaths } from '../config';
-import { findEntryByVideoId, getDownloadStatuses, rebuildIndex } from '../services/folderIndex';
+import { findEntryByVideoId, getDownloadStatuses, loadIndex, rebuildIndex } from '../services/folderIndex';
 import { downloadQueue } from '../services/downloadQueue';
 import type { SpawnedProcess } from '../services/downloadQueue';
 import {
@@ -86,6 +86,7 @@ const mockedGetVideosFolderPaths = getVideosFolderPaths as jest.MockedFunction<
   typeof getVideosFolderPaths
 >;
 const mockedFindEntry = findEntryByVideoId as jest.MockedFunction<typeof findEntryByVideoId>;
+const mockedLoadIndex = loadIndex as jest.MockedFunction<typeof loadIndex>;
 const mockedGetDownloadStatuses = getDownloadStatuses as jest.MockedFunction<
   typeof getDownloadStatuses
 >;
@@ -553,11 +554,11 @@ describe('folder router', () => {
     });
 
     it('enqueues update jobs pinned to the existing stem and skips non-downloaded videos', async () => {
-      mockedFindEntry.mockImplementation(async (_folder, videoId) =>
-        videoId === 'v1'
-          ? { baseName: '20240101_Old_Name', videoFile: 'x.mp4', infoMtime: 'm' }
-          : null
-      );
+      mockedLoadIndex.mockResolvedValue({
+        version: 1,
+        builtAt: 'now',
+        entries: { v1: { baseName: '20240101_Old_Name', videoFile: 'x.mp4', infoMtime: 'm' } },
+      });
 
       const response = await request(app)
         .post('/api/folder/queue')

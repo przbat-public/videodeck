@@ -5,6 +5,7 @@ import { getVideosFolderPaths } from '../config';
 import type { VideoInfoJson } from '../types';
 import { stripUndefined } from '../utils/objectUtils';
 import { listVisibleFiles } from '../utils/fsUtils';
+import { runPool } from '../utils/runPool';
 import { logger } from '../utils/logger';
 import {
   bulkIndexDocuments,
@@ -27,6 +28,9 @@ export const REINDEX_BATCH_SIZE = 50;
  * `http.max_content_length` (100 MB) with an empty 413.
  */
 export const REINDEX_BATCH_BYTES = 16 * 1024 * 1024;
+
+/** How many info.json files are read/parsed at once during a folder scan */
+export const REINDEX_CONCURRENCY = 4;
 
 // ---------------------------------------------------------------------------
 // Reindex status (single process-wide job; shape: ReindexStatus in shared/api.ts)
@@ -180,17 +184,32 @@ async function scanFolder(folderPath: string): Promise<void> {
   try {
     // Only flattened documents are kept between flushes: the parsed comment
     // arrays (the bulk of a big info.json) become garbage right away.
+    //
+    // flush() grabs the pending batch synchronously (in the same turn as the
+    // push that crossed the limit) and only the actual ES writes are
+    // serialized — so every request carries exactly the batch seen at the
+    // trigger, nothing is sent twice and nothing is lost.
     let batch: VideoDocument[] = [];
     let batchBytes = 0;
-    const flush = async () => {
-      if (batch.length === 0) return;
-      await bulkIndexDocuments(indexName, batch, false);
-      reindexStatus.indexed += batch.length;
+    let flushing: Promise<void> = Promise.resolve();
+    const flush = (): Promise<void> => {
+      const toSend = batch;
       batch = [];
       batchBytes = 0;
+      if (toSend.length === 0) {
+        return flushing;
+      }
+      const run = flushing.then(async () => {
+        await bulkIndexDocuments(indexName, toSend, false);
+        reindexStatus.indexed += toSend.length;
+      });
+      flushing = run;
+      return run;
     };
 
-    for (const baseName of baseNames) {
+    // Reading info.json files (up to tens of MB each) is I/O-bound, so the
+    // folder is scanned by a small pool instead of one file at a time.
+    await runPool(baseNames, REINDEX_CONCURRENCY, async (baseName) => {
       const result = await buildVideoItem(folderPath, baseName, visibleFiles);
       if (result.status === 'ok') {
         const document = toDocument(result.video);
@@ -204,7 +223,7 @@ async function scanFolder(folderPath: string): Promise<void> {
         logger.error(`Skipping ${result.reason}`);
       }
       reindexStatus.filesDone += 1;
-    }
+    });
     await flush();
 
     await promoteIndexVersion(folderPath, indexName);

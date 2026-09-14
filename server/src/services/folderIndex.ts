@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../utils/logger';
+import { runPool } from '../utils/runPool';
 import { listVisibleFiles as sharedListVisibleFiles } from '../utils/fsUtils';
 
 /**
@@ -20,6 +21,8 @@ export const ARCHIVE_FILE = 'archive.txt';
 const INFO_SUFFIX = '.info.json';
 const VIDEO_EXTENSIONS = ['.mp4', '.mkv'];
 const ID_HEAD_BYTES = 8 * 1024;
+/** How many info.json files are inspected at once when (re)building the index */
+const INDEX_REBUILD_CONCURRENCY = 8;
 
 export interface FolderIndexEntry {
   /** File stem shared by the video and all its sidecar files */
@@ -191,27 +194,27 @@ export async function rebuildIndex(folderPath: string): Promise<FolderIndex> {
   const files = await listVisibleFiles(folderPath);
   const entries: Record<string, FolderIndexEntry> = {};
 
-  for (const file of files) {
-    if (!file.endsWith(INFO_SUFFIX)) {
-      continue;
-    }
+  const infoFiles = [...files].filter((file) => file.endsWith(INFO_SUFFIX));
+  // Reading the id head and stat of every info.json is I/O-bound; a small
+  // pool finishes the folder scan several times faster than one by one.
+  await runPool(infoFiles, INDEX_REBUILD_CONCURRENCY, async (file) => {
     const baseName = file.slice(0, -INFO_SUFFIX.length);
     const videoFile = findVideoFile(baseName, files);
     if (!videoFile) {
-      continue;
+      return;
     }
     const infoPath = path.join(folderPath, file);
     try {
       const id = await readVideoId(infoPath);
       if (!id) {
-        continue;
+        return;
       }
       const stats = await fs.stat(infoPath);
       entries[id] = { baseName, videoFile, infoMtime: stats.mtime.toISOString() };
     } catch (error) {
       logger.error(`folderIndex: skipping ${infoPath}:`, error);
     }
-  }
+  });
 
   const index: FolderIndex = { version: 1, builtAt: new Date().toISOString(), entries };
   await saveIndex(folderPath, index);
