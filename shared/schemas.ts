@@ -127,6 +127,11 @@ export const SearchResponseSchema = z.object({
   totalCount: z.number(),
 });
 
+/** Default page size of the search endpoint (client and server share it) */
+export const SEARCH_DEFAULT_PAGE_SIZE = 100;
+/** Top-level comments per page (details response and /comments endpoint) */
+export const COMMENTS_PAGE_SIZE = 50;
+
 export const CategoriesResponseSchema = z.object({
   categories: z.array(z.string()),
 });

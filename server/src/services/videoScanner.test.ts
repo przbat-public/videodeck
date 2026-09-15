@@ -89,23 +89,24 @@ describe('videoScanner', () => {
           comments: [],
         },
       ];
-      mockedEs.searchVideos.mockResolvedValue(mockVideos);
+      mockedEs.searchVideosWithTotal.mockResolvedValue({ videos: mockVideos, total: 1 });
 
       const result = await getVideos('');
-      expect(result.length).toBe(1);
-      expect(at(result, 0).title).toBe('Test Video 1');
-      expect(at(result, 0).folderPath).toBe(FOLDER);
-      expect(mockedEs.searchVideos).toHaveBeenCalledWith('', 'date-desc', undefined, undefined);
+      expect(result.videos.length).toBe(1);
+      expect(at(result.videos, 0).title).toBe('Test Video 1');
+      expect(at(result.videos, 0).folderPath).toBe(FOLDER);
+      expect(result.total).toBe(1);
+      expect(mockedEs.searchVideosWithTotal).toHaveBeenCalledWith('', 'date-desc', undefined, undefined);
     });
 
     it('should pass query and sort option through', async () => {
       mockedEs.searchVideos.mockResolvedValue([]);
 
       await getVideos('test', 'views-desc');
-      expect(mockedEs.searchVideos).toHaveBeenCalledWith('test', 'views-desc', undefined, undefined);
+      expect(mockedEs.searchVideosWithTotal).toHaveBeenCalledWith('test', 'views-desc', undefined, undefined);
 
       await getVideos('test', 'views-desc', ['/videos/a'], { offset: 10, limit: 20 });
-      expect(mockedEs.searchVideos).toHaveBeenLastCalledWith('test', 'views-desc', ['/videos/a'], {
+      expect(mockedEs.searchVideosWithTotal).toHaveBeenLastCalledWith('test', 'views-desc', ['/videos/a'], {
         offset: 10,
         limit: 20,
       });

@@ -1,5 +1,5 @@
 import type { CommentWithReplies } from '@shared/api';
-import { CommentsResponseSchema } from '@shared/schemas';
+import { COMMENTS_PAGE_SIZE, CommentsResponseSchema } from '@shared/schemas';
 import type { JSX } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,8 +14,6 @@ interface VideoCommentsProps {
   /** Total top-level comments known to the server */
   commentCount?: number;
 }
-
-const COMMENTS_PAGE_SIZE = 50;
 
 export default function VideoComments({ videoId, comments, commentCount }: VideoCommentsProps): JSX.Element | null {
   const { t } = useTranslation();

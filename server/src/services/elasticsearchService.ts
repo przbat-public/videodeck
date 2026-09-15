@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { estypes } from '@elastic/elasticsearch';
 import { Client } from '@elastic/elasticsearch';
 import type { SortOption, VideoListItem } from '@shared/api';
+import { SEARCH_DEFAULT_PAGE_SIZE } from '@shared/schemas';
 import { ELASTICSEARCH_URL, getVideosFolderPaths } from '../config';
 import { logger } from '../utils/logger';
 import { runPool } from '../utils/runPool';
@@ -611,8 +612,8 @@ function buildSortOptions(sortOption: SortOption): estypes.SortCombinations[] {
 
 export const SEARCH_FIELDS = ['baseName.text^4', 'title^3', 'description^2', 'transcriptText^2', 'commentsText'];
 
-/** How many results one page holds by default */
-export const SEARCH_DEFAULT_LIMIT = 100;
+/** How many results one page holds by default (shared with the client) */
+export const SEARCH_DEFAULT_LIMIT = SEARCH_DEFAULT_PAGE_SIZE;
 /** Upper bound for ?limit= — keeps response payloads bounded */
 export const SEARCH_MAX_LIMIT = 500;
 
@@ -643,14 +644,14 @@ function normalizePaging(options: SearchOptions): { from: number; size: number }
  * search to those folders' indices (used by the category filter); an empty
  * array means "no folder qualifies" and yields no results.
  */
-export async function searchVideos(
+export async function searchVideosWithTotal(
   query?: string,
   sortOption: SortOption = 'date-desc',
   folderPaths?: string[],
   options: SearchOptions = {},
-): Promise<VideoListItem[]> {
+): Promise<{ videos: VideoListItem[]; total: number }> {
   if (folderPaths?.length === 0) {
-    return [];
+    return { videos: [], total: 0 };
   }
   const esClient = getElasticsearchClient();
   const { from, size } = normalizePaging(options);
@@ -691,6 +692,7 @@ export async function searchVideos(
     sort: buildSortOptions(sortOption),
     from,
     size,
+    track_total_hits: true,
     _source: {
       excludes: [...SEARCH_ONLY_SOURCE_FIELDS],
     },
@@ -712,7 +714,7 @@ export async function searchVideos(
       : {}),
   });
 
-  return response.hits.hits.map((hit) => {
+  const videos = response.hits.hits.map((hit) => {
     if (!hit._source) {
       throw new Error(`Video document ${hit._id} has no _source field`);
     }
@@ -720,6 +722,22 @@ export async function searchVideos(
     const highlights = buildHighlights(hit.highlight);
     return highlights ? { ...video, highlights } : video;
   });
+
+  // The total belongs to the SAME query+filters: a match_all count used to
+  // be fetched separately and broke pagination/counters for filtered search.
+  const total =
+    typeof response.hits.total === 'number' ? response.hits.total : (response.hits.total?.value ?? videos.length);
+  return { videos, total };
+}
+
+/** Videos-only variant of the search (total dropped) */
+export async function searchVideos(
+  query?: string,
+  sortOption: SortOption = 'date-desc',
+  folderPaths?: string[],
+  options: SearchOptions = {},
+): Promise<VideoListItem[]> {
+  return (await searchVideosWithTotal(query, sortOption, folderPaths, options)).videos;
 }
 
 /**
@@ -806,24 +824,6 @@ export async function getVideoByFilePath(fileName: string): Promise<VideoListIte
 export async function refreshIndex(folderPath: string): Promise<void> {
   const esClient = getElasticsearchClient();
   await esClient.indices.refresh({ index: getIndexNameFromFolderPath(folderPath) });
-}
-
-/** Documents indexed for the given folders, or for all of them */
-export async function getTotalVideoCount(folderPaths?: string[]): Promise<number> {
-  if (folderPaths?.length === 0) {
-    return 0;
-  }
-  const esClient = getElasticsearchClient();
-
-  const response = await esClient.count({
-    index: getIndexPattern(folderPaths),
-    ignore_unavailable: true,
-    query: {
-      match_all: {},
-    },
-  });
-
-  return response.count;
 }
 
 export async function checkElasticsearchConnection(): Promise<boolean> {

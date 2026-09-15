@@ -4,7 +4,6 @@ import {
   buildIndexVersionName,
   bulkIndexDocuments,
   bulkIndexVideos,
-  checkElasticsearchConnection,
   createIndex,
   createIndexVersion,
   deleteIndex,
@@ -13,7 +12,6 @@ import {
   fromDocument,
   getIndexNameFromFolderPath,
   getIndexVersions,
-  getTotalVideoCount,
   getVideoByBaseName,
   getVideoByFilePath,
   getVideoByVideoId,
@@ -24,6 +22,7 @@ import {
   recreateIndex,
   SEARCH_FIELDS,
   searchVideos,
+  searchVideosWithTotal,
   toDocument,
 } from './elasticsearchService';
 
@@ -558,6 +557,21 @@ describe('elasticsearchService', () => {
       expect(at(results, 0).comments).toEqual([]);
     });
 
+    it('returns the query-aware total from hits.total (track_total_hits)', async () => {
+      mockClient.search.mockResolvedValue({
+        hits: {
+          total: { value: 3, relation: 'eq' },
+          hits: [hit(toDocument(video()), 'a'), hit(toDocument(video()), 'b'), hit(toDocument(video()), 'c')],
+        },
+      });
+
+      const result = await searchVideosWithTotal('robot arm');
+
+      expect(result.total).toBe(3);
+      expect(result.videos).toHaveLength(3);
+      expect(mockClient.search.mock.calls[0][0].track_total_hits).toBe(true);
+    });
+
     it('uses match_all for blank queries and sorts by date by default', async () => {
       await searchVideos('   ');
 
@@ -724,37 +738,6 @@ describe('elasticsearchService', () => {
           minimum_should_match: 1,
         },
       });
-    });
-  });
-
-  describe('misc', () => {
-    it('getTotalVideoCount counts across aliases', async () => {
-      mockClient.count.mockResolvedValue({ count: 42 });
-
-      expect(await getTotalVideoCount()).toBe(42);
-      expect(mockClient.count).toHaveBeenCalledWith({
-        index: [ALIAS_A, ALIAS_B],
-        ignore_unavailable: true,
-        query: { match_all: {} },
-      });
-    });
-
-    it('getTotalVideoCount counts only the given folders, and nothing for none', async () => {
-      mockClient.count.mockResolvedValue({ count: 7 });
-
-      expect(await getTotalVideoCount([FOLDER_A])).toBe(7);
-      expect(mockClient.count.mock.calls[0][0].index).toEqual([ALIAS_A]);
-
-      expect(await getTotalVideoCount([])).toBe(0);
-      expect(mockClient.count).toHaveBeenCalledTimes(1);
-    });
-
-    it('checkElasticsearchConnection reflects ping', async () => {
-      mockClient.ping.mockResolvedValue(true);
-      expect(await checkElasticsearchConnection()).toBe(true);
-
-      mockClient.ping.mockRejectedValue(new Error('down'));
-      expect(await checkElasticsearchConnection()).toBe(false);
     });
   });
 });

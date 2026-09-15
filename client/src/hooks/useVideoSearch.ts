@@ -1,5 +1,5 @@
 import type { VideoListItem } from '@shared/api';
-import { SearchResponseSchema } from '@shared/schemas';
+import { SEARCH_DEFAULT_PAGE_SIZE, SearchResponseSchema } from '@shared/schemas';
 import type { Dispatch } from 'react';
 import { useCallback, useReducer, useRef } from 'react';
 import toast from 'react-hot-toast';
@@ -13,7 +13,7 @@ import {
 import type { SearchState } from '../utils/searchUrlState';
 
 /** How many videos one request pulls; matches the server's default page size */
-const PAGE_SIZE = 100;
+const PAGE_SIZE = SEARCH_DEFAULT_PAGE_SIZE;
 
 /** Transforms the search state into the query params the server understands */
 function buildSearchParams(searchState: SearchState, offset: number): URLSearchParams {

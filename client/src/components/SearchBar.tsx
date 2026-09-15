@@ -32,8 +32,13 @@ const isSearchable = (trimmed: string): boolean => trimmed.length === 0 || trimm
 const toDisplayDate = (digits: string): string =>
   digits.length === 8 ? `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}` : '';
 const toDateDigits = (value: string): string => {
-  const digits = value.replace(/\D/g, '');
-  return digits.length === 8 ? digits : '';
+  const match = /^(\d{4})(\d{2})(\d{2})$/.exec(value.replace(/\D/g, ''));
+  if (!match) {
+    return '';
+  }
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31 ? match[0] : '';
 };
 
 export default function SearchBar({

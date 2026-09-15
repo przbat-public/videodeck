@@ -73,8 +73,13 @@ export function parseSearchState(params: URLSearchParams): SearchState {
 
 /** `2024-01-05` → `20240105`; anything malformed is ignored */
 function toDateDigits(value: string | null): string {
-  const digits = (value ?? '').replace(/\D/g, '');
-  return digits.length === 8 ? digits : '';
+  const match = /^(\d{4})(\d{2})(\d{2})$/.exec((value ?? '').replace(/\D/g, ''));
+  if (!match) {
+    return '';
+  }
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31 ? match[0] : '';
 }
 
 /**

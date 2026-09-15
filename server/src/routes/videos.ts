@@ -16,13 +16,13 @@ import type {
   VideoListItem,
   VideoSummaryResponse,
 } from '@shared/api';
+import { COMMENTS_PAGE_SIZE } from '@shared/schemas';
 import type { Response } from 'express';
 import express from 'express';
 import { getVideosFolderPaths } from '../config';
 import { loadCommentTree } from '../services/commentStore';
 import type { SearchOptions } from '../services/elasticsearchService';
 import {
-  getTotalVideoCount,
   getVideoByBaseName,
   getVideoByFilePath,
   getVideoByVideoId,
@@ -107,7 +107,20 @@ function firstTruthy<T>(...values: Array<T | undefined | null>): T | undefined {
 
 /** Human-readable duration: `duration_string` wins, numeric `duration` is the fallback */
 function durationString(info: VideoInfoJson): string {
-  return info.duration_string || (info.duration ? String(info.duration) : '');
+  if (info.duration_string) {
+    return info.duration_string;
+  }
+  if (!info.duration) {
+    return '';
+  }
+  // yt-dlp `duration` is whole seconds — format it instead of showing "630"
+  const totalSeconds = Math.floor(info.duration);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const mm = String(minutes).padStart(2, '0');
+  const ss = String(seconds).padStart(2, '0');
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${minutes}:${ss}`;
 }
 
 /** Content type and cache headers for a served file extension */
@@ -213,7 +226,7 @@ const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictRes
   });
 
   // Return immediately
-  res.status(200).json({
+  res.status(202).json({
     message: 'Cache refresh process started',
     status: 'ok',
   });
@@ -229,7 +242,7 @@ const recreateIndices: RouteHandler<NoParams, AcceptedResponse> = (_req, res) =>
   });
 
   // Return immediately
-  res.status(200).json({
+  res.status(202).json({
     message: 'Indices recreation process started',
     status: 'ok',
   });
@@ -251,20 +264,25 @@ const search: RouteHandler<NoParams, SearchResponse> = async (req, res) => {
   const folderPaths = category ? await getFolderPathsForCategory(category) : undefined;
 
   const options = stripUndefined<SearchOptions>({ offset, limit, channel, dateFrom, dateTo });
-  const videos = await getVideos(query, sort, folderPaths, options);
-  const totalCount = await getTotalVideoCount(folderPaths);
+  const { videos, total: totalCount } = await getVideos(query, sort, folderPaths, options);
 
   res.json({ videos, totalCount });
 };
 
-/** yyyyMMdd from a user-entered date; anything malformed is ignored */
+/** yyyyMMdd from a user-entered date; impossible dates are ignored */
 function parseDateFilter(value: string | undefined): string | undefined {
-  const digits = (value ?? '').replace(/\D/g, '');
-  return digits.length === 8 ? digits : undefined;
+  const match = /^(\d{4})(\d{2})(\d{2})$/.exec((value ?? '').replace(/\D/g, ''));
+  if (!match) {
+    return undefined;
+  }
+  const [, year, month, day] = match;
+  const monthNum = Number(month);
+  const dayNum = Number(day);
+  if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+    return undefined;
+  }
+  return `${year}${month}${day}`;
 }
-
-/** Top-level comments per page (details response and /comments endpoint) */
-export const COMMENTS_PAGE_SIZE = 50;
 
 // GET /api/videos/categories
 const getCategories: RouteHandler<NoParams, CategoriesResponse> = async (_req, res) => {
