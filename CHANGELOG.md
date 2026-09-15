@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the runtime architecture from typed JSON in `docs/architecture/`, and
   `pnpm run test:scripts` validates every diagram and goldens the committed
   HTML so the map cannot drift from its source
+- **Archify diagrams, part two**: queue lifecycle, SSE download stream and
+  CI/release workflow maps join `docs/architecture/`, and the review persona
+  plus the PR template now ask for an architecture delta receipt when
+  package boundaries change
 
 ### Fixed
 

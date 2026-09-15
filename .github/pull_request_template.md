@@ -9,6 +9,7 @@
 - [ ] UI text goes through i18n catalogs (pl + en, key parity enforced by `locales.test.ts`); no hardcoded Polish in `client/src` or `chrome-extension/src` (`npm run lint` enforces this)
 - [ ] API changes are reflected in `shared/schemas.ts`
 - [ ] `CHANGELOG.md` has an entry under _Unreleased_ when the change is user-visible
+- [ ] Architecture delta receipt in the PR when package boundaries or services changed (see the archify skill)
 - [ ] Commit messages and PR text are in English (see `CONTRIBUTING.md`)
 - [ ] No secrets or personal data (`.env`, API keys, local paths) in the diff
 
