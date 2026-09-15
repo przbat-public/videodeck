@@ -6,9 +6,8 @@ The extension source is TypeScript in `src/`. Chrome loads the generated
 `*.js` files, so before the first install (and after every code change):
 
 ```bash
-cd chrome-extension
-npm install
-npm run build
+pnpm install            # from the repo root (the whole workspace)
+pnpm run build:extension
 ```
 
 ## Step 1: Icons (optional)

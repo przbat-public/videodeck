@@ -48,9 +48,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CI/release workflow maps join `docs/architecture/`, and the review persona
   plus the PR template now ask for an architecture delta receipt when
   package boundaries change
+- **Context linter**: `scripts/check-context.test.mjs` (part of
+  `pnpm run test:scripts`) pins every command and path AGENTS.md references
+  to the real repo, keeps the Skills list aligned with the skill
+  directories, and fails on stale npm or npx commands in our docs
+- **AGENTS.md craft pass**: the four working principles (understand,
+  minimize, prove, verify) join the Definition of done, and the Skills
+  section states the progressive-disclosure rule
+- **UI audit scorecard**: the ui-design skill's audit mode now scores five
+  dimensions (tokens, hierarchy, primitives, a11y, copy) with Nielsen
+  heuristics, design laws and a persona walkthrough, every finding tagged
+  by business impact
 
 ### Fixed
 
+- Stale npm commands in the docs (README, the Polish README, CONTRIBUTING,
+  RELEASING, the PR template and the chrome-extension guides) now say pnpm,
+  and the release gate one-liner matches the one in AGENTS.md again
 - `GET /api/videos/recreateIndices/status` reports the real state of the
   index rebuild; per-folder failures no longer abort the remaining folders
 - Removed dead client reducer code (unused `RESET` actions, `video` state

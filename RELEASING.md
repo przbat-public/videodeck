@@ -7,7 +7,7 @@ plus a GitHub Release entry, announced in the CHANGELOG.
 
 1. Verify the full local gate from the repo root:
    ```bash
-   npm run format:check && npm run lint && npm run lint:types && npm run lint:scripts && npm run test:scripts && npm run knip && npm run lint:deps && npm run typecheck && npm test && cd client && npm run test:e2e
+   pnpm run format:check && pnpm run lint && pnpm run lint:types && pnpm run lint:scripts && pnpm run test:scripts && pnpm run knip && pnpm run lint:deps && pnpm run humanizer:gate && pnpm run typecheck && pnpm test && pnpm run test:integration && cd client && pnpm run test:e2e
    ```
 2. Confirm CI is green on `main` (all required checks).
 3. Bump the version in the four `package.json` files (root, `server/`,

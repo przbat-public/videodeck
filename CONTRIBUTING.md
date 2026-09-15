@@ -38,15 +38,15 @@ pnpm run format:check  # biome format check
 pnpm run lint          # biome check + hardcoded-Polish scan + tsconfig strictness check
 pnpm run lint:types    # eslint --max-warnings 0 (type-aware, React hooks, Playwright)
 pnpm run lint:scripts  # tsc --noEmit over scripts/ (checkJs)
-npm run test:scripts   # node --test for the repository-invariant scripts
-npm run knip           # unused files, exports and dependencies
-npm run lint:deps      # dependency-cruiser: no cycles, no cross-app imports
-npm run typecheck      # server + client + extension
-npm test               # jest (server) + vitest (client, extension)
-cd client && npm run test:e2e   # Playwright (mocked API, needs no backend)
+pnpm run test:scripts  # node --test for the repository-invariant scripts
+pnpm run knip          # unused files, exports and dependencies
+pnpm run lint:deps     # dependency-cruiser: no cycles, no cross-app imports
+pnpm run typecheck     # server + client + extension
+pnpm test              # jest (server) + vitest (client, extension)
+cd client && pnpm run test:e2e   # Playwright (mocked API, needs no backend)
 ```
 
-CI also runs an `npm audit --audit-level=moderate` job and the weekly
+CI also runs a `pnpm audit` job (moderate and above) and the weekly
 dependency report; releases follow `RELEASING.md`.
 
 Commit hooks (husky + lint-staged) run `biome check --write` on the staged
