@@ -11,6 +11,7 @@
   --color-border: #e0e0e0;
   --color-primary: #5a5fd8; /* ≥4.5:1 on white (WCAG AA for button text) */
   --color-primary-hover: #4b56c9;
+  --color-primary-text: #4449b3; /* accent used as text: ≥4.5:1 on light surfaces */
   --color-primary-soft: #eef0ff;
   --color-success: #28a745;
   --color-success-hover: #218838;
@@ -46,6 +47,7 @@
   --color-border: #3a3d45;
   --color-primary: #5a5fd8; /* kept: white button text stays ≥4.5:1 */
   --color-primary-hover: #4b56c9;
+  --color-primary-text: #a5adff; /* accent as text: ≈8:1 on dark surfaces */
   --color-primary-soft: #2e3352;
   --color-success-bg: #24402c;
   --color-danger-bg: #4a262b;

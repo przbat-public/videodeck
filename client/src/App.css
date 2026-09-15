@@ -199,7 +199,8 @@
   pointer-events: none;
 }
 
-.video-card:hover .play-overlay {
+.video-card:hover .play-overlay,
+.video-card-link:focus-visible .play-overlay {
   opacity: 1;
 }
 
@@ -285,14 +286,15 @@
 
 .back-link {
   display: inline-block;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   text-decoration: none;
   font-weight: 500;
   transition: color 0.3s;
 }
 
 .back-link:hover {
-  color: var(--color-primary-hover);
+  color: var(--color-primary-text);
+  text-decoration: underline;
 }
 
 .video-detail-container {
@@ -315,6 +317,7 @@
 
 .video-player-full {
   width: 70%;
+  aspect-ratio: 16 / 9;
   height: auto;
   border-radius: 8px;
   background: #000;
@@ -454,7 +457,7 @@
 .comment-expand-btn {
   background: none;
   border: none;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   cursor: pointer;
   padding: 0;
   margin-left: 0.25rem;
@@ -465,7 +468,7 @@
 }
 
 .comment-expand-btn:hover {
-  color: var(--color-primary-hover);
+  color: var(--color-primary-text);
 }
 
 .comment-footer {
@@ -483,7 +486,7 @@
 .comment-replies-toggle {
   background: none;
   border: none;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   cursor: pointer;
   padding: 0;
   font-size: 0.85rem;
@@ -495,7 +498,7 @@
 }
 
 .comment-replies-toggle:hover {
-  color: var(--color-primary-hover);
+  color: var(--color-primary-text);
 }
 
 .comment-replies-count {
@@ -843,7 +846,7 @@
 }
 
 .video-title-link {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   text-decoration: none;
   font-size: 0.95rem;
   display: block;
@@ -851,7 +854,7 @@
 }
 
 .video-title-link:hover {
-  color: var(--color-primary-hover);
+  color: var(--color-primary-text);
   text-decoration: underline;
 }
 
@@ -1085,6 +1088,37 @@
   .config-actions {
     flex-direction: column;
   }
+
+  /* Touch: every interactive element reaches the 44px minimum hit area */
+  .ui-button,
+  .download-video-button,
+  .update-video-button,
+  .cancel-job-button,
+  .status-link {
+    min-height: 44px;
+  }
+
+  .channel-input,
+  .date-filter,
+  .sort-select,
+  .category-select,
+  .config-input {
+    min-height: 44px;
+  }
+
+  .ui-checkbox {
+    min-height: 44px;
+  }
+
+  .language-switcher-option {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .video-player-full {
+    width: 100%;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1213,7 +1247,7 @@
 .ui-select-icon {
   display: inline-flex;
   align-items: center;
-  color: var(--color-primary);
+  color: var(--color-primary-text);
 }
 
 .ui-select-arrow {
@@ -1264,12 +1298,12 @@
 }
 
 .ui-select-item[data-state='checked'] {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   font-weight: 500;
 }
 
 .ui-select-item-indicator {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   font-size: 0.85rem;
 }
 
@@ -1295,7 +1329,7 @@
 /* Search bar filters: channel + date range */
 .channel-input {
   padding: 0.72rem 1rem;
-  font-size: 0.95rem;
+  font-size: 1rem;
   border: 2px solid var(--color-border);
   border-radius: 6px;
   min-width: 160px;
@@ -1309,7 +1343,7 @@
 
 .date-filter {
   padding: 0.62rem 0.75rem;
-  font-size: 0.9rem;
+  font-size: 1rem;
   border: 2px solid var(--color-border);
   border-radius: 6px;
   color: var(--color-text);
@@ -1355,7 +1389,7 @@
 
 .ui-button--neutral:hover:not(:disabled) {
   border-color: var(--color-primary);
-  color: var(--color-primary);
+  color: var(--color-primary-text);
 }
 
 .ui-button--primary {

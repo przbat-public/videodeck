@@ -37,25 +37,47 @@ card overlay, and a line-by-line confirmation of every scanner signal.
 
 | Dimension | Score | Note |
 | --- | --- | --- |
-| Overflow and breakpoints | 4 | Zero horizontal overflow at all three viewports. |
-| Touch targets | 2 | Everything works, nothing but the switcher is far off; the 1-4px misses fail the 44px rule. |
-| Inputs | 2 | The phrase input is 16px; channel and date inputs trigger iOS zoom. |
-| Hover | 2 | One real hover-only affordance; the rest is decorative. |
-| Media | 3 | Player keeps its ratio and never overflows; undersized on phones. |
+| Overflow and breakpoints | 4 | Zero horizontal overflow at all three viewports, including the 320px reflow width. |
+| Touch targets | 4 | Every control reaches 44px on phones; guarded by an e2e test. |
+| Inputs | 4 | All text inputs sit at 16px; iOS zoom no longer triggers. |
+| Hover | 4 | The overlay now appears on keyboard focus; nothing depends on hover alone. |
+| Media | 4 | Player fills the phone width and keeps 16:9 via aspect-ratio. |
 | Motion | 4 | Reduced-motion collapse covers every transition. |
-| Dark parity | 3 | Tokens are used per theme everywhere (code level); screenshot parity per viewport is a manual follow-up. |
+| Dark parity | 4 | Contrast measured programmatically in both themes; one real defect found and fixed. |
 
-## Out of scope for this pass (manual checks)
+## Resolution log
 
-- 200 percent zoom reflow on each page.
-- Dark mode versus light mode screenshots at 360px and 768px.
-- Real device testing (the adapt skill asks for it; the probe above is
-  emulation).
+All five findings are fixed, and the parity pass found a sixth.
 
-## Next steps
+1. **P1 hover overlay** - `.video-card-link:focus-visible .play-overlay`
+   reveals the overlay to keyboard users (the card wraps the link, so the
+   rule targets the link, not the card).
+2. **P2 inputs under 16px** - `.channel-input` and `.date-filter` now use
+   `font-size: 1rem`.
+3. **P2 touch targets** - the 768px media query sets `min-height: 44px` on
+   ui buttons, the row action buttons, the status link, the inputs and the
+   selects, `min-height: 44px` on the checkbox label, and 44px minimums on
+   the language switcher.
+4. **P3 language switcher** - folded into finding 3 (44px on touch, the
+   desktop density stays).
+5. **P3 player** - `aspect-ratio: 16 / 9` on `.video-player-full`, full
+   width inside the 768px media query.
+6. **Dark mode accent text (found by the parity pass)** - the back link,
+   comment action buttons, downloaded title links and checked select
+   options used `--color-primary` as text, which reads at 3.19:1 on the
+   dark surface. A new token `--color-primary-text` (`#4449b3` light,
+   `#a5adff` dark, about 7:1 or better on both surfaces) replaces it, and
+   DESIGN.md documents the token. The hover states moved to the same token
+   plus an underline instead of darkening into illegibility.
 
-The findings map 1:1 onto the responsive-design skill checklist. Each fix is
-a small, independently shippable change with a regression note in the PR:
-hover counterpart for the overlay, 16px inputs, 44px touch padding on small
-screens, switcher padding, player aspect ratio. The contract (DESIGN.md
-section 11) is the acceptance bar for all of them.
+## Verification
+
+- `client/e2e/responsive.spec.ts` (16 tests, part of the e2e suite):
+  overflow at 360/768/1280 on all three pages, overlay on keyboard focus,
+  16px inputs, 44px targets at 360, player geometry, 320px reflow
+  (the WCAG equivalent of 200 percent zoom), and a WCAG contrast scan of
+  both themes on all three pages.
+- Dark and light screenshots were captured at 360 and 768 during the pass;
+  the contrast scan above is the repeatable version of that check.
+- Real device testing remains the one human step (iOS Safari, Android
+  Chrome), as the adapt skill asks. Everything automatable is automated.
