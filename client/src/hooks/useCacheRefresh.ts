@@ -1,5 +1,5 @@
-import type { ReindexStatus } from '@shared/api';
-import { ReindexStatusSchema } from '@shared/schemas';
+import type { ReindexStatus } from '@videodeck/shared/api';
+import { ReindexStatusSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import i18n from '../i18n';

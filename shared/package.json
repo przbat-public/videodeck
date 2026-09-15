@@ -2,6 +2,28 @@
   "name": "@videodeck/shared",
   "version": "1.0.0",
   "private": true,
-  "description": "Shared zod API contract and runtime helpers for the videodeck apps (imported through the @shared/* tsconfig path alias)",
-  "sideEffects": false
+  "description": "Shared zod API contract and runtime helpers for the videodeck apps, resolved as a regular pnpm workspace package",
+  "sideEffects": false,
+  "exports": {
+    "./api": {
+      "types": "./api.ts",
+      "import": "./api.ts",
+      "require": "./api.ts"
+    },
+    "./schemas": {
+      "types": "./schemas.ts",
+      "import": "./schemas.ts",
+      "require": "./schemas.ts"
+    },
+    "./progress": {
+      "types": "./progress.ts",
+      "import": "./progress.ts",
+      "require": "./progress.ts"
+    },
+    "./youtube": {
+      "types": "./youtube.ts",
+      "import": "./youtube.ts",
+      "require": "./youtube.ts"
+    }
+  }
 }

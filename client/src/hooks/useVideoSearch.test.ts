@@ -1,5 +1,5 @@
-import type { VideoListItem } from '@shared/api';
 import { renderHook, waitFor } from '@testing-library/react';
+import type { VideoListItem } from '@videodeck/shared/api';
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';

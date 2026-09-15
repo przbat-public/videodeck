@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { CommentWithReplies } from '@shared/api';
+import type { CommentWithReplies } from '@videodeck/shared/api';
 import type { VideoInfoJson } from '../types';
 import { buildCommentTree } from '../utils/commentTreeUtils';
 import { resolveContainedPath } from '../utils/fsUtils';

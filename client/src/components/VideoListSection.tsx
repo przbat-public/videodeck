@@ -1,5 +1,5 @@
-import type { ChannelVideo, JobType, QueueJob } from '@shared/api';
-import { FolderListResponseSchema } from '@shared/schemas';
+import type { ChannelVideo, JobType, QueueJob } from '@videodeck/shared/api';
+import { FolderListResponseSchema } from '@videodeck/shared/schemas';
 import type { JSX, Ref } from 'react';
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';

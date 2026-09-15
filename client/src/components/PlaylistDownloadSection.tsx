@@ -1,5 +1,5 @@
-import type { FolderConfig } from '@shared/api';
-import { ApiErrorSchema } from '@shared/schemas';
+import type { FolderConfig } from '@videodeck/shared/api';
+import { ApiErrorSchema } from '@videodeck/shared/schemas';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from './ui/Button';

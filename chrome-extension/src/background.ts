@@ -1,4 +1,4 @@
-import type { DownloadVideoEvent } from '@shared/api';
+import type { DownloadVideoEvent } from '@videodeck/shared/api';
 import type { ActiveDownloadSummary, RuntimeMessage } from './lib/messages';
 import { extractProgress } from './lib/progress';
 import { feedSseBuffer, parseSseEvent } from './lib/sse';

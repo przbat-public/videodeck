@@ -1,4 +1,4 @@
-import type { DownloadOptions } from '@shared/api';
+import type { DownloadOptions } from '@videodeck/shared/api';
 import { describe, expect, it } from 'vitest';
 import { buildConfig, collectCategories, parseExtraArgs, parseSubLangs, toFormState } from './folderConfigForm';
 

@@ -1,4 +1,4 @@
-import { VideoSummaryResponseSchema } from '@shared/schemas';
+import { VideoSummaryResponseSchema } from '@videodeck/shared/schemas';
 import { useEffect, useReducer, useState } from 'react';
 import toast from 'react-hot-toast';
 import i18n from '../i18n';

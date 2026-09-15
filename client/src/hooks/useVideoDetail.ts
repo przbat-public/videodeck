@@ -1,4 +1,4 @@
-import { VideoDetailsResponseSchema } from '@shared/schemas';
+import { VideoDetailsResponseSchema } from '@videodeck/shared/schemas';
 import { useEffect, useReducer } from 'react';
 import i18n from '../i18n';
 import type { VideoDetailState } from '../reducers/videoDetailReducer';

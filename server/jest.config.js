@@ -26,12 +26,8 @@ module.exports = {
     },
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
-  // runtime imports from shared/ (progress, schemas); the test
-  // infrastructure resolves through the @videodeck/test-infra package
-  // exports (pnpm workspace symlink)
-  moduleNameMapper: {
-    '^@shared/(.*)$': '<rootDir>/../shared/$1',
-  },
+  // @videodeck/shared and @videodeck/test-infra resolve through their
+  // package exports (pnpm workspace symlinks).
   testTimeout: 10000,
   setupFiles: ['<rootDir>/src/test-env.ts'],
   setupFilesAfterEnv: [],

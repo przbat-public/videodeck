@@ -1,5 +1,5 @@
-import type { ApiError, EnqueueJobsResponse, JobType, QueueJob, QueueVideoInput } from '@shared/api';
-import { EnqueueJobsResponseSchema, QueueListResponseSchema } from '@shared/schemas';
+import type { ApiError, EnqueueJobsResponse, JobType, QueueJob, QueueVideoInput } from '@videodeck/shared/api';
+import { EnqueueJobsResponseSchema, QueueListResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import i18n from '../i18n';
 

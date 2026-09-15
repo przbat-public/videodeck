@@ -1,5 +1,5 @@
-import type { DownloadOptions, FolderConfig } from '@shared/api';
-import { ListExistsResponseSchema } from '@shared/schemas';
+import type { DownloadOptions, FolderConfig } from '@videodeck/shared/api';
+import { ListExistsResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FolderConfigEditor } from './FolderConfigEditor';

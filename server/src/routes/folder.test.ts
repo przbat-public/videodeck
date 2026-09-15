@@ -12,8 +12,8 @@ import {
   QueuePauseResponseSchema,
   StatusResponseSchema,
   VideoDownloadedResponseSchema,
-} from '@shared/schemas';
-import { extractYoutubeVideoId } from '@shared/youtube';
+} from '@videodeck/shared/schemas';
+import { extractYoutubeVideoId } from '@videodeck/shared/youtube';
 import type express from 'express';
 import request from 'supertest';
 import { createApp as createRealApp } from '../app';

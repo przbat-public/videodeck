@@ -1,5 +1,5 @@
-import type { VideoListItem } from '@shared/api';
 import { render, screen } from '@testing-library/react';
+import type { VideoListItem } from '@videodeck/shared/api';
 import { BrowserRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import VideoCard from './VideoCard';

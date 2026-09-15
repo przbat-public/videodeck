@@ -1,5 +1,5 @@
-import type { CommentWithReplies } from '@shared/api';
-import { COMMENTS_PAGE_SIZE, CommentsResponseSchema } from '@shared/schemas';
+import type { CommentWithReplies } from '@videodeck/shared/api';
+import { COMMENTS_PAGE_SIZE, CommentsResponseSchema } from '@videodeck/shared/schemas';
 import type { JSX } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';

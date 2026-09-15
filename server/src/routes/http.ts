@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import type { ApiError } from '@shared/api';
+import type { ApiError } from '@videodeck/shared/api';
 import type { NextFunction, Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { errnoCode, isRecord, readString } from '../utils/objectUtils';

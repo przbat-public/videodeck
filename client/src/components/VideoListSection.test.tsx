@@ -1,5 +1,5 @@
-import type { QueueJob } from '@shared/api';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { QueueJob } from '@videodeck/shared/api';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchMock, MockResponse } from '../test/fetchMock';

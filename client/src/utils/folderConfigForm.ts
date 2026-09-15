@@ -1,4 +1,4 @@
-import type { DownloadOptions, FolderConfig } from '@shared/api';
+import type { DownloadOptions, FolderConfig } from '@videodeck/shared/api';
 
 export const MAX_HEIGHT_CHOICES = [720, 1080, 1440, 2160];
 

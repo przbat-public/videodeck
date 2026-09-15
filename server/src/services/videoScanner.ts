@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { ReindexStatus, SortOption, VideoListItem } from '@shared/api';
+import type { ReindexStatus, SortOption, VideoListItem } from '@videodeck/shared/api';
 import { getVideosFolderPaths } from '../config';
 import type { VideoInfoJson } from '../types';
 import { listVisibleFiles, resolveContainedPath } from '../utils/fsUtils';

@@ -1,4 +1,4 @@
-import type { VideoListItem } from '@shared/api';
+import type { VideoListItem } from '@videodeck/shared/api';
 
 export interface VideoSearchState {
   videos: VideoListItem[];

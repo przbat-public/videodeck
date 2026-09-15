@@ -1,4 +1,4 @@
-import type { CommentWithReplies } from '@shared/api';
+import type { CommentWithReplies } from '@videodeck/shared/api';
 import type { TFunction } from 'i18next';
 import type { JSX } from 'react';
 import { memo, useState } from 'react';

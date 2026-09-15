@@ -1,4 +1,4 @@
-import type { VideoDetails } from '@shared/api';
+import type { VideoDetails } from '@videodeck/shared/api';
 
 export interface VideoDetailState {
   details: VideoDetails | null;

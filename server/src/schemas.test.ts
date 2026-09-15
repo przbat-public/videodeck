@@ -6,7 +6,7 @@ import {
   SearchResponseSchema,
   VideoCommentSchema,
   VideoDetailsResponseSchema,
-} from '@shared/schemas';
+} from '@videodeck/shared/schemas';
 
 /**
  * The schemas are the contract: this suite pins them against realistic

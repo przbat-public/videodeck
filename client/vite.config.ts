@@ -1,4 +1,3 @@
-import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { defineConfig } from 'vitest/config';
@@ -16,12 +15,7 @@ const vendorChunks: Record<string, string[]> = {
 
 export default defineConfig({
   plugins: [react(), ...(analyze ? [visualizer({ gzipSize: true })] : [])],
-  resolve: {
-    alias: {
-      // Types-only module shared with the server (see shared/api.ts)
-      '@shared': fileURLToPath(new URL('../shared', import.meta.url)),
-    },
-  },
+  // @videodeck/shared resolves through its package exports (pnpm workspace).
   build: {
     rollupOptions: {
       output: {

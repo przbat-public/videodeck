@@ -1,4 +1,4 @@
-import type { VideoListItem } from '@shared/api';
+import type { VideoListItem } from '@videodeck/shared/api';
 import type { JSX } from 'react';
 import React, { memo } from 'react';
 import { Link } from 'react-router-dom';

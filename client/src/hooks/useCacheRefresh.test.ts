@@ -1,5 +1,5 @@
-import type { ReindexStatus } from '@shared/api';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import type { ReindexStatus } from '@videodeck/shared/api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';

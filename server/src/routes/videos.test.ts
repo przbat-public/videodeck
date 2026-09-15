@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
-import type { CommentWithReplies, ReindexStatus, VideoComment, VideoListItem } from '@shared/api';
+import type { CommentWithReplies, ReindexStatus, VideoComment, VideoListItem } from '@videodeck/shared/api';
 import {
   ChannelsResponseSchema,
   CommentsResponseSchema,
@@ -9,7 +9,7 @@ import {
   SearchResponseSchema,
   VideoDetailsResponseSchema,
   VideoSummaryResponseSchema,
-} from '@shared/schemas';
+} from '@videodeck/shared/schemas';
 import express from 'express';
 import request from 'supertest';
 import { createApp } from '../app';

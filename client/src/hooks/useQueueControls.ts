@@ -1,4 +1,8 @@
-import { ClearFinishedResponseSchema, QueueListResponseSchema, QueuePauseResponseSchema } from '@shared/schemas';
+import {
+  ClearFinishedResponseSchema,
+  QueueListResponseSchema,
+  QueuePauseResponseSchema,
+} from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface UseQueueControlsResult {

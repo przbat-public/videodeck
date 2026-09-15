@@ -1,4 +1,4 @@
-import type { SortOption } from '@shared/api';
+import type { SortOption } from '@videodeck/shared/api';
 
 /**
  * The search state of /videos lives in the URL (`?q=&sort=&category=`), so a

@@ -1,4 +1,4 @@
-import { CategoriesResponseSchema } from '@shared/schemas';
+import { CategoriesResponseSchema } from '@videodeck/shared/schemas';
 import { useEffect, useState } from 'react';
 
 interface UseCategoriesResult {

@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { QueueJob } from '@shared/api';
+import type { QueueJob } from '@videodeck/shared/api';
 import { at } from '../test-utils';
 import { removePartialDownloads, writeTextAtomic } from '../utils/fsUtils';
 import type { EnqueueRequest, SpawnedProcess } from './downloadQueue';

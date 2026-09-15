@@ -33,9 +33,9 @@ const commonRules = {
     {
       patterns: [
         {
-          group: ['@shared/api'],
+          group: ['@videodeck/shared/api'],
           allowTypeImports: true,
-          message: 'shared/api.ts contains types only; use `import type`.',
+          message: '@videodeck/shared/api contains types only; use `import type`.',
         },
       ],
     },

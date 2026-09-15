@@ -1,4 +1,4 @@
-import type { VideoListItem } from '@shared/api';
+import type { VideoListItem } from '@videodeck/shared/api';
 import { at } from '../test-utils';
 import {
   buildIndexVersionName,

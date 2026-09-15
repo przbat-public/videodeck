@@ -1,5 +1,5 @@
-import type { VideoDetails } from '@shared/api';
 import { render, screen } from '@testing-library/react';
+import type { VideoDetails } from '@videodeck/shared/api';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
