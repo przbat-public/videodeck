@@ -1,13 +1,12 @@
-import express from 'express';
-import type { Response } from 'express';
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import type {
   ApiError,
   CancelAllResponse,
   CancelJobResponse,
   ChannelVideo,
   ClearFinishedResponse,
+  DownloadOptions,
   DownloadPlaylistResponse,
   DownloadVideoEvent,
   EnqueueJobsResponse,
@@ -24,19 +23,13 @@ import type {
   VideoDownloadedResponse,
 } from '@shared/api';
 import { extractYoutubeVideoId, isYoutubeVideoId, toWatchUrl } from '@shared/youtube';
+import type { Response } from 'express';
+import express from 'express';
 import { getVideosFolderPaths } from '../config';
-import {
-  findEntryByVideoId,
-  getDownloadStatuses,
-  loadIndex,
-  rebuildIndex,
-} from '../services/folderIndex';
 import { readListJson } from '../services/channelList';
-import { buildPlaylistArgs, runYtDlp } from '../services/ytdlp';
-import { listCachedFolders } from '../services/elasticsearchService';
+import type { DownloadQueue, EnqueueRequest } from '../services/downloadQueue';
 import { downloadQueue } from '../services/downloadQueue';
-import type { DownloadQueue } from '../services/downloadQueue';
-import type { EnqueueRequest } from '../services/downloadQueue';
+import { listCachedFolders } from '../services/elasticsearchService';
 import {
   DEFAULT_DOWNLOAD_OPTIONS,
   invalidateCategoryCache,
@@ -44,12 +37,15 @@ import {
   readFolderConfig,
   validateFolderConfig,
 } from '../services/folderConfig';
+import type { FolderIndex } from '../services/folderIndex';
+import { findEntryByVideoId, getDownloadStatuses, loadIndex, rebuildIndex } from '../services/folderIndex';
+import { buildPlaylistArgs, runYtDlp } from '../services/ytdlp';
+import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/objectUtils';
 import { normalizeFolderPath } from '../utils/videoPathUtils';
+import type { NoParams, RouteHandler } from './http';
 import { errnoCode, readBody, readString, sendError } from './http';
 import { configBodySchema, firstZodError, queueBodySchema } from './validation';
-import type { NoParams, RouteHandler } from './http';
-import { logger } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -77,15 +73,73 @@ function requireAllowedFolder<Res>(value: unknown, res: Response<Res | ApiError>
 }
 
 /** Optional `folderPath` filter of the queue endpoints; false when malformed */
-function readFolderFilter<Res>(
-  value: unknown,
-  res: Response<Res | ApiError>
-): string | undefined | false {
+function readFolderFilter<Res>(value: unknown, res: Response<Res | ApiError>): string | undefined | false {
   if (value !== undefined && typeof value !== 'string') {
     res.status(400).json({ error: 'folderPath must be a string' });
     return false;
   }
   return value;
+}
+
+/** One entry of a parsed queue body (see queueBodySchema) */
+type QueueVideoInput = {
+  videoId?: string | undefined;
+  videoUrl?: string | undefined;
+  url?: string | undefined;
+  title?: string | undefined;
+};
+
+type QueueVideoOutcome = { request: EnqueueRequest } | { skipped: SkippedVideo };
+
+/**
+ * Validate one queue entry and turn it into an enqueue request or a skip
+ * reason. SSRF guard: the URL only ever reaches yt-dlp as a canonical
+ * YouTube watch URL — a URL that is not YouTube (or not even a URL) is
+ * refused, never passed through raw (yt-dlp would fetch arbitrary targets).
+ */
+function toEnqueueRequest(
+  video: QueueVideoInput,
+  type: 'download' | 'update',
+  folderPath: string,
+  options: DownloadOptions,
+  folderIndex: FolderIndex | null,
+): QueueVideoOutcome {
+  const videoUrl = readString(video.videoUrl) ?? readString(video.url) ?? '';
+  const extractedId = videoUrl ? extractYoutubeVideoId(videoUrl) : null;
+  if (videoUrl && !extractedId) {
+    return { skipped: { videoId: '', reason: 'videoUrl must be a YouTube video URL' } };
+  }
+  const videoId = readString(video.videoId) ?? extractedId;
+  if (!videoId) {
+    return { skipped: { videoId: '', reason: 'videoId or videoUrl is required' } };
+  }
+  if (!isYoutubeVideoId(videoId)) {
+    return { skipped: { videoId, reason: 'videoId is not a valid YouTube video id' } };
+  }
+  // A watch URL carrying &list=&index= makes yt-dlp walk the whole playlist
+  // from that point — always hand it a canonical single-video URL
+  const url = toWatchUrl(videoId);
+  const title = readString(video.title);
+  if (type === 'update') {
+    const entry = folderIndex?.entries[videoId];
+    if (!entry) {
+      return { skipped: { videoId, reason: 'not downloaded' } };
+    }
+    return {
+      request: stripUndefined<EnqueueRequest>({
+        folderPath,
+        videoId,
+        videoUrl: url,
+        title,
+        type,
+        baseName: entry.baseName,
+        options,
+      }),
+    };
+  }
+  return {
+    request: stripUndefined<EnqueueRequest>({ folderPath, videoId, videoUrl: url, title, type, options }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +185,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
         } catch {
           listExists[folderPath] = false;
         }
-      })
+      }),
     );
     res.json({
       videosFolderPath: videosFolderPaths,
@@ -166,11 +220,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     if (!folderPath) return;
 
     await fs.mkdir(folderPath, { recursive: true });
-    await fs.writeFile(
-      path.join(folderPath, 'config.json'),
-      JSON.stringify(validConfig, null, 2),
-      'utf-8'
-    );
+    await fs.writeFile(path.join(folderPath, 'config.json'), JSON.stringify(validConfig, null, 2), 'utf-8');
     invalidateCategoryCache();
     res.json({ success: true, config: validConfig });
   };
@@ -264,9 +314,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     }
 
     await fs.mkdir(folderPath, { recursive: true });
-    const channelUrl = configuredUrl.endsWith('/videos')
-      ? configuredUrl
-      : `${configuredUrl}/videos`;
+    const channelUrl = configuredUrl.endsWith('/videos') ? configuredUrl : `${configuredUrl}/videos`;
 
     let stdout: string;
     try {
@@ -287,7 +335,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
           logger.error('Error parsing JSON line:', line.substring(0, 100));
           throw new Error(
             `Failed to parse JSON line: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
-            { cause: parseError }
+            { cause: parseError },
           );
         }
       });
@@ -357,56 +405,11 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     const requests: EnqueueRequest[] = [];
     const skipped: SkippedVideo[] = [];
     for (const video of videos) {
-      const videoUrl = readString(video.videoUrl) ?? readString(video.url) ?? '';
-      // SSRF guard: the URL only ever reaches yt-dlp as a canonical YouTube
-      // watch URL. A URL that is not YouTube (or not even a URL) is refused —
-      // never passed through raw (yt-dlp would fetch arbitrary targets).
-      const extractedId = videoUrl ? extractYoutubeVideoId(videoUrl) : null;
-      if (videoUrl && !extractedId) {
-        skipped.push({ videoId: '', reason: 'videoUrl must be a YouTube video URL' });
-        continue;
-      }
-      const videoId = readString(video.videoId) ?? extractedId;
-      if (!videoId) {
-        skipped.push({ videoId: '', reason: 'videoId or videoUrl is required' });
-        continue;
-      }
-      if (!isYoutubeVideoId(videoId)) {
-        skipped.push({ videoId, reason: 'videoId is not a valid YouTube video id' });
-        continue;
-      }
-      // A watch URL carrying &list=&index= makes yt-dlp walk the whole
-      // playlist from that point — always hand it a canonical single-video URL
-      const url = toWatchUrl(videoId);
-      const title = readString(video.title);
-      if (type === 'update') {
-        const entry = folderIndex?.entries[videoId];
-        if (!entry) {
-          skipped.push({ videoId, reason: 'not downloaded' });
-          continue;
-        }
-        requests.push(
-          stripUndefined<EnqueueRequest>({
-            folderPath,
-            videoId,
-            videoUrl: url,
-            title,
-            type,
-            baseName: entry.baseName,
-            options,
-          })
-        );
+      const outcome = toEnqueueRequest(video, type, folderPath, options, folderIndex);
+      if ('request' in outcome) {
+        requests.push(outcome.request);
       } else {
-        requests.push(
-          stripUndefined<EnqueueRequest>({
-            folderPath,
-            videoId,
-            videoUrl: url,
-            title,
-            type,
-            options,
-          })
-        );
+        skipped.push(outcome.skipped);
       }
     }
 
@@ -452,103 +455,61 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
   };
 
   /**
+   * Validate the single-video download request (SSE endpoint). Sends the
+   * proper error response and returns null when the request is not accepted.
+   */
+  function readDownloadVideoRequest<Res>(
+    req: { body: unknown },
+    res: Response<Res | ApiError>,
+  ): { folderPath: string; videoId: string } | null {
+    const body = readBody(req);
+    const folderPath = requireAllowedFolder(body.folderPath, res);
+    if (!folderPath) {
+      return null;
+    }
+    const videoUrl = readString(body.videoUrl);
+    if (videoUrl === undefined) {
+      res.status(400).json({ error: 'videoUrl is required' });
+      return null;
+    }
+    // SSRF guard: only canonical YouTube watch URLs reach the queue.
+    const extractedId = extractYoutubeVideoId(videoUrl);
+    if (!extractedId) {
+      res.status(400).json({ error: 'videoUrl must be a YouTube video URL' });
+      return null;
+    }
+    return { folderPath, videoId: extractedId };
+  }
+
+  /**
    * Single-video download with SSE progress (used by the Chrome extension).
    * The job runs in the server-side queue; closing the connection only stops
    * the event stream, not the download.
    */
   const downloadVideo: RouteHandler<NoParams, never> = async (req, res) => {
     try {
-      const body = readBody(req);
-      const folderPath = requireAllowedFolder(body.folderPath, res);
-      if (!folderPath) return;
-      const videoUrl = readString(body.videoUrl);
-      if (videoUrl === undefined) {
-        res.status(400).json({ error: 'videoUrl is required' });
+      const request = readDownloadVideoRequest(req, res);
+      if (!request) {
         return;
       }
-      // SSRF guard: only canonical YouTube watch URLs reach the queue.
-      const extractedId = extractYoutubeVideoId(videoUrl);
-      if (!extractedId) {
-        res.status(400).json({ error: 'videoUrl must be a YouTube video URL' });
-        return;
-      }
-
-      await fs.mkdir(folderPath, { recursive: true });
-
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.setHeader('X-Accel-Buffering', 'no');
-      res.flushHeaders();
-
-      const sendEvent = (event: DownloadVideoEvent) => {
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
-      };
+      await fs.mkdir(request.folderPath, { recursive: true });
 
       // Strip playlist context (&list=, &index=) — see the comment in
       // enqueueJobs.
-      const videoId = extractedId;
-      const queueUrl = toWatchUrl(videoId);
-      const options = await loadDownloadOptions(folderPath);
+      const options = await loadDownloadOptions(request.folderPath);
       const [job] = queue.enqueue([
-        { folderPath, videoId, videoUrl: queueUrl, type: 'download', options },
+        {
+          folderPath: request.folderPath,
+          videoId: request.videoId,
+          videoUrl: toWatchUrl(request.videoId),
+          type: 'download',
+          options,
+        },
       ]);
       if (!job) {
         throw new Error('Queue did not return a job');
       }
-      sendEvent({ type: 'start', message: 'Starting download...' });
-
-      let seenLogCount = 0;
-      let finished = false;
-
-      const finish = (snapshot: QueueJob) => {
-        if (finished) return;
-        finished = true;
-        queue.off('job', onJob);
-        if (snapshot.status === 'done') {
-          sendEvent({ type: 'done', message: 'Download completed successfully', done: true });
-        } else {
-          sendEvent({
-            type: 'error',
-            error: snapshot.error ?? `Download ${snapshot.status}`,
-            done: true,
-          });
-        }
-        res.end();
-      };
-
-      const onJob = (snapshot: QueueJob) => {
-        if (snapshot.id !== job.id) return;
-        // log is a bounded tail; use the running counter to find unsent lines
-        const unsent = snapshot.logLineCount - seenLogCount;
-        if (unsent > 0) {
-          for (const line of snapshot.log.slice(-Math.min(unsent, snapshot.log.length))) {
-            sendEvent({ type: 'output', message: `${line}\n` });
-          }
-        }
-        seenLogCount = snapshot.logLineCount;
-        if (
-          snapshot.status === 'done' ||
-          snapshot.status === 'error' ||
-          snapshot.status === 'cancelled'
-        ) {
-          finish(snapshot);
-        }
-      };
-
-      queue.on('job', onJob);
-
-      // Job may already be finished (deduped against a completed one is not
-      // possible, but a very fast failure is) — replay current state.
-      const current = queue.get(job.id);
-      if (current) {
-        onJob(current);
-      }
-
-      req.on('close', () => {
-        finished = true;
-        queue.off('job', onJob);
-      });
+      streamJobProgress(req, res, queue, job);
     } catch (error) {
       if (!res.headersSent) {
         sendError(res, 500, 'Failed to start video download', error);
@@ -582,4 +543,76 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
   router.post('/folder/download-video', downloadVideo);
 
   return router;
+}
+
+/**
+ * Stream one queue job as Server-Sent Events until it settles (done, error,
+ * cancelled) or the client disconnects. The job keeps running server-side
+ * either way — closing the stream never cancels the download.
+ */
+function streamJobProgress(
+  req: { on(event: 'close', listener: () => void): void },
+  res: Response,
+  queue: DownloadQueueLike,
+  job: QueueJob,
+): void {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const sendEvent = (event: DownloadVideoEvent) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+
+  sendEvent({ type: 'start', message: 'Starting download...' });
+
+  let seenLogCount = 0;
+  let finished = false;
+
+  const finish = (snapshot: QueueJob) => {
+    if (finished) {
+      return;
+    }
+    finished = true;
+    queue.off('job', onJob);
+    sendEvent(
+      snapshot.status === 'done'
+        ? { type: 'done', message: 'Download completed successfully', done: true }
+        : { type: 'error', error: snapshot.error ?? `Download ${snapshot.status}`, done: true },
+    );
+    res.end();
+  };
+
+  const onJob = (snapshot: QueueJob) => {
+    if (snapshot.id !== job.id) {
+      return;
+    }
+    // log is a bounded tail; use the running counter to find unsent lines
+    const unsent = snapshot.logLineCount - seenLogCount;
+    if (unsent > 0) {
+      for (const line of snapshot.log.slice(-Math.min(unsent, snapshot.log.length))) {
+        sendEvent({ type: 'output', message: `${line}\n` });
+      }
+    }
+    seenLogCount = snapshot.logLineCount;
+    if (snapshot.status === 'done' || snapshot.status === 'error' || snapshot.status === 'cancelled') {
+      finish(snapshot);
+    }
+  };
+
+  queue.on('job', onJob);
+
+  // Job may already be finished (deduped against a completed one is not
+  // possible, but a very fast failure is) — replay current state.
+  const current = queue.get(job.id);
+  if (current) {
+    onJob(current);
+  }
+
+  req.on('close', () => {
+    finished = true;
+    queue.off('job', onJob);
+  });
 }

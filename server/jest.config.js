@@ -34,4 +34,3 @@ module.exports = {
   setupFiles: ['<rootDir>/src/test-env.ts'],
   setupFilesAfterEnv: [],
 };
-

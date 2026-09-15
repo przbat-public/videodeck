@@ -1,5 +1,5 @@
-import os from 'os';
-import { normalizeFolderPath, sanitizeFilename, getVideoFilePath } from './videoPathUtils';
+import os from 'node:os';
+import { getVideoFilePath, normalizeFolderPath, sanitizeFilename } from './videoPathUtils';
 
 describe('normalizeFolderPath', () => {
   const realHomedir = os.homedir();
@@ -9,18 +9,12 @@ describe('normalizeFolderPath', () => {
   });
 
   it('passes plain absolute paths through', () => {
-    expect(normalizeFolderPath('/Users/<user>/Downloads/youtube')).toBe(
-      '/Users/<user>/Downloads/youtube'
-    );
+    expect(normalizeFolderPath('/Users/<user>/Downloads/youtube')).toBe('/Users/<user>/Downloads/youtube');
   });
 
   it('strips trailing slashes (except the root)', () => {
-    expect(normalizeFolderPath('/Users/<user>/Downloads/youtube/')).toBe(
-      '/Users/<user>/Downloads/youtube'
-    );
-    expect(normalizeFolderPath('/Users/<user>/Downloads/youtube///')).toBe(
-      '/Users/<user>/Downloads/youtube'
-    );
+    expect(normalizeFolderPath('/Users/<user>/Downloads/youtube/')).toBe('/Users/<user>/Downloads/youtube');
+    expect(normalizeFolderPath('/Users/<user>/Downloads/youtube///')).toBe('/Users/<user>/Downloads/youtube');
     expect(normalizeFolderPath('/')).toBe('/');
   });
 

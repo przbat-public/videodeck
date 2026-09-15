@@ -1,3 +1,5 @@
+import type { VideoListItem } from '@shared/api';
+import { at } from '../test-utils';
 import {
   buildIndexVersionName,
   bulkIndexDocuments,
@@ -24,8 +26,6 @@ import {
   searchVideos,
   toDocument,
 } from './elasticsearchService';
-import type { VideoListItem } from '@shared/api';
-import { at } from '../test-utils';
 
 const mockClient = {
   indices: {
@@ -88,24 +88,24 @@ function videoWithoutId(overrides: Partial<Omit<VideoListItem, 'videoId'>> = {})
 
 /** Alias points at the given versions; they are also the only physical indices */
 function aliasPointsAt(...indices: string[]) {
-  mockClient.indices.getAlias.mockResolvedValue(
-    Object.fromEntries(indices.map((index) => [index, { aliases: {} }]))
-  );
+  mockClient.indices.getAlias.mockResolvedValue(Object.fromEntries(indices.map((index) => [index, { aliases: {} }])));
   physicalIndices(...indices);
 }
 
 /** What `indices.get('<alias>_*')` returns */
 function physicalIndices(...indices: string[]) {
-  mockClient.indices.get.mockResolvedValue(
-    Object.fromEntries(indices.map((index) => [index, { aliases: {} }]))
-  );
+  mockClient.indices.get.mockResolvedValue(Object.fromEntries(indices.map((index) => [index, { aliases: {} }])));
 }
 
 describe('elasticsearchService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.spyOn(console, 'log').mockImplementation(() => {});
-    jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.spyOn(console, 'log').mockImplementation(() => {
+      /* silence expected info logs */
+    });
+    jest.spyOn(console, 'error').mockImplementation(() => {
+      /* silence expected error logs */
+    });
     mockFolders.current = ['/videos/a', '/videos/b'];
 
     mockClient.indices.create.mockResolvedValue({ acknowledged: true });
@@ -145,7 +145,7 @@ describe('elasticsearchService', () => {
             { id: '2', text: '' },
             { id: '3', text: 'second' },
           ],
-        })
+        }),
       );
 
       expect(doc).not.toHaveProperty('comments');
@@ -185,10 +185,7 @@ describe('elasticsearchService', () => {
         type: 'text',
         analyzer: 'polish_folded',
       });
-      expect(request.settings.analysis.analyzer.polish_folded.filter).toEqual([
-        'lowercase',
-        'asciifolding',
-      ]);
+      expect(request.settings.analysis.analyzer.polish_folded.filter).toEqual(['lowercase', 'asciifolding']);
       expect(request.mappings.properties).not.toHaveProperty('comments');
       expect(request.settings.index).not.toHaveProperty('mapping');
       expect(mockClient.indices.updateAliases).not.toHaveBeenCalled();
@@ -225,13 +222,13 @@ describe('elasticsearchService', () => {
     });
 
     it('treats a failed alias check as uncached instead of throwing', async () => {
-      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+        /* silence the expected warning */
+      });
       mockClient.indices.existsAlias.mockRejectedValueOnce(new Error('es down'));
 
       await expect(listCachedFolders([FOLDER_A])).resolves.toEqual(new Set());
-      expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining('Cannot check the index cache of /videos/a')
-      );
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Cannot check the index cache of /videos/a'));
       warn.mockRestore();
     });
   });
@@ -254,9 +251,7 @@ describe('elasticsearchService', () => {
         index: `${ALIAS_A}_old`,
         ignore_unavailable: true,
       });
-      expect(mockClient.indices.delete).not.toHaveBeenCalledWith(
-        expect.objectContaining({ index: ALIAS_A })
-      );
+      expect(mockClient.indices.delete).not.toHaveBeenCalledWith(expect.objectContaining({ index: ALIAS_A }));
     });
 
     it('sweeps orphaned versions left by a crashed reindex', async () => {
@@ -266,7 +261,7 @@ describe('elasticsearchService', () => {
       await promoteIndexVersion(FOLDER_A, `${ALIAS_A}_new`);
 
       expect(mockClient.indices.get).toHaveBeenCalledWith(
-        expect.objectContaining({ index: `${ALIAS_A}_*`, ignore_unavailable: true })
+        expect.objectContaining({ index: `${ALIAS_A}_*`, ignore_unavailable: true }),
       );
       // only the old version was behind the alias, so only it is removed from it
       expect(mockClient.indices.updateAliases).toHaveBeenCalledWith({
@@ -451,9 +446,7 @@ describe('elasticsearchService', () => {
       ]);
 
       expect(mockClient.bulk).toHaveBeenCalledTimes(2);
-      const targets = mockClient.bulk.mock.calls
-        .map(([req]) => req.operations[0].index._index)
-        .sort();
+      const targets = mockClient.bulk.mock.calls.map(([req]) => req.operations[0].index._index).sort();
       expect(targets).toEqual([ALIAS_A, ALIAS_B].sort());
       expect(mockClient.indices.refresh).toHaveBeenCalledWith({ index: ALIAS_A });
       expect(mockClient.indices.refresh).toHaveBeenCalledWith({ index: ALIAS_B });
@@ -473,9 +466,9 @@ describe('elasticsearchService', () => {
         ],
       });
 
-      await expect(
-        bulkIndexVideos([video({ videoId: 'a' }), video({ videoId: 'b' })], { index: 'x' })
-      ).rejects.toThrow('Bulk indexing failed for 1 of 2 videos');
+      await expect(bulkIndexVideos([video({ videoId: 'a' }), video({ videoId: 'b' })], { index: 'x' })).rejects.toThrow(
+        'Bulk indexing failed for 1 of 2 videos',
+      );
     });
   });
 
@@ -484,7 +477,7 @@ describe('elasticsearchService', () => {
       await bulkIndexDocuments(
         'videos_target',
         [toDocument(video({ videoId: 'a' })), toDocument(videoWithoutId({ baseName: 'nb' }))],
-        false
+        false,
       );
 
       const { operations } = mockClient.bulk.mock.calls[0][0];
@@ -505,9 +498,7 @@ describe('elasticsearchService', () => {
   describe('estimateDocumentBytes', () => {
     it('grows with the text fields', () => {
       const small = estimateDocumentBytes(toDocument(video()));
-      const big = estimateDocumentBytes(
-        toDocument(video({ comments: [{ id: '1', text: 'x'.repeat(10_000) }] }))
-      );
+      const big = estimateDocumentBytes(toDocument(video({ comments: [{ id: '1', text: 'x'.repeat(10_000) }] })));
       expect(big - small).toBe(10_000);
       expect(small).toBeGreaterThan(0);
     });

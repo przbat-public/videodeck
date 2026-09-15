@@ -1,24 +1,18 @@
-import express from 'express';
-import type { NextFunction, Request, Response } from 'express';
-import { randomUUID } from 'crypto';
-import cors from 'cors';
-import helmet from 'helmet';
-import { rateLimit } from 'express-rate-limit';
-import videosRouter from './routes/videos';
-import { createFolderRouter } from './routes/folder';
-import type { DownloadQueueLike } from './routes/folder';
-import {
-  getAllowedHosts,
-  getCorsOrigins,
-  getExtensionOrigins,
-  getRateLimitMax,
-  getRateLimitWindowMs,
-} from './config';
-import { createAuthMiddleware, isAllowedCorsOrigin } from './routes/http';
-import { logger } from './utils/logger';
-import { metricsBody, metricsRegistry, recordRequest } from './metrics';
-import { checkElasticsearchConnection } from './services/elasticsearchService';
+import { randomUUID } from 'node:crypto';
 import type { ApiError } from '@shared/api';
+import cors from 'cors';
+import type { NextFunction, Request, Response } from 'express';
+import express from 'express';
+import { rateLimit } from 'express-rate-limit';
+import helmet from 'helmet';
+import { getAllowedHosts, getCorsOrigins, getExtensionOrigins, getRateLimitMax, getRateLimitWindowMs } from './config';
+import { metricsBody, metricsRegistry, recordRequest } from './metrics';
+import type { DownloadQueueLike } from './routes/folder';
+import { createFolderRouter } from './routes/folder';
+import { createAuthMiddleware, isAllowedCorsOrigin } from './routes/http';
+import videosRouter from './routes/videos';
+import { checkElasticsearchConnection } from './services/elasticsearchService';
+import { logger } from './utils/logger';
 
 /**
  * Largest expected JSON body: bulk enqueue for a channel with thousands of
@@ -51,9 +45,7 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
     // instead of a new series per URL (every filename would be one).
     const route = req.route?.path ?? 'unmatched';
     recordRequest(req.method, route, res.statusCode, durationMs);
-    logger.info(
-      `${req.method} ${req.originalUrl} → ${res.statusCode} (${durationMs}ms) [${requestId}]`
-    );
+    logger.info(`${req.method} ${req.originalUrl} → ${res.statusCode} (${durationMs}ms) [${requestId}]`);
   });
   next();
 }
@@ -65,9 +57,7 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
  * Loopback hosts are always allowed; `extraHosts` (ALLOWED_HOSTS) extends
  * the list for LAN setups. Requests without a Host header (HTTP/1.0) pass.
  */
-function createHostGuard(
-  extraHosts: readonly string[]
-): (req: Request, res: Response, next: NextFunction) => void {
+function createHostGuard(extraHosts: readonly string[]): (req: Request, res: Response, next: NextFunction) => void {
   const allowed = new Set(['localhost', '127.0.0.1', '::1', ...extraHosts]);
   return (req, res, next) => {
     const rawHost = req.headers.host;
@@ -96,20 +86,12 @@ function createHostGuard(
  * The response body is generic on purpose: `error.message` may carry file
  * paths, tokens or library internals that must not leak to the client.
  */
-export function errorHandler(
-  error: unknown,
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void {
+export function errorHandler(error: unknown, req: Request, res: Response, next: NextFunction): void {
   if (res.headersSent) {
     next(error); // streaming response (SSE, sendFile) — let Express tear it down
     return;
   }
-  logger.error(
-    `Unhandled error in ${req.method} ${req.originalUrl} [${String(res.locals.requestId)}]:`,
-    error
-  );
+  logger.error(`Unhandled error in ${req.method} ${req.originalUrl} [${String(res.locals.requestId)}]:`, error);
   const body: ApiError = { error: 'Internal server error' };
   res.status(500).json(body);
 }
@@ -134,7 +116,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
       standardHeaders: true,
       legacyHeaders: false,
       message: { error: 'Too many requests' },
-    })
+    }),
   );
 
   // Only browsers are subject to CORS; requests without an Origin header
@@ -142,12 +124,9 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   app.use(
     cors({
       origin: (origin, callback) => {
-        callback(
-          null,
-          origin === undefined || isAllowedCorsOrigin(origin, extraCorsOrigins, extensionOrigins)
-        );
+        callback(null, origin === undefined || isAllowedCorsOrigin(origin, extraCorsOrigins, extensionOrigins));
       },
-    })
+    }),
   );
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
   app.use(requestLogger);

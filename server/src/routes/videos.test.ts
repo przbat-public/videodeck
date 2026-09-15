@@ -1,6 +1,6 @@
-import request from 'supertest';
-import express from 'express';
-import { createApp } from '../app';
+import * as fs from 'node:fs/promises';
+import path from 'node:path';
+import type { CommentWithReplies, ReindexStatus, VideoComment, VideoListItem } from '@shared/api';
 import {
   ChannelsResponseSchema,
   CommentsResponseSchema,
@@ -9,29 +9,24 @@ import {
   VideoDetailsResponseSchema,
   VideoSummaryResponseSchema,
 } from '@shared/schemas';
-import {
-  getVideos,
-  getReindexStatus,
-  isReindexRunning,
-  refreshVideosCache,
-} from '../services/videoScanner';
-import { getVideoFilePath } from '../utils/videoPathUtils';
-import { buildCommentTree } from '../utils/commentTreeUtils';
-import * as fs from 'fs/promises';
-import path from 'path';
-import type { CommentWithReplies, ReindexStatus, VideoComment, VideoListItem } from '@shared/api';
-import type { VideoInfoJson } from '../types';
+import express from 'express';
+import request from 'supertest';
+import { createApp } from '../app';
+import { loadCommentTree } from '../services/commentStore';
 import {
   getTotalVideoCount,
+  getVideoByBaseName,
+  getVideoByFilePath,
+  getVideoByVideoId,
   listChannelNames,
   recreateAllIndices,
-  getVideoByBaseName,
-  getVideoByVideoId,
-  getVideoByFilePath,
 } from '../services/elasticsearchService';
 import { getFolderPathsForCategory, listCategories } from '../services/folderConfig';
 import { generateSummary } from '../services/summaryService';
-import { loadCommentTree } from '../services/commentStore';
+import { getReindexStatus, getVideos, isReindexRunning, refreshVideosCache } from '../services/videoScanner';
+import type { VideoInfoJson } from '../types';
+import { buildCommentTree } from '../utils/commentTreeUtils';
+import { getVideoFilePath } from '../utils/videoPathUtils';
 
 jest.mock('../services/videoScanner');
 // Only the file-path join is mocked; normalizeFolderPath must stay real
@@ -41,7 +36,7 @@ jest.mock('../utils/videoPathUtils', () => ({
   getVideoFilePath: jest.fn(),
 }));
 jest.mock('../utils/commentTreeUtils');
-jest.mock('fs/promises');
+jest.mock('node:fs/promises');
 jest.mock('../services/elasticsearchService');
 jest.mock('../services/folderConfig');
 jest.mock('../services/summaryService');
@@ -57,24 +52,14 @@ const mockedGetVideos = getVideos as jest.MockedFunction<typeof getVideos>;
 const mockedGetVideoFilePath = getVideoFilePath as jest.MockedFunction<typeof getVideoFilePath>;
 const mockedBuildCommentTree = buildCommentTree as jest.MockedFunction<typeof buildCommentTree>;
 const mockedFs = fs as jest.Mocked<typeof fs>;
-const mockedRefreshVideosCache = refreshVideosCache as jest.MockedFunction<
-  typeof refreshVideosCache
->;
+const mockedRefreshVideosCache = refreshVideosCache as jest.MockedFunction<typeof refreshVideosCache>;
 const mockedGetReindexStatus = getReindexStatus as jest.MockedFunction<typeof getReindexStatus>;
 const mockedIsReindexRunning = isReindexRunning as jest.MockedFunction<typeof isReindexRunning>;
-const mockedRecreateAllIndices = recreateAllIndices as jest.MockedFunction<
-  typeof recreateAllIndices
->;
-const mockedGetTotalVideoCount = getTotalVideoCount as jest.MockedFunction<
-  typeof getTotalVideoCount
->;
-const mockedGetVideoByBaseName = getVideoByBaseName as jest.MockedFunction<
-  typeof getVideoByBaseName
->;
+const mockedRecreateAllIndices = recreateAllIndices as jest.MockedFunction<typeof recreateAllIndices>;
+const mockedGetTotalVideoCount = getTotalVideoCount as jest.MockedFunction<typeof getTotalVideoCount>;
+const mockedGetVideoByBaseName = getVideoByBaseName as jest.MockedFunction<typeof getVideoByBaseName>;
 const mockedGetVideoByVideoId = getVideoByVideoId as jest.MockedFunction<typeof getVideoByVideoId>;
-const mockedGetVideoByFilePath = getVideoByFilePath as jest.MockedFunction<
-  typeof getVideoByFilePath
->;
+const mockedGetVideoByFilePath = getVideoByFilePath as jest.MockedFunction<typeof getVideoByFilePath>;
 const mockedListChannelNames = listChannelNames as jest.MockedFunction<typeof listChannelNames>;
 const mockedLoadCommentTree = loadCommentTree as jest.MockedFunction<typeof loadCommentTree>;
 const mockedGetFolderPathsForCategory = getFolderPathsForCategory as jest.MockedFunction<
@@ -85,12 +70,17 @@ const mockedGenerateSummary = generateSummary as jest.MockedFunction<typeof gene
 
 describe('videos router', () => {
   let app: express.Application;
+  let consoleErrorSpy: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Mock console.error to suppress output during tests
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-    jest.spyOn(console, 'log').mockImplementation(() => {});
+    // Silence console output during tests (the spy is asserted against later)
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {
+      /* silence expected error logs */
+    });
+    jest.spyOn(console, 'log').mockImplementation(() => {
+      /* silence expected info logs */
+    });
 
     app = createApp();
   });
@@ -135,7 +125,7 @@ describe('videos router', () => {
       mockedGetTotalVideoCount.mockResolvedValue(0);
 
       const response = await request(app).get(
-        '/api/videos/search?q=x&channel=Jordan%20B%20Peterson&dateFrom=2024-01-05&dateTo=2025-12-31'
+        '/api/videos/search?q=x&channel=Jordan%20B%20Peterson&dateFrom=2024-01-05&dateTo=2025-12-31',
       );
 
       expect(response.status).toBe(200);
@@ -411,9 +401,9 @@ describe('videos router', () => {
 
       // Wait a bit for the catch handler to execute
       await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(console.error).toHaveBeenCalledWith(
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining('Error refreshing cache in background:'),
-        error
+        error,
       );
     });
 
@@ -492,9 +482,9 @@ describe('videos router', () => {
 
       // Wait a bit for the catch handler to execute
       await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(console.error).toHaveBeenCalledWith(
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining('Error recreating indices in background:'),
-        error
+        error,
       );
     });
   });
@@ -518,7 +508,7 @@ describe('videos router', () => {
       // The route calls sendFile(path) only, so the options/callback overload is not needed
       sendFileSpy = jest.spyOn(express.response, 'sendFile').mockImplementation(function (
         this: express.Response,
-        filePath: string
+        filePath: string,
       ) {
         // Set content-type header that would normally be set
         const ext = path.extname(filePath.toString()).toLowerCase();
@@ -654,9 +644,7 @@ describe('videos router', () => {
       mockedGetVideoByFilePath.mockResolvedValue(mockVideo);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
       mockedFs.access.mockResolvedValue(undefined);
-      mockedFs.readFile.mockResolvedValue(
-        'WEBVTT\n\n00:00:03.360 --> 00:00:05.200 align:start position:0%\ntext\n'
-      );
+      mockedFs.readFile.mockResolvedValue('WEBVTT\n\n00:00:03.360 --> 00:00:05.200 align:start position:0%\ntext\n');
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
 
@@ -718,9 +706,7 @@ describe('videos router', () => {
       mockedGetVideoFilePath.mockReturnValue('/test/other/20231201_TestVideo.mp4');
       mockedFs.access.mockResolvedValue(undefined);
 
-      const response = await request(app)
-        .get(`/api/videos/file/${filename}`)
-        .query({ folder: '/test/other' });
+      const response = await request(app).get(`/api/videos/file/${filename}`).query({ folder: '/test/other' });
 
       expect(response.status).toBe(200);
       expect(mockedGetVideoByFilePath).not.toHaveBeenCalled();
@@ -728,9 +714,7 @@ describe('videos router', () => {
     });
 
     it('rejects a folder query param that is not configured', async () => {
-      const response = await request(app)
-        .get('/api/videos/file/test.mp4')
-        .query({ folder: '/etc' });
+      const response = await request(app).get('/api/videos/file/test.mp4').query({ folder: '/etc' });
 
       expect(response.status).toBe(403);
       expect(mockedGetVideoFilePath).not.toHaveBeenCalled();

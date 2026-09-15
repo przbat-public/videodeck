@@ -68,9 +68,7 @@
   "webpage_url_domain": "youtube.com",
   "_type": "video",
   "_version": { "version": "2026.08.19", "release_git_head": "594bd50c" },
-  "thumbnails": [
-    { "url": "https://i.ytimg.com/vi/4wLuvRB3axg/hqdefault.jpg", "width": 480, "height": 360 }
-  ],
+  "thumbnails": [{ "url": "https://i.ytimg.com/vi/4wLuvRB3axg/hqdefault.jpg", "width": 480, "height": 360 }],
   "thumbnail": "https://i.ytimg.com/vi/4wLuvRB3axg/hqdefault.jpg",
   "subtitles": {},
   "automatic_captions": {},

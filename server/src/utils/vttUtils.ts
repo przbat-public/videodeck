@@ -6,8 +6,7 @@
  */
 
 /** A cue timing line: `00:00:03.360 --> 00:00:05.200` + optional settings */
-const CUE_TIMING_RE =
-  /^((?:\d{1,2}:)?\d{2}:\d{2}\.\d{3})\s+-->\s+((?:\d{1,2}:)?\d{2}:\d{2}\.\d{3})(?:\s+(.+))?\s*$/;
+const CUE_TIMING_RE = /^((?:\d{1,2}:)?\d{2}:\d{2}\.\d{3})\s+-->\s+((?:\d{1,2}:)?\d{2}:\d{2}\.\d{3})(?:\s+(.+))?\s*$/;
 
 /**
  * Remove the cue settings (position/align/line/vertical/size) from every

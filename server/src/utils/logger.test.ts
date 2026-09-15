@@ -15,9 +15,15 @@ describe('formatLogLine', () => {
 
 describe('logger', () => {
   it('routes every level to the matching console method', () => {
-    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {
+      /* captured by the assertions below */
+    });
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+      /* captured by the assertions below */
+    });
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {
+      /* captured by the assertions below */
+    });
 
     logger.info('a');
     logger.warn('b');
@@ -34,9 +40,15 @@ describe('logger', () => {
   });
 
   it('respects LOG_LEVEL', () => {
-    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {
+      /* captured by the assertions below */
+    });
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+      /* captured by the assertions below */
+    });
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {
+      /* captured by the assertions below */
+    });
     try {
       process.env.LOG_LEVEL = 'warn';
       logger.info('hidden');

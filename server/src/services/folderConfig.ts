@@ -1,5 +1,5 @@
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import type { DownloadOptions, FolderConfig } from '@shared/api';
 import { getVideosFolderPaths } from '../config';
 import { logger } from '../utils/logger';
@@ -89,10 +89,91 @@ export function isReservedExtraArg(arg: string): boolean {
 
 /** Whether an `extraArgs` entry is a dangerous flag (`--exec`, `--proxy=…`) */
 export function isForbiddenExtraArg(arg: string): boolean {
-  return FORBIDDEN_EXTRA_ARGS.some(
-    (forbidden) => arg === forbidden || arg.startsWith(`${forbidden}=`)
-  );
+  return FORBIDDEN_EXTRA_ARGS.some((forbidden) => arg === forbidden || arg.startsWith(`${forbidden}=`));
 }
+
+/** Error message when `value` is not a valid maxHeight, or null when it is */
+function validateMaxHeight(value: unknown): string | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < MIN_MAX_HEIGHT || value > MAX_MAX_HEIGHT) {
+    return `maxHeight must be an integer between ${MIN_MAX_HEIGHT} and ${MAX_MAX_HEIGHT}`;
+  }
+  return null;
+}
+
+/** Error message when `value` is not a valid subLangs list, or null when it is */
+function validateSubLangs(value: unknown): string | null {
+  if (!Array.isArray(value)) {
+    return 'subLangs must be an array of language codes';
+  }
+  for (const lang of value) {
+    if (typeof lang !== 'string' || lang.length === 0 || !SUB_LANG_RE.test(lang)) {
+      return `subLangs contains an invalid language code: ${JSON.stringify(lang)}`;
+    }
+  }
+  return null;
+}
+
+/** Validator for the plain boolean fields (writeComments, impersonate, …) */
+function validateBooleanField(fieldName: string): (value: unknown) => string | null {
+  return (value) => (typeof value === 'boolean' ? null : `${fieldName} must be a boolean`);
+}
+
+/** Error message when `value` is not a valid fragment concurrency, or null */
+function validateConcurrentFragments(value: unknown): string | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 16) {
+    return 'concurrentFragments must be an integer between 1 and 16';
+  }
+  return null;
+}
+
+/** Error message when `value` is not a valid extraArgs list, or null when it is */
+function validateExtraArgs(value: unknown): string | null {
+  if (!Array.isArray(value)) {
+    return 'extraArgs must be an array of yt-dlp arguments';
+  }
+  for (const arg of value) {
+    if (typeof arg !== 'string' || arg.trim().length === 0) {
+      return `extraArgs contains an invalid argument: ${JSON.stringify(arg)}`;
+    }
+    if (isReservedExtraArg(arg)) {
+      return `extraArgs must not override the built-in argument: ${arg}`;
+    }
+    if (isForbiddenExtraArg(arg)) {
+      return `extraArgs must not use the restricted argument: ${arg}`;
+    }
+  }
+  return null;
+}
+
+/** Error message when `value` is not a valid category, or null when it is */
+function validateCategory(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return 'category must be a string';
+  }
+  const category = value.trim();
+  if (category.length === 0) {
+    return 'category must not be empty (omit the key instead)';
+  }
+  if (category.length > MAX_CATEGORY_LENGTH) {
+    return `category must be at most ${MAX_CATEGORY_LENGTH} characters`;
+  }
+  if (/[\r\n]/.test(category)) {
+    return 'category must be a single line';
+  }
+  return null;
+}
+
+/** `config.json` fields validated in the order their errors win */
+const CONFIG_FIELD_VALIDATORS: Array<[key: string, validate: (value: unknown) => string | null]> = [
+  ['maxHeight', validateMaxHeight],
+  ['subLangs', validateSubLangs],
+  ['writeComments', validateBooleanField('writeComments')],
+  ['impersonate', validateBooleanField('impersonate')],
+  ['sponsorblockRemove', validateBooleanField('sponsorblockRemove')],
+  ['concurrentFragments', validateConcurrentFragments],
+  ['extraArgs', validateExtraArgs],
+  ['category', validateCategory],
+];
 
 /**
  * Validate a config object coming from the client.
@@ -108,85 +189,76 @@ export function validateFolderConfig(config: unknown): string | null {
     return 'channelUrl must be a string';
   }
 
-  if (c.maxHeight !== undefined) {
-    if (
-      typeof c.maxHeight !== 'number' ||
-      !Number.isInteger(c.maxHeight) ||
-      c.maxHeight < MIN_MAX_HEIGHT ||
-      c.maxHeight > MAX_MAX_HEIGHT
-    ) {
-      return `maxHeight must be an integer between ${MIN_MAX_HEIGHT} and ${MAX_MAX_HEIGHT}`;
-    }
-  }
-
-  if (c.subLangs !== undefined) {
-    if (!Array.isArray(c.subLangs)) {
-      return 'subLangs must be an array of language codes';
-    }
-    for (const lang of c.subLangs) {
-      if (typeof lang !== 'string' || lang.length === 0 || !SUB_LANG_RE.test(lang)) {
-        return `subLangs contains an invalid language code: ${JSON.stringify(lang)}`;
+  for (const [key, validate] of CONFIG_FIELD_VALIDATORS) {
+    const value = c[key];
+    if (value !== undefined) {
+      const error = validate(value);
+      if (error !== null) {
+        return error;
       }
-    }
-  }
-
-  if (c.writeComments !== undefined && typeof c.writeComments !== 'boolean') {
-    return 'writeComments must be a boolean';
-  }
-
-  if (c.impersonate !== undefined && typeof c.impersonate !== 'boolean') {
-    return 'impersonate must be a boolean';
-  }
-
-  if (c.sponsorblockRemove !== undefined && typeof c.sponsorblockRemove !== 'boolean') {
-    return 'sponsorblockRemove must be a boolean';
-  }
-
-  if (c.concurrentFragments !== undefined) {
-    if (
-      typeof c.concurrentFragments !== 'number' ||
-      !Number.isInteger(c.concurrentFragments) ||
-      c.concurrentFragments < 1 ||
-      c.concurrentFragments > 16
-    ) {
-      return 'concurrentFragments must be an integer between 1 and 16';
-    }
-  }
-
-  if (c.extraArgs !== undefined) {
-    if (!Array.isArray(c.extraArgs)) {
-      return 'extraArgs must be an array of yt-dlp arguments';
-    }
-    for (const arg of c.extraArgs) {
-      if (typeof arg !== 'string' || arg.trim().length === 0) {
-        return `extraArgs contains an invalid argument: ${JSON.stringify(arg)}`;
-      }
-      if (isReservedExtraArg(arg)) {
-        return `extraArgs must not override the built-in argument: ${arg}`;
-      }
-      if (isForbiddenExtraArg(arg)) {
-        return `extraArgs must not use the restricted argument: ${arg}`;
-      }
-    }
-  }
-
-  if (c.category !== undefined) {
-    if (typeof c.category !== 'string') {
-      return 'category must be a string';
-    }
-    const category = c.category.trim();
-    if (category.length === 0) {
-      return 'category must not be empty (omit the key instead)';
-    }
-    if (category.length > MAX_CATEGORY_LENGTH) {
-      return `category must be at most ${MAX_CATEGORY_LENGTH} characters`;
-    }
-    if (/[\r\n]/.test(category)) {
-      return 'category must be a single line';
     }
   }
 
   return null;
+}
+
+/** Whether a value is an integer maxHeight within the supported range */
+function isValidMaxHeight(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= MIN_MAX_HEIGHT && value <= MAX_MAX_HEIGHT;
+}
+
+/** Whether a value is an integer fragment concurrency within 1–16 */
+function isValidConcurrency(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 16;
+}
+
+/** Whether a value is a non-empty yt-dlp language selector */
+function isLanguageCode(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && SUB_LANG_RE.test(value);
+}
+
+/**
+ * Extra entries a dropped flag consumes on top of itself: 1 when its value is
+ * glued (`--proxy=http://p`) or the flag takes none, 2 when the value is the
+ * next entry (only for flags that take one — `valueFlags`).
+ */
+function orphanValueWidth(arg: string, next: unknown, valueFlags: readonly string[] | undefined): number {
+  if (arg.includes('=')) {
+    return 1;
+  }
+  if (valueFlags !== undefined && !valueFlags.includes(arg)) {
+    return 1;
+  }
+  return typeof next === 'string' && !next.startsWith('-') ? 2 : 1;
+}
+
+/**
+ * Accept every extraArg that the pipeline does not own and that is not
+ * forbidden. A dropped flag like `-f` orphans its value ("best") — that is
+ * dropped too, unless the value is glued (`-f=best`) or the flag takes none.
+ */
+function resolveExtraArgs(extraArgs: unknown[]): string[] {
+  const accepted: string[] = [];
+  let index = 0;
+  while (index < extraArgs.length) {
+    const arg = extraArgs[index];
+    if (typeof arg !== 'string' || arg.trim().length === 0) {
+      index += 1;
+      continue;
+    }
+    if (isReservedExtraArg(arg)) {
+      index += orphanValueWidth(arg, extraArgs[index + 1], RESERVED_ARGS_WITH_VALUE);
+      continue;
+    }
+    if (isForbiddenExtraArg(arg)) {
+      // Same orphan-value handling: `--proxy http://p` arrives as two entries.
+      index += orphanValueWidth(arg, extraArgs[index + 1], undefined);
+      continue;
+    }
+    accepted.push(arg);
+    index += 1;
+  }
+  return accepted;
 }
 
 /**
@@ -204,20 +276,12 @@ export function resolveDownloadOptions(config: FolderConfig | null | undefined):
     return options;
   }
 
-  if (
-    typeof config.maxHeight === 'number' &&
-    Number.isInteger(config.maxHeight) &&
-    config.maxHeight >= MIN_MAX_HEIGHT &&
-    config.maxHeight <= MAX_MAX_HEIGHT
-  ) {
+  if (isValidMaxHeight(config.maxHeight)) {
     options.maxHeight = config.maxHeight;
   }
 
   if (Array.isArray(config.subLangs)) {
-    options.subLangs = config.subLangs.filter(
-      (lang): lang is string =>
-        typeof lang === 'string' && lang.length > 0 && SUB_LANG_RE.test(lang)
-    );
+    options.subLangs = config.subLangs.filter(isLanguageCode);
   }
 
   if (typeof config.writeComments === 'boolean') {
@@ -227,46 +291,12 @@ export function resolveDownloadOptions(config: FolderConfig | null | undefined):
   options.impersonate = config.impersonate === true;
   options.sponsorblockRemove = config.sponsorblockRemove === true;
 
-  if (
-    typeof config.concurrentFragments === 'number' &&
-    Number.isInteger(config.concurrentFragments) &&
-    config.concurrentFragments >= 1 &&
-    config.concurrentFragments <= 16
-  ) {
+  if (isValidConcurrency(config.concurrentFragments)) {
     options.concurrentFragments = config.concurrentFragments;
   }
 
   if (Array.isArray(config.extraArgs)) {
-    options.extraArgs = [];
-    for (let index = 0; index < config.extraArgs.length; index += 1) {
-      const arg = config.extraArgs[index];
-      if (typeof arg !== 'string' || arg.trim().length === 0) {
-        continue;
-      }
-      if (isReservedExtraArg(arg)) {
-        // A dropped flag like `-f` orphans its value ("best") — drop that too,
-        // unless the value is glued (`-f=best`) or the flag takes none.
-        const next = config.extraArgs[index + 1];
-        if (
-          !arg.includes('=') &&
-          RESERVED_ARGS_WITH_VALUE.includes(arg) &&
-          typeof next === 'string' &&
-          !next.startsWith('-')
-        ) {
-          index += 1;
-        }
-        continue;
-      }
-      if (isForbiddenExtraArg(arg)) {
-        // Same orphan-value handling: `--proxy http://p` arrives as two entries.
-        const next = config.extraArgs[index + 1];
-        if (!arg.includes('=') && typeof next === 'string' && !next.startsWith('-')) {
-          index += 1;
-        }
-        continue;
-      }
-      options.extraArgs.push(arg);
-    }
+    options.extraArgs = resolveExtraArgs(config.extraArgs);
   }
 
   return options;
@@ -341,11 +371,7 @@ async function readCategories(): Promise<Map<string, string>> {
   const folderPaths = getVideosFolderPaths();
   const key = folderPaths.join('\n');
   const now = Date.now();
-  if (
-    categoryCache !== null &&
-    categoryCache.key === key &&
-    now - categoryCache.readAt < CATEGORY_CACHE_TTL_MS
-  ) {
+  if (categoryCache !== null && categoryCache.key === key && now - categoryCache.readAt < CATEGORY_CACHE_TTL_MS) {
     return categoryCache.categories;
   }
 

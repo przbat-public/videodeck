@@ -1,15 +1,15 @@
-import { EventEmitter } from 'events';
-import { spawn as nodeSpawn } from 'child_process';
-import { randomUUID } from 'crypto';
+import { spawn as nodeSpawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import type { DownloadOptions, JobStatus, JobType, QueueJob } from '@shared/api';
+import { extractYtDlpProgress } from '@shared/progress';
+import { removePartialDownloads } from '../utils/fsUtils';
+import { logger } from '../utils/logger';
+import { stripUndefined } from '../utils/objectUtils';
 import { refreshIndex } from './folderIndex';
 import { indexVideosFromDisk } from './videoScanner';
-import { stripUndefined } from '../utils/objectUtils';
-import { removePartialDownloads } from '../utils/fsUtils';
-import { extractYtDlpProgress } from '@shared/progress';
 import { buildYtDlpArgs } from './ytdlp';
 import { detectPermanentFailure } from './ytdlpFailures';
-import { logger } from '../utils/logger';
 
 /**
  * Server-side yt-dlp job queue.
@@ -92,9 +92,7 @@ export async function indexChangedVideos(job: QueueJob): Promise<void> {
     return;
   }
   const indexed = await indexVideosFromDisk(job.folderPath, baseNames);
-  logger.info(
-    `Job ${job.id}: indexed ${indexed}/${baseNames.length} changed videos in Elasticsearch`
-  );
+  logger.info(`Job ${job.id}: indexed ${indexed}/${baseNames.length} changed videos in Elasticsearch`);
 }
 
 export class DownloadQueue extends EventEmitter {
@@ -173,9 +171,7 @@ export class DownloadQueue extends EventEmitter {
 
   list(folderPath?: string): QueueJob[] {
     this.prune();
-    const jobs = Array.from(this.jobs.values()).filter(
-      (job) => !folderPath || job.folderPath === folderPath
-    );
+    const jobs = Array.from(this.jobs.values()).filter((job) => !folderPath || job.folderPath === folderPath);
     return jobs.map((job) => this.snapshot(job));
   }
 
@@ -246,12 +242,7 @@ export class DownloadQueue extends EventEmitter {
 
   private findActive(folderPath: string, videoId: string, type: JobType): QueueJob | undefined {
     for (const job of this.jobs.values()) {
-      if (
-        isActive(job) &&
-        job.folderPath === folderPath &&
-        job.videoId === videoId &&
-        job.type === type
-      ) {
+      if (isActive(job) && job.folderPath === folderPath && job.videoId === videoId && job.type === type) {
         return job;
       }
     }
@@ -259,9 +250,7 @@ export class DownloadQueue extends EventEmitter {
   }
 
   private running(type: JobType): QueueJob[] {
-    return Array.from(this.jobs.values()).filter(
-      (job) => job.status === 'running' && job.type === type
-    );
+    return Array.from(this.jobs.values()).filter((job) => job.status === 'running' && job.type === type);
   }
 
   /**
@@ -274,10 +263,7 @@ export class DownloadQueue extends EventEmitter {
       return this.running('update').length < this.maxConcurrentUpdates;
     }
     const downloads = this.running('download');
-    return (
-      downloads.length < this.maxConcurrent &&
-      !downloads.some((running) => running.folderPath === job.folderPath)
-    );
+    return downloads.length < this.maxConcurrent && !downloads.some((running) => running.folderPath === job.folderPath);
   }
 
   /** Start every queued job that may run, oldest first; a blocked job does not hold up the ones behind it */
@@ -343,66 +329,76 @@ export class DownloadQueue extends EventEmitter {
       }
     });
 
-    child.on('close', (code) => {
-      this.processes.delete(job.id);
-      if (job.status !== 'running') {
-        // Already cancelled or failed via 'error'. A cancelled download was
-        // killed mid-write: sweep the temporary files yt-dlp left behind.
-        if (job.status === 'cancelled' && job.type === 'download') {
-          void removePartialDownloads(job.folderPath);
-        }
-        this.pump();
-        return;
-      }
-      if (code === 0) {
-        // With -i, yt-dlp exits 0 even for extractor errors (members-only,
-        // private, removed) — detect them from the log so such videos are
-        // never marked as downloaded.
-        const permanent = detectPermanentFailure(job.log);
-        if (permanent) {
-          this.appendLog(job, permanent);
-          this.finish(job, 'error', permanent, code);
-          return;
-        }
-        job.progress = 100;
-        void this.runAfterJob(job).then(() => this.finish(job, 'done', undefined, code));
-        return;
-      }
+    child.on('close', (code) => this.onJobClose(job, code));
+  }
 
-      // Videos that can never succeed (members-only, private, removed) skip
-      // the retry backoff entirely — waiting would only waste time.
+  /**
+   * Handle the process `close` of a job: success runs the post-job hook,
+   * permanent failures fail right away, everything else is retried.
+   */
+  private onJobClose(job: QueueJob, code: number | null): void {
+    this.processes.delete(job.id);
+    if (job.status !== 'running') {
+      // Already cancelled or failed via 'error'. A cancelled download was
+      // killed mid-write: sweep the temporary files yt-dlp left behind.
+      if (job.status === 'cancelled' && job.type === 'download') {
+        void removePartialDownloads(job.folderPath);
+      }
+      this.pump();
+      return;
+    }
+    if (code === 0) {
+      // With -i, yt-dlp exits 0 even for extractor errors (members-only,
+      // private, removed) — detect them from the log so such videos are
+      // never marked as downloaded.
       const permanent = detectPermanentFailure(job.log);
       if (permanent) {
         this.appendLog(job, permanent);
         this.finish(job, 'error', permanent, code);
         return;
       }
+      job.progress = 100;
+      void this.runAfterJob(job).then(() => this.finish(job, 'done', undefined, code));
+      return;
+    }
 
-      // YouTube throttles (429) and transient network failures are common:
-      // retry a few times with a backoff before declaring the job failed.
-      const attempts = this.attempts.get(job.id) ?? 1;
-      if (attempts < this.maxAttempts) {
-        const delay = this.retryDelayMs;
-        job.progress = 0;
-        this.appendLog(
-          job,
-          `yt-dlp exited with code ${code} — retrying in ${Math.round(delay / 1000)}s (attempt ${attempts}/${this.maxAttempts})`
-        );
-        const timer = setTimeout(() => {
-          this.retryTimers.delete(job.id);
-          if (job.status === 'running') {
-            this.start(job);
-          } else {
-            this.pump();
-          }
-        }, delay);
-        this.retryTimers.set(job.id, timer);
-        this.pump();
-        return;
-      }
+    // Videos that can never succeed (members-only, private, removed) skip
+    // the retry backoff entirely — waiting would only waste time.
+    const permanent = detectPermanentFailure(job.log);
+    if (permanent) {
+      this.appendLog(job, permanent);
+      this.finish(job, 'error', permanent, code);
+      return;
+    }
 
+    this.retryOrFail(job, code);
+  }
+
+  /** Retry a failed yt-dlp run with backoff, or fail when attempts run out */
+  private retryOrFail(job: QueueJob, code: number | null): void {
+    // YouTube throttles (429) and transient network failures are common:
+    // retry a few times with a backoff before declaring the job failed.
+    const attempts = this.attempts.get(job.id) ?? 1;
+    if (attempts >= this.maxAttempts) {
       this.finish(job, 'error', `yt-dlp exited with code ${code} after ${attempts} attempts`, code);
-    });
+      return;
+    }
+    const delay = this.retryDelayMs;
+    job.progress = 0;
+    this.appendLog(
+      job,
+      `yt-dlp exited with code ${code} — retrying in ${Math.round(delay / 1000)}s (attempt ${attempts}/${this.maxAttempts})`,
+    );
+    const timer = setTimeout(() => {
+      this.retryTimers.delete(job.id);
+      if (job.status === 'running') {
+        this.start(job);
+      } else {
+        this.pump();
+      }
+    }, delay);
+    this.retryTimers.set(job.id, timer);
+    this.pump();
   }
 
   /**

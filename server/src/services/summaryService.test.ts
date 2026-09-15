@@ -1,7 +1,7 @@
-import * as fs from 'fs/promises';
+import * as fs from 'node:fs/promises';
 import OpenAI from 'openai';
-import { logger } from '../utils/logger';
 import { metricsRegistry } from '../metrics';
+import { logger } from '../utils/logger';
 import {
   estimateTokenCount,
   extractTextFromVttSubtitles,
@@ -11,7 +11,7 @@ import {
   truncateTextToTokenLimit,
 } from './summaryService';
 
-jest.mock('fs/promises');
+jest.mock('node:fs/promises');
 jest.mock('openai');
 
 const mockedFs = fs as jest.Mocked<typeof fs>;
@@ -187,9 +187,7 @@ describe('generateSummary', () => {
       .join('\n')}`;
     mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
     mockedFs.readFile.mockResolvedValueOnce(longVtt as never);
-    mockOpenAIInstance.chat.completions.create.mockResolvedValue(
-      mockCompletion('Summary of a long video')
-    );
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue(mockCompletion('Summary of a long video'));
 
     const result = await generateSummary(INPUT);
 
@@ -233,7 +231,7 @@ This is a test subtitle`;
     mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
     mockedFs.readFile.mockResolvedValueOnce(VTT as never);
     mockOpenAIInstance.chat.completions.create.mockRejectedValue(
-      Object.assign(new Error('Rate limit exceeded'), { status: 429 })
+      Object.assign(new Error('Rate limit exceeded'), { status: 429 }),
     );
 
     await expect(generateSummary(INPUT)).rejects.toThrow('Rate limit exceeded for all models');
@@ -281,9 +279,7 @@ This is a test subtitle`;
     mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
 
     try {
-      await expect(generateSummary(INPUT)).rejects.toThrow(
-        'OPENAI_API_KEY environment variable is required'
-      );
+      await expect(generateSummary(INPUT)).rejects.toThrow('OPENAI_API_KEY environment variable is required');
     } finally {
       process.env.OPENAI_API_KEY = 'test-api-key';
     }
@@ -294,12 +290,14 @@ This is a test subtitle`;
     mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
     mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
     mockedFs.readFile.mockResolvedValueOnce(VTT as never);
-    let resolveCreate: (value: unknown) => void = () => {};
+    let resolveCreate: (value: unknown) => void = () => {
+      /* replaced by the pending create promise's executor below */
+    };
     mockOpenAIInstance.chat.completions.create.mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveCreate = resolve;
-        })
+        }),
     );
 
     const first = generateSummary(INPUT);
@@ -319,9 +317,7 @@ This is a test subtitle`;
   it('does not cache a summary cut off by finish_reason=length', async () => {
     mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
     mockedFs.readFile.mockResolvedValueOnce(VTT as never);
-    mockOpenAIInstance.chat.completions.create.mockResolvedValue(
-      mockCompletion('The video is about', 'length')
-    );
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue(mockCompletion('The video is about', 'length'));
 
     const result = await generateSummary(INPUT);
 
@@ -344,7 +340,9 @@ This is a test subtitle`;
   });
 
   it('logs the billed tokens, approximate cost and records cost metrics', async () => {
-    const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {});
+    const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {
+      /* silence the expected billing log */
+    });
     mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
     mockedFs.readFile.mockResolvedValueOnce(VTT as never);
     mockOpenAIInstance.chat.completions.create.mockResolvedValue({
@@ -359,9 +357,7 @@ This is a test subtitle`;
     expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('≈$0.0045'));
     expect(metricsRegistry.getSingleMetric('openai_summary_requests_total')).toBeDefined();
     expect(metricsRegistry.getSingleMetric('openai_summary_tokens_total')).toBeDefined();
-    expect(
-      metricsRegistry.getSingleMetric('openai_summary_estimated_cost_cents_total')
-    ).toBeDefined();
+    expect(metricsRegistry.getSingleMetric('openai_summary_estimated_cost_cents_total')).toBeDefined();
     infoSpy.mockRestore();
   });
 });

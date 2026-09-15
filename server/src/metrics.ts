@@ -1,6 +1,6 @@
 import { Counter, Gauge, Histogram } from 'prom-client';
-import { downloadQueue } from './services/downloadQueue';
 import { metricsRegistry } from './metricsRegistry';
+import { downloadQueue } from './services/downloadQueue';
 
 export { metricsRegistry };
 
@@ -32,12 +32,7 @@ export const downloadQueueSize = new Gauge({
 });
 
 /** Record one finished request (called by the request logger) */
-export function recordRequest(
-  method: string,
-  route: string,
-  status: number,
-  durationMs: number
-): void {
+export function recordRequest(method: string, route: string, status: number, durationMs: number): void {
   httpRequestsTotal.inc({ method, route, status });
   httpRequestDurationSeconds.observe({ method, route }, durationMs / 1000);
 }

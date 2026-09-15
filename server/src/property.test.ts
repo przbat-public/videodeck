@@ -1,6 +1,6 @@
-import fc from 'fast-check';
 import { extractYtDlpProgress } from '@shared/progress';
 import { extractYoutubeVideoId, toWatchUrl } from '@shared/youtube';
+import fc from 'fast-check';
 import { extractTextFromVttSubtitles } from './services/summaryService';
 import { runPool } from './utils/runPool';
 import { stripVttCueSettings } from './utils/vttUtils';
@@ -22,7 +22,7 @@ describe('extractTextFromVttSubtitles', () => {
         expect(text).not.toMatch(/<\/?c>/);
         expect(text).not.toContain('WEBVTT');
         expect(text).not.toMatch(/^(Kind|Language|Style):/);
-      })
+      }),
     );
   });
 
@@ -31,7 +31,7 @@ describe('extractTextFromVttSubtitles', () => {
       fc.property(fc.string(), (input) => {
         const once = extractTextFromVttSubtitles(input);
         expect(extractTextFromVttSubtitles(once)).toBe(once);
-      })
+      }),
     );
   });
 });
@@ -45,7 +45,7 @@ describe('extractYtDlpProgress', () => {
           expect(progress).toBeGreaterThanOrEqual(0);
           expect(progress).toBeLessThanOrEqual(100);
         }
-      })
+      }),
     );
   });
 
@@ -53,7 +53,7 @@ describe('extractYtDlpProgress', () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 100 }), (percent) => {
         expect(extractYtDlpProgress(`[download] ${percent}% of 10MiB`)).toBe(percent);
-      })
+      }),
     );
   });
 });
@@ -66,7 +66,7 @@ describe('extractYoutubeVideoId', () => {
         if (id !== null) {
           expect(id).toMatch(/^[a-zA-Z0-9_-]{11}$/);
         }
-      })
+      }),
     );
   });
 
@@ -74,7 +74,7 @@ describe('extractYoutubeVideoId', () => {
     fc.assert(
       fc.property(fc.stringMatching(/^[a-zA-Z0-9_-]{11}$/), (id) => {
         expect(extractYoutubeVideoId(toWatchUrl(id))).toBe(id);
-      })
+      }),
     );
   });
 
@@ -84,7 +84,7 @@ describe('extractYoutubeVideoId', () => {
         const url = toWatchUrl(id);
         expect(url).not.toContain('list=');
         expect(url).not.toContain('index=');
-      })
+      }),
     );
   });
 });
@@ -100,7 +100,7 @@ describe('stripVttCueSettings', () => {
             expect(line).not.toMatch(/\s+(?:align|position|line|vertical|size):/);
           }
         }
-      })
+      }),
     );
   });
 
@@ -110,7 +110,7 @@ describe('stripVttCueSettings', () => {
         const withoutNewlines = settings.replace(/\r?\n/g, ' ');
         const line = `00:00:01.000 --> 00:00:02.000${withoutNewlines ? ` ${withoutNewlines}` : ''}`;
         expect(stripVttCueSettings(line)).toBe('00:00:01.000 --> 00:00:02.000');
-      })
+      }),
     );
   });
 });
@@ -127,8 +127,8 @@ describe('runPool', () => {
             seen.push(item);
           });
           expect([...seen].sort((a, b) => a - b)).toEqual([...items].sort((a, b) => a - b));
-        }
-      )
+        },
+      ),
     );
   });
 });

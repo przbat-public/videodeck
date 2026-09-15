@@ -1,5 +1,5 @@
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { logger } from './logger';
 
 /**
@@ -33,11 +33,9 @@ export async function removePartialDownloads(folderPath: string): Promise<void> 
       .map((name) =>
         fs.unlink(path.join(folderPath, name)).catch((error: unknown) => {
           logger.warn(
-            `Cannot remove partial download ${name}: ${
-              error instanceof Error ? error.message : String(error)
-            }`
+            `Cannot remove partial download ${name}: ${error instanceof Error ? error.message : String(error)}`,
           );
-        })
-      )
+        }),
+      ),
   );
 }

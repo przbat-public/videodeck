@@ -1,13 +1,13 @@
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import type { ReindexStatus, SortOption, VideoListItem } from '@shared/api';
 import { getVideosFolderPaths } from '../config';
 import type { VideoInfoJson } from '../types';
-import { stripUndefined } from '../utils/objectUtils';
 import { listVisibleFiles } from '../utils/fsUtils';
-import { runPool } from '../utils/runPool';
 import { logger } from '../utils/logger';
-import { extractTextFromVttSubtitles } from './summaryService';
+import { stripUndefined } from '../utils/objectUtils';
+import { runPool } from '../utils/runPool';
+import type { SearchOptions, VideoDocument } from './elasticsearchService';
 import {
   bulkIndexDocuments,
   checkElasticsearchConnection,
@@ -20,7 +20,7 @@ import {
   searchVideos,
   toDocument,
 } from './elasticsearchService';
-import type { SearchOptions, VideoDocument } from './elasticsearchService';
+import { extractTextFromVttSubtitles } from './summaryService';
 
 /** Max documents per bulk request */
 export const REINDEX_BATCH_SIZE = 50;
@@ -100,24 +100,65 @@ export interface FolderFiles {
  * Locate the sidecar files that belong to a base name.
  */
 export function findVideoFiles(baseName: string, visibleFiles: string[]): FolderFiles {
-  const videoFile = visibleFiles.find(
-    (f) => (f.endsWith('.mp4') || f.endsWith('.mkv')) && getBaseName(f) === baseName
-  );
+  const videoFile = visibleFiles.find((f) => (f.endsWith('.mp4') || f.endsWith('.mkv')) && getBaseName(f) === baseName);
   const thumbnailFile = visibleFiles.find(
-    (f) => (f.endsWith('.webp') || f.endsWith('.jpg')) && getBaseName(f) === baseName
+    (f) => (f.endsWith('.webp') || f.endsWith('.jpg')) && getBaseName(f) === baseName,
   );
   const isSubtitle = (f: string) =>
-    f.endsWith('.vtt') &&
-    (getBaseName(f) === baseName || getBaseName(f).startsWith(`${baseName}.`));
+    f.endsWith('.vtt') && (getBaseName(f) === baseName || getBaseName(f).startsWith(`${baseName}.`));
   const subtitleFiles = visibleFiles.filter(isSubtitle);
-  const subtitleFile = visibleFiles.find(
-    (f) => f.endsWith('.en.vtt') && getBaseName(f) === `${baseName}.en`
-  );
+  const subtitleFile = visibleFiles.find((f) => f.endsWith('.en.vtt') && getBaseName(f) === `${baseName}.en`);
   return { videoFile, thumbnailFile, subtitleFile, subtitleFiles };
 }
 
-export type BuildResult =
-  { status: 'ok'; video: VideoListItem } | { status: 'skipped'; reason: string };
+export type BuildResult = { status: 'ok'; video: VideoListItem } | { status: 'skipped'; reason: string };
+
+/** Skip reason naming the required sidecar files that are missing */
+function missingFilesReason(
+  baseName: string,
+  videoFile: string | undefined,
+  thumbnailFile: string | undefined,
+): string {
+  const missing = [
+    !videoFile ? 'video file (.mp4 or .mkv)' : null,
+    !thumbnailFile ? 'thumbnail file (.webp or .jpg)' : null,
+  ]
+    .filter(Boolean)
+    .join(' and ');
+  return `${baseName}: missing ${missing}`;
+}
+
+/**
+ * Searchable text of every subtitle file of the video (all languages), so
+ * Polish subtitles are searchable too. A read failure only loses the
+ * transcript, never the video.
+ */
+async function readTranscriptText(
+  folderPath: string,
+  baseName: string,
+  subtitleFiles: string[],
+): Promise<string | undefined> {
+  if (subtitleFiles.length === 0) {
+    return undefined;
+  }
+  const texts: string[] = [];
+  for (const subtitleFile of subtitleFiles) {
+    try {
+      const vtt = await fs.readFile(path.join(folderPath, subtitleFile), 'utf-8');
+      const text = extractTextFromVttSubtitles(vtt);
+      if (text.length > 0) {
+        texts.push(text);
+      }
+    } catch (error) {
+      logger.error(`Cannot read subtitles of ${baseName} for indexing:`, error);
+    }
+  }
+  const joined = texts.join('\n\n');
+  if (joined.length === 0) {
+    return undefined;
+  }
+  return joined.length > MAX_TRANSCRIPT_CHARS ? joined.slice(0, MAX_TRANSCRIPT_CHARS) : joined;
+}
 
 /**
  * Read `<baseName>.info.json` and build the document for it. Returns a
@@ -127,21 +168,12 @@ export type BuildResult =
 export async function buildVideoItem(
   folderPath: string,
   baseName: string,
-  visibleFiles: string[]
+  visibleFiles: string[],
 ): Promise<BuildResult> {
-  const { videoFile, thumbnailFile, subtitleFile, subtitleFiles } = findVideoFiles(
-    baseName,
-    visibleFiles
-  );
+  const { videoFile, thumbnailFile, subtitleFile, subtitleFiles } = findVideoFiles(baseName, visibleFiles);
 
   if (!videoFile || !thumbnailFile) {
-    const missing = [
-      !videoFile ? 'video file (.mp4 or .mkv)' : null,
-      !thumbnailFile ? 'thumbnail file (.webp or .jpg)' : null,
-    ]
-      .filter(Boolean)
-      .join(' and ');
-    return { status: 'skipped', reason: `${baseName}: missing ${missing}` };
+    return { status: 'skipped', reason: missingFilesReason(baseName, videoFile, thumbnailFile) };
   }
 
   const infoJsonPath = path.join(folderPath, `${baseName}.info.json`);
@@ -154,30 +186,7 @@ export async function buildVideoItem(
   }
 
   const title = infoJson.title || infoJson.fulltitle || '';
-
-  // Subtitle text is indexed for search ("find the video where he talks
-  // about X") across EVERY language on disk, so Polish subtitles are
-  // searchable too; a read failure only loses the transcript, never the video.
-  let transcriptText: string | undefined;
-  if (subtitleFiles.length > 0) {
-    const texts: string[] = [];
-    for (const subtitleFile of subtitleFiles) {
-      try {
-        const vtt = await fs.readFile(path.join(folderPath, subtitleFile), 'utf-8');
-        const text = extractTextFromVttSubtitles(vtt);
-        if (text.length > 0) {
-          texts.push(text);
-        }
-      } catch (error) {
-        logger.error(`Cannot read subtitles of ${baseName} for indexing:`, error);
-      }
-    }
-    const joined = texts.join('\n\n');
-    if (joined.length > 0) {
-      transcriptText =
-        joined.length > MAX_TRANSCRIPT_CHARS ? joined.slice(0, MAX_TRANSCRIPT_CHARS) : joined;
-    }
-  }
+  const transcriptText = await readTranscriptText(folderPath, baseName, subtitleFiles);
 
   return {
     status: 'ok',
@@ -195,7 +204,7 @@ export async function buildVideoItem(
       channelName: infoJson.channel || infoJson.uploader,
       comments: infoJson.comments || [],
       subtitlePath: subtitleFile,
-      transcriptText: transcriptText || undefined,
+      transcriptText,
     }),
   };
 }
@@ -330,14 +339,14 @@ export async function loadVideosCache(options: { onlyMissing?: boolean } = {}): 
       const cached = await listCachedFolders(configured);
       folderPaths = configured.filter((folderPath) => !cached.has(folderPath));
       logger.info(
-        `Reindex (onlyMissing): ${cached.size}/${configured.length} folders already have a cache and are skipped`
+        `Reindex (onlyMissing): ${cached.size}/${configured.length} folders already have a cache and are skipped`,
       );
     }
 
     logger.info('Loading videos cache from disk...');
     await scanVideosFromDisk(folderPaths);
     logger.info(
-      `Reindex finished: ${reindexStatus.indexed} indexed, ${reindexStatus.skipped} skipped, ${reindexStatus.errors.length} folder errors`
+      `Reindex finished: ${reindexStatus.indexed} indexed, ${reindexStatus.skipped} skipped, ${reindexStatus.errors.length} folder errors`,
     );
   } catch (error) {
     recordError(describeError(error));
@@ -363,10 +372,7 @@ export async function refreshVideosCache(options: { onlyMissing?: boolean } = {}
  * alias. Failures are logged, never thrown — this runs after downloads and
  * must not fail them. Returns how many documents were written.
  */
-export async function indexVideosFromDisk(
-  folderPath: string,
-  baseNames: string[]
-): Promise<number> {
+export async function indexVideosFromDisk(folderPath: string, baseNames: string[]): Promise<number> {
   if (baseNames.length === 0) {
     return 0;
   }
@@ -398,7 +404,7 @@ export const getVideos = async (
   query?: string,
   sortOption: SortOption = 'date-desc',
   folderPaths?: string[],
-  options?: SearchOptions
+  options?: SearchOptions,
 ): Promise<VideoListItem[]> => {
   return searchVideos(query, sortOption, folderPaths, options);
 };

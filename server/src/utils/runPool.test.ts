@@ -27,7 +27,7 @@ describe('runPool', () => {
     await runPool(
       Array.from({ length: 12 }, (_, i) => i),
       3,
-      worker
+      worker,
     );
     expect(maxActive()).toBeLessThanOrEqual(3);
     expect(maxActive()).toBeGreaterThan(1);
@@ -45,7 +45,7 @@ describe('runPool', () => {
         if (item === 2) {
           throw new Error('boom');
         }
-      })
+      }),
     ).rejects.toThrow('boom');
   });
 });

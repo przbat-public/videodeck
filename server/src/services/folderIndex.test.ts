@@ -1,13 +1,13 @@
-import fs from 'fs/promises';
-import os from 'os';
-import path from 'path';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { entry } from '../test-utils';
 import {
   ARCHIVE_FILE,
-  INDEX_FILE,
   extractVideoIdFromHead,
   findEntryByVideoId,
   getDownloadStatuses,
+  INDEX_FILE,
   loadIndex,
   readArchiveIds,
   rebuildIndex,
@@ -18,7 +18,7 @@ async function writeVideo(
   dir: string,
   baseName: string,
   id: string,
-  options: { video?: boolean; ext?: string; infoPrefix?: string } = {}
+  options: { video?: boolean; ext?: string; infoPrefix?: string } = {},
 ): Promise<void> {
   const { video = true, ext = '.mp4', infoPrefix } = options;
   const info = { id, title: baseName, comments: [{ id: 'c1', text: 'hello' }] };
@@ -34,7 +34,9 @@ describe('folderIndex', () => {
 
   beforeEach(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'folder-index-'));
-    jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {
+      /* silence expected error logs */
+    });
   });
 
   afterEach(async () => {
@@ -45,9 +47,7 @@ describe('folderIndex', () => {
   describe('extractVideoIdFromHead', () => {
     it('reads the top-level id from the beginning of a yt-dlp info.json', () => {
       expect(extractVideoIdFromHead('{"id": "abc123XYZ-_", "title": "x"}')).toBe('abc123XYZ-_');
-      expect(extractVideoIdFromHead('  {\n  "id":"q1w2e3r4t5y",\n"formats": []')).toBe(
-        'q1w2e3r4t5y'
-      );
+      expect(extractVideoIdFromHead('  {\n  "id":"q1w2e3r4t5y",\n"formats": []')).toBe('q1w2e3r4t5y');
     });
 
     it('returns null when id is not the first key', () => {
@@ -178,15 +178,13 @@ describe('folderIndex', () => {
       await fs.writeFile(
         path.join(dir, '20240101_Video.info.json'),
         JSON.stringify({ id: 'id-video', title: 'renamed' }),
-        'utf-8'
+        'utf-8',
       );
 
       const result = await refreshIndex(dir, since);
 
       expect(result.changed).toEqual(['id-video']);
-      expect(new Date(entry(result.index.entries, 'id-video').infoMtime).getTime()).toBeGreaterThan(
-        past.getTime()
-      );
+      expect(new Date(entry(result.index.entries, 'id-video').infoMtime).getTime()).toBeGreaterThan(past.getTime());
     });
 
     it('does not index a fresh info.json whose video file is missing', async () => {
@@ -252,11 +250,7 @@ describe('folderIndex', () => {
     });
 
     it('parses "<extractor> <id>" lines and ignores blanks', async () => {
-      await fs.writeFile(
-        path.join(dir, ARCHIVE_FILE),
-        'youtube aaa\n\nyoutube bbb\r\nvimeo ccc\n',
-        'utf-8'
-      );
+      await fs.writeFile(path.join(dir, ARCHIVE_FILE), 'youtube aaa\n\nyoutube bbb\r\nvimeo ccc\n', 'utf-8');
 
       expect(await readArchiveIds(dir)).toEqual(new Set(['aaa', 'bbb', 'ccc']));
     });

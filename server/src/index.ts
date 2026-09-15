@@ -1,12 +1,12 @@
 import dotenv from 'dotenv';
-import { validateEnv } from './env';
-import { validateVideosFolder } from './utils/videoPathUtils';
 import { createApp } from './app';
 import { getApiToken, getHost } from './config';
+import { validateEnv } from './env';
 import { downloadQueue } from './services/downloadQueue';
 import { getYtDlpVersion } from './services/ytdlp';
 import { installShutdownHandlers } from './shutdown';
 import { logger } from './utils/logger';
+import { validateVideosFolder } from './utils/videoPathUtils';
 
 dotenv.config();
 
@@ -28,9 +28,7 @@ async function startServer() {
     if (ytDlpVersion !== null) {
       logger.info(`yt-dlp version: ${ytDlpVersion}`);
     } else {
-      logger.warn(
-        'yt-dlp not found (yt-dlp --version failed) — downloads will fail until it is installed'
-      );
+      logger.warn('yt-dlp not found (yt-dlp --version failed) — downloads will fail until it is installed');
     }
 
     const apiToken = getApiToken();
@@ -40,7 +38,7 @@ async function startServer() {
       logger.info(`Server running on http://${host}:${PORT}`);
       if (!apiToken) {
         logger.warn(
-          'API_TOKEN is not set — the API is unauthenticated and reachable by every local process and browser tab. Set it in .env and in the Chrome extension options.'
+          'API_TOKEN is not set — the API is unauthenticated and reachable by every local process and browser tab. Set it in .env and in the Chrome extension options.',
         );
       }
     });

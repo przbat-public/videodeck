@@ -1,8 +1,8 @@
-import express from 'express';
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import type {
   AcceptedResponse,
+  ApiError,
   CategoriesResponse,
   ChannelsResponse,
   CommentsResponse,
@@ -16,33 +16,30 @@ import type {
   VideoListItem,
   VideoSummaryResponse,
 } from '@shared/api';
-import type { VideoInfoJson } from '../types';
+import type { Response } from 'express';
+import express from 'express';
+import { getVideosFolderPaths } from '../config';
+import { loadCommentTree } from '../services/commentStore';
+import type { SearchOptions } from '../services/elasticsearchService';
 import {
-  getVideos,
-  getReindexStatus,
-  isReindexRunning,
-  refreshVideosCache,
-} from '../services/videoScanner';
-import { getVideoFilePath, normalizeFolderPath } from '../utils/videoPathUtils';
-import { stripUndefined } from '../utils/objectUtils';
-import {
-  getVideoByBaseName,
-  getVideoByVideoId,
-  getVideoByFilePath,
   getTotalVideoCount,
+  getVideoByBaseName,
+  getVideoByFilePath,
+  getVideoByVideoId,
   listChannelNames,
   recreateAllIndices,
   SEARCH_DEFAULT_LIMIT,
 } from '../services/elasticsearchService';
-import type { SearchOptions } from '../services/elasticsearchService';
 import { getFolderPathsForCategory, listCategories } from '../services/folderConfig';
 import { generateSummary } from '../services/summaryService';
-import { loadCommentTree } from '../services/commentStore';
-import { getVideosFolderPaths } from '../config';
-import { readString } from './http';
-import type { NoParams, RouteHandler } from './http';
+import { getReindexStatus, getVideos, isReindexRunning, refreshVideosCache } from '../services/videoScanner';
+import type { VideoInfoJson } from '../types';
 import { logger } from '../utils/logger';
+import { stripUndefined } from '../utils/objectUtils';
+import { getVideoFilePath, normalizeFolderPath } from '../utils/videoPathUtils';
 import { stripVttCueSettings, vttLanguage } from '../utils/vttUtils';
+import type { NoParams, RouteHandler } from './http';
+import { readString } from './http';
 
 // ---------------------------------------------------------------------------
 // Request parsing
@@ -87,6 +84,88 @@ async function findVideo(identifier: string): Promise<VideoListItem | null> {
   return byId ?? getVideoByBaseName(identifier);
 }
 
+/** First truthy value among the candidates (0, '' and undefined fall through) */
+function firstTruthy<T>(...values: Array<T | undefined | null>): T | undefined {
+  for (const value of values) {
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/** Human-readable duration: `duration_string` wins, numeric `duration` is the fallback */
+function durationString(info: VideoInfoJson): string {
+  return info.duration_string || (info.duration ? String(info.duration) : '');
+}
+
+/** Content type and cache headers for a served file extension */
+function fileContentType(ext: string): { contentType: string; immutable: boolean } {
+  if (ext === '.mp4') {
+    return { contentType: 'video/mp4', immutable: true };
+  }
+  if (ext === '.webp') {
+    return { contentType: 'image/webp', immutable: true };
+  }
+  if (ext === '.vtt') {
+    return { contentType: 'text/vtt; charset=utf-8', immutable: false };
+  }
+  return { contentType: 'application/octet-stream', immutable: false };
+}
+
+/**
+ * Resolve the folder a file must be served from. With `?folder=` it has to be
+ * one of the configured folders; without it the file name is looked up in
+ * Elasticsearch. Sends the proper error response and returns undefined when
+ * the folder cannot be determined.
+ */
+async function resolveServeFolder<Res>(
+  filename: string,
+  folderParam: unknown,
+  res: Response<Res | ApiError>,
+): Promise<string | undefined> {
+  if (folderParam !== undefined) {
+    const normalized = typeof folderParam === 'string' ? normalizeFolderPath(folderParam) : undefined;
+    if (
+      normalized === undefined ||
+      !getVideosFolderPaths().some((allowed) => normalizeFolderPath(allowed) === normalized)
+    ) {
+      res.status(403).json({ error: `Folder path is not in the allowed list: ${String(folderParam)}` });
+      return undefined;
+    }
+    return normalized;
+  }
+  try {
+    const video = await getVideoByFilePath(filename);
+    if (video?.folderPath !== undefined) {
+      return video.folderPath;
+    }
+  } catch (lookupError) {
+    logger.error('Error looking up file in Elasticsearch:', lookupError);
+  }
+  // A file that is not indexed cannot be served — never fall back to a
+  // guessed folder (that used to leak files from the first configured one).
+  res.status(404).json({ error: 'File not found' });
+  return undefined;
+}
+
+/**
+ * VTT files of a video, sorted by name; [] when the folder is unreadable.
+ */
+async function listSubtitles(folderPath: string, baseName: string): Promise<SubtitleTrack[]> {
+  try {
+    const entries = (await fs.readdir(folderPath)) ?? [];
+    const prefix = `${baseName}.`;
+    return entries
+      .filter((file) => file.startsWith(prefix) && file.endsWith('.vtt'))
+      .map((file) => stripUndefined<SubtitleTrack>({ path: file, lang: vttLanguage(file) }))
+      .sort((a, b) => a.path.localeCompare(b.path));
+  } catch (error) {
+    logger.warn(`Cannot list subtitles of ${folderPath}:`, error);
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -100,10 +179,7 @@ const getRefreshStatus: RouteHandler<NoParams, ReindexStatus> = (_req, res) => {
 // ?onlyMissing=1 reindexes only the folders whose cache does not exist in
 // Elasticsearch yet, so a swapped-in disk with a cache from a previous
 // session is searched immediately and only new folders are scanned.
-const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictResponse> = (
-  req,
-  res
-) => {
+const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictResponse> = (req, res) => {
   if (isReindexRunning()) {
     res.status(409).json({
       error: 'Reindex already running',
@@ -191,35 +267,9 @@ const getChannelNames: RouteHandler<NoParams, ChannelsResponse> = async (_req, r
 // configured folders); without it we look the file name up in Elasticsearch.
 const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) => {
   const { filename } = req.params;
-  const folderParam = req.query.folder;
-
-  let folderPath: string | undefined;
-  if (folderParam !== undefined) {
-    const normalized =
-      typeof folderParam === 'string' ? normalizeFolderPath(folderParam) : undefined;
-    if (
-      normalized === undefined ||
-      !getVideosFolderPaths().some((allowed) => normalizeFolderPath(allowed) === normalized)
-    ) {
-      res
-        .status(403)
-        .json({ error: `Folder path is not in the allowed list: ${String(folderParam)}` });
-      return;
-    }
-    folderPath = normalized;
-  } else {
-    try {
-      const video = await getVideoByFilePath(filename);
-      folderPath = video?.folderPath;
-    } catch (lookupError) {
-      logger.error('Error looking up file in Elasticsearch:', lookupError);
-    }
-    // A file that is not indexed cannot be served — never fall back to a
-    // guessed folder (that used to leak files from the first configured one).
-    if (folderPath === undefined) {
-      res.status(404).json({ error: 'File not found' });
-      return;
-    }
+  const folderPath = await resolveServeFolder(filename, req.query.folder, res);
+  if (folderPath === undefined) {
+    return;
   }
 
   const filePath = getVideoFilePath(filename, folderPath);
@@ -232,30 +282,18 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
     return;
   }
 
-  // Determine content type
   const ext = path.extname(filename).toLowerCase();
-  let contentType = 'application/octet-stream';
 
-  if (ext === '.mp4') {
-    contentType = 'video/mp4';
-    // Videos are content-addressed by their yt-dlp file stem: a new version
-    // gets a new name, so the same URL always serves the same bytes.
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-  } else if (ext === '.webp') {
-    contentType = 'image/webp';
-    // Thumbnails follow the same stem — immutable like the video files.
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-  } else if (ext === '.vtt') {
+  if (ext === '.vtt') {
     // yt-dlp auto captions carry `align:start position:0%` on every cue,
     // pinning the text to the left edge — strip the settings so the browser
-    // centers the cues the way it does for plain WebVTT.
-    contentType = 'text/vtt; charset=utf-8';
-    // Subtitles are re-downloaded in place on metadata updates — always
-    // revalidate, never serve a stale cue file.
-    res.setHeader('Cache-Control', 'no-cache');
+    // centers the cues the way it does for plain WebVTT. Subtitles are
+    // re-downloaded in place on metadata updates — always revalidate, never
+    // serve a stale cue file.
     try {
       const vtt = await fs.readFile(filePath, 'utf-8');
-      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache');
       res.end(stripVttCueSettings(vtt));
     } catch {
       res.status(404).json({ error: 'File not found' });
@@ -263,7 +301,14 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
     return;
   }
 
+  const { contentType, immutable } = fileContentType(ext);
   res.setHeader('Content-Type', contentType);
+  if (immutable) {
+    // Videos and thumbnails are content-addressed by their yt-dlp file stem:
+    // a new version gets a new name, so the same URL always serves the same
+    // bytes.
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  }
   res.sendFile(path.resolve(filePath));
 };
 
@@ -290,9 +335,7 @@ const getSummary: RouteHandler<{ identifier: string }, VideoSummaryResponse> = a
   });
 
   // `truncated` is only present when true
-  res.json(
-    stripUndefined<VideoSummaryResponse>({ summary, truncated: truncated ? true : undefined })
-  );
+  res.json(stripUndefined<VideoSummaryResponse>({ summary, truncated: truncated ? true : undefined }));
 };
 
 // GET /api/videos/:identifier/details - supports both baseName and videoId
@@ -337,22 +380,12 @@ const getDetails: RouteHandler<{ identifier: string }, VideoDetailsResponse> = a
   // The details response carries only the first page; the rest comes from
   // GET /:identifier/comments — huge info.json files are parsed once and
   // cached by mtime (services/commentStore).
-  const comments = commentsTree === null ? [] : commentsTree.slice(0, COMMENTS_PAGE_SIZE);
+  const comments = commentsTree?.slice(0, COMMENTS_PAGE_SIZE) ?? [];
   const commentCount = commentsTree?.length ?? 0;
 
   // Every subtitle file the folder actually holds for this video, so the
   // player can offer each language instead of one hardcoded track.
-  let subtitles: SubtitleTrack[] = [];
-  try {
-    const entries = (await fs.readdir(video.folderPath)) ?? [];
-    const prefix = `${video.baseName}.`;
-    subtitles = entries
-      .filter((file) => file.startsWith(prefix) && file.endsWith('.vtt'))
-      .map((file) => stripUndefined<SubtitleTrack>({ path: file, lang: vttLanguage(file) }))
-      .sort((a, b) => a.path.localeCompare(b.path));
-  } catch (error) {
-    logger.warn(`Cannot list subtitles of ${video.folderPath}:`, error);
-  }
+  let subtitles = await listSubtitles(video.folderPath, video.baseName);
   if (subtitles.length === 0 && video.subtitlePath) {
     // Fallback for videos indexed before subtitle listing existed
     subtitles = [
@@ -364,13 +397,13 @@ const getDetails: RouteHandler<{ identifier: string }, VideoDetailsResponse> = a
   }
 
   const details = stripUndefined<VideoDetails>({
-    title: infoJson.title || infoJson.fulltitle || '',
-    description: infoJson.description || infoJson.title || infoJson.fulltitle || '',
-    uploadDate: infoJson.upload_date || '',
-    duration: infoJson.duration_string || (infoJson.duration ? String(infoJson.duration) : ''),
-    viewCount: infoJson.view_count || 0,
-    likeCount: infoJson.like_count || 0,
-    channelName: infoJson.channel || infoJson.uploader || '',
+    title: firstTruthy(infoJson.title, infoJson.fulltitle) ?? '',
+    description: firstTruthy(infoJson.description, infoJson.title, infoJson.fulltitle) ?? '',
+    uploadDate: firstTruthy(infoJson.upload_date) ?? '',
+    duration: durationString(infoJson),
+    viewCount: firstTruthy(infoJson.view_count) ?? 0,
+    likeCount: firstTruthy(infoJson.like_count) ?? 0,
+    channelName: firstTruthy(infoJson.channel, infoJson.uploader) ?? '',
     comments,
     commentCount,
     videoPath: video.videoPath,
@@ -400,10 +433,7 @@ const getComments: RouteHandler<{ identifier: string }, CommentsResponse> = asyn
   }
 
   const offset = parseNonNegativeInt(readString(req.query.offset), 0);
-  const limit = Math.min(
-    500,
-    Math.max(1, parseNonNegativeInt(readString(req.query.limit), COMMENTS_PAGE_SIZE))
-  );
+  const limit = Math.min(500, Math.max(1, parseNonNegativeInt(readString(req.query.limit), COMMENTS_PAGE_SIZE)));
 
   res.json({ comments: tree.slice(offset, offset + limit), totalCount: tree.length, offset });
 };

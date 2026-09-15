@@ -1,6 +1,8 @@
-import fs from 'fs/promises';
-import os from 'os';
-import path from 'path';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { getVideosFolderPaths } from '../config';
+import { at } from '../test-utils';
 import {
   CATEGORY_CACHE_TTL_MS,
   DEFAULT_DOWNLOAD_OPTIONS,
@@ -13,14 +15,10 @@ import {
   resolveDownloadOptions,
   validateFolderConfig,
 } from './folderConfig';
-import { getVideosFolderPaths } from '../config';
-import { at } from '../test-utils';
 
 jest.mock('../config');
 
-const mockedGetVideosFolderPaths = getVideosFolderPaths as jest.MockedFunction<
-  typeof getVideosFolderPaths
->;
+const mockedGetVideosFolderPaths = getVideosFolderPaths as jest.MockedFunction<typeof getVideosFolderPaths>;
 
 describe('folderConfig', () => {
   describe('validateFolderConfig', () => {
@@ -33,7 +31,7 @@ describe('folderConfig', () => {
           subLangs: ['en', 'pl', 'en.*', 'all', '-live_chat'],
           writeComments: false,
           somethingElse: 42,
-        })
+        }),
       ).toBeNull();
     });
 
@@ -64,9 +62,7 @@ describe('folderConfig', () => {
     });
 
     it('validates writeComments', () => {
-      expect(validateFolderConfig({ writeComments: 'yes' })).toBe(
-        'writeComments must be a boolean'
-      );
+      expect(validateFolderConfig({ writeComments: 'yes' })).toBe('writeComments must be a boolean');
     });
 
     it('validates extraArgs', () => {
@@ -77,47 +73,25 @@ describe('folderConfig', () => {
     });
 
     it('rejects dangerous extraArgs', () => {
-      expect(validateFolderConfig({ extraArgs: ['--cookies-from-browser', 'chrome'] })).toMatch(
-        /restricted argument/
-      );
+      expect(validateFolderConfig({ extraArgs: ['--cookies-from-browser', 'chrome'] })).toMatch(/restricted argument/);
       expect(validateFolderConfig({ extraArgs: ['--exec', 'id'] })).toMatch(/restricted argument/);
-      expect(validateFolderConfig({ extraArgs: ['--proxy=http://p'] })).toMatch(
-        /restricted argument/
-      );
-      expect(validateFolderConfig({ extraArgs: ['--config-locations', '/tmp/x'] })).toMatch(
-        /restricted argument/
-      );
-      expect(validateFolderConfig({ extraArgs: ['--cookies', '/tmp/c.txt'] })).toMatch(
-        /restricted argument/
-      );
-      expect(validateFolderConfig({ extraArgs: ['--load-cookies', '/tmp/c.txt'] })).toMatch(
-        /restricted argument/
-      );
+      expect(validateFolderConfig({ extraArgs: ['--proxy=http://p'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--config-locations', '/tmp/x'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--cookies', '/tmp/c.txt'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--load-cookies', '/tmp/c.txt'] })).toMatch(/restricted argument/);
       expect(validateFolderConfig({ extraArgs: ['--netrc'] })).toMatch(/restricted argument/);
-      expect(validateFolderConfig({ extraArgs: ['--username', 'u'] })).toMatch(
-        /restricted argument/
-      );
-      expect(validateFolderConfig({ extraArgs: ['--password', 'p'] })).toMatch(
-        /restricted argument/
-      );
-      expect(validateFolderConfig({ extraArgs: ['--video-password', 'p'] })).toMatch(
-        /restricted argument/
-      );
+      expect(validateFolderConfig({ extraArgs: ['--username', 'u'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--password', 'p'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--video-password', 'p'] })).toMatch(/restricted argument/);
     });
 
     it('rejects extraArgs that shadow pipeline-owned flags', () => {
       expect(validateFolderConfig({ extraArgs: ['-f', 'mp4'] })).toMatch(/built-in argument/);
       expect(validateFolderConfig({ extraArgs: ['--format=best'] })).toMatch(/built-in argument/);
-      expect(validateFolderConfig({ extraArgs: ['--download-archive', 'other.txt'] })).toMatch(
-        /built-in argument/
-      );
-      expect(validateFolderConfig({ extraArgs: ['--no-download-archive'] })).toMatch(
-        /built-in argument/
-      );
+      expect(validateFolderConfig({ extraArgs: ['--download-archive', 'other.txt'] })).toMatch(/built-in argument/);
+      expect(validateFolderConfig({ extraArgs: ['--no-download-archive'] })).toMatch(/built-in argument/);
       expect(validateFolderConfig({ extraArgs: ['-o', 'x.%(ext)s'] })).toMatch(/built-in argument/);
-      expect(validateFolderConfig({ extraArgs: ['--merge-output-format', 'mkv'] })).toMatch(
-        /built-in argument/
-      );
+      expect(validateFolderConfig({ extraArgs: ['--merge-output-format', 'mkv'] })).toMatch(/built-in argument/);
       expect(validateFolderConfig({ extraArgs: ['--format-sort', 'res'] })).toBeNull();
     });
 
@@ -136,12 +110,10 @@ describe('folderConfig', () => {
           impersonate: true,
           sponsorblockRemove: true,
           concurrentFragments: 4,
-        })
+        }),
       ).toBeNull();
       expect(validateFolderConfig({ impersonate: 'yes' })).toBe('impersonate must be a boolean');
-      expect(validateFolderConfig({ sponsorblockRemove: 1 })).toBe(
-        'sponsorblockRemove must be a boolean'
-      );
+      expect(validateFolderConfig({ sponsorblockRemove: 1 })).toBe('sponsorblockRemove must be a boolean');
       expect(validateFolderConfig({ concurrentFragments: 0 })).toMatch(/between 1 and 16/);
       expect(validateFolderConfig({ concurrentFragments: 32 })).toMatch(/between 1 and 16/);
       expect(validateFolderConfig({ concurrentFragments: 2.5 })).toMatch(/between 1 and 16/);
@@ -169,7 +141,7 @@ describe('folderConfig', () => {
           maxHeight: 1080,
           subLangs: ['pl', 'en'],
           writeComments: false,
-        })
+        }),
       ).toEqual({
         maxHeight: 1080,
         subLangs: ['pl', 'en'],
@@ -203,7 +175,7 @@ describe('folderConfig', () => {
           impersonate: true,
           sponsorblockRemove: true,
           concurrentFragments: 4,
-        })
+        }),
       ).toEqual({
         maxHeight: 2160,
         subLangs: ['en'],
@@ -219,7 +191,7 @@ describe('folderConfig', () => {
         resolveDownloadOptions({
           impersonate: 'yes' as unknown as boolean,
           concurrentFragments: 99,
-        })
+        }),
       ).toEqual({
         maxHeight: 2160,
         subLangs: ['en'],
@@ -240,7 +212,7 @@ describe('folderConfig', () => {
           // reserved (-f) and forbidden (--proxy) flags are dropped
           // together with their value
           extraArgs: ['', 42 as unknown as string, '-f', 'best', '--proxy', 'http://p'],
-        })
+        }),
       ).toEqual({
         maxHeight: 2160,
         subLangs: ['en'],
@@ -256,7 +228,7 @@ describe('folderConfig', () => {
       expect(
         resolveDownloadOptions({
           extraArgs: ['--exec', 'id', '--proxy=http://p', '--no-playlist'],
-        })
+        }),
       ).toEqual({
         maxHeight: 2160,
         subLangs: ['en'],
@@ -271,10 +243,13 @@ describe('folderConfig', () => {
 
   describe('readFolderConfig / loadDownloadOptions', () => {
     let dir: string;
+    let consoleErrorSpy: jest.SpyInstance;
 
     beforeEach(async () => {
       dir = await fs.mkdtemp(path.join(os.tmpdir(), 'folder-config-'));
-      jest.spyOn(console, 'error').mockImplementation(() => {});
+      consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {
+        /* silence expected error logs */
+      });
     });
 
     afterEach(async () => {
@@ -285,14 +260,14 @@ describe('folderConfig', () => {
     it('returns null when config.json is missing', async () => {
       expect(await readFolderConfig(dir)).toBeNull();
       expect(await loadDownloadOptions(dir)).toEqual(DEFAULT_DOWNLOAD_OPTIONS);
-      expect(console.error).not.toHaveBeenCalled();
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
 
     it('reads and resolves an existing config', async () => {
       await fs.writeFile(
         path.join(dir, 'config.json'),
         JSON.stringify({ channelUrl: 'https://yt/@a', maxHeight: 1080, subLangs: ['pl'] }),
-        'utf-8'
+        'utf-8',
       );
 
       expect(await readFolderConfig(dir)).toEqual({
@@ -314,7 +289,7 @@ describe('folderConfig', () => {
     it('returns null and logs for a corrupt or non-object file', async () => {
       await fs.writeFile(path.join(dir, 'config.json'), '{oops', 'utf-8');
       expect(await readFolderConfig(dir)).toBeNull();
-      expect(console.error).toHaveBeenCalled();
+      expect(consoleErrorSpy).toHaveBeenCalled();
 
       await fs.writeFile(path.join(dir, 'config.json'), '[1,2]', 'utf-8');
       expect(await readFolderConfig(dir)).toBeNull();
@@ -338,9 +313,7 @@ describe('folderConfig', () => {
 
       beforeEach(async () => {
         invalidateCategoryCache();
-        folders = await Promise.all(
-          [0, 1, 2, 3].map(() => fs.mkdtemp(path.join(os.tmpdir(), 'folder-category-')))
-        );
+        folders = await Promise.all([0, 1, 2, 3].map(() => fs.mkdtemp(path.join(os.tmpdir(), 'folder-category-'))));
         mockedGetVideosFolderPaths.mockReturnValue(folders);
         // Folder names deliberately say nothing about the category
         await writeConfig(at(folders, 0), { category: 'fpv' });

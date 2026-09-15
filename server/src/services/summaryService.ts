@@ -1,10 +1,10 @@
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import OpenAI from 'openai';
 import { Counter } from 'prom-client';
-import { logger } from '../utils/logger';
 import { getOpenAiApiKey } from '../config';
 import { metricsRegistry } from '../metricsRegistry';
+import { logger } from '../utils/logger';
 
 /**
  * AI summaries of video subtitles (GET /api/videos/:identifier/summary).
@@ -60,6 +60,30 @@ const summaryEstimatedCostCents = new Counter({
   registers: [metricsRegistry],
 });
 
+/** Whether the line is VTT machinery: header, metadata, timestamps, cue ids */
+function isVttStructuralLine(line: string): boolean {
+  return (
+    !line ||
+    line.startsWith('WEBVTT') ||
+    /^(Kind|Language|Style):/i.test(line) ||
+    line.includes('-->') ||
+    /^\d+$/.test(line)
+  );
+}
+
+/** Whether the line starts a NOTE/STYLE block that runs until an empty line */
+function isVttNoteBlockStart(line: string): boolean {
+  return line.startsWith('NOTE') || line.startsWith('STYLE');
+}
+
+/** Strip the inline tags yt-dlp writes: word timings and absolute timings */
+function stripInlineTimingTags(line: string): string {
+  return line
+    .replace(/<\d+:\d{2}:\d{2}\.\d{3}>/g, ' ')
+    .replace(/<\d{2}:\d{2}\.\d{3}>/g, ' ')
+    .replace(/<\/?c>/g, ' ');
+}
+
 /**
  * Extracts plain text from VTT subtitle content by removing timestamps and
  * metadata. This significantly reduces token count for OpenAI API calls.
@@ -74,37 +98,20 @@ export function extractTextFromVttSubtitles(vttContent: string): string {
   for (let i = 0; i < lines.length; i++) {
     const line = (lines[i] ?? '').trim();
 
-    // Skip empty lines
-    if (!line) continue;
-
-    // Skip WEBVTT header and the yt-dlp metadata lines that follow it
-    if (line === 'WEBVTT' || line.startsWith('WEBVTT')) continue;
-    if (/^(Kind|Language|Style):/i.test(line)) continue;
-
-    // Skip timestamp lines (format: 00:00:01.000 --> 00:00:04.000,
-    // optionally with `align:start position:0%` after the arrow)
-    if (line.includes('-->')) continue;
-
-    // Skip cue identifiers (numeric lines that appear before timestamps)
-    if (/^\d+$/.test(line)) continue;
-
-    // Skip style/note blocks
-    if (line.startsWith('NOTE') || line.startsWith('STYLE')) {
-      // Skip until empty line
+    // Skip empty lines, the WEBVTT header, metadata, timestamps and cue ids
+    if (isVttStructuralLine(line)) {
+      continue;
+    }
+    // NOTE/STYLE blocks: skip every line until the next empty one
+    if (isVttNoteBlockStart(line)) {
       while (i < lines.length - 1 && (lines[i + 1] ?? '').trim()) {
         i++;
       }
       continue;
     }
 
-    // This is actual subtitle text; strip the inline tags yt-dlp writes:
-    // <c>/</c> word timings and <00:00:03.360> absolute timings
-    textLines.push(
-      line
-        .replace(/<\d+:\d{2}:\d{2}\.\d{3}>/g, ' ')
-        .replace(/<\d{2}:\d{2}\.\d{3}>/g, ' ')
-        .replace(/<\/?c>/g, ' ')
-    );
+    // Actual subtitle text
+    textLines.push(stripInlineTimingTags(line));
   }
 
   // Join lines with spaces, removing excessive whitespace
@@ -142,7 +149,7 @@ export function truncateTextToTokenLimit(text: string, maxTokens: number): strin
     truncated.lastIndexOf('.'),
     truncated.lastIndexOf('!'),
     truncated.lastIndexOf('?'),
-    truncated.lastIndexOf('\n')
+    truncated.lastIndexOf('\n'),
   );
 
   // If we found a sentence boundary in the last 20% of text, use it
@@ -222,10 +229,7 @@ export async function generateSummary(input: GenerateSummaryInput): Promise<Gene
   return generation;
 }
 
-async function generateUncached(
-  input: GenerateSummaryInput,
-  summaryFilePath: string
-): Promise<GeneratedSummary> {
+async function generateUncached(input: GenerateSummaryInput, summaryFilePath: string): Promise<GeneratedSummary> {
   const { folderPath, baseName, subtitlePath } = input;
   const apiKey = getOpenAiApiKey();
   if (!apiKey) {
@@ -244,7 +248,7 @@ async function generateUncached(
 
   if (wasTruncated) {
     logger.warn(
-      `Subtitle text is too long (estimated ${estimatedTokens} tokens). Truncating to ${SUMMARY_MAX_INPUT_TOKENS} tokens.`
+      `Subtitle text is too long (estimated ${estimatedTokens} tokens). Truncating to ${SUMMARY_MAX_INPUT_TOKENS} tokens.`,
     );
     subtitleText = truncateTextToTokenLimit(subtitleText, SUMMARY_MAX_INPUT_TOKENS);
   }
@@ -252,14 +256,55 @@ async function generateUncached(
   // No SDK retries (429s walk the model list here) and a hard timeout: a hung
   // OpenAI call must not pin the request (and the queue behind it) forever.
   const openai = new OpenAI({ apiKey, timeout: OPENAI_TIMEOUT_MS, maxRetries: 0 });
+  const completion = await completeWithFallback(openai, subtitleText);
 
-  let completion: OpenAI.Chat.Completions.ChatCompletion | undefined;
+  const model = completion.model;
+  summaryRequestsTotal.inc({ model, status: 'ok' });
+
+  if (completion.usage) {
+    recordUsage(baseName, model, completion.usage);
+  }
+
+  // Defensive `?.` on message: the API has returned choices without one
+  const summary = completion.choices[0]?.message?.content;
+
+  if (!summary) {
+    throw new Error('OpenAI API did not return a summary');
+  }
+
+  // `finish_reason: 'length'` means the model hit max_tokens mid-sentence:
+  // the summary is cut off. Return it marked as truncated and DO NOT cache it
+  // — the cache must only ever hold complete summaries.
+  const cutOff = completion.choices[0]?.finish_reason === 'length';
+  if (cutOff) {
+    logger.warn(
+      `Summary for ${baseName}: model stopped at max_tokens (finish_reason=length) — not caching the partial summary`,
+    );
+    return { summary, truncated: true };
+  }
+
+  // Save summary to disk for future use
+  try {
+    await fs.writeFile(summaryFilePath, summary, 'utf-8');
+  } catch (writeError) {
+    logger.error('Error saving summary to disk:', writeError);
+    // Continue even if save fails - still return the summary
+  }
+
+  return { summary, truncated: wasTruncated };
+}
+
+/** First model of the list that answers; 429s walk the list, other errors fail fast */
+async function completeWithFallback(
+  openai: OpenAI,
+  subtitleText: string,
+): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   let lastError: unknown;
 
   for (const model of SUMMARY_MODELS) {
     try {
       // Call OpenAI API to generate summary in Polish
-      completion = await openai.chat.completions.create({
+      return await openai.chat.completions.create({
         model,
         messages: [
           {
@@ -275,7 +320,6 @@ async function generateUncached(
         temperature: 0.7,
         max_tokens: 2000,
       });
-      break; // Success, exit loop
     } catch (error) {
       lastError = error;
       summaryRequestsTotal.inc({ model, status: 'error' });
@@ -287,67 +331,27 @@ async function generateUncached(
       if (model === SUMMARY_MODELS[SUMMARY_MODELS.length - 1]) {
         // Every model is rate limited — fail fast, the client decides when to retry
         const detail = error instanceof Error ? error.message : String(error);
-        throw new Error(
-          `Rate limit exceeded for all models. Please try again later. Original error: ${detail}`,
-          { cause: error }
-        );
+        throw new Error(`Rate limit exceeded for all models. Please try again later. Original error: ${detail}`, {
+          cause: error,
+        });
       }
     }
   }
 
-  if (!completion) {
-    throw new Error(
-      lastError instanceof Error && lastError.message
-        ? lastError.message
-        : 'OpenAI API did not return a response'
-    );
-  }
+  throw new Error(
+    lastError instanceof Error && lastError.message ? lastError.message : 'OpenAI API did not return a response',
+  );
+}
 
-  const model = completion.model;
-  summaryRequestsTotal.inc({ model, status: 'ok' });
-
-  const usage = completion.usage;
-  if (usage) {
-    summaryTokensTotal.inc({ model, type: 'prompt' }, usage.prompt_tokens);
-    summaryTokensTotal.inc({ model, type: 'completion' }, usage.completion_tokens);
-    const [inputPrice, outputPrice] = MODEL_PRICES[model as (typeof SUMMARY_MODELS)[number]] ?? [
-      0, 0,
-    ];
-    const costCents =
-      (usage.prompt_tokens / 1_000_000) * inputPrice * 100 +
-      (usage.completion_tokens / 1_000_000) * outputPrice * 100;
-    summaryEstimatedCostCents.inc({ model }, costCents);
-    logger.info(
-      `Summary for ${baseName}: model=${model} prompt=${usage.prompt_tokens} completion=${usage.completion_tokens} tokens, ≈$${costCents.toFixed(4)}`
-    );
-  }
-
-  // Defensive `?.` on message: the API has returned choices without one
-  const choice = completion.choices[0];
-  const summary = choice?.message?.content;
-
-  if (!summary) {
-    throw new Error('OpenAI API did not return a summary');
-  }
-
-  // `finish_reason: 'length'` means the model hit max_tokens mid-sentence:
-  // the summary is cut off. Return it marked as truncated and DO NOT cache it
-  // — the cache must only ever hold complete summaries.
-  const cutOff = choice?.finish_reason === 'length';
-  if (cutOff) {
-    logger.warn(
-      `Summary for ${baseName}: model stopped at max_tokens (finish_reason=length) — not caching the partial summary`
-    );
-    return { summary, truncated: true };
-  }
-
-  // Save summary to disk for future use
-  try {
-    await fs.writeFile(summaryFilePath, summary, 'utf-8');
-  } catch (writeError) {
-    logger.error('Error saving summary to disk:', writeError);
-    // Continue even if save fails - still return the summary
-  }
-
-  return { summary, truncated: wasTruncated };
+/** Record token usage and the approximate cost of a summary response */
+function recordUsage(baseName: string, model: string, usage: OpenAI.CompletionUsage): void {
+  summaryTokensTotal.inc({ model, type: 'prompt' }, usage.prompt_tokens);
+  summaryTokensTotal.inc({ model, type: 'completion' }, usage.completion_tokens);
+  const [inputPrice, outputPrice] = MODEL_PRICES[model as (typeof SUMMARY_MODELS)[number]] ?? [0, 0];
+  const costCents =
+    (usage.prompt_tokens / 1_000_000) * inputPrice * 100 + (usage.completion_tokens / 1_000_000) * outputPrice * 100;
+  summaryEstimatedCostCents.inc({ model }, costCents);
+  logger.info(
+    `Summary for ${baseName}: model=${model} prompt=${usage.prompt_tokens} completion=${usage.completion_tokens} tokens, ≈$${costCents.toFixed(4)}`,
+  );
 }

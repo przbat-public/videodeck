@@ -1,6 +1,6 @@
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import dotenv from 'dotenv';
 import { logger } from './utils/logger';
 
@@ -164,27 +164,34 @@ function isDirectory(dir: string): boolean {
  * first so a pattern rooted at a volume path never descends into a volume
  * that is not mounted.
  */
+/** Directories matched by one pattern segment below the given bases */
+function expandSegment(segment: string, bases: readonly string[]): string[] {
+  const next: string[] = [];
+  if (segment.includes('*')) {
+    const matcher = globSegmentToRegExp(segment);
+    for (const base of bases) {
+      for (const name of listDirectories(base)) {
+        if (matcher.test(name)) {
+          next.push(path.join(base, name));
+        }
+      }
+    }
+    return next;
+  }
+  for (const base of bases) {
+    const candidate = path.join(base, segment);
+    if (isDirectory(candidate)) {
+      next.push(candidate);
+    }
+  }
+  return next;
+}
+
 function expandGlob(pattern: string): string[] {
   const segments = pattern.split('/').filter((segment) => segment.length > 0);
   let current = [pattern.startsWith('/') ? '/' : '.'];
   for (const segment of segments) {
-    const next: string[] = [];
-    for (const base of current) {
-      if (segment.includes('*')) {
-        const matcher = globSegmentToRegExp(segment);
-        for (const name of listDirectories(base)) {
-          if (matcher.test(name)) {
-            next.push(path.join(base, name));
-          }
-        }
-      } else {
-        const candidate = path.join(base, segment);
-        if (isDirectory(candidate)) {
-          next.push(candidate);
-        }
-      }
-    }
-    current = next;
+    current = expandSegment(segment, current);
     if (current.length === 0) {
       return [];
     }
@@ -202,10 +209,7 @@ function isChannelFolder(folderPath: string): boolean {
   try {
     return fs
       .readdirSync(folderPath, { withFileTypes: true })
-      .some(
-        (entry) =>
-          entry.isFile() && (entry.name === 'config.json' || entry.name.endsWith('.info.json'))
-      );
+      .some((entry) => entry.isFile() && (entry.name === 'config.json' || entry.name.endsWith('.info.json')));
   } catch {
     return false;
   }
@@ -228,11 +232,7 @@ function isChannelFolder(folderPath: string): boolean {
 export function getVideosFolderPaths(): string[] {
   const raw = process.env.VIDEOS_FOLDER_PATH ?? '';
   const cached = foldersCache;
-  if (
-    cached !== null &&
-    cached.raw === raw &&
-    Date.now() - cached.readAt < VIDEOS_FOLDER_CACHE_TTL_MS
-  ) {
+  if (cached !== null && cached.raw === raw && Date.now() - cached.readAt < VIDEOS_FOLDER_CACHE_TTL_MS) {
     return cached.paths;
   }
 
@@ -249,9 +249,7 @@ export function getVideosFolderPaths(): string[] {
   const seen = new Set<string>();
   for (const entry of entries) {
     const expanded = expandTilde(entry);
-    const matches = hasGlobMagic(expanded)
-      ? expandGlob(expanded).filter(isChannelFolder).sort()
-      : [expanded];
+    const matches = hasGlobMagic(expanded) ? expandGlob(expanded).filter(isChannelFolder).sort() : [expanded];
     for (const folderPath of matches) {
       if (!seen.has(folderPath)) {
         seen.add(folderPath);
@@ -262,7 +260,7 @@ export function getVideosFolderPaths(): string[] {
 
   if (paths.length === 0) {
     logger.warn(
-      'VIDEOS_FOLDER_PATH is set, but no folder matched right now (drive unmounted?). Search and downloads are unavailable until a configured folder appears.'
+      'VIDEOS_FOLDER_PATH is set, but no folder matched right now (drive unmounted?). Search and downloads are unavailable until a configured folder appears.',
     );
   }
 

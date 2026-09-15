@@ -1,5 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
 import type { ApiError } from '@shared/api';
+import type { NextFunction, Request, Response } from 'express';
 import { errnoCode, isRecord, readString } from '../utils/objectUtils';
 
 // Generic narrowers live in utils/objectUtils.ts (services use them too);
@@ -17,7 +17,7 @@ export type NoParams = Record<string, never>;
  */
 export type RouteHandler<Params, Res> = (
   req: Request<Params, Res | ApiError, unknown>,
-  res: Response<Res | ApiError>
+  res: Response<Res | ApiError>,
 ) => Promise<void> | void;
 
 /** JSON object body of a request; an empty object for anything else */
@@ -26,12 +26,7 @@ export function readBody(req: { body: unknown }): Record<string, unknown> {
 }
 
 /** Error response with the message of the underlying cause */
-export function sendError<Res>(
-  res: Response<Res | ApiError>,
-  status: number,
-  error: string,
-  cause: unknown
-): void {
+export function sendError<Res>(res: Response<Res | ApiError>, status: number, error: string, cause: unknown): void {
   res.status(status).json({
     error,
     message: cause instanceof Error ? cause.message : 'Unknown error',
@@ -51,7 +46,7 @@ export function sendError<Res>(
 export function isAllowedCorsOrigin(
   origin: string,
   extraOrigins: readonly string[] = [],
-  extensionOrigins: readonly string[] | undefined = undefined
+  extensionOrigins: readonly string[] | undefined = undefined,
 ): boolean {
   if (extraOrigins.includes(origin)) {
     return true;
@@ -79,7 +74,7 @@ export function isAllowedCorsOrigin(
  * The Vite dev proxy forwards the client's `same-origin` marker untouched.
  */
 export function createAuthMiddleware(
-  token: string | undefined
+  token: string | undefined,
 ): (req: Request, res: Response, next: NextFunction) => void {
   return (req, res, next) => {
     if (token) {

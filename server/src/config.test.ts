@@ -1,6 +1,6 @@
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   getApiToken,
   getCorsOrigins,
@@ -40,14 +40,10 @@ describe('getVideosFolderPaths', () => {
 
   it('throws without a usable value', () => {
     delete process.env.VIDEOS_FOLDER_PATH;
-    expect(() => getVideosFolderPaths()).toThrow(
-      'VIDEOS_FOLDER_PATH must contain at least one valid folder path'
-    );
+    expect(() => getVideosFolderPaths()).toThrow('VIDEOS_FOLDER_PATH must contain at least one valid folder path');
 
     process.env.VIDEOS_FOLDER_PATH = ' ; ';
-    expect(() => getVideosFolderPaths()).toThrow(
-      'VIDEOS_FOLDER_PATH must contain at least one valid folder path'
-    );
+    expect(() => getVideosFolderPaths()).toThrow('VIDEOS_FOLDER_PATH must contain at least one valid folder path');
   });
 
   describe('glob patterns', () => {
@@ -95,7 +91,9 @@ describe('getVideosFolderPaths', () => {
     });
 
     it('returns an empty list with a warning when nothing matches', () => {
-      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+        /* silence the expected folder-miss warning */
+      });
       fs.rmSync(channelA, { recursive: true });
       fs.rmSync(channelB, { recursive: true });
 

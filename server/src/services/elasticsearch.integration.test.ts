@@ -51,11 +51,7 @@ describeIntegration('Elasticsearch integration', () => {
 
   it('finds Polish text with folded diacritics', async () => {
     const indexName = await createIndexVersion(SCRATCH_FOLDER);
-    await bulkIndexDocuments(
-      indexName,
-      [toDocument(video('20240101_czyszczenie', 'Czyścimy środek kadru'))],
-      false
-    );
+    await bulkIndexDocuments(indexName, [toDocument(video('20240101_czyszczenie', 'Czyścimy środek kadru'))], false);
     await promoteIndexVersion(SCRATCH_FOLDER, indexName);
 
     // No diacritics in the query — asciifolding makes it match
@@ -71,7 +67,7 @@ describeIntegration('Elasticsearch integration', () => {
         ...document,
         transcriptText: 'mówimy tutaj o bitwie pod Grunwaldem i jej skutkach',
       })),
-      false
+      false,
     );
     await promoteIndexVersion(SCRATCH_FOLDER, indexName);
 

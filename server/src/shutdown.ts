@@ -16,7 +16,7 @@ export interface ShutdownOptions {
  */
 export function installShutdownHandlers(
   options: ShutdownOptions,
-  signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM']
+  signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'],
 ): () => void {
   const handler = () => shutdown(options);
   for (const signal of signals) {

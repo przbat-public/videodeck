@@ -1,16 +1,19 @@
-import fs from 'fs/promises';
-import os from 'os';
-import path from 'path';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { removePartialDownloads } from './fsUtils';
 
 describe('removePartialDownloads', () => {
   let dir: string;
+  let consoleWarnSpy: jest.SpyInstance;
 
   const write = (name: string) => fs.writeFile(path.join(dir, name), 'x');
 
   beforeEach(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'partials-'));
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {
+      /* silence expected warnings */
+    });
   });
 
   afterEach(async () => {
@@ -48,7 +51,7 @@ describe('removePartialDownloads', () => {
 
     // readdir order: other.ytdl first → its unlink was the one that failed
     expect(await fs.readdir(dir)).toEqual(['other.ytdl']);
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('other.ytdl'));
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('other.ytdl'));
     unlink.mockRestore();
   });
 });
