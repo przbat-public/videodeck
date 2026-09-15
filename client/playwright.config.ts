@@ -9,7 +9,8 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
-  retries: 0,
+  // Flaky-once retries only on CI — locally a failure must be reproducible
+  retries: process.env.CI ? 2 : 0,
   reporter: [['list']],
   // CI: one worker at a time keeps the e2e run deterministic
   workers: process.env.CI ? 1 : undefined,

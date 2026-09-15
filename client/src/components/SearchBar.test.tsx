@@ -497,4 +497,24 @@ describe('SearchBar', () => {
       expect(screen.getByLabelText('Do daty')).toHaveValue('2025-12-31');
     });
   });
+
+  describe('a11y of the phrase input', () => {
+    it('labels the input with an accessible name', () => {
+      renderBar();
+
+      expect(screen.getByRole('textbox', { name: 'Fraza wyszukiwania' })).toBeInTheDocument();
+    });
+
+    it('hints at the minimum length only while the phrase is too short to search', () => {
+      renderBar();
+
+      expect(screen.queryByText('Wpisz co najmniej 3 znaki, aby wyszukać')).toBeNull();
+
+      type('dr');
+      expect(screen.getByText('Wpisz co najmniej 3 znaki, aby wyszukać')).toBeInTheDocument();
+
+      type('drone');
+      expect(screen.queryByText('Wpisz co najmniej 3 znaki, aby wyszukać')).toBeNull();
+    });
+  });
 });

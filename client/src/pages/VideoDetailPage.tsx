@@ -34,6 +34,7 @@ export default function VideoDetailPage(): JSX.Element {
 
   const folderQuery = state.details.folderPath ? `?folder=${encodeURIComponent(state.details.folderPath)}` : '';
   const videoUrl = `/api/videos/file/${encodeURIComponent(state.details.videoPath)}${folderQuery}`;
+  const posterUrl = `/api/videos/file/${encodeURIComponent(state.details.thumbnailPath)}${folderQuery}`;
   const subtitleUrl = (subtitlePath: string) => `/api/videos/file/${encodeURIComponent(subtitlePath)}${folderQuery}`;
 
   return (
@@ -48,9 +49,11 @@ export default function VideoDetailPage(): JSX.Element {
         <div className="video-detail-main">
           <div className="video-player-section">
             {/* Native HTML5 video: the files are plain mp4s and the server
-                supports Range requests — no react-player dependency needed */}
+                supports Range requests — no react-player dependency needed.
+                The poster is the downloaded thumbnail, served by the same
+                endpoint as the video file. */}
             {/* biome-ignore lint/a11y/useMediaCaption: subtitle tracks are injected dynamically from the API */}
-            <video src={videoUrl} controls className="video-player-full" data-testid="video-player">
+            <video src={videoUrl} poster={posterUrl} controls className="video-player-full" data-testid="video-player">
               {state.details.subtitles.map((subtitle) => (
                 <track
                   key={subtitle.path}

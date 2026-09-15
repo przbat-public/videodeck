@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   index rebuild; per-folder failures no longer abort the remaining folders
 - Removed dead client reducer code (unused `RESET` actions, `video` state
   field) and switched the remaining hand-cast API responses to zod parsing
+- Accessibility and UX polish: primary color darkened to WCAG AA contrast,
+  the search input gained an accessible label and a "minimum length" hint,
+  the detail player shows the downloaded thumbnail as its poster, the
+  document language follows the UI language, and the extension's content
+  script observes only the watch-page subtree instead of the whole body
 
 
 ## [1.0.0] - 2026-09-14
