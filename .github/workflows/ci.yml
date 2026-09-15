@@ -45,6 +45,8 @@ jobs:
         run: pnpm run knip
       - name: Architecture boundaries
         run: pnpm run lint:deps
+      - name: Prose quality gate (humanizer baseline)
+        run: pnpm run humanizer:gate
 
   format:
     name: Format check

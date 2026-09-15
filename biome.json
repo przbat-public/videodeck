@@ -1,6 +1,12 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.13/schema.json",
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {
@@ -8,7 +14,9 @@
       "complexity": {
         "noExcessiveCognitiveComplexity": {
           "level": "error",
-          "options": { "maxAllowedComplexity": 15 }
+          "options": {
+            "maxAllowedComplexity": 15
+          }
         },
         "noForEach": "error",
         "noUselessStringConcat": "error",
@@ -111,7 +119,8 @@
       "!**/*.css",
       "!**/*.html",
       "!chrome-extension/*.js",
-      "!**/.queue-state.json"
+      "!**/.queue-state.json",
+      "!scripts/humanizer/**"
     ]
   }
 }

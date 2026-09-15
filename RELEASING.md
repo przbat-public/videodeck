@@ -11,7 +11,7 @@ plus a GitHub Release entry, announced in the CHANGELOG.
    ```
 2. Confirm CI is green on `main` (all required checks).
 3. Bump the version in the four `package.json` files (root, `server/`,
-   `client/`, `chrome-extension/`) — keep them in lockstep.
+   `client/`, `chrome-extension/`). Keep them in lockstep.
 4. Move the `## [Unreleased]` CHANGELOG section to a dated release entry
    (Keep a Changelog format), with the release date.
 5. Create the tag and release:

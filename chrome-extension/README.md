@@ -28,7 +28,7 @@ icon next to the extension in `chrome://extensions/`.
    - **Server URL**: the video-search-app server URL (e.g. `http://localhost:3001`)
    - **Folder path**: the folder videos should be saved to (must be listed in
      the server's `VIDEOS_FOLDER_PATH`)
-   - **API token** (optional): the server's `API_TOKEN` value — sent as
+   - **API token** (optional): the server's `API_TOKEN` value, sent as
      `Authorization: Bearer ...`; fill in only when the server has a token set
 3. Click "Test connection" to check whether the server responds
 4. Click "Save" to store the settings
@@ -44,7 +44,7 @@ icon next to the extension in `chrome://extensions/`.
 
 - Automatic video detection on the page (YouTube, direct video links)
 - Downloads through `/api/folder/download-video` (the job runs in the
-  server-side queue — closing the popup does not stop the download)
+  server-side queue; closing the popup does not stop the download)
 - Real-time download progress (SSE)
 - List of parallel downloads with cancel buttons in the popup and an active-
   job counter on the extension icon
@@ -63,7 +63,7 @@ icon next to the extension in `chrome://extensions/`.
   rest of the repo). Pure logic (SSE framing, progress extraction, YouTube id
   detection) lives in `src/lib/` with unit tests (Vitest): `npm test`.
 - The SSE event contract (`DownloadVideoEvent`) and the yt-dlp progress parser
-  come from `shared/` (`api.ts` — types via `import type`; `progress.ts` — real
+  come from `shared/` (`api.ts`, types via `import type`; `progress.ts`, real
   logic, bundled by esbuild).
 - `npm run typecheck` checks the types, `npm run build` generates
   `background.js`, `content.js`, `popup.js` and `options.js` (generated files
