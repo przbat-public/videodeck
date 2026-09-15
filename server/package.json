@@ -1,7 +1,7 @@
 {
   "name": "video-search-server",
   "version": "1.0.0",
-  "description": "Backend (Express + Elasticsearch) aplikacji video-search-app: wyszukiwanie film\u00f3w, kolejka pobierania yt-dlp, podsumowania AI",
+  "description": "Backend (Express + Elasticsearch) of video-search-app: video search, yt-dlp download queue, AI summaries",
   "main": "dist/server/src/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",

@@ -2,7 +2,7 @@
   "name": "video-search-chrome-extension",
   "version": "1.0.0",
   "private": true,
-  "description": "Rozszerzenie Chrome (MV3) dla video-search-app: pobieranie wideo z przeglądarki przez kolejkę pobierania serwera (SSE)",
+  "description": "Chrome extension (MV3) for video-search-app: enqueue video downloads from the browser through the server download queue (SSE)",
   "type": "module",
   "scripts": {
     "build": "esbuild src/background.ts src/content.ts src/popup.ts src/options.ts --tsconfig=tsconfig.json --bundle --format=iife --target=chrome88 --outdir=.",

@@ -188,7 +188,7 @@ Additional protections:
 
 For remote access, set `API_TOKEN` (and optionally `HOST=0.0.0.0` +
 `ALLOWED_HOSTS` + `CORS_ORIGINS`): every request to `/api` must then carry
-`Authorization: Bearer <token>`. The Chrome extension has a „Token API"
+`Authorization: Bearer <token>`. The Chrome extension has a "Token API" (pl: „Token API")
 ("API token") field in its options; `/health` stays public for connection
 tests.
 
@@ -199,7 +199,7 @@ tests.
   progress, job statuses) go through `t()` with typed keys (a typo in a key
   is a TypeScript error). Polish is the default and fallback language;
   the PL/EN switcher in the top-right corner saves the choice to localStorage.
-  Pluralization uses i18next rules (pl: 1 film / 2 filmy / 5 filmów).
+  Pluralization uses i18next rules (the Polish catalog has 1 film / 2 filmy / 5 filmów forms).
 - **Chrome extension** (`chrome-extension/_locales/{pl,en}/messages.json`):
   native `chrome.i18n` — `default_locale: "pl"` in the manifest,
   `chrome.i18n.getMessage` in the code, and the static HTML is translated via
@@ -378,7 +378,7 @@ minimization of counterexamples; on the server and extension side.
 
 **End-to-end tests (Playwright)** — the real app (Vite) with the API mocked
 at the browser level; no backend and no Elasticsearch. Scenarios:
-URL-driven search, „Pokaż więcej" ("Show more") pagination, the details page
+URL-driven search, "Show more" (pl: „Pokaż więcej") pagination, the details page
 with the player and subtitles, the status page:
 
 ```bash
@@ -603,7 +603,7 @@ A short overview of the client's architectural decisions and what was consciousl
 
 ### GET /health (public)
 
-Readiness probe: pings Elasticsearch and returns `200 { status: 'ok', elasticsearch: 'ok' }`, and when ES does not respond — `503 { status: 'degraded', elasticsearch: 'down' }`. The Chrome extension uses it in „Test połączenia" ("Test connection"). The ping result is cached for 5 s, so frequent polling does not burden ES.
+Readiness probe: pings Elasticsearch and returns `200 { status: 'ok', elasticsearch: 'ok' }`, and when ES does not respond — `503 { status: 'degraded', elasticsearch: 'down' }`. The Chrome extension uses it in its "Test connection" (pl: „Test połączenia") button. The ping result is cached for 5 s, so frequent polling does not burden ES.
 
 ### GET /health/live (public)
 
@@ -632,7 +632,7 @@ Refreshes and reindexes all videos from the configured folders into Elasticsearc
 GET /api/videos/refreshCache?onlyMissing=1
 ```
 
-— only folders without an existing index are reindexed (e.g. a drive attached for the first time); folders with a cache are skipped and keep serving search. In the web UI this is the **„tylko brakujące (użyj istniejącego indeksu)" ("only missing (use existing index)")** checkbox next to the „Odśwież indeks" ("Refresh index") button. A full reindex (without the parameter) remains for situations where the drive contents changed and the existing index must be rebuilt.
+— only folders without an existing index are reindexed (e.g. a drive attached for the first time); folders with a cache are skipped and keep serving search. In the web UI this is the **"only missing (use existing index)"** checkbox (pl: „tylko brakujące (użyj istniejącego indeksu)") next to the "Refresh index" button (pl: „Odśwież indeks"). A full reindex (without the parameter) remains for situations where the drive contents changed and the existing index must be rebuilt.
 
 **Note:** This endpoint starts the indexing process in the background and returns immediately. If a reindex is already running, it returns `409` with the current status. Progress can be followed via `GET /api/videos/refreshCache/status` (the client does this itself and shows it in a toast).
 
@@ -859,7 +859,7 @@ To pull in, say, Polish subtitles next to the English ones for an already downlo
    `["--no-write-comments", "--no-write-info-json", "--no-write-thumbnail", "--no-write-description"]`
    — updates will then download **only subtitles**: no comments (the slowest part)
    and no overwriting of `info.json` (existing comments and metadata stay untouched).
-2. In the channel's section on the status page, click **„Aktualizuj wszystkie" ("Update all")** (or „Aktualizuj stare" ("Update old")
+2. In the channel's section on the status page, click **"Update all"** (pl: „Aktualizuj wszystkie") or **"Update old"** (pl: „Aktualizuj stare")
    for videos older than a month) — the queue will download the new `.pl.vtt` files under the existing
    file names.
 3. The new subtitles are visible in the player immediately (the details endpoint reads the `.vtt` files from disk)

@@ -1,7 +1,7 @@
 {
   "name": "video-search-client",
   "version": "1.0.0",
-  "description": "Frontend (React + Vite) aplikacji video-search-app: wyszukiwarka, szczeg\u00f3\u0142y film\u00f3w, strona statusu kana\u0142\u00f3w",
+  "description": "Frontend (React + Vite) of video-search-app: search, video details, channel status page",
   "type": "module",
   "scripts": {
     "dev": "vite",
