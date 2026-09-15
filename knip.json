@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignoreDependencies": ["zod"],
+  "ignoreDependencies": [],
   "rules": {
     "files": "error",
     "dependencies": "error",
@@ -24,10 +24,15 @@
       "ignoreBinaries": ["yt-dlp"]
     },
     "client": {
-      "project": ["src/**/*.{ts,tsx}", "e2e/**/*.ts"]
+      "project": ["src/**/*.{ts,tsx}", "e2e/**/*.ts", "src/__tests__/**/*.{ts,tsx}"],
+      "entry": ["vitest.integration.config.ts", "src/__tests__/integration/setup.ts"]
     },
     "chrome-extension": {
       "entry": ["src/content.ts", "src/popup.ts", "src/options.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "test-infra": {
+      "entry": ["src/*.ts"],
       "project": ["src/**/*.ts"]
     }
   }

@@ -7,10 +7,12 @@ import { afterEach, beforeEach, vi } from 'vitest';
 import { toast } from './toastMock';
 
 // Every component that touches react-hot-toast gets the same mock instance
-// (see test/toastMock.ts); this replaces the six per-file copies.
+// (see test/toastMock.ts); this replaces the six per-file copies. The real
+// <Toaster /> renders nothing — App-level tests (the integration suite)
+// mount the whole tree, and the mock must provide the component too.
 vi.mock('react-hot-toast', async () => {
   const { toast: sharedToast } = await import('./toastMock');
-  return { default: sharedToast };
+  return { default: sharedToast, Toaster: () => null };
 });
 
 // jsdom lacks the browser APIs Radix UI primitives (Select) touch. These
@@ -38,6 +40,30 @@ Element.prototype.releasePointerCapture ??= () => {
 Element.prototype.scrollIntoView ??= () => {
   /* no-op: jsdom has no layout to scroll */
 };
+
+// jsdom has no matchMedia; the theme hook asks about prefers-color-scheme.
+// Default to light — tests that care stub their own implementation.
+if (typeof window.matchMedia !== 'function') {
+  window.matchMedia = (query: string): MediaQueryList =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {
+        /* no-op */
+      },
+      removeEventListener: () => {
+        /* no-op */
+      },
+      addListener: () => {
+        /* no-op */
+      },
+      removeListener: () => {
+        /* no-op */
+      },
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
+}
 
 // Fresh toast history per test, regardless of which file asserts it
 beforeEach(() => {

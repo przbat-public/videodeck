@@ -121,6 +121,15 @@ export default defineConfig([
     },
   },
 
+  // The route table is data, not a refreshable component module — react-refresh
+  // would demand splitting the lazy components out of it.
+  {
+    files: ['client/src/routes.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+
   // Playwright E2E specs: the runner's recommended rules catch the classic
   // mistakes (no-wait-for-timeout, prefer-web-first-assertions, …). These
   // files used to be linted by the generic TS block only.

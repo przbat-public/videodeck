@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import type { QueueJob } from '@shared/api';
-import type { DeepServerTestEnv } from '../test/deepServerTestEnv';
-import { createDeepServerTestEnv, folderConfig, videoFiles } from '../test/deepServerTestEnv';
+import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
+import { createDeepServerTestEnv, folderConfig, videoFiles } from '@videodeck/test-infra/deepServerTestEnv';
 
 /**
  * Deep integration: the REAL Express app (routes + services + queue) over

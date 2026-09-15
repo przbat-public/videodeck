@@ -1,0 +1,15 @@
+{
+  "name": "@videodeck/test-infra",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared test infrastructure: fake Elasticsearch, mock OpenAI and the deep-server environment factory \u2014 imported in-process by the server and client test suites",
+  "dependencies": {
+    "express": "^5.2.1",
+    "supertest": "^7.2.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.5",
+    "@types/node": "^22.20.2",
+    "@types/supertest": "^7.2.1"
+  }
+}

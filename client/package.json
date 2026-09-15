@@ -11,8 +11,9 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
     "test:run": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
-    "test:e2e": "playwright test"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.integration.json",
+    "test:e2e": "playwright test",
+    "test:integration": "vitest run -c vitest.integration.config.ts"
   },
   "dependencies": {
     "@radix-ui/react-select": "^2.3.7",
@@ -41,7 +42,8 @@
     "rollup-plugin-visualizer": "^7.1.1",
     "typescript": "^6.0.3",
     "vite": "^8.3.0",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "@videodeck/test-infra": "workspace:*"
   },
   "private": true,
   "engines": {

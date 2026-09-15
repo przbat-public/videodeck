@@ -99,7 +99,7 @@ export default function VideoDetailPage(): JSX.Element {
         </div>
 
         <VideoSummary
-          key={`${videoId}-${state.details?.subtitlePath}`}
+          key={`summary-${videoId}-${state.details?.subtitlePath}`}
           baseName={videoId}
           subtitlePath={state.details?.subtitlePath}
         />
@@ -110,7 +110,7 @@ export default function VideoDetailPage(): JSX.Element {
         </div>
 
         <VideoComments
-          key={`${videoId}-${state.details?.subtitlePath}`}
+          key={`comments-${videoId}-${state.details?.subtitlePath}`}
           videoId={videoId ?? ''}
           comments={state.details.comments || []}
           commentCount={state.details.commentCount}

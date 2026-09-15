@@ -323,7 +323,15 @@ async function generateUncached(input: GenerateSummaryInput, summaryFilePath: st
 
   // No SDK retries (429s walk the model list here) and a hard timeout: a hung
   // OpenAI call must not pin the request (and the queue behind it) forever.
-  const openai = new OpenAI({ apiKey, timeout: OPENAI_TIMEOUT_MS, maxRetries: 0 });
+  // The SDK refuses browser-like environments unless told otherwise. The
+  // server never runs in a browser — the flag only matters under jsdom (the
+  // client integration suite boots the real app in a jsdom worker).
+  const openai = new OpenAI({
+    apiKey,
+    timeout: OPENAI_TIMEOUT_MS,
+    maxRetries: 0,
+    dangerouslyAllowBrowser: typeof window !== 'undefined',
+  });
 
   await acquireGenerationSlot();
   try {
