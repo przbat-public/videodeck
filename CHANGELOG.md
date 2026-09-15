@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   completion with a progress toast instead of reporting done immediately;
   a rebuild that is already running is joined, and failures surface the
   server-side error
+- **Design contract and landing page**: `DESIGN.md` codifies the visual
+  language (tokens, typography, spacing, components, a11y), a repo-scoped
+  `ui-design` skill turns it into a checklist for UI changes, and a static
+  landing page built from the same tokens lives at `docs/landing/index.html`
 
 ### Fixed
 

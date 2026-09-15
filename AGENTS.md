@@ -70,6 +70,12 @@ vocabulary words, varied sentence length. The vendored metrics CLI
 (`scripts/humanizer/`, MIT) scores the docs in CI against a committed
 baseline: `pnpm run humanizer:gate`.
 
+**UI follows the design contract** (`DESIGN.md`): tokens from
+`client/src/index.css` only, the five shared primitives
+(`client/src/components/ui/`), dark-mode parity, a11y and i18n rules. The
+`.agents/skills/ui-design` skill turns that contract into a checklist for
+any UI change.
+
 ## Definition of done
 
 - Tests cover the change; the failing test was written first (RED → GREEN).

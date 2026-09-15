@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/przbat-public/videodeck)](https://github.com/przbat-public/videodeck/releases)
 
-A self-hosted web app for searching and browsing YouTube videos downloaded with yt-dlp: an Elasticsearch full-text index over titles, descriptions, comments, and transcripts, an in-browser player with multi-language subtitles, per-channel download configuration, and a server-side yt-dlp queue. A companion Chrome extension enqueues videos straight from YouTube. for enqueueing videos straight from YouTube.
+A self-hosted web app for searching and browsing YouTube videos downloaded with yt-dlp: an Elasticsearch full-text index over titles, descriptions, comments, and transcripts, an in-browser player with multi-language subtitles, per-channel download configuration, and a server-side yt-dlp queue. A companion Chrome extension enqueues videos straight from YouTube.
 
 ## Screenshots
 
@@ -16,6 +16,10 @@ A self-hosted web app for searching and browsing YouTube videos downloaded with 
 </p>
 
 > Polish documentation: [docs/README.pl.md](docs/README.pl.md)
+
+The UI follows the design contract in [DESIGN.md](DESIGN.md); a static
+landing page built from the same tokens lives at
+[docs/landing/index.html](docs/landing/index.html).
 
 ## Requirements
 
