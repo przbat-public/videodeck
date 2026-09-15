@@ -492,6 +492,13 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
       if (!request) {
         return;
       }
+      // requireAllowedFolder already authorizes the folder; re-assert inline
+      // so the guard sits on the same code path as the file operations below.
+      if (!getVideosFolderPaths().some((allowed) => normalizeFolderPath(allowed) === request.folderPath)) {
+        logger.warn(`Rejected folderPath not in the allowed list: ${request.folderPath}`);
+        res.status(403).json({ error: `Folder path is not in the allowed list: ${request.folderPath}` });
+        return;
+      }
       await fs.mkdir(request.folderPath, { recursive: true });
 
       // Strip playlist context (&list=, &index=) — see the comment in
