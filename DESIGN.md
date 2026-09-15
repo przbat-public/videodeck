@@ -30,6 +30,7 @@ set. There are two themes, both defined on the same tokens.
 | `--color-border` | `#e0e0e0` | `#3a3d45` | borders, dividers |
 | `--color-primary` | `#5a5fd8` | `#5a5fd8` | accent, primary buttons |
 | `--color-primary-hover` | `#4b56c9` | `#4b56c9` | accent hover |
+| `--color-primary-text` | `#4449b3` | `#a5adff` | accent used as text: links, checked options |
 | `--color-primary-soft` | `#eef0ff` | `#2e3352` | accent-tinted fills |
 | `--color-focus` | `#5a5fd8` | `#5a5fd8` | focus ring |
 
