@@ -236,3 +236,83 @@ test.describe('theme contrast', () => {
     });
   }
 });
+
+test.describe('reported layout defects', () => {
+  test('the search page does not overflow at 1024px', async ({ page }) => {
+    // The filter row used to run off the right edge between 768 and ~1100px.
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await searchPage(page);
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+  });
+
+  test('the date filters share their own row and fill the width at 1024px', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await searchPage(page);
+    const geometry = await page.evaluate(() => {
+      const dates = Array.from(document.querySelectorAll<HTMLElement>('.date-filter'));
+      const search = document.querySelector<HTMLElement>('.search-bar');
+      const searchTop = search ? search.getBoundingClientRect().top : 0;
+      return {
+        dates: dates.map((el) => {
+          const r = el.getBoundingClientRect();
+          return { top: Math.round(r.top), width: Math.round(r.width) };
+        }),
+        searchTop: Math.round(searchTop),
+      };
+    });
+    // Both date inputs sit on their own wrapped row below the first one.
+    expect(geometry.dates.every((d) => d.top > geometry.searchTop + 40)).toBe(true);
+    // And together they span the container instead of leaving a gap.
+    const spanned = geometry.dates.reduce((sum, d) => sum + d.width, 0);
+    expect(spanned).toBeGreaterThan(500);
+  });
+
+  test('text inputs use the theme surface in dark mode', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    await searchPage(page);
+    await page.evaluate(() => {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    });
+    const backgrounds = await page.evaluate(() =>
+      ['.search-input', '.channel-input', '.date-filter'].map((selector) => {
+        const el = document.querySelector<HTMLElement>(selector);
+        return el ? window.getComputedStyle(el).backgroundColor : 'missing';
+      }),
+    );
+    for (const background of backgrounds) {
+      expect(background).not.toBe('rgb(255, 255, 255)');
+    }
+  });
+
+  test('the top bar never overlaps the toolbar', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    await searchPage(page);
+    const overlap = await page.evaluate(() => {
+      const bar = document.querySelector<HTMLElement>('.app-topbar');
+      const toolbar = document.querySelector<HTMLElement>('.toolbar');
+      if (!bar || !toolbar) return true;
+      const a = bar.getBoundingClientRect();
+      const b = toolbar.getBoundingClientRect();
+      return a.bottom > b.top && a.top < b.bottom && a.right > b.left && a.left < b.right;
+    });
+    expect(overlap).toBe(false);
+  });
+
+  test('the toolbar buttons stretch to full width on a phone', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    await searchPage(page);
+    const violations = await page.evaluate(() => {
+      const left = document.querySelector<HTMLElement>('.toolbar-left');
+      if (!left) return [{ reason: 'missing toolbar-left' }];
+      const leftWidth = left.getBoundingClientRect().width;
+      return Array.from(left.querySelectorAll('button'))
+        .filter((button) => Math.abs(button.getBoundingClientRect().width - leftWidth) > 2)
+        .map((button) => ({
+          text: (button.textContent ?? '').trim().slice(0, 24),
+          width: Math.round(button.getBoundingClientRect().width),
+          leftWidth: Math.round(leftWidth),
+        }));
+    });
+    expect(violations, 'toolbar buttons narrower than the toolbar column').toEqual([]);
+  });
+});

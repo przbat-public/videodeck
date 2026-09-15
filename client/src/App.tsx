@@ -45,8 +45,10 @@ export default function App({ router: customRouter }: AppProps = {}) {
   return (
     <div className="app">
       <Toaster position="bottom-right" toastOptions={toastOptions} />
-      <LanguageSwitcher />
-      <ThemeSwitcher theme={theme} onThemeChange={setTheme} />
+      <div className="app-topbar">
+        <ThemeSwitcher theme={theme} onThemeChange={setTheme} />
+        <LanguageSwitcher />
+      </div>
       <ErrorBoundary>
         <Suspense fallback={<Loading />}>
           <RouterProvider router={activeRouter} />
