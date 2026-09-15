@@ -38,12 +38,18 @@ const PERMANENT_FAILURES: readonly PermanentFailure[] = [
     description: 'Members-only video: joining the channel is required, downloading cannot succeed',
   },
   {
-    pattern: /This video is private/i,
+    // Live yt-dlp (2026.08) wording: "ERROR: [youtube] id: Private video.
+    // Sign in if you've been granted access to this video". The older
+    // "This video is private" phrasing stays covered.
+    pattern: /This video is private|Private video\. Sign in/i,
     code: 'private',
     description: 'The video is private',
   },
   {
-    pattern: /This video has been removed|This video is no longer available|This video isn't available/i,
+    // Observed live for dead ids: "This video is unavailable". Older
+    // removed-by-uploader and closed-account wordings stay covered.
+    pattern:
+      /This video has been removed|This video is no longer available|This video isn't available|This video is unavailable/i,
     code: 'removed',
     description: 'The video has been removed or is no longer available',
   },

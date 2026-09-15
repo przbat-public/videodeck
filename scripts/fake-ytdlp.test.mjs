@@ -106,3 +106,15 @@ test('prints the members-only error and exits 1 for a member video', () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /members/i);
 });
+
+test('prefixes permanent failures with the youtube extractor id, like the live binary', () => {
+  // Grounded in live yt-dlp 2026.08: `ERROR: [youtube] <id>: <reason>`.
+  const member = run('--simulate', 'https://www.youtube.com/watch?v=member123');
+  assert.match(member.stderr, /^ERROR: \[youtube\] member123: This video is available/);
+  const privateVideo = run('--simulate', 'https://www.youtube.com/watch?v=private123');
+  assert.equal(privateVideo.status, 1);
+  assert.match(privateVideo.stderr, /^ERROR: \[youtube\] private123: Private video\. Sign in/);
+  const removed = run('--simulate', 'https://www.youtube.com/watch?v=removed123');
+  assert.equal(removed.status, 1);
+  assert.match(removed.stderr, /^ERROR: \[youtube\] removed123: Video unavailable\. This video has been removed/);
+});

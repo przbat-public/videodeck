@@ -39,15 +39,17 @@ function videoIdOf(url) {
   return match?.[1];
 }
 
+/** Failure texts mirror the live yt-dlp 2026.08 wording, prefix included. */
 const FAILURE_CASES = {
-  member: "ERROR: This video is available to this channel's members on level: Channel Member",
-  private: 'ERROR: Private video. Sign in if you have been granted access',
-  removed: 'ERROR: Video unavailable. This video has been removed by the uploader',
+  member: (id) =>
+    `ERROR: [youtube] ${id}: This video is available to this channel's members on level: Channel Member`,
+  private: (id) => `ERROR: [youtube] ${id}: Private video. Sign in if you've been granted access to this video`,
+  removed: (id) => `ERROR: [youtube] ${id}: Video unavailable. This video has been removed by the uploader`,
 };
 
 function failOnKnownError(id) {
   const key = Object.keys(FAILURE_CASES).find((candidate) => id.includes(candidate));
-  const message = key ? FAILURE_CASES[key] : undefined;
+  const message = key ? FAILURE_CASES[key](id) : undefined;
   if (message) {
     console.error(message);
     process.exit(1);
