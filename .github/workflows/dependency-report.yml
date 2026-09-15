@@ -1,0 +1,43 @@
+name: Dependency report
+
+on:
+  schedule:
+    # Every Monday at 08:00 UTC.
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  report:
+    name: Generate and publish dependency report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # `npm outdated`/`npm audit` only read package.json + lockfiles,
+      # so no install step is needed.
+      - name: Generate report
+        run: node scripts/dependency-report.mjs > /tmp/dependency-report.md
+      - name: Create or update the report issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          NUMBER="$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --label dependencies --state open --json number \
+            --jq '.[0].number // empty')"
+          TITLE="Dependency report $(date +%Y-%m-%d)"
+          if [ -z "$NUMBER" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "$TITLE" --label dependencies \
+              --body-file /tmp/dependency-report.md
+          else
+            gh issue edit "$NUMBER" --repo "$GITHUB_REPOSITORY" \
+              --title "$TITLE" --body-file /tmp/dependency-report.md
+          fi
