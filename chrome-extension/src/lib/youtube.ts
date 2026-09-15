@@ -1,4 +1,4 @@
-import { extractYoutubeVideoId, toWatchUrl } from '@shared/youtube';
+import { extractYoutubeVideoId, toWatchUrl } from '@videodeck/shared/youtube';
 
 /**
  * The extension used to own its own regex copy of the YouTube-id extraction;

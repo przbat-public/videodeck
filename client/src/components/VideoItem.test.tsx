@@ -1,6 +1,6 @@
-import type { QueueJob } from '@shared/api';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { QueueJob } from '@videodeck/shared/api';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChannelVideoRow } from './VideoItem';

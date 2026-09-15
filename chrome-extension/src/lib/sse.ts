@@ -1,5 +1,5 @@
-import type { DownloadVideoEvent } from '@shared/api';
-import { downloadVideoEventSchema } from '@shared/schemas';
+import type { DownloadVideoEvent } from '@videodeck/shared/api';
+import { downloadVideoEventSchema } from '@videodeck/shared/schemas';
 
 /**
  * Minimal Server-Sent Events framing for the `POST /api/folder/download-video`

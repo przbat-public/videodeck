@@ -1,4 +1,3 @@
-import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
@@ -8,16 +7,11 @@ import { defineConfig } from 'vitest/config';
  * @videodeck/test-infra (fake Elasticsearch + mock OpenAI + fake yt-dlp +
  * seeded temp folder), with global fetch rewritten to reach it. No browser,
  * no spawned processes: Playwright stays the thin mocked-e2e layer in e2e/.
+ * @videodeck/shared and @videodeck/test-infra resolve through their package
+ * exports (pnpm workspace symlinks).
  */
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    alias: {
-      // Types-only module shared with the server (see shared/api.ts);
-      // @videodeck/test-infra resolves through its package exports.
-      '@shared': fileURLToPath(new URL('../shared', import.meta.url)),
-    },
-  },
   test: {
     globals: true,
     environment: 'jsdom',

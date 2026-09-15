@@ -62,7 +62,5 @@ module.exports = {
     },
     // Generated/build output is never part of the dependency graph.
     exclude: ['(^|/)(dist|coverage|test-results)/'],
-    // Resolve `@shared/*` via each package's tsconfig paths.
-    tsPreCompilationDeps: true,
   },
 };

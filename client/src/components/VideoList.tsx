@@ -1,4 +1,4 @@
-import type { VideoListItem } from '@shared/api';
+import type { VideoListItem } from '@videodeck/shared/api';
 import type { JSX } from 'react';
 import { useTranslation } from 'react-i18next';
 import VideoCard from './VideoCard';

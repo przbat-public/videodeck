@@ -1,5 +1,5 @@
-import type { EnqueueJobsResponse, QueueJob } from '@shared/api';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import type { EnqueueJobsResponse, QueueJob } from '@videodeck/shared/api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchMock } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';

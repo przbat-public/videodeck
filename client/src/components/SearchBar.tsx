@@ -1,4 +1,4 @@
-import type { SortOption } from '@shared/api';
+import type { SortOption } from '@videodeck/shared/api';
 import type { KeyboardEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';

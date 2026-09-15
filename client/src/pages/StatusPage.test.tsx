@@ -1,6 +1,6 @@
-import type { StatusResponse } from '@shared/api';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { StatusResponse } from '@videodeck/shared/api';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchMock, MockResponse } from '../test/fetchMock';

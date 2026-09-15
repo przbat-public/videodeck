@@ -1,5 +1,5 @@
-import type { DownloadOptions, FolderConfig } from '@shared/api';
-import { ApiErrorSchema, SaveFolderConfigResponseSchema } from '@shared/schemas';
+import type { DownloadOptions, FolderConfig } from '@videodeck/shared/api';
+import { ApiErrorSchema, SaveFolderConfigResponseSchema } from '@videodeck/shared/schemas';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FormState } from '../utils/folderConfigForm';

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ApiError } from '@shared/api';
+import type { ApiError } from '@videodeck/shared/api';
 import cors from 'cors';
 import type { NextFunction, Request, Response } from 'express';
 import express from 'express';

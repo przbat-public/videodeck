@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import type { QueueJob } from '@shared/api';
+import type { QueueJob } from '@videodeck/shared/api';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { createDeepServerTestEnv, folderConfig, videoFiles } from '@videodeck/test-infra/deepServerTestEnv';
 

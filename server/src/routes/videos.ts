@@ -17,8 +17,8 @@ import type {
   VideoDetailsResponse,
   VideoListItem,
   VideoSummaryResponse,
-} from '@shared/api';
-import { COMMENTS_PAGE_SIZE } from '@shared/schemas';
+} from '@videodeck/shared/api';
+import { COMMENTS_PAGE_SIZE } from '@videodeck/shared/schemas';
 import type { Response } from 'express';
 import express from 'express';
 import { getVideosFolderPaths } from '../config';

@@ -1,5 +1,5 @@
-import type { VideoListItem } from '@shared/api';
-import { SEARCH_DEFAULT_PAGE_SIZE, SearchResponseSchema } from '@shared/schemas';
+import type { VideoListItem } from '@videodeck/shared/api';
+import { SEARCH_DEFAULT_PAGE_SIZE, SearchResponseSchema } from '@videodeck/shared/schemas';
 import type { Dispatch } from 'react';
 import { useCallback, useReducer, useRef } from 'react';
 import toast from 'react-hot-toast';

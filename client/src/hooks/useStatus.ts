@@ -1,5 +1,5 @@
-import type { FolderConfig } from '@shared/api';
-import { StatusResponseSchema } from '@shared/schemas';
+import type { FolderConfig } from '@videodeck/shared/api';
+import { StatusResponseSchema } from '@videodeck/shared/schemas';
 import { useEffect, useReducer } from 'react';
 import i18n from '../i18n';
 import type { StatusData } from '../reducers/statusReducer';

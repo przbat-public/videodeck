@@ -1,5 +1,5 @@
-import type { RecreateIndicesStatus } from '@shared/api';
-import { RecreateIndicesStatusSchema } from '@shared/schemas';
+import type { RecreateIndicesStatus } from '@videodeck/shared/api';
+import { RecreateIndicesStatusSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import i18n from '../i18n';

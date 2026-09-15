@@ -1,4 +1,4 @@
-import type { CommentWithReplies, VideoComment } from '@shared/api';
+import type { CommentWithReplies, VideoComment } from '@videodeck/shared/api';
 
 /** Sort by like_count descending (most likes first) */
 function sortByLikes(comments: CommentWithReplies[]): CommentWithReplies[] {

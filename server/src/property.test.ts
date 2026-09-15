@@ -1,5 +1,5 @@
-import { extractYtDlpProgress } from '@shared/progress';
-import { extractYoutubeVideoId, toWatchUrl } from '@shared/youtube';
+import { extractYtDlpProgress } from '@videodeck/shared/progress';
+import { extractYoutubeVideoId, toWatchUrl } from '@videodeck/shared/youtube';
 import fc from 'fast-check';
 import { extractTextFromVttSubtitles } from './services/summaryService';
 import { runPool } from './utils/runPool';

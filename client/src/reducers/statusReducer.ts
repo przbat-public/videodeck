@@ -1,4 +1,4 @@
-import type { StatusResponse } from '@shared/api';
+import type { StatusResponse } from '@videodeck/shared/api';
 
 /** GET /api/status payload as kept in the reducer */
 export type StatusData = StatusResponse;

@@ -1,4 +1,4 @@
-import type { SortOption } from '@shared/api';
+import type { SortOption } from '@videodeck/shared/api';
 import { describe, expect, it } from 'vitest';
 import type { SearchState } from './searchUrlState';
 import {

@@ -1,4 +1,4 @@
-import type { VideoComment } from '@shared/api';
+import type { VideoComment } from '@videodeck/shared/api';
 
 /**
  * Server-only types. The HTTP contract (what the client sees) lives in

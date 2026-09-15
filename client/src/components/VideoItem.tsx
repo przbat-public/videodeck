@@ -1,4 +1,4 @@
-import type { ChannelVideo, JobType, QueueJob } from '@shared/api';
+import type { ChannelVideo, JobType, QueueJob } from '@videodeck/shared/api';
 import type { TFunction } from 'i18next';
 import type { JSX } from 'react';
 import { memo, useEffect, useRef } from 'react';

@@ -10,12 +10,13 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "jsx": "react-jsx",
-    "paths": {
-      "@shared/*": ["../shared/*"]
-    }
+    "jsx": "react-jsx"
   },
   "include": ["src", "../shared"],
   "exclude": ["src/__tests__", "node_modules"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "references": [
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ]
 }

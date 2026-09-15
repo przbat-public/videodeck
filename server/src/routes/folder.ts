@@ -21,9 +21,9 @@ import type {
   SkippedVideo,
   StatusResponse,
   VideoDownloadedResponse,
-} from '@shared/api';
-import { downloadVideoEventSchema } from '@shared/schemas';
-import { extractYoutubeVideoId, isYoutubeChannelUrl, isYoutubeVideoId, toWatchUrl } from '@shared/youtube';
+} from '@videodeck/shared/api';
+import { downloadVideoEventSchema } from '@videodeck/shared/schemas';
+import { extractYoutubeVideoId, isYoutubeChannelUrl, isYoutubeVideoId, toWatchUrl } from '@videodeck/shared/youtube';
 import type { Response } from 'express';
 import express from 'express';
 import { getVideosFolderPaths } from '../config';

@@ -1,5 +1,5 @@
 import { Client } from '@elastic/elasticsearch';
-import type { VideoListItem } from '@shared/api';
+import type { VideoListItem } from '@videodeck/shared/api';
 import { ELASTICSEARCH_URL } from '../config';
 import {
   bulkIndexDocuments,

@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { ChannelVideo } from '@shared/api';
+import type { ChannelVideo } from '@videodeck/shared/api';
 import { errnoCode, isRecord, readString } from '../utils/objectUtils';
 
 /**

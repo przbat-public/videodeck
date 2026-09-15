@@ -1,4 +1,4 @@
-import { ChannelsResponseSchema } from '@shared/schemas';
+import { ChannelsResponseSchema } from '@videodeck/shared/schemas';
 import { useEffect, useState } from 'react';
 
 interface UseChannelNamesResult {

@@ -11,10 +11,7 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["node", "vite/client", "vitest/globals"],
-    "paths": {
-      "@shared/*": ["../shared/*"]
-    }
+    "types": ["node", "vite/client", "vitest/globals"]
   },
   "include": ["src/__tests__", "../test-infra/src", "../server/src"],
   "exclude": ["../server/src/**/*.test.ts", "../server/src/test", "../test-infra/src/**/*.test.ts", "node_modules"]

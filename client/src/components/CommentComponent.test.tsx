@@ -1,6 +1,6 @@
-import type { CommentWithReplies } from '@shared/api';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { CommentWithReplies } from '@videodeck/shared/api';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CommentComponent from './CommentComponent';

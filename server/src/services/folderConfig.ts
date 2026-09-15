@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { DownloadOptions, FolderConfig } from '@shared/api';
-import { isYoutubeChannelUrl } from '@shared/youtube';
+import type { DownloadOptions, FolderConfig } from '@videodeck/shared/api';
+import { isYoutubeChannelUrl } from '@videodeck/shared/youtube';
 import { getVideosFolderPaths } from '../config';
 import { logger } from '../utils/logger';
 

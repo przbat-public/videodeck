@@ -1,4 +1,4 @@
-import { extractYtDlpProgress } from '@shared/progress';
+import { extractYtDlpProgress } from '@videodeck/shared/progress';
 
 /**
  * The extension used to own its own copy of the progress regex; the logic now

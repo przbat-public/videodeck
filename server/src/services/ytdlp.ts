@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { DownloadOptions, JobType } from '@shared/api';
+import type { DownloadOptions, JobType } from '@videodeck/shared/api';
 import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 
 /**

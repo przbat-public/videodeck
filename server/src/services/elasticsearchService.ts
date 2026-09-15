@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { estypes } from '@elastic/elasticsearch';
 import { Client } from '@elastic/elasticsearch';
-import type { RecreateIndicesStatus, SortOption, VideoListItem } from '@shared/api';
-import { SEARCH_DEFAULT_PAGE_SIZE } from '@shared/schemas';
+import type { RecreateIndicesStatus, SortOption, VideoListItem } from '@videodeck/shared/api';
+import { SEARCH_DEFAULT_PAGE_SIZE } from '@videodeck/shared/schemas';
 import { ELASTICSEARCH_URL, getVideosFolderPaths } from '../config';
 import { logger } from '../utils/logger';
 import { runPool } from '../utils/runPool';
