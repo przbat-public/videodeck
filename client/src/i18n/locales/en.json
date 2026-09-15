@@ -203,7 +203,10 @@
     "enqueueFailed": "Failed to add to the queue",
     "summaryFailed": "Failed to generate a summary",
     "recreateStarting": "Starting index rebuild...",
+    "recreateAlreadyRunning": "Index rebuild already running — waiting for it to finish",
+    "recreateProgress": "Rebuilding indices: folder {{folder}}/{{total}}",
     "recreateDone": "Index rebuild finished",
+    "recreateFailed": "Index rebuild failed.",
     "summaryStarting": "Generating summary...",
     "summaryDone": "Summary ready",
     "summaryUnavailable": "Summaries are disabled — set OPENAI_API_KEY on the server"
@@ -216,6 +219,7 @@
     "search": "Failed to search videos",
     "occurred": "An error occurred",
     "recreateStart": "Failed to start index rebuild",
+    "recreateStatus": "Failed to read index rebuild status (HTTP {{status}})",
     "summary": "Failed to generate a summary",
     "unknown": "unknown error",
     "job": {

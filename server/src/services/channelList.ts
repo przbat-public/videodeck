@@ -8,6 +8,17 @@ import { errnoCode, isRecord, readString } from '../utils/objectUtils';
  * data concern, not an HTTP concern — it used to live in the folder routes.
  */
 
+/**
+ * `list.json` exists but does not contain a JSON array. A dedicated class so
+ * callers can distinguish it from IO/parse failures without string matching.
+ */
+export class ListJsonError extends Error {
+  constructor() {
+    super('list.json is not a valid array');
+    this.name = 'ListJsonError';
+  }
+}
+
 /** A `list.json` entry mapped to the shape the client renders */
 function toChannelVideo(entry: unknown): ChannelVideo {
   const record = isRecord(entry) ? entry : {};
@@ -36,7 +47,7 @@ export async function readListJson(folderPath: string): Promise<ChannelVideo[] |
   }
   const data: unknown = JSON.parse(raw);
   if (!Array.isArray(data)) {
-    throw new Error('list.json is not a valid array');
+    throw new ListJsonError();
   }
   return data.map(toChannelVideo);
 }

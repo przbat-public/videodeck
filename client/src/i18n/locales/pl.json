@@ -227,7 +227,10 @@
     "enqueueFailed": "Nie udało się dodać do kolejki",
     "summaryFailed": "Nie udało się wygenerować streszczenia",
     "recreateStarting": "Rozpoczynanie odbudowy indeksów...",
+    "recreateAlreadyRunning": "Odbudowa indeksów już trwa — czekam na jej zakończenie",
+    "recreateProgress": "Odbudowa indeksów: folder {{folder}}/{{total}}",
     "recreateDone": "Odbudowa indeksów zakończona",
+    "recreateFailed": "Odbudowa indeksów nie powiodła się.",
     "summaryStarting": "Generowanie streszczenia...",
     "summaryDone": "Streszczenie gotowe",
     "summaryUnavailable": "Streszczenia są wyłączone — ustaw OPENAI_API_KEY na serwerze"
@@ -240,6 +243,7 @@
     "search": "Nie udało się wyszukać filmów",
     "occurred": "Wystąpił błąd",
     "recreateStart": "Nie udało się rozpocząć odbudowy indeksów",
+    "recreateStatus": "Nie udało się odczytać statusu odbudowy indeksów (HTTP {{status}})",
     "summary": "Nie udało się wygenerować streszczenia",
     "unknown": "nieznany błąd",
     "job": {

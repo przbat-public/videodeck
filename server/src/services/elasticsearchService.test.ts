@@ -12,6 +12,7 @@ import {
   fromDocument,
   getIndexNameFromFolderPath,
   getIndexVersions,
+  getRecreateIndicesStatus,
   getVideoByBaseName,
   getVideoByFilePath,
   getVideoByVideoId,
@@ -19,6 +20,7 @@ import {
   listCachedFolders,
   listChannelNames,
   promoteIndexVersion,
+  recreateAllIndices,
   recreateIndex,
   SEARCH_FIELDS,
   searchVideos,
@@ -395,6 +397,51 @@ describe('elasticsearchService', () => {
       await deleteIndex(FOLDER_A);
 
       expect(mockClient.indices.delete).toHaveBeenCalledWith({ index: ALIAS_A });
+    });
+  });
+
+  describe('recreateAllIndices', () => {
+    beforeEach(() => {
+      aliasPointsAt(`${ALIAS_A}_old`, `${ALIAS_B}_old`);
+    });
+
+    it('recreates every folder and reports the full run in the shared status', async () => {
+      expect(getRecreateIndicesStatus().running).toBe(false);
+
+      await recreateAllIndices();
+
+      const status = getRecreateIndicesStatus();
+      expect(status.running).toBe(false);
+      expect(status.foldersDone).toBe(2);
+      expect(status.foldersTotal).toBe(2);
+      expect(status.errors).toEqual([]);
+      expect(status.startedAt).toBeDefined();
+      expect(status.finishedAt).toBeDefined();
+      expect(mockClient.indices.updateAliases).toHaveBeenCalledTimes(2);
+    });
+
+    it('records a per-folder failure and continues with the remaining folders', async () => {
+      mockClient.indices.create.mockRejectedValueOnce(new Error('ES is down'));
+
+      await recreateAllIndices();
+
+      const status = getRecreateIndicesStatus();
+      expect(status.running).toBe(false);
+      expect(status.foldersDone).toBe(2);
+      expect(status.errors).toHaveLength(1);
+      expect(status.errors[0]).toContain('/videos/a');
+      expect(status.errors[0]).toContain('ES is down');
+      expect(status.lastError).toContain('/videos/a');
+      expect(mockClient.indices.updateAliases).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a concurrent run', async () => {
+      const first = recreateAllIndices();
+
+      await expect(recreateAllIndices()).rejects.toThrow('Index recreation is already running');
+
+      await first;
+      expect(getRecreateIndicesStatus().running).toBe(false);
     });
   });
 

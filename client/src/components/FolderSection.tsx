@@ -1,4 +1,5 @@
-import type { DownloadOptions, FolderConfig, ListExistsResponse } from '@shared/api';
+import type { DownloadOptions, FolderConfig } from '@shared/api';
+import { ListExistsResponseSchema } from '@shared/schemas';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FolderConfigEditor } from './FolderConfigEditor';
@@ -45,7 +46,7 @@ export function FolderSection({
     try {
       const response = await fetch(`/api/folder/list-exists?folderPath=${encodeURIComponent(folderPath)}`);
       if (response.ok) {
-        const data: ListExistsResponse = await response.json();
+        const data = ListExistsResponseSchema.parse(await response.json());
         setListExists(data.exists);
       }
     } catch {

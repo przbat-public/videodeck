@@ -170,6 +170,17 @@ export const ReindexStatusSchema = z.object({
   lastError: z.string().optional(),
 });
 
+/** GET /api/videos/recreateIndices/status (Elasticsearch-only index rebuild) */
+export const RecreateIndicesStatusSchema = z.object({
+  running: z.boolean(),
+  startedAt: z.string().optional(),
+  finishedAt: z.string().optional(),
+  foldersDone: z.number(),
+  foldersTotal: z.number(),
+  errors: z.array(z.string()),
+  lastError: z.string().optional(),
+});
+
 export const DownloadOptionsSchema = z.object({
   maxHeight: z.number(),
   subLangs: z.array(z.string()),
@@ -213,7 +224,7 @@ export const StatusResponseSchema = z.object({
    * reindex, and `GET /api/videos/refreshCache?onlyMissing=1` skips them.
    */
   indexedFolders: z.array(z.string()),
-  /** Whether each folder has a list.json (batched — the client used to ask per folder) */
+  /** Which folders have a list.json (one request instead of one per folder) */
   listExists: z.record(z.string(), z.boolean()),
   status: z.literal('ok'),
 });
@@ -341,6 +352,7 @@ export type VideoDetailsResponse = z.infer<typeof VideoDetailsResponseSchema>;
 export type CommentsResponse = z.infer<typeof CommentsResponseSchema>;
 export type VideoSummaryResponse = z.infer<typeof VideoSummaryResponseSchema>;
 export type ReindexStatus = z.infer<typeof ReindexStatusSchema>;
+export type RecreateIndicesStatus = z.infer<typeof RecreateIndicesStatusSchema>;
 export type DownloadOptions = z.infer<typeof DownloadOptionsSchema>;
 export type FolderConfig = z.infer<typeof FolderConfigSchema>;
 export type StatusResponse = z.infer<typeof StatusResponseSchema>;

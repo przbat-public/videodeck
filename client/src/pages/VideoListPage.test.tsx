@@ -72,6 +72,9 @@ function installFetch(handlers: FetchHandlers = {}): FetchMock {
     if (url === '/api/videos/recreateIndices' && init?.method === 'POST') {
       return json({ message: 'Recreation started' }, 202);
     }
+    if (url === '/api/videos/recreateIndices/status') {
+      return json({ running: false, foldersDone: 1, foldersTotal: 1, errors: [] });
+    }
     if (url.startsWith('/api/videos/refreshCache')) {
       return refreshCacheResponse(url);
     }
@@ -382,7 +385,12 @@ describe('VideoListPage', () => {
 
       await user.click(screen.getByRole('button', { name: 'Odbuduj indeksy' }));
 
-      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/videos/recreateIndices', { method: 'POST' }));
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith('/api/videos/recreateIndices', {
+          method: 'POST',
+          signal: expect.any(AbortSignal),
+        }),
+      );
     });
 
     it('Refresh cache can skip folders that already have an index (onlyMissing)', async () => {

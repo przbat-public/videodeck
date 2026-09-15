@@ -27,7 +27,7 @@ import { extractYoutubeVideoId, isYoutubeChannelUrl, isYoutubeVideoId, toWatchUr
 import type { Response } from 'express';
 import express from 'express';
 import { getVideosFolderPaths } from '../config';
-import { readListJson } from '../services/channelList';
+import { ListJsonError, readListJson } from '../services/channelList';
 import type { DownloadQueue, EnqueueRequest } from '../services/downloadQueue';
 import { downloadQueue } from '../services/downloadQueue';
 import { listCachedFolders } from '../services/elasticsearchService';
@@ -295,7 +295,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     try {
       videos = await readListJson(folderPath);
     } catch (error) {
-      if (error instanceof Error && error.message === 'list.json is not a valid array') {
+      if (error instanceof ListJsonError) {
         res.status(400).json({ error: error.message });
         return;
       }

@@ -32,6 +32,7 @@ export type {
   QueueListResponse,
   QueuePauseResponse,
   RebuildIndexResponse,
+  RecreateIndicesStatus,
   ReindexStatus,
   SaveFolderConfigResponse,
   SearchResponse,

@@ -1,4 +1,5 @@
-import type { ApiError, FolderConfig } from '@shared/api';
+import type { FolderConfig } from '@shared/api';
+import { ApiErrorSchema } from '@shared/schemas';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from './ui/Button';
@@ -44,8 +45,8 @@ export function PlaylistDownloadSection({
       });
 
       if (!response.ok) {
-        const errorData: ApiError = await response.json();
-        throw new Error(errorData.message || 'Failed to download playlist');
+        const parsed = ApiErrorSchema.safeParse(await response.json().catch(() => null));
+        throw new Error(parsed.success ? (parsed.data.message ?? parsed.data.error) : 'Failed to download playlist');
       }
 
       // Notify parent to refresh list existence status

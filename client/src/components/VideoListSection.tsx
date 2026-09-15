@@ -1,4 +1,5 @@
-import type { ChannelVideo, FolderListResponse, JobType, QueueJob } from '@shared/api';
+import type { ChannelVideo, JobType, QueueJob } from '@shared/api';
+import { FolderListResponseSchema } from '@shared/schemas';
 import type { JSX, Ref } from 'react';
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -45,10 +46,10 @@ export function VideoListSection({
     if (!response.ok) {
       throw new Error('Failed to load videos');
     }
-    const data: FolderListResponse = await response.json();
-    setVideos(data.videos || []);
-    setDownloadStatuses(data.downloadStatuses || {});
-    setLastUpdatedDates(data.lastUpdatedDates || {});
+    const data = FolderListResponseSchema.parse(await response.json());
+    setVideos(data.videos);
+    setDownloadStatuses(data.downloadStatuses);
+    setLastUpdatedDates(data.lastUpdatedDates);
     setHasLoadedVideos(true);
   }, [folderPath]);
 
