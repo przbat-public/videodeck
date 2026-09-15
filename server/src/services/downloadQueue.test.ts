@@ -1022,7 +1022,11 @@ describe('queue state persistence', () => {
   });
 
   afterEach(async () => {
-    await fs.rm(path.dirname(stateFile), { recursive: true, force: true });
+    // The queue writes its state fire-and-forget in the background, so a
+    // rename can still be creating files while the directory is removed,
+    // and the rmdir step fails with ENOTEMPTY. Let fs.rm retry briefly
+    // instead of racing the write.
+    await fs.rm(path.dirname(stateFile), { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   const silentAfterJob = (): jest.Mock<Promise<void>, [QueueJob]> => jest.fn().mockResolvedValue(undefined);
