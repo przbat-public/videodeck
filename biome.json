@@ -110,7 +110,8 @@
       "!**/package-lock.json",
       "!**/*.css",
       "!**/*.html",
-      "!chrome-extension/*.js"
+      "!chrome-extension/*.js",
+      "!**/.queue-state.json"
     ]
   }
 }

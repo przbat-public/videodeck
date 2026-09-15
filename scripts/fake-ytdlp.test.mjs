@@ -1,16 +1,26 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-// The fake binary validates the yt-dlp argument templates without network
-// access; the CI integration job puts scripts/fake-bin on PATH.
+// The fake binary doubles as a validation gate for the yt-dlp argument
+// templates AND as the download backend of the deep integration tests; the
+// CI integration job puts scripts/fake-bin on PATH.
 const fakeYtDlp = fileURLToPath(new URL('./fake-bin/yt-dlp', import.meta.url));
 
 /**
  * @param {string[]} args
  */
-const run = (...args) => spawnSync(fakeYtDlp, args, { encoding: 'utf-8' });
+const run = (...args) => {
+  const maybeCwd = args[args.length - 1];
+  const cwd = typeof maybeCwd === 'string' && maybeCwd.startsWith('/') && args.length > 1 ? args.pop() : process.cwd();
+  return spawnSync(fakeYtDlp, args, { encoding: 'utf-8', cwd });
+};
+
+const WATCH_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
 
 test('answers --version for the boot-time probe', () => {
   const result = run('--version');
@@ -19,24 +29,80 @@ test('answers --version for the boot-time probe', () => {
 });
 
 test('accepts a simulated download of a canonical watch URL', () => {
-  const result = run('--simulate', '-f', 'best', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  const result = run('--simulate', '-f', 'best', WATCH_URL);
   assert.equal(result.status, 0);
 });
 
 test('rejects every cookie-exfiltration flag', () => {
   for (const flag of ['--cookies', '--load-cookies', '--cookies-from-browser', '--netrc-cmd']) {
-    const result = run(flag, 'x', '--simulate', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    const result = run(flag, 'x', '--simulate', WATCH_URL);
     assert.equal(result.status, 2, `${flag} must be rejected`);
     assert.match(result.stderr, new RegExp(flag));
   }
 });
 
-test('rejects runs without --simulate (a test would really download)', () => {
-  const result = run('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+test('rejects a run without a canonical watch URL', () => {
+  const result = run('https://www.youtube.com/playlist?list=PLx');
   assert.equal(result.status, 2);
 });
 
-test('rejects non-watch URLs', () => {
-  const result = run('--simulate', 'https://www.youtube.com/playlist?list=PLx');
-  assert.equal(result.status, 2);
+test('prints NDJSON playlist entries for --flat-playlist -j', () => {
+  const result = run('--flat-playlist', '-i', '-j', 'https://www.youtube.com/@somechannel');
+  assert.equal(result.status, 0);
+  const lines = result.stdout.trim().split('\n');
+  assert.equal(lines.length, 2);
+  for (const line of lines) {
+    const entry = JSON.parse(line);
+    assert.equal(typeof entry.id, 'string');
+    assert.match(entry.url, /^https:\/\/www\.youtube\.com\/watch\?v=/);
+  }
+});
+
+test('a download writes the video, sidecars, progress lines and archive entry', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    const result = run(
+      '-o',
+      '%(upload_date)s_%(title)s.%(ext)s',
+      '--write-thumbnail',
+      '--write-description',
+      '--write-info-json',
+      '--write-subs',
+      '--sub-lang',
+      'en',
+      '--download-archive',
+      'archive.txt',
+      WATCH_URL,
+      dir,
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /^download {2}\d+%/m);
+    assert.ok(existsSync(path.join(dir, '20260101_Fake video dQw4w9WgXcQ.mp4')));
+    assert.ok(existsSync(path.join(dir, '20260101_Fake video dQw4w9WgXcQ.info.json')));
+    assert.ok(existsSync(path.join(dir, '20260101_Fake video dQw4w9WgXcQ.en.vtt')));
+    assert.ok(existsSync(path.join(dir, '20260101_Fake video dQw4w9WgXcQ.webp')));
+    assert.match(readFileSync(path.join(dir, 'archive.txt'), 'utf-8'), /youtube dQw4w9WgXcQ/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a recorded archive entry skips the download (silent success)', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    const args = ['-o', '%(upload_date)s_%(title)s.%(ext)s', '--download-archive', 'archive.txt', WATCH_URL, dir];
+    assert.equal(run(...args).status, 0);
+    const second = run(...args);
+    assert.equal(second.status, 0);
+    assert.match(second.stdout, /already been recorded in the archive/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('prints the members-only error and exits 1 for a member video', () => {
+  const result = run('--simulate', 'https://www.youtube.com/watch?v=member123');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /members/i);
 });
