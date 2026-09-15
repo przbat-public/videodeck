@@ -60,9 +60,10 @@ rules and the copy rules. This skill turns that contract into a checklist.
 - **Lists.** The video list virtualizes with react-window; new long lists
   reuse it instead of rendering thousands of nodes. Keys are stable
   (`summary-${videoId}-${subtitlePath}`), never array indexes.
-- **Responsive.** One real breakpoint exists, max-width 768px in
-  `App.css`. New layouts collapse there; do not add a second system of
-  breakpoints.
+- **Responsive.** Responsiveness follows DESIGN.md section 11 (three
+  breakpoints, 44px touch targets, no hover-only affordances); the
+  responsive-design skill holds the full audit workflow. A layout that
+  only works at desktop width is a contract violation.
 - **Errors.** Runtime errors fall through `ErrorBoundary`; expected
   failures use `ui/ErrorMessage`, toasts are additional signals, never
   the only one.
