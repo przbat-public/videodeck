@@ -923,12 +923,12 @@
   cursor: pointer;
   transition: all 0.2s;
   font-weight: 500;
-  background: #ffc107;
+  background: var(--color-warning);
   color: var(--color-text);
 }
 
 .update-video-button:hover:not(:disabled) {
-  background: #e0a800;
+  background: var(--color-warning-hover);
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(255, 193, 7, 0.3);
 }
@@ -947,12 +947,12 @@
   cursor: pointer;
   transition: all 0.2s;
   font-weight: 500;
-  background: #5a6268;
+  background: var(--color-secondary);
   color: white;
 }
 
 .cancel-job-button:hover:not(:disabled) {
-  background: #495057;
+  background: var(--color-secondary-hover);
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(90, 98, 104, 0.3);
 }
@@ -1190,7 +1190,7 @@
 }
 
 .ui-select-native:hover:not(:disabled) {
-  border-color: #b9c0f0;
+  border-color: var(--color-focus);
 }
 
 .ui-select-native:focus-visible {
@@ -1384,7 +1384,7 @@
 }
 
 .ui-button--danger:hover:not(:disabled) {
-  background: #c82333;
+  background: var(--color-danger-hover);
 }
 
 .ui-button--small {
