@@ -13,8 +13,7 @@
     "jsx": "react-jsx",
     "types": ["node", "vite/client", "vitest/globals"],
     "paths": {
-      "@shared/*": ["../shared/*"],
-      "@videodeck/test-infra/*": ["../test-infra/src/*"]
+      "@shared/*": ["../shared/*"]
     }
   },
   "include": ["src/__tests__", "../test-infra/src", "../server/src"],
