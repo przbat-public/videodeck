@@ -7,9 +7,9 @@ interface UseChannelNamesResult {
 }
 
 /**
- * GET /api/videos/channels — feeds the datalist of the channel filter.
- * A failure silently yields an empty list: the filter stays usable without
- * suggestions (the input itself still filters).
+ * GET /api/videos/channels — feeds the channel select in the search bar.
+ * A failure silently yields an empty list: the filter hides until the list
+ * arrives.
  */
 export function useChannelNames(): UseChannelNamesResult {
   const [channels, setChannels] = useState<string[]>([]);
