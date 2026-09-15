@@ -464,8 +464,10 @@ describe('CommentComponent', () => {
       };
 
       const { container } = render(<CommentComponent comment={comment} />);
-      const commentItem = container.querySelector('.comment-item');
-      expect(commentItem).toHaveStyle({ marginLeft: '0rem' });
+      const commentItem = container.querySelector<HTMLElement>('.comment-item');
+      // Inline style, read straight from the element: jest-dom v7 checks the
+      // COMPUTED style, where `0rem` collapses to `0px` in jsdom.
+      expect(commentItem?.style.marginLeft).toBe('0rem');
       expect(commentItem).not.toHaveClass('comment-reply');
     });
 
@@ -477,8 +479,8 @@ describe('CommentComponent', () => {
       };
 
       const { container } = render(<CommentComponent comment={comment} depth={1} />);
-      const commentItem = container.querySelector('.comment-item');
-      expect(commentItem).toHaveStyle({ marginLeft: '1.5rem' });
+      const commentItem = container.querySelector<HTMLElement>('.comment-item');
+      expect(commentItem?.style.marginLeft).toBe('1.5rem');
       expect(commentItem).toHaveClass('comment-reply');
     });
 
@@ -490,8 +492,8 @@ describe('CommentComponent', () => {
       };
 
       const { container } = render(<CommentComponent comment={comment} depth={2} />);
-      const commentItem = container.querySelector('.comment-item');
-      expect(commentItem).toHaveStyle({ marginLeft: '3rem' });
+      const commentItem = container.querySelector<HTMLElement>('.comment-item');
+      expect(commentItem?.style.marginLeft).toBe('3rem');
       expect(commentItem).toHaveClass('comment-reply');
     });
   });
