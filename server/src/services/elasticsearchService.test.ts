@@ -457,7 +457,7 @@ describe('elasticsearchService', () => {
       expect(mockClient.bulk).not.toHaveBeenCalled();
     });
 
-    it('throws when the bulk response reports item errors', async () => {
+    it('skips per-item bulk errors instead of failing the whole batch', async () => {
       mockClient.bulk.mockResolvedValue({
         errors: true,
         items: [
@@ -466,8 +466,25 @@ describe('elasticsearchService', () => {
         ],
       });
 
+      await expect(
+        bulkIndexVideos([video({ videoId: 'a' }), video({ videoId: 'b' })], { index: 'x' }),
+      ).resolves.toEqual({
+        indexed: 1,
+        skipped: 1,
+      });
+    });
+
+    it('throws when every document in a bulk fails (protects the alias swap)', async () => {
+      mockClient.bulk.mockResolvedValue({
+        errors: true,
+        items: [
+          { index: { _id: 'a', status: 400, error: { reason: 'mapper_parsing_exception' } } },
+          { index: { _id: 'b', status: 400, error: { reason: 'mapper_parsing_exception' } } },
+        ],
+      });
+
       await expect(bulkIndexVideos([video({ videoId: 'a' }), video({ videoId: 'b' })], { index: 'x' })).rejects.toThrow(
-        'Bulk indexing failed for 1 of 2 videos',
+        'Bulk indexing failed for all 2 videos',
       );
     });
   });

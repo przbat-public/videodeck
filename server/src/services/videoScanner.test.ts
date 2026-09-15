@@ -63,7 +63,10 @@ describe('videoScanner', () => {
     mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
     mockedEs.checkElasticsearchConnection.mockResolvedValue(true);
     mockedEs.createIndexVersion.mockResolvedValue(NEW_INDEX);
-    mockedEs.bulkIndexDocuments.mockResolvedValue(undefined);
+    mockedEs.bulkIndexDocuments.mockImplementation(async (_index, documents) => ({
+      indexed: documents.length,
+      skipped: 0,
+    }));
     mockedEs.promoteIndexVersion.mockResolvedValue(undefined);
     mockedEs.discardIndexVersion.mockResolvedValue(undefined);
     mockedEs.indexVideo.mockResolvedValue(undefined);
@@ -345,8 +348,9 @@ describe('videoScanner', () => {
 
     it('promotes only after the last batch was written', async () => {
       const order: string[] = [];
-      mockedEs.bulkIndexDocuments.mockImplementation(async () => {
+      mockedEs.bulkIndexDocuments.mockImplementation(async (_index, documents) => {
         order.push('bulk');
+        return { indexed: documents.length, skipped: 0 };
       });
       mockedEs.promoteIndexVersion.mockImplementation(async () => {
         order.push('promote');
@@ -461,7 +465,9 @@ describe('videoScanner', () => {
       readdirMock.mockResolvedValue(['a.info.json', 'a.mp4', 'a.webp']);
       mockedFs.readFile.mockResolvedValue(JSON.stringify({ title: 'A' }));
       mockedEs.createIndexVersion.mockResolvedValueOnce('broken_v1').mockResolvedValueOnce('fine_v1');
-      mockedEs.bulkIndexDocuments.mockRejectedValueOnce(new Error('bulk exploded')).mockResolvedValueOnce(undefined);
+      mockedEs.bulkIndexDocuments
+        .mockRejectedValueOnce(new Error('bulk exploded'))
+        .mockResolvedValueOnce({ indexed: 1, skipped: 0 });
 
       await expect(loadVideosCache()).resolves.toBeUndefined();
 
@@ -528,8 +534,9 @@ describe('videoScanner', () => {
       readdirMock.mockResolvedValue(['a.info.json', 'a.mp4', 'a.webp']);
       mockedFs.readFile.mockResolvedValue(JSON.stringify({ title: 'A' }));
       let seen: string | undefined;
-      mockedEs.bulkIndexDocuments.mockImplementation(async () => {
+      mockedEs.bulkIndexDocuments.mockImplementation(async (_index, documents) => {
         seen = getReindexStatus().currentFolder;
+        return { indexed: documents.length, skipped: 0 };
       });
 
       await loadVideosCache();

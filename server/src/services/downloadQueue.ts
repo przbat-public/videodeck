@@ -105,6 +105,11 @@ function isActive(job: QueueJob): boolean {
  * Default post-job hook: refresh the folder's `.videos-index.json` and push
  * the videos whose files changed during the job into Elasticsearch, so a
  * download or metadata update is searchable without a full reindex.
+ *
+ * When Elasticsearch is down the failure is NOT swallowed: the index mtimes
+ * are already updated by refreshIndex, so the change would never be
+ * re-detected — the batch is retried in the background with backoff instead
+ * of losing the video from search until the next full reindex.
  */
 export async function indexChangedVideos(job: QueueJob): Promise<void> {
   const since = new Date(job.startedAt ?? job.createdAt).getTime();
@@ -115,8 +120,49 @@ export async function indexChangedVideos(job: QueueJob): Promise<void> {
   if (baseNames.length === 0) {
     return;
   }
-  const indexed = await indexVideosFromDisk(job.folderPath, baseNames);
-  logger.info(`Job ${job.id}: indexed ${indexed}/${baseNames.length} changed videos in Elasticsearch`);
+  try {
+    const indexed = await indexVideosFromDisk(job.folderPath, baseNames);
+    logger.info(`Job ${job.id}: indexed ${indexed}/${baseNames.length} changed videos in Elasticsearch`);
+  } catch (error) {
+    logger.error(`Job ${job.id}: cannot index changed videos, will retry:`, error);
+    scheduleIndexRetry(job.folderPath, baseNames);
+  }
+}
+
+/** Folders whose incremental indexing failed and is waiting for a retry */
+const indexRetryTimers = new Map<string, NodeJS.Timeout>();
+/** Backoff per folder: 30 s, 2 min, 8 min, then give up */
+const INDEX_RETRY_DELAYS_MS = [30_000, 120_000, 480_000];
+
+/** Tests: drop pending index retries */
+export function clearIndexRetries(): void {
+  for (const timer of indexRetryTimers.values()) {
+    clearTimeout(timer);
+  }
+  indexRetryTimers.clear();
+}
+
+function scheduleIndexRetry(folderPath: string, baseNames: string[], attempt = 0): void {
+  const existing = indexRetryTimers.get(folderPath);
+  if (existing) {
+    clearTimeout(existing); // a newer failure supersedes the pending retry
+  }
+  if (attempt >= INDEX_RETRY_DELAYS_MS.length) {
+    logger.error(`Giving up indexing ${baseNames.length} videos in ${folderPath} after ${attempt} retries`);
+    return;
+  }
+  const delay = INDEX_RETRY_DELAYS_MS[attempt] ?? 480_000;
+  const timer = setTimeout(() => {
+    indexRetryTimers.delete(folderPath);
+    indexVideosFromDisk(folderPath, baseNames)
+      .then((indexed) => logger.info(`Retry indexed ${indexed}/${baseNames.length} videos in ${folderPath}`))
+      .catch((error: unknown) => {
+        logger.error(`Index retry failed for ${folderPath}:`, error);
+        scheduleIndexRetry(folderPath, baseNames, attempt + 1);
+      });
+  }, delay);
+  timer.unref();
+  indexRetryTimers.set(folderPath, timer);
 }
 
 export class DownloadQueue extends EventEmitter {

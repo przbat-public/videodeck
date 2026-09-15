@@ -84,12 +84,34 @@ export const getElasticsearchClient = (): Client => {
   return client;
 };
 
+let probeClient: Client | null = null;
+
+/**
+ * A separate client for health probes and quick alias checks: short timeout,
+ * no retries. The regular client retries for up to 2 minutes per call, which
+ * would hang /health and /api/status for minutes when Elasticsearch is
+ * unreachable-but-not-refused.
+ */
+export function getProbeClient(): Client {
+  if (!probeClient) {
+    probeClient = new Client({
+      node: ELASTICSEARCH_URL,
+      maxRetries: 0,
+      requestTimeout: 3_000,
+    });
+  }
+  return probeClient;
+}
+
 /**
  * Injection point: replace the client (tests, custom transport setup). Pass
- * null to fall back to the lazy default built from ELASTICSEARCH_URL.
+ * null to fall back to the lazy defaults built from ELASTICSEARCH_URL. Both
+ * accessors return the override — the probe client shares the same mock in
+ * tests, in production each lazy accessor builds its own.
  */
 export function setElasticsearchClient(override: Client | null): void {
   client = override;
+  probeClient = override;
 }
 
 /** Convert a scanned video into the stored document */
@@ -99,7 +121,35 @@ export function toDocument(video: VideoListItem): VideoDocument {
     .map((comment) => comment.text)
     .filter((text): text is string => typeof text === 'string' && text.length > 0)
     .join('\n');
-  return commentsText.length > 0 ? { ...rest, commentsText } : rest;
+  const document: VideoDocument = commentsText.length > 0 ? { ...rest, commentsText } : rest;
+  // yt-dlp writes counts as numbers, but a hand-edited info.json can carry
+  // strings — one such document used to fail the whole bulk (mapping
+  // conflict with `integer`) and sink the entire folder's reindex.
+  const viewCount = coerceInteger(document.viewCount);
+  if (viewCount !== undefined) {
+    document.viewCount = viewCount;
+  } else {
+    delete document.viewCount;
+  }
+  const likeCount = coerceInteger(document.likeCount);
+  if (likeCount !== undefined) {
+    document.likeCount = likeCount;
+  } else {
+    delete document.likeCount;
+  }
+  return document;
+}
+
+/** A non-negative integer, or undefined when the value is not a plausible count */
+function coerceInteger(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.trunc(value);
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
 }
 
 /** Convert a stored document back into the API shape */
@@ -249,7 +299,7 @@ export async function listCachedFolders(folderPaths: string[]): Promise<Set<stri
   await runPool(folderPaths, CACHE_CHECK_CONCURRENCY, async (folderPath) => {
     const alias = getIndexNameFromFolderPath(folderPath);
     try {
-      const exists = await getElasticsearchClient().indices.existsAlias({ name: alias });
+      const exists = await getProbeClient().indices.existsAlias({ name: alias });
       if (exists) {
         cached.add(folderPath);
       }
@@ -284,6 +334,10 @@ export async function promoteIndexVersion(folderPath: string, indexName: string)
     await esClient.indices.delete({ index: alias });
   }
 
+  // Everything before this line may fail and leave the old index untouched;
+  // everything after the swap is best-effort cleanup that must never throw —
+  // an exception here used to propagate to scanFolder, which then discarded
+  // the index that was ALREADY the alias target (silent empty search results).
   await esClient.indices.updateAliases({
     actions: [...previous.map((index) => ({ remove: { index, alias } })), { add: { index: indexName, alias } }],
   });
@@ -293,8 +347,14 @@ export async function promoteIndexVersion(folderPath: string, indexName: string)
     ...(await listAllIndexVersions(folderPath)).filter((name) => name !== indexName),
   ]);
   for (const index of stale) {
-    await esClient.indices.delete({ index, ignore_unavailable: true });
-    logger.info(`Index ${index} deleted`);
+    try {
+      await esClient.indices.delete({ index, ignore_unavailable: true });
+      logger.info(`Index ${index} deleted`);
+    } catch (error) {
+      // Best-effort: an orphaned index is dead weight, never a correctness
+      // problem — the next successful reindex sweeps it again.
+      logger.warn(`Cannot delete stale index ${index}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   logger.info(`Alias ${alias} now points at ${indexName} for folder: ${folderPath}`);
@@ -401,11 +461,15 @@ export async function indexVideo(video: VideoListItem): Promise<void> {
 /**
  * Bulk index videos. With `options.index` everything goes into that physical
  * index (used by reindex); otherwise videos are grouped by folder and written
- * through the folder aliases.
+ * through the folder aliases. Returns how many documents were indexed and
+ * how many per-item failures were skipped.
  */
-export async function bulkIndexVideos(videos: VideoListItem[], options: BulkIndexOptions = {}): Promise<void> {
+export async function bulkIndexVideos(
+  videos: VideoListItem[],
+  options: BulkIndexOptions = {},
+): Promise<{ indexed: number; skipped: number }> {
   if (videos.length === 0) {
-    return;
+    return { indexed: 0, skipped: 0 };
   }
   const refresh = options.refresh ?? true;
 
@@ -424,19 +488,33 @@ export async function bulkIndexVideos(videos: VideoListItem[], options: BulkInde
     }
   }
 
+  let indexed = 0;
+  let skipped = 0;
   for (const [indexName, group] of targets) {
-    await bulkIndexDocuments(indexName, group.map(toDocument), refresh);
+    const result = await bulkIndexDocuments(indexName, group.map(toDocument), refresh);
+    indexed += result.indexed;
+    skipped += result.skipped;
   }
+  return { indexed, skipped };
 }
 
 /**
  * Write already-flattened documents into one index with a single `_bulk`
  * request. Callers are responsible for keeping the batch under
  * Elasticsearch's `http.max_content_length` (100 MB by default).
+ *
+ * Per-item failures are skipped (counted and logged), so one malformed
+ * document no longer sinks the whole folder's reindex. Only when EVERY
+ * document fails (e.g. a real mapping conflict) does this throw — promoting
+ * an empty index over a good one would silently empty the search results.
  */
-export async function bulkIndexDocuments(indexName: string, documents: VideoDocument[], refresh = true): Promise<void> {
+export async function bulkIndexDocuments(
+  indexName: string,
+  documents: VideoDocument[],
+  refresh = true,
+): Promise<{ indexed: number; skipped: number }> {
   if (documents.length === 0) {
-    return;
+    return { indexed: 0, skipped: 0 };
   }
   const esClient = getElasticsearchClient();
 
@@ -448,16 +526,26 @@ export async function bulkIndexDocuments(indexName: string, documents: VideoDocu
   const response = await esClient.bulk({ operations });
 
   if (response.errors) {
-    const errors = response.items
-      .filter((item) => item.index?.error)
-      .map((item) => `${item.index?._id}: ${item.index?.error?.reason ?? 'unknown error'}`);
-    logger.error(`${errors.length} videos failed to index in ${indexName}:`, errors.slice(0, 5));
-    throw new Error(`Bulk indexing failed for ${errors.length} of ${documents.length} videos`);
+    const failedIds = new Set(
+      response.items
+        .filter((item) => item.index?.error)
+        .map((item) => item.index?._id)
+        .filter((id): id is string => typeof id === 'string'),
+    );
+    if (failedIds.size === documents.length) {
+      throw new Error(`Bulk indexing failed for all ${documents.length} videos in ${indexName}`);
+    }
+    logger.error(`${failedIds.size} videos failed to index in ${indexName} (skipped):`, [...failedIds].slice(0, 5));
+    if (refresh) {
+      await esClient.indices.refresh({ index: indexName });
+    }
+    return { indexed: documents.length - failedIds.size, skipped: failedIds.size };
   }
 
   if (refresh) {
     await esClient.indices.refresh({ index: indexName });
   }
+  return { indexed: documents.length, skipped: 0 };
 }
 
 /**
@@ -740,11 +828,64 @@ export async function getTotalVideoCount(folderPaths?: string[]): Promise<number
 
 export async function checkElasticsearchConnection(): Promise<boolean> {
   try {
-    const esClient = getElasticsearchClient();
-    await esClient.ping();
+    await getProbeClient().ping();
     return true;
   } catch (error) {
     logger.error('Elasticsearch connection failed:', error);
     return false;
+  }
+}
+
+/**
+ * Delete physical index versions that are not behind their folder alias —
+ * orphans left by a reindex that crashed mid-way (cleanup normally lives in
+ * promoteIndexVersion). Runs at startup; failures are logged, never thrown,
+ * because ES may simply be down at boot.
+ */
+export async function sweepOrphanIndexVersions(folderPaths: string[] = getVideosFolderPaths()): Promise<void> {
+  for (const folderPath of folderPaths) {
+    try {
+      const aliasTargets = new Set(await getIndexVersions(folderPath));
+      const all = await listAllIndexVersions(folderPath);
+      for (const index of all) {
+        if (!aliasTargets.has(index)) {
+          await deleteIndexBestEffort(index);
+        }
+      }
+    } catch (error) {
+      logger.warn(`Cannot sweep orphans of ${folderPath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
+/** Delete an orphan index, logging either way — cleanup must never throw */
+async function deleteIndexBestEffort(index: string): Promise<void> {
+  try {
+    await getElasticsearchClient().indices.delete({ index, ignore_unavailable: true });
+    logger.info(`Swept orphan index ${index}`);
+  } catch (error) {
+    logger.warn(`Cannot delete orphan index ${index}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Log a warning for indices whose mapping predates the current analyzer
+ * (they keep the old `standard` search behavior until a manual reindex).
+ */
+export async function warnOnLegacyMappings(folderPaths: string[] = getVideosFolderPaths()): Promise<void> {
+  for (const folderPath of folderPaths) {
+    try {
+      const alias = getIndexNameFromFolderPath(folderPath);
+      const mapping = await getProbeClient().indices.getMapping({ index: alias, ignore_unavailable: true });
+      const indexMapping = mapping[Object.keys(mapping)[0] ?? ''];
+      const analyzer = (indexMapping?.mappings?.properties?.title as { analyzer?: string } | undefined)?.analyzer;
+      if (analyzer !== undefined && analyzer !== SEARCH_ANALYZER) {
+        logger.warn(
+          `Folder ${folderPath}: index mapping uses analyzer "${analyzer}" — reindex to switch to "${SEARCH_ANALYZER}"`,
+        );
+      }
+    } catch {
+      // ES down at boot — the warning is cosmetic, nothing to do here
+    }
   }
 }
