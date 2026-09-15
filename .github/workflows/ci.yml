@@ -137,6 +137,68 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: ${{ matrix.run }}
 
+  coverage:
+    name: Coverage ratchet
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            client/package-lock.json
+      - run: npm run install:ci
+      # Coverage thresholds are the ratchet: the run fails when coverage drops
+      # below the committed numbers. Locally, `npm run test:coverage` raises
+      # them in place whenever coverage grows — commit the change.
+      - name: Enforce coverage thresholds (server + client)
+        run: npm run test:coverage
+
+  integration:
+    name: Server integration (fake yt-dlp + Elasticsearch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.17.3
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: 'false'
+          ES_JAVA_OPTS: -Xms512m -Xmx512m
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -fs http://localhost:9200/_cluster/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 24
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+      - run: npm ci && npm ci --prefix server
+      # The fake binary validates the yt-dlp argument templates offline; the
+      # Elasticsearch suite runs against the service container above. Nothing
+      # is skipped on CI.
+      - name: Run server integration suites
+        working-directory: server
+        env:
+          RUN_YTDLP_INTEGRATION: '1'
+          RUN_ES_INTEGRATION: '1'
+          ELASTICSEARCH_URL: http://localhost:9200
+        run: |
+          PATH="$GITHUB_WORKSPACE/scripts/fake-bin:$PATH" \
+            npx jest src/services/ytdlp.integration.test.ts src/services/elasticsearch.integration.test.ts
+
   build:
     name: Build
     runs-on: ubuntu-latest

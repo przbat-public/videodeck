@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+/**
+ * Fake yt-dlp for CI and offline tests: validates the argument templates the
+ * download queue builds without touching the network. `--version` answers
+ * the boot-time probe; anything else must be a `--simulate` run with a
+ * canonical watch URL and none of the forbidden cookie flags.
+ */
+const args = process.argv.slice(2);
+
+if (args.includes('--version')) {
+  console.log('2026.06.01-fake');
+  process.exit(0);
+}
+
+const FORBIDDEN_FLAGS = ['--cookies', '--load-cookies', '--cookies-from-browser', '--netrc-cmd'];
+const forbidden = FORBIDDEN_FLAGS.find((flag) => args.includes(flag));
+if (forbidden) {
+  console.error(`fake-ytdlp: forbidden flag ${forbidden}`);
+  process.exit(2);
+}
+
+if (!args.includes('--simulate')) {
+  console.error('fake-ytdlp: integration tests must run with --simulate (no real downloads)');
+  process.exit(2);
+}
+
+if (!args.some((arg) => arg.startsWith('https://www.youtube.com/watch?v='))) {
+  console.error('fake-ytdlp: expected a canonical YouTube watch URL');
+  process.exit(2);
+}
+
+process.exit(0);

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mockApi, video } from './helpers';
+import { json, mockApi, video } from './helpers';
 
 test.describe('wyszukiwarka', () => {
   test('adres URL steruje formularzem i wynikami', async ({ page }) => {
@@ -89,6 +89,37 @@ test.describe('wyszukiwarka', () => {
 
     await expect(page.getByText('Brak filmów. Spróbuj innego zapytania.')).toBeVisible();
   });
+
+  test('Enter zatwierdza wpisaną frazę z klawiatury', async ({ page }) => {
+    const queries: (string | null)[] = [];
+    await mockApi(page, {
+      search: (params) => {
+        queries.push(params.get('q'));
+        return { videos: [video('v1', 'Film z Entera')], totalCount: 1 };
+      },
+    });
+
+    await page.goto('/videos');
+
+    const input = page.getByLabel('Fraza wyszukiwania');
+    await input.fill('dron');
+    await input.press('Enter');
+
+    await expect(page.getByText('Film z Entera')).toBeVisible();
+    // The initial (empty-phrase) search resolves first and also matches the
+    // mock — wait for the Enter-committed search to actually hit the API
+    await expect.poll(() => queries).toContain('dron');
+  });
+
+  test('błąd wyszukiwania pokazuje toast z komunikatem', async ({ page }) => {
+    await mockApi(page);
+    // Registered after mockApi, so this route wins for the search endpoint
+    await page.route('**/api/videos/search**', (route) => route.fulfill(json({ error: 'Elasticsearch is down' }, 500)));
+
+    await page.goto('/videos');
+
+    await expect(page.getByText(/Nie udało się wyszukać filmów/)).toBeVisible();
+  });
 });
 
 test.describe('szczegóły filmu', () => {
@@ -148,6 +179,27 @@ test.describe('szczegóły filmu', () => {
 
     await detailPage.getByRole('link', { name: '← Wróć do wyszukiwania' }).click();
     await expect(detailPage).toHaveURL(/\/videos/);
+  });
+
+  test('błąd pobierania szczegółów pokazuje komunikat i link powrotu', async ({ page }) => {
+    await mockApi(page, {
+      search: () => ({ videos: [video('v1', 'Film bez szczegółów', { videoId: 'e2eid12345' })], totalCount: 1 }),
+    });
+    // Registered after mockApi, so this route wins for the details endpoint.
+    // It must be a CONTEXT route: the card opens the detail page in a new
+    // page (target=_blank) and page-level routes do not apply there.
+    await page.context().route('**/api/videos/**/details', (route) => route.fulfill(json({ error: 'nope' }, 500)));
+
+    await page.goto('/videos');
+
+    const [detailPage] = await Promise.all([
+      page.context().waitForEvent('page'),
+      page.getByText('Film bez szczegółów').click(),
+    ]);
+    await detailPage.waitForLoadState();
+
+    await expect(detailPage.getByText(/^Błąd:/)).toBeVisible();
+    await expect(detailPage.getByRole('link', { name: '← Wróć do wyszukiwania' })).toBeVisible();
   });
 });
 

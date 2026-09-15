@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the detail player shows the downloaded thumbnail as its poster, the
   document language follows the UI language, and the extension's content
   script observes only the watch-page subtree instead of the whole body
+- Enter commits the search phrase immediately instead of waiting out the
+  debounce
+- CI now enforces the coverage ratchet (server + client) and runs the
+  server integration suites on every PR: yt-dlp argument templates against
+  an offline fake binary and the Elasticsearch suite against a real
+  single-node cluster — nothing is skipped on CI
 
 
 ## [1.0.0] - 2026-09-14
