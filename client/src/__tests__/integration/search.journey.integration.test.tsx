@@ -4,6 +4,7 @@ import { videoFiles } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   categorySelect,
+  channelSelect,
   findCardByTitle,
   findSearchInput,
   fromDateInput,
@@ -12,7 +13,6 @@ import {
   sortSelect,
   toDateInput,
   typeAndCommitPhrase,
-  typeInto,
 } from './drivers/searchDrivers';
 import { refreshCacheAndWait, renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
@@ -72,7 +72,7 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
     await waitFor(() => expect(JSON.stringify(lastSearch().body)).toContain('viewCount'));
 
     // 3. Channel filter commits after the same pause as the phrase.
-    await typeInto(page.user, 'Kanał', 'Deep test channel');
+    await pickOption(page.user, await channelSelect(), 'Deep test channel');
     await waitFor(() => expect(JSON.stringify(lastSearch().body)).toContain('Deep test channel'));
 
     // 4. The card opens the detail in a new tab (the app renders cards
