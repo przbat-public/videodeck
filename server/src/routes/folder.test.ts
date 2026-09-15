@@ -5,6 +5,7 @@ import type { IncomingMessage } from 'node:http';
 import os from 'node:os';
 import {
   ClearFinishedResponseSchema,
+  downloadVideoEventSchema,
   EnqueueJobsResponseSchema,
   FolderListResponseSchema,
   QueueListResponseSchema,
@@ -799,11 +800,13 @@ describe('folder router', () => {
       }
     };
 
+    // Heartbeat comments (`: ping`) never start with "data: " and are skipped;
+    // every parsed event must satisfy the shared contract.
     const parseEvents = (body: string) =>
       body
         .split('\n\n')
         .filter((chunk) => chunk.startsWith('data: '))
-        .map((chunk) => JSON.parse(chunk.slice('data: '.length)));
+        .map((chunk) => downloadVideoEventSchema.parse(JSON.parse(chunk.slice('data: '.length))));
 
     it('validates input before opening the stream', async () => {
       expect((await request(app).post('/api/folder/download-video').send({ folderPath: FOLDER })).status).toBe(400);
@@ -822,7 +825,7 @@ describe('folder router', () => {
       expect(spawnCalls).toHaveLength(0);
     });
 
-    it('streams start/output/done events for a queued job', async () => {
+    it('streams downloadStart/downloadProgress/downloadComplete events for a queued job', async () => {
       const pending = startRequest(
         request(app)
           .post('/api/folder/download-video')
@@ -844,15 +847,15 @@ describe('folder router', () => {
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toMatch(/text\/event-stream/);
       const events = parseEvents(response.body as string);
-      expect(events[0]).toEqual({ type: 'start', message: 'Starting download...' });
-      expect(events.filter((e) => e.type === 'output').map((e) => e.message)).toEqual([
+      expect(events[0]).toEqual({ type: 'downloadStart' });
+      expect(events.filter((e) => e.type === 'downloadProgress').map((e) => e.message)).toEqual([
         '[download] 50.0% of 1MiB\n',
         '[download] 100% of 1MiB\n',
       ]);
+      expect(events.filter((e) => e.type === 'downloadProgress').map((e) => e.progress)).toEqual([50, 100]);
       expect(events[events.length - 1]).toEqual({
-        type: 'done',
+        type: 'downloadComplete',
         message: 'Download completed successfully',
-        done: true,
       });
     });
 
@@ -895,10 +898,67 @@ describe('folder router', () => {
       const events = parseEvents(response.body as string);
 
       expect(events[events.length - 1]).toEqual({
-        type: 'error',
+        type: 'downloadError',
         error: 'yt-dlp exited with code 1 after 1 attempts',
-        done: true,
       });
+    });
+
+    it('writes an SSE heartbeat comment every 15 s while the job is quiet', async () => {
+      jest.useFakeTimers();
+      try {
+        let streamData = '';
+        let notifyData: (() => void) | undefined;
+        const firstData = new Promise<void>((resolve) => {
+          notifyData = resolve;
+        });
+
+        const pending = startRequest(
+          request(app)
+            .post('/api/folder/download-video')
+            .send({ folderPath: FOLDER, videoUrl: 'https://youtu.be/ccccccccccc' })
+            .buffer(true)
+            .parse((res: request.Response, callback: (err: Error | null, body: string) => void) => {
+              const stream = res as unknown as IncomingMessage;
+              stream.on('data', (chunk: Buffer) => {
+                streamData += chunk.toString();
+                notifyData?.();
+              });
+              stream.on('end', () => callback(null, streamData));
+            }),
+        );
+
+        // The start event opens the stream; the spawn happens synchronously
+        // inside the route handler, so it is already recorded.
+        await firstData;
+        expect(spawnCalls).toHaveLength(1);
+        expect(streamData).toContain('data: {"type":"downloadStart"}');
+
+        // Quiet merge phases: no job events, only heartbeat comments. The
+        // write is delivered to the supertest stream asynchronously, so wait
+        // for the next data event after each timer advance.
+        const nextData = () =>
+          new Promise<void>((resolve) => {
+            notifyData = resolve;
+          });
+        jest.advanceTimersByTime(15_000);
+        await nextData();
+        expect(streamData).toContain(': ping\n\n');
+        jest.advanceTimersByTime(15_000);
+        await nextData();
+        expect(streamData.match(/: ping/g)).toHaveLength(2);
+
+        // Finishing the job ends the stream and stops the heartbeat
+        at(spawnCalls, 0).process.emit('close', 0);
+        const response = await pending;
+        expect(response.status).toBe(200);
+        const events = parseEvents(streamData);
+        expect(events[events.length - 1]).toEqual({
+          type: 'downloadComplete',
+          message: 'Download completed successfully',
+        });
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 });

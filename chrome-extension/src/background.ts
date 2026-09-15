@@ -27,6 +27,50 @@ type BackgroundEvent =
 const activeDownloads = new Map<number, ActiveDownload>();
 let downloadIdCounter = 0;
 
+/** chrome.storage.session key holding the active-download snapshot */
+const STORAGE_KEY = 'activeDownloads';
+
+/**
+ * Persist the active downloads so a killed service worker can be honest
+ * about what it lost. chrome.storage.session survives worker restarts but
+ * not browser restarts — exactly the window we care about.
+ */
+function persistActiveDownloads(): void {
+  const snapshot = Array.from(activeDownloads.entries()).map(([downloadId, download]) => ({
+    downloadId,
+    videoUrl: download.videoUrl,
+    videoTitle: download.videoTitle,
+    progress: download.progress,
+    status: download.status,
+    startTime: download.startTime,
+  }));
+  void chrome.storage.session.set({ [STORAGE_KEY]: snapshot });
+}
+
+/**
+ * After a service-worker restart the downloads keep running server-side but
+ * their streams are gone: report each one as errored (never as succeeded)
+ * and clear the snapshot. The server-side job is unaffected.
+ */
+function restoreActiveDownloadsOnStartup(): void {
+  void chrome.storage.session.get([STORAGE_KEY]).then((stored) => {
+    const snapshot = (stored as Record<string, unknown>)[STORAGE_KEY];
+    if (!Array.isArray(snapshot)) {
+      return;
+    }
+    for (const entry of snapshot as Array<Record<string, unknown>>) {
+      const downloadId = typeof entry.downloadId === 'number' ? entry.downloadId : undefined;
+      if (downloadId !== undefined) {
+        notifyDownloadUpdate(downloadId, 'downloadError', { error: chrome.i18n.getMessage('workerRestarted') });
+      }
+    }
+    void chrome.storage.session.remove(STORAGE_KEY);
+  });
+}
+
+restoreActiveDownloadsOnStartup();
+chrome.runtime.onStartup.addListener(restoreActiveDownloadsOnStartup);
+
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
   // Only messages from this extension's own contexts (content script, popup,
   // options) are trusted: any other installed extension could otherwise
@@ -45,6 +89,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
       status: 'starting',
       startTime: Date.now(),
     });
+    persistActiveDownloads();
 
     updateBadge();
     notifyDownloadUpdate(downloadId, 'downloadStart', { videoTitle });
@@ -52,6 +97,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
     downloadVideo(downloadId, message.videoUrl, message.serverUrl, message.folderPath, message.apiToken).catch(
       (error: unknown) => {
         activeDownloads.delete(downloadId);
+        persistActiveDownloads();
         updateBadge();
         notifyDownloadUpdate(downloadId, 'downloadError', {
           error: error instanceof Error ? error.message : String(error),
@@ -72,6 +118,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendRespo
     // the local entry.
     if (activeDownloads.has(message.downloadId)) {
       activeDownloads.delete(message.downloadId);
+      persistActiveDownloads();
       updateBadge();
       notifyDownloadUpdate(message.downloadId, 'downloadCancelled', {});
     }
@@ -164,47 +211,52 @@ async function streamDownload(downloadId: number, reader: ReadableStreamDefaultR
     }
   }
 
-  // The stream ended without a 'done' event
+  // The stream ended without a downloadComplete event: the server crashed,
+  // the network dropped or the service worker was killed — the download may
+  // still be running server-side, so reporting success would be a lie.
   activeDownloads.delete(downloadId);
+  persistActiveDownloads();
   updateBadge();
-  notifyDownloadUpdate(downloadId, 'downloadComplete', {
-    message: chrome.i18n.getMessage('downloadFinished'),
+  notifyDownloadUpdate(downloadId, 'downloadError', {
+    error: chrome.i18n.getMessage('streamEndedUnexpectedly'),
   });
 }
 
 /** Reacts to one SSE event; returns true when the stream is finished. */
 function handleSseEvent(downloadId: number, event: DownloadVideoEvent): boolean {
   switch (event.type) {
-    case 'start':
+    case 'downloadStart':
       notifyDownloadUpdate(downloadId, 'downloadProgress', {
         progress: 0,
-        message: event.message || chrome.i18n.getMessage('startingDownload'),
+        message: event.videoTitle || chrome.i18n.getMessage('startingDownload'),
       });
       return false;
-    case 'output': {
-      const progress = extractProgress(event.message);
+    case 'downloadProgress': {
+      const progress = event.message !== undefined ? extractProgress(event.message) : undefined;
       if (progress !== undefined) {
         const download = activeDownloads.get(downloadId);
         if (download) {
           download.progress = progress;
+          persistActiveDownloads();
         }
       }
       notifyDownloadUpdate(downloadId, 'downloadProgress', {
         ...(progress !== undefined ? { progress } : {}),
-        message: event.message,
+        ...(event.message !== undefined ? { message: event.message } : {}),
       });
       return false;
     }
-    case 'done':
+    case 'downloadComplete':
       activeDownloads.delete(downloadId);
+      persistActiveDownloads();
       updateBadge();
       notifyDownloadUpdate(downloadId, 'downloadComplete', {
         message: event.message || chrome.i18n.getMessage('downloadFinished'),
       });
       return true;
-    default:
-      // event.type === 'error'
+    case 'downloadError':
       activeDownloads.delete(downloadId);
+      persistActiveDownloads();
       updateBadge();
       throw new Error(event.error || chrome.i18n.getMessage('downloadFailed'));
   }

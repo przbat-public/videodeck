@@ -155,5 +155,11 @@
   },
   "startingDownload": {
     "message": "Starting download..."
+  },
+  "streamEndedUnexpectedly": {
+    "message": "The stream ended unexpectedly — the download may still be running server-side"
+  },
+  "workerRestarted": {
+    "message": "The extension restarted — the download continues server-side"
   }
 }
