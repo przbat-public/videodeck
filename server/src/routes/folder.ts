@@ -494,7 +494,8 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
       }
       // requireAllowedFolder already authorizes the folder; re-assert inline
       // so the guard sits on the same code path as the file operations below.
-      if (!getVideosFolderPaths().some((allowed) => normalizeFolderPath(allowed) === request.folderPath)) {
+      const allowedFolders = getVideosFolderPaths().map(normalizeFolderPath);
+      if (!allowedFolders.includes(request.folderPath)) {
         logger.warn(`Rejected folderPath not in the allowed list: ${request.folderPath}`);
         res.status(403).json({ error: `Folder path is not in the allowed list: ${request.folderPath}` });
         return;

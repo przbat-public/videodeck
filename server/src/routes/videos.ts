@@ -150,15 +150,6 @@ async function resolveServeFolder<Res>(
 }
 
 /**
- * True when the (already normalized) folder is one of the configured video
- * folders. Used by serveFile to keep the authorization guard on the same
- * code path as the file reads.
- */
-function isAllowedVideoFolder(folderPath: string): boolean {
-  return getVideosFolderPaths().some((allowed) => normalizeFolderPath(allowed) === normalizeFolderPath(folderPath));
-}
-
-/**
  * VTT files of a video, sorted by name; [] when the folder is unreadable.
  */
 async function listSubtitles(folderPath: string, baseName: string): Promise<SubtitleTrack[]> {
@@ -283,7 +274,8 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
   // Final allowlist assertion next to the file sinks: the guard must live on
   // the same code path as the reads so authorization cannot drift from use
   // (the Elasticsearch-lookup branch is re-checked here too).
-  if (!isAllowedVideoFolder(folderPath)) {
+  const allowedFolders = getVideosFolderPaths().map(normalizeFolderPath);
+  if (!allowedFolders.includes(normalizeFolderPath(folderPath))) {
     res.status(403).json({ error: `Folder path is not in the allowed list: ${folderPath}` });
     return;
   }
