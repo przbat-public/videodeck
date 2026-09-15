@@ -280,7 +280,17 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
     return;
   }
 
-  const filePath = getVideoFilePath(filename, folderPath);
+  // Containment check next to the file sinks: resolve the request to an
+  // absolute path and verify it stays inside the allowed folder, so a
+  // filename can never escape the folder even if the sanitizer missed a
+  // traversal. getVideoFilePath already rejects `..` segments — this is the
+  // defense-in-depth layer the reads below depend on.
+  const filePath = path.resolve(getVideoFilePath(filename, folderPath));
+  const folderRoot = `${normalizeFolderPath(folderPath)}${path.sep}`;
+  if (!filePath.startsWith(folderRoot)) {
+    res.status(403).json({ error: 'File is outside the video folder' });
+    return;
+  }
 
   // Check if file exists
   try {
@@ -317,7 +327,7 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
     // bytes.
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   }
-  res.sendFile(path.resolve(filePath));
+  res.sendFile(filePath);
 };
 
 // GET /api/videos/:identifier/summary - supports both baseName and videoId
