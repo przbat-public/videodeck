@@ -90,19 +90,31 @@ export default function SearchBar({
     if (debouncedText === committedTextRef.current) {
       return;
     }
+    // The debounced copy lags the input while its timer is pending. An
+    // Enter commit changes the query prop, which re-runs this effect with
+    // the stale copy; committing it would overwrite the Enter commit. The
+    // fresh debounce fires later and finds the ref already set.
+    if (debouncedText !== text) {
+      return;
+    }
     committedTextRef.current = debouncedText;
     const trimmed = debouncedText.trim();
     if (trimmed === query || !isSearchable(trimmed)) {
       return;
     }
     onChange({ query: trimmed, sort, category, channel, dateFrom, dateTo });
-  }, [debouncedText, query, sort, category, channel, dateFrom, dateTo, onChange]);
+  }, [debouncedText, text, query, sort, category, channel, dateFrom, dateTo, onChange]);
 
   // The channel filter would otherwise search on every keystroke; it commits
   // with the same pause as the phrase (`channel` is the committed value).
   const committedChannelRef = useRef(debouncedChannel);
   useEffect(() => {
     if (debouncedChannel === committedChannelRef.current) {
+      return;
+    }
+    // Same guard as the phrase: a pending timer means the debounced copy
+    // lags the input, and committing it would overwrite a newer state.
+    if (debouncedChannel !== channelText) {
       return;
     }
     committedChannelRef.current = debouncedChannel;
@@ -118,7 +130,7 @@ export default function SearchBar({
       dateFrom,
       dateTo,
     });
-  }, [debouncedChannel, channel, query, sort, category, dateFrom, dateTo, onChange]);
+  }, [debouncedChannel, channelText, channel, query, sort, category, dateFrom, dateTo, onChange]);
 
   /**
    * Selects commit right away. A phrase still too short to search stays in

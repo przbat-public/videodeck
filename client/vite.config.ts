@@ -63,14 +63,17 @@ export default defineConfig({
       // Vitest 3 dropped `all`; without an explicit include, files that no
       // test imports are missing from the report and hide the real numbers.
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/index.tsx', 'src/vite-env.d.ts'],
+      // The in-process integration suite (src/__tests__/) runs under its own
+      // runner (vitest.integration.config.ts); its non-test helpers are test
+      // infrastructure, not app code, so the unit ratchet must not count them.
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/__tests__/**', 'src/test/**', 'src/index.tsx', 'src/vite-env.d.ts'],
       // Set just under the current numbers: a ratchet against regressions,
       // not a target. Raise them as coverage grows.
       thresholds: {
-        statements: 85,
-        branches: 78,
-        functions: 87,
-        lines: 86,
+        statements: 90.42,
+        branches: 85.25,
+        functions: 91.27,
+        lines: 91.36,
         // Ratchet: `npm run test:coverage` raises these in place whenever
         // coverage grows, so they can only move up. Commit the change.
         autoUpdate: true,

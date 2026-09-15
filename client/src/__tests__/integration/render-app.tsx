@@ -7,6 +7,8 @@ import { routes } from '../../routes';
 export interface RenderedApp {
   user: ReturnType<typeof userEvent.setup>;
   unmount: () => void;
+  /** The memory router, for asserting URL state in journeys */
+  router: ReturnType<typeof createMemoryRouter>;
 }
 
 /**
@@ -18,7 +20,7 @@ export async function renderApp(route: string): Promise<RenderedApp> {
   const router = createMemoryRouter(routes, { initialEntries: [route] });
   const user = userEvent.setup();
   const view = render(<App router={router} />);
-  return { user, unmount: view.unmount };
+  return { user, unmount: view.unmount, router };
 }
 
 /** Drive the real reindex through the API and wait until it is idle */

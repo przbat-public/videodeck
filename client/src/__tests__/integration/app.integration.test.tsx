@@ -38,7 +38,7 @@ describe('client integration — real backend', () => {
     // The detail page runs the real details endpoint (seeded info.json) and
     // the real summary pipeline against the mock OpenAI server.
     await renderApp('/video/deepE2e0001');
-    await screen.findByText('Głęboka integracja');
+    await screen.findByRole('heading', { name: 'Głęboka integracja' });
     expect(await screen.findByText('Deep test description.', undefined, { timeout: 10_000 })).toBeInTheDocument();
     expect(await screen.findByText('Fake summary.', undefined, { timeout: 10_000 })).toBeInTheDocument();
     expect(screen.getByTestId('video-player').getAttribute('src')).toMatch(
@@ -49,10 +49,14 @@ describe('client integration — real backend', () => {
   it('downloads the playlist and runs a queue job through the fake yt-dlp', async () => {
     const page = await renderApp('/');
 
-    // The seeded folder's section offers the playlist download; the fake
-    // yt-dlp answers with two NDJSON entries.
-    await screen.findByRole('button', { name: 'Pobierz playlistę' });
-    await page.user.click(screen.getByRole('button', { name: 'Pobierz playlistę' }));
+    // The seeded folder's section offers the playlist download (one button
+    // per configured folder); the fake yt-dlp answers with two NDJSON entries.
+    const playlistButtons = await screen.findAllByRole('button', { name: 'Pobierz playlistę' });
+    const playlistButton = playlistButtons[0];
+    if (!playlistButton) {
+      throw new Error('no playlist button found on the status page');
+    }
+    await page.user.click(playlistButton);
     await screen.findByText(/Plik list\.json już istnieje/);
 
     await page.user.click(screen.getByRole('button', { name: 'Pobierz listę filmów' }));
