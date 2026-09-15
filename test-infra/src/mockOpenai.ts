@@ -25,6 +25,8 @@ export class MockOpenai {
   private server: Server | null = null;
   private readonly calls: MockOpenaiCall[] = [];
   private readonly rateLimited: Set<string>;
+  private contentOverride: string | null = null;
+  private failStatus: number | null = null;
 
   constructor(private readonly options: MockOpenaiOptions = {}) {
     this.rateLimited = new Set(this.options.rateLimitedModels ?? []);
@@ -42,6 +44,20 @@ export class MockOpenai {
 
   clearRateLimits(): void {
     this.rateLimited.clear();
+  }
+
+  /** Override the assistant content mid-test (e.g. a different summary per video) */
+  setContent(content: string): void {
+    this.contentOverride = content;
+  }
+
+  /** Answer every completion with the given HTTP status from now on */
+  failWithStatus(status: number): void {
+    this.failStatus = status;
+  }
+
+  clearFailure(): void {
+    this.failStatus = null;
   }
 
   /** Start listening on an ephemeral port; resolves with the base URL (ends in /v1). */
@@ -79,6 +95,16 @@ export class MockOpenai {
     const prompt = body.messages.find((message) => message.role === 'user')?.content ?? '';
     this.calls.push({ model: body.model, prompt });
 
+    if (this.failStatus !== null) {
+      res.writeHead(this.failStatus, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          error: { message: 'Injected mock failure', type: 'server_error', code: 'injected_failure' },
+        }),
+      );
+      return;
+    }
+
     if (this.rateLimited.has(body.model)) {
       res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '1' });
       res.end(
@@ -99,7 +125,7 @@ export class MockOpenai {
         choices: [
           {
             index: 0,
-            message: { role: 'assistant', content: this.options.content ?? 'Fake summary.' },
+            message: { role: 'assistant', content: this.contentOverride ?? this.options.content ?? 'Fake summary.' },
             finish_reason: 'stop',
           },
         ],

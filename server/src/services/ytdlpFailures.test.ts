@@ -21,6 +21,16 @@ describe('detectPermanentFailure', () => {
     ).toBe('removed');
   });
 
+  it('detects the current live yt-dlp wordings (observed with yt-dlp 2026.08)', () => {
+    // Dead id, observed live: `yt-dlp --simulate https://www.youtube.com/watch?v=AAAAAAAAAAA`
+    expect(detectPermanentFailure(['ERROR: [youtube] AAAAAAAAAAA: This video is unavailable'])?.code).toBe('removed');
+    // Current private wording (kept as an alternative to the older one).
+    expect(
+      detectPermanentFailure(["ERROR: [youtube] a: Private video. Sign in if you've been granted access to this video"])
+        ?.code,
+    ).toBe('private');
+  });
+
   it('detects disk-full, geo-block, bot-wall and age-gate errors', () => {
     expect(detectPermanentFailure(['ERROR: unable to write: No space left on device'])?.code).toBe('no-space');
     expect(

@@ -79,10 +79,44 @@ function splitPath(pathname: string): [string, string | undefined] {
   return [parts[0] ?? '', parts.length > 1 ? parts[parts.length - 1] : undefined];
 }
 
+export interface FakeEsRequest {
+  method: string;
+  /** pathname plus query string, as received */
+  path: string;
+  /** Parsed JSON body when the request carried one */
+  body?: unknown;
+}
+
 export class FakeElasticsearch {
   private readonly indices = new Map<string, IndexEntry>();
   private readonly aliases = new Map<string, string>();
+  private readonly requests: FakeEsRequest[] = [];
+  private readonly faults: Array<{ match: string | RegExp; status: number }> = [];
   private server: Server | null = null;
+
+  /** Every request the app sent, in order (assertions on search bodies) */
+  get requestLog(): FakeEsRequest[] {
+    return [...this.requests];
+  }
+
+  /** Answer requests whose path contains the substring with this status */
+  failRequestsMatching(match: string | RegExp, status: number): void {
+    this.faults.push({ match, status });
+  }
+
+  clearFailures(): void {
+    this.faults.length = 0;
+  }
+
+  /** The physical index an alias currently points at, if any */
+  aliasOf(name: string): string | undefined {
+    return this.aliases.get(name);
+  }
+
+  /** Every physical index name, in creation order */
+  indexNames(): string[] {
+    return [...this.indices.keys()];
+  }
 
   /** The physical index an index-or-alias name resolves to */
   private resolve(name: string): IndexEntry | undefined {
@@ -153,6 +187,21 @@ export class FakeElasticsearch {
       const body = readJsonBody(req, rawBody);
       const [path, suffix] = splitPath(url.pathname);
       const name = suffix !== undefined ? decodeURIComponent(path) : decodeURIComponent(url.pathname.slice(1));
+
+      this.requests.push({
+        method: req.method ?? 'GET',
+        path: url.pathname + url.search,
+        ...(body === undefined ? {} : { body }),
+      });
+
+      const target = url.pathname + url.search;
+      const fault = this.faults.find((entry) =>
+        typeof entry.match === 'string' ? target.includes(entry.match) : entry.match.test(target),
+      );
+      if (fault) {
+        this.json(res, fault.status, { error: { type: 'fake-fault', status: fault.status } });
+        return;
+      }
 
       if (!this.handleWellKnownRoutes(req, res, url, name, suffix, body)) {
         this.handleNamedRoutes(req, res, name, body);
