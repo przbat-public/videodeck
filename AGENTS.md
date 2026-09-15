@@ -11,7 +11,7 @@ Monorepo with **pnpm workspaces** (`pnpm-workspace.yaml`), like vita-tracker:
 | `server/`           | Express 5 + Elasticsearch + yt-dlp queue + OpenAI summaries      | jest + deep integration           |
 | `client/`           | React 19 + Vite UI, i18n pl/en                                   | vitest + integration + Playwright |
 | `chrome-extension/` | MV3 extension (esbuild)                                          | vitest                            |
-| `shared/`           | zod API contract + helpers (imported via the `@shared/*` alias)  |                                  |
+| `shared/`           | zod API contract + helpers (the `@videodeck/shared` package)     |                                  |
 | `test-infra/`       | shared test infrastructure (fake ES, mock OpenAI, backend env)   | imported by both test suites      |
 
 Node 22 (`.nvmrc`), pnpm 10.30.1 (pinned in `packageManager`; corepack picks it up).
@@ -29,7 +29,7 @@ pnpm run lint:scripts        # tsc --noEmit over scripts/ (checkJs)
 pnpm run test:scripts        # node --test for repository-invariant scripts
 pnpm run knip                # unused files/deps
 pnpm run lint:deps           # dependency-cruiser architecture rules
-pnpm run typecheck           # server + client + extension (+ client integration tsconfig)
+pnpm run typecheck           # server + client + extension (+ client tests tsconfig)
 pnpm run test                # all unit tests
 pnpm run test:integration    # client integration: real <App /> against the real backend, in-process
 cd client && pnpm run test:e2e  # Playwright (mocked API — the thin browser layer)
@@ -167,7 +167,8 @@ Four working principles sit underneath the checklist:
 - `test-infra/` knows the server it tests (it boots the real app in-process)
   but never the UIs;
 - apps import `test-infra` **from test files only** (`@videodeck/test-infra/*`,
-  a workspace dependency), never from production code.
+  a workspace dependency resolved through its package `exports`), never from
+  production code.
 
 The deep testing strategy is the vita-tracker one: the client integration
 suite (`client/src/__tests__/integration/`) renders the real `<App />` against
@@ -188,10 +189,11 @@ Playwright stays the thin mocked-API browser layer (`client/e2e/`).
   `getComputedStyle` where truly needed.
 - **Major-version holds**: Dependabot ignores semver-major bumps for
   `typescript`, `zod` and `react-window` (API migrations needed first).
-- **jest + the shared test infra**: `@videodeck/test-infra/*` maps to
-  `../test-infra/src/*` (jest `moduleNameMapper`, vite alias, tsconfig paths).
-  The env helper imports the server app only AFTER setting the environment.
-  Keep that ordering.
+- **jest + the shared test infra**: `@videodeck/test-infra/*` and
+  `@videodeck/shared/*` resolve through the pnpm workspace symlinks and each
+  package's `exports` (no tsconfig paths, jest mapper or vite aliases — the
+  dependency-cruiser config follows those symlinks). The env helper imports
+  the server app only AFTER setting the environment. Keep that ordering.
 
 ## Workflow
 
