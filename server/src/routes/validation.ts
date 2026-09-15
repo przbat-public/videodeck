@@ -25,7 +25,7 @@ export const queueBodySchema = z.object({
 /** PUT /api/folder/config */
 export const configBodySchema = z.object({
   folderPath: z.string(),
-  config: z.record(z.unknown()),
+  config: z.record(z.string(), z.unknown()),
 });
 
 /** `path: message` of the first validation issue, for the 400 response */
