@@ -36,6 +36,21 @@ author?
 - Workflow: branch → PR → squash, commitlint-clean title, reviewable
   size.
 
+## Architecture delta
+
+When a PR adds or removes a service, a route group or a package boundary,
+ask for the delta before approving:
+
+1. Copy `docs/architecture/videodeck.architecture.json` to a scratch
+   file, apply the PR's intended shape to it, then run the vendored
+   compare:
+   `ARCHIFY_UPDATE_CHECK_DISABLED=1 node .agents/skills/archify/bin/archify.mjs compare architecture <base.json> <head.json> /tmp/delta.html --json`.
+2. Check the machine receipt: added, removed, changed, moved and rerouted
+   facts, nothing inferred.
+3. The PR must update the committed JSON and HTML in `docs/architecture/`
+   so the golden check in `pnpm run test:scripts` stays green; a stale map
+   is a Required finding, not a Nit.
+
 ## Output format
 
 ```markdown

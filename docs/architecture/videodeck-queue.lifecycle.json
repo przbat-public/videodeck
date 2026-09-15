@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Download queue job lifecycle",
+    "output": "videodeck-queue.lifecycle.html",
+    "viewBox": [1030, 660],
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "happy-path",
+        "label": "Happy path",
+        "focus": ["queued", "running", "done"],
+        "note": "A job waits for a slot, downloads and finishes indexed."
+      },
+      {
+        "id": "pause-resume",
+        "label": "Pause and resume",
+        "focus": ["queued", "paused"],
+        "note": "Pause is queue-wide and survives restarts."
+      },
+      {
+        "id": "exits",
+        "label": "Failures and cancellation",
+        "focus": ["running", "error", "cancelled"],
+        "note": "Failures are terminal; indexing retries happen inside the run."
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Job states"
+    },
+    {
+      "id": "controls",
+      "label": "Queue controls"
+    },
+    {
+      "id": "terminal",
+      "label": "Terminal exits"
+    }
+  ],
+  "states": [
+    {
+      "id": "queued",
+      "type": "start",
+      "label": "Queued",
+      "sublabel": "persisted, waits for a slot",
+      "lane": "main",
+      "col": 2,
+      "step": "01",
+      "tag": "entry"
+    },
+    {
+      "id": "running",
+      "type": "active",
+      "label": "Running",
+      "sublabel": "yt-dlp child process",
+      "lane": "main",
+      "col": 3,
+      "step": "02",
+      "tag": "work"
+    },
+    {
+      "id": "done",
+      "type": "success",
+      "label": "Done",
+      "sublabel": "downloaded and indexed",
+      "lane": "main",
+      "col": 4,
+      "step": "03",
+      "tag": "done"
+    },
+    {
+      "id": "paused",
+      "type": "waiting",
+      "label": "Paused",
+      "sublabel": "queue-wide, no new starts",
+      "lane": "controls",
+      "col": 0,
+      "tag": "pause"
+    },
+    {
+      "id": "error",
+      "type": "failure",
+      "label": "Error",
+      "sublabel": "members-only or private",
+      "lane": "terminal",
+      "col": 1,
+      "tag": "terminal"
+    },
+    {
+      "id": "cancelled",
+      "type": "failure",
+      "label": "Cancelled",
+      "sublabel": "deleted from queue",
+      "lane": "terminal",
+      "col": 2,
+      "tag": "terminal"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "start",
+      "from": "queued",
+      "to": "running",
+      "variant": "emphasis",
+      "label": "slot frees",
+      "labelDy": -30
+    },
+    {
+      "id": "pause",
+      "from": "queued",
+      "to": "paused",
+      "variant": "security",
+      "route": "straight"
+    },
+    {
+      "id": "resume",
+      "from": "paused",
+      "to": "queued",
+      "variant": "default",
+      "route": "straight"
+    },
+    {
+      "id": "finish",
+      "from": "running",
+      "to": "done",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "straight"
+    },
+    {
+      "id": "fail",
+      "from": "running",
+      "to": "error",
+      "variant": "security",
+      "route": "straight"
+    },
+    {
+      "id": "cancel",
+      "from": "running",
+      "to": "cancelled",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Happy path",
+      "items": [
+        "Queued jobs persist across restarts and resume as queued after a reboot",
+        "A running job downloads with yt-dlp, then indexes the new files"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Exits and controls",
+      "items": [
+        "Members-only, private and removed videos fail fast with an error status",
+        "Pause is queue-wide and never interrupts a running job",
+        "Indexing failures retry with exponential backoff inside the run, then give up"
+      ]
+    }
+  ]
+}

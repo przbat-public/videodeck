@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Single-video download SSE stream",
+    "output": "videodeck-sse.sequence.html",
+    "viewBox": [1080, 560],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "enqueue",
+        "label": "Enqueue",
+        "focus": ["extension", "api"],
+        "note": "The extension enqueues a single-video download for an allowed folder."
+      },
+      {
+        "id": "stream",
+        "label": "Progress stream",
+        "focus": ["extension", "api", "queue", "disk"],
+        "note": "The SSE stream carries validated events while yt-dlp writes files."
+      },
+      {
+        "id": "finish",
+        "label": "Completion and failure",
+        "focus": ["queue", "api", "extension"],
+        "note": "One terminal event closes the stream."
+      }
+    ]
+  },
+  "participants": [
+    { "id": "extension", "type": "external", "label": "Chrome extension", "sublabel": "background service worker" },
+    { "id": "api", "type": "backend", "label": "Express API", "sublabel": "/api/folder" },
+    { "id": "queue", "type": "backend", "label": "yt-dlp queue", "sublabel": "job runner" },
+    { "id": "disk", "type": "database", "label": "Videos folder", "sublabel": "mp4 + sidecars" }
+  ],
+  "segments": [
+    { "from": 150, "to": 240, "label": "Enqueue" },
+    { "from": 250, "to": 380, "label": "Stream" },
+    { "from": 390, "to": 480, "label": "Finish" }
+  ],
+  "messages": [
+    {
+      "id": "enqueue",
+      "from": "extension",
+      "to": "api",
+      "y": 160,
+      "label": "POST /api/folder/queue",
+      "variant": "emphasis"
+    },
+    { "id": "queued", "from": "api", "to": "extension", "y": 190, "label": "202 job queued", "variant": "return" },
+    {
+      "id": "subscribe",
+      "from": "extension",
+      "to": "api",
+      "y": 220,
+      "label": "GET download stream (SSE)",
+      "variant": "emphasis"
+    },
+    { "id": "start", "from": "api", "to": "extension", "y": 252, "label": "data: downloadStart", "variant": "default" },
+    { "id": "write", "from": "queue", "to": "disk", "y": 282, "label": "yt-dlp writes files", "variant": "dashed" },
+    {
+      "id": "progress",
+      "from": "api",
+      "to": "extension",
+      "y": 312,
+      "label": "data: downloadProgress (repeated)",
+      "variant": "default"
+    },
+    {
+      "id": "ping",
+      "from": "api",
+      "to": "extension",
+      "y": 344,
+      "label": ": ping (15s keep-alive)",
+      "variant": "dashed"
+    },
+    { "id": "job-done", "from": "queue", "to": "api", "y": 374, "label": "job done", "variant": "return" },
+    {
+      "id": "complete",
+      "from": "api",
+      "to": "extension",
+      "y": 404,
+      "label": "data: downloadComplete",
+      "variant": "return"
+    },
+    {
+      "id": "fail",
+      "from": "api",
+      "to": "extension",
+      "y": 434,
+      "label": "data: downloadError (on failure)",
+      "variant": "security"
+    }
+  ],
+  "activations": [
+    { "participant": "extension", "from": 155, "to": 460, "type": "external" },
+    { "participant": "api", "from": 160, "to": 440, "type": "backend" },
+    { "participant": "queue", "from": 270, "to": 384, "type": "backend" },
+    { "participant": "disk", "from": 277, "to": 340, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Happy path",
+      "items": [
+        "Every event is validated against the shared zod contract before it hits the wire",
+        "Progress events carry the log tail; the client parser accumulates them"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Failure and keep-alive",
+      "items": [
+        "downloadError carries the error field and closes the stream",
+        "Ping comments keep the extension service worker awake through quiet merges"
+      ]
+    }
+  ]
+}

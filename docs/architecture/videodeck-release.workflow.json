@@ -1,0 +1,225 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "CI and release workflow",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "happy-path",
+        "label": "Branch to release",
+        "focus": ["commit", "pr", "gates", "review", "merge", "tag"],
+        "note": "Follow a change from branch to the tagged release."
+      },
+      {
+        "id": "failure-loop",
+        "label": "Failure loop",
+        "focus": ["commit", "gates", "review", "fix"],
+        "note": "A red gate or review request returns to the author."
+      }
+    ],
+    "output": "videodeck-release.workflow.html"
+  },
+  "lanes": [
+    {
+      "id": "author",
+      "label": "Author"
+    },
+    {
+      "id": "review",
+      "label": "Review"
+    },
+    {
+      "id": "ci",
+      "label": "CI"
+    },
+    {
+      "id": "release",
+      "label": "Release"
+    }
+  ],
+  "phases": [
+    {
+      "id": "authoring",
+      "label": "Author",
+      "fromCol": 0,
+      "toCol": 0
+    },
+    {
+      "id": "verify",
+      "label": "Verify",
+      "fromCol": 1,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "ship",
+      "label": "Ship",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "groups": [
+    {
+      "id": "loop",
+      "label": "Fix loop",
+      "lane": "author",
+      "fromCol": 3,
+      "toCol": 3,
+      "variant": "security"
+    },
+    {
+      "id": "gates_group",
+      "label": "13 checks",
+      "lane": "ci",
+      "fromCol": 2,
+      "toCol": 2,
+      "variant": "emphasis"
+    }
+  ],
+  "mainPath": ["commit", "pr", "gates", "review", "merge", "tag"],
+  "nodes": [
+    {
+      "id": "commit",
+      "lane": "author",
+      "col": 0,
+      "type": "frontend",
+      "label": "Commit",
+      "sublabel": "commitlint clean",
+      "width": 132
+    },
+    {
+      "id": "fix",
+      "lane": "author",
+      "col": 3,
+      "type": "security",
+      "label": "Fix",
+      "sublabel": "address feedback",
+      "width": 132
+    },
+    {
+      "id": "pr",
+      "lane": "review",
+      "col": 1,
+      "type": "backend",
+      "label": "Pull request",
+      "sublabel": "template + changelog",
+      "width": 140
+    },
+    {
+      "id": "review",
+      "lane": "review",
+      "col": 3,
+      "type": "security",
+      "label": "Five-axis review",
+      "sublabel": "severity labels",
+      "width": 140
+    },
+    {
+      "id": "gates",
+      "lane": "ci",
+      "col": 2,
+      "type": "messagebus",
+      "label": "CI gates",
+      "sublabel": "13 checks",
+      "tag": "coverage ratchet",
+      "width": 132
+    },
+    {
+      "id": "merge",
+      "lane": "release",
+      "col": 4,
+      "type": "backend",
+      "label": "Squash merge",
+      "sublabel": "protected main",
+      "width": 132
+    },
+    {
+      "id": "tag",
+      "lane": "release",
+      "col": 5,
+      "type": "cloud",
+      "label": "Release",
+      "sublabel": "tag + notes",
+      "width": 132
+    }
+  ],
+  "edges": [
+    {
+      "id": "commit-pr",
+      "from": "commit",
+      "to": "pr",
+      "label": "push",
+      "variant": "emphasis"
+    },
+    {
+      "id": "pr-gates",
+      "from": "pr",
+      "to": "gates",
+      "variant": "default"
+    },
+    {
+      "id": "gates-review",
+      "from": "gates",
+      "to": "review",
+      "label": "green",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gates-fix",
+      "from": "gates",
+      "to": "fix",
+      "label": "red",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "fix-commit",
+      "from": "fix",
+      "to": "commit",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "review-fix",
+      "from": "review",
+      "to": "fix",
+      "label": "request changes",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "review-merge",
+      "from": "review",
+      "to": "merge",
+      "label": "approve",
+      "variant": "emphasis"
+    },
+    {
+      "id": "merge-tag",
+      "from": "merge",
+      "to": "tag",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Checks",
+      "items": [
+        "Format, lint, typecheck, unit tests for all three apps",
+        "Both integration suites, coverage ratchet, Playwright e2e, build",
+        "pnpm audit, dependency-review and CodeQL"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Release rules",
+      "items": [
+        "Four package.json versions move in lockstep",
+        "CHANGELOG moves to a dated entry; upgrade notes cover ES mapping and SSE changes"
+      ]
+    }
+  ]
+}
