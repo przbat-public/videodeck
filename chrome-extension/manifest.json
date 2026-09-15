@@ -5,12 +5,11 @@
   "version": "1.0.0",
   "description": "__MSG_manifestDescription__",
   "permissions": ["storage", "activeTab", "scripting"],
-  "host_permissions": ["http://localhost/*", "https://*/*"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
   "action": {
-    "default_locale": "pl",
     "default_popup": "popup.html",
     "default_icon": {
-      "default_locale": "pl",
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
@@ -18,19 +17,21 @@
   },
   "options_page": "options.html",
   "background": {
-    "default_locale": "pl",
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "default_locale": "pl",
-      "matches": ["<all_urls>"],
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://m.youtube.com/*",
+        "https://music.youtube.com/*",
+        "https://youtube-nocookie.com/*"
+      ],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
   ],
   "icons": {
-    "default_locale": "pl",
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"

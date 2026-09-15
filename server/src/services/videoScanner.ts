@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { ReindexStatus, SortOption, VideoListItem } from '@shared/api';
 import { getVideosFolderPaths } from '../config';
 import type { VideoInfoJson } from '../types';
-import { listVisibleFiles } from '../utils/fsUtils';
+import { listVisibleFiles, resolveContainedPath } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/objectUtils';
 import { runPool } from '../utils/runPool';
@@ -144,7 +144,8 @@ async function readTranscriptText(
   const texts: string[] = [];
   for (const subtitleFile of subtitleFiles) {
     try {
-      const vtt = await fs.readFile(path.join(folderPath, subtitleFile), 'utf-8');
+      const realPath = await resolveContainedPath(folderPath, subtitleFile);
+      const vtt = await fs.readFile(realPath, 'utf-8');
       const text = extractTextFromVttSubtitles(vtt);
       if (text.length > 0) {
         texts.push(text);
@@ -176,10 +177,12 @@ export async function buildVideoItem(
     return { status: 'skipped', reason: missingFilesReason(baseName, videoFile, thumbnailFile) };
   }
 
-  const infoJsonPath = path.join(folderPath, `${baseName}.info.json`);
   let infoJson: VideoInfoJson;
   try {
-    infoJson = JSON.parse(await fs.readFile(infoJsonPath, 'utf-8')) as VideoInfoJson;
+    // Containment check: the info.json must resolve inside the folder even
+    // if a symlink redirects the read elsewhere on the disk.
+    const realPath = await resolveContainedPath(folderPath, `${baseName}.info.json`);
+    infoJson = JSON.parse(await fs.readFile(realPath, 'utf-8')) as VideoInfoJson;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     return { status: 'skipped', reason: `${baseName}: cannot read info.json (${detail})` };

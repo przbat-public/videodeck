@@ -5,7 +5,14 @@ import type { NextFunction, Request, Response } from 'express';
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import helmet from 'helmet';
-import { getAllowedHosts, getCorsOrigins, getExtensionOrigins, getRateLimitMax, getRateLimitWindowMs } from './config';
+import {
+  getAllowedHosts,
+  getCorsOrigins,
+  getExtensionOrigins,
+  getRateLimitMax,
+  getRateLimitWindowMs,
+  isTokenRequired,
+} from './config';
 import { metricsBody, metricsRegistry, recordRequest } from './metrics';
 import type { DownloadQueueLike } from './routes/folder';
 import { createFolderRouter } from './routes/folder';
@@ -131,9 +138,12 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
   app.use(requestLogger);
 
-  // /health, /health/live and /metrics stay public; everything else is behind
-  // the token when set
-  app.use('/api', createAuthMiddleware(options.apiToken));
+  // /health and /health/live stay public; /metrics and everything else are
+  // behind the token when set (metrics leak route cardinality and OpenAI
+  // cost counters). REQUIRE_API_TOKEN closes open mode entirely.
+  const auth = createAuthMiddleware(options.apiToken, isTokenRequired());
+  app.use('/api', auth);
+  app.use('/metrics', auth);
 
   app.use('/api/videos', videosRouter);
   // /api/status, /api/folder/* (config, list.json, download queue)

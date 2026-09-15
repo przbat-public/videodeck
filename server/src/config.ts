@@ -33,8 +33,18 @@ export function getApiToken(): string | undefined {
 }
 
 /**
+ * When true, open mode is refused: without API_TOKEN every request is 401.
+ * Recommended whenever OPENAI_API_KEY is set (summaries cost money) or the
+ * server listens on a non-loopback HOST.
+ */
+export function isTokenRequired(): boolean {
+  return process.env.REQUIRE_API_TOKEN === 'true';
+}
+
+/**
  * Extra browser origins allowed by CORS, on top of the built-in defaults:
- * the local dev client (localhost, any port) and Chrome extensions.
+ * the local dev client (localhost on the known dev ports) and Chrome
+ * extensions.
  */
 export function getCorsOrigins(): string[] {
   return (process.env.CORS_ORIGINS ?? '')

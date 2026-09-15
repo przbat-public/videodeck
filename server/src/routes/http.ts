@@ -1,5 +1,7 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { ApiError } from '@shared/api';
 import type { NextFunction, Request, Response } from 'express';
+import { logger } from '../utils/logger';
 import { errnoCode, isRecord, readString } from '../utils/objectUtils';
 
 // Generic narrowers live in utils/objectUtils.ts (services use them too);
@@ -25,19 +27,22 @@ export function readBody(req: { body: unknown }): Record<string, unknown> {
   return isRecord(req.body) ? req.body : {};
 }
 
-/** Error response with the message of the underlying cause */
+/**
+ * Error response for a caught failure. The underlying `cause.message` is
+ * logged, never sent: ENOENT messages carry absolute folder paths and
+ * yt-dlp stderr tails can contain internal details — the same reason the
+ * central error handler returns a generic 500 body.
+ */
 export function sendError<Res>(res: Response<Res | ApiError>, status: number, error: string, cause: unknown): void {
-  res.status(status).json({
-    error,
-    message: cause instanceof Error ? cause.message : 'Unknown error',
-  });
+  logger.error(`${error}:`, cause instanceof Error ? cause.message : String(cause));
+  res.status(status).json({ error });
 }
 
 /**
  * Whether a browser origin may call the API. Defaults: the local dev client
- * (localhost/127.0.0.1, any port) and Chrome extensions (the extension's
- * background worker sends `Origin: chrome-extension://<id>`); `extraOrigins`
- * extends the list (CORS_ORIGINS env).
+ * (localhost/127.0.0.1 on the known dev ports) and Chrome extensions (the
+ * extension's background worker sends `Origin: chrome-extension://<id>`);
+ * `extraOrigins` extends the list (CORS_ORIGINS env).
  *
  * Extension origins are open by default (unpacked dev extensions get a fresh
  * id per load). When `extensionOrigins` is set (EXTENSION_ORIGINS env), only
@@ -51,7 +56,10 @@ export function isAllowedCorsOrigin(
   if (extraOrigins.includes(origin)) {
     return true;
   }
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+  // Open-mode safety: any page served from ANY localhost port would be
+  // same-site and could drive the API, so only the known client ports are
+  // trusted. Other ports go through CORS_ORIGINS.
+  if (/^https?:\/\/(localhost|127\.0\.0\.1):(3000|4173|5173)$/.test(origin)) {
     return true;
   }
   if (origin.startsWith('chrome-extension://')) {
@@ -60,11 +68,26 @@ export function isAllowedCorsOrigin(
   return false;
 }
 
+/** Constant-time comparison of a provided token against the configured one */
+function tokenMatches(provided: string, expected: string): boolean {
+  // No hashing: both sides are padded into equal-length buffers so
+  // timingSafeEqual never leaks the configured token's length.
+  const providedBytes = Buffer.from(provided, 'utf8');
+  const expectedBytes = Buffer.from(expected, 'utf8');
+  const length = Math.max(providedBytes.length, expectedBytes.length, 1);
+  const providedBuffer = Buffer.alloc(length);
+  const expectedBuffer = Buffer.alloc(length);
+  providedBytes.copy(providedBuffer);
+  expectedBytes.copy(expectedBuffer);
+  return timingSafeEqual(providedBuffer, expectedBuffer);
+}
+
 /**
  * Guard for /api.
  *
  * With a configured token every request needs `Authorization: Bearer <token>`
- * (the Chrome extension sends it from its options).
+ * (the Chrome extension sends it from its options). With `requireToken` the
+ * open mode below is disabled entirely.
  *
  * Without a token the API stays open for non-browser clients (curl, the
  * server itself) and for the local web client, but browser requests coming
@@ -75,16 +98,22 @@ export function isAllowedCorsOrigin(
  */
 export function createAuthMiddleware(
   token: string | undefined,
+  requireToken = false,
 ): (req: Request, res: Response, next: NextFunction) => void {
   return (req, res, next) => {
     if (token) {
       const header = req.headers.authorization;
       const provided = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
-      if (provided !== token) {
+      if (!tokenMatches(provided, token)) {
         res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid API token' });
         return;
       }
       next();
+      return;
+    }
+
+    if (requireToken) {
+      res.status(401).json({ error: 'Unauthorized', message: 'REQUIRE_API_TOKEN is set and API_TOKEN is missing' });
       return;
     }
 

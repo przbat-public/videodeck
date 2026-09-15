@@ -4,7 +4,7 @@ import type { PopupConfig } from './lib/messages';
 
 /**
  * Options page: saves the server URL and the target folder path to
- * chrome.storage.sync and tests the connection to the server.
+ * chrome.storage.local and tests the connection to the server.
  */
 
 function showStatus(element: HTMLElement, type: 'info' | 'success' | 'error', message: string): void {
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   const status = byId('status');
 
   // Load saved settings
-  const config = (await chrome.storage.sync.get(['serverUrl', 'folderPath', 'apiToken'])) as Partial<PopupConfig>;
+  const config = (await chrome.storage.local.get(['serverUrl', 'folderPath', 'apiToken'])) as Partial<PopupConfig>;
   if (config.serverUrl) {
     serverUrlInput.value = config.serverUrl;
   }
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
   });
 }
 
-/** Validates the inputs and stores them in chrome.storage.sync. */
+/** Validates the inputs and stores them in chrome.storage.local. */
 async function saveSettings(
   serverUrl: string,
   folderPath: string,
@@ -72,8 +72,39 @@ async function saveSettings(
     return;
   }
 
+  let parsed: URL;
   try {
-    await chrome.storage.sync.set({
+    parsed = new URL(serverUrl);
+  } catch {
+    showStatus(status, 'error', chrome.i18n.getMessage('invalidServerUrl'));
+    return;
+  }
+  // The bearer token travels on every request: refuse non-http(s) schemes
+  // and warn about plain http (token in cleartext on the LAN).
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    showStatus(status, 'error', chrome.i18n.getMessage('invalidServerUrl'));
+    return;
+  }
+  if (parsed.protocol === 'http:' && apiToken.length > 0) {
+    showStatus(status, 'error', chrome.i18n.getMessage('httpTokenWarning'));
+    return;
+  }
+
+  // The background worker fetches this origin — ask for the host permission
+  // now (localhost is granted statically in the manifest, other hosts are
+  // optional and prompt once).
+  const originPattern = `${parsed.origin}/*`;
+  const alreadyGranted = await chrome.permissions.contains({ origins: [originPattern] });
+  if (!alreadyGranted) {
+    const granted = await chrome.permissions.request({ origins: [originPattern] });
+    if (!granted) {
+      showStatus(status, 'error', chrome.i18n.getMessage('hostPermissionDenied'));
+      return;
+    }
+  }
+
+  try {
+    await chrome.storage.local.set({
       serverUrl,
       folderPath,
       ...(apiToken.length > 0 ? { apiToken } : {}),
@@ -91,7 +122,7 @@ async function saveSettings(
 /** Pings the server's /health endpoint and reports the result in the status line. */
 async function testConnection(serverUrl: string, status: HTMLElement, testBtn: HTMLButtonElement): Promise<void> {
   testBtn.disabled = true;
-  testBtn.textContent = 'Testowanie...';
+  testBtn.textContent = chrome.i18n.getMessage('testingConnection');
   showStatus(status, 'info', chrome.i18n.getMessage('testingConnection'));
 
   try {

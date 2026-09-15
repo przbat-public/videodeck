@@ -43,6 +43,24 @@ describe('folderConfig', () => {
 
     it('validates channelUrl', () => {
       expect(validateFolderConfig({ channelUrl: 42 })).toBe('channelUrl must be a string');
+      expect(validateFolderConfig({ channelUrl: '' })).toBeNull();
+      expect(validateFolderConfig({ channelUrl: 'https://www.youtube.com/@x' })).toBeNull();
+      expect(validateFolderConfig({ channelUrl: 'https://www.youtube.com/@x/videos' })).toBeNull();
+      expect(validateFolderConfig({ channelUrl: 'https://www.youtube.com/channel/UCabc123' })).toBeNull();
+      expect(validateFolderConfig({ channelUrl: 'https://www.youtube.com/c/name' })).toBeNull();
+      expect(validateFolderConfig({ channelUrl: 'https://www.youtube.com/user/name' })).toBeNull();
+      expect(validateFolderConfig({ channelUrl: 'http://169.254.169.254/latest/meta-data' })).toMatch(
+        /YouTube channel URL/,
+      );
+      expect(validateFolderConfig({ channelUrl: 'file:///etc/passwd' })).toMatch(/YouTube channel URL/);
+      expect(validateFolderConfig({ channelUrl: 'https://evil.com/@x' })).toMatch(/YouTube channel URL/);
+      expect(validateFolderConfig({ channelUrl: '--help' })).toMatch(/YouTube channel URL/);
+      expect(validateFolderConfig({ channelUrl: 'https://www.youtube.com/watch?v=abcdefghijk' })).toMatch(
+        /YouTube channel URL/,
+      );
+      expect(validateFolderConfig({ channelUrl: 'https://www.youtube.com/playlist?list=PLx' })).toMatch(
+        /YouTube channel URL/,
+      );
     });
 
     it('validates maxHeight', () => {
@@ -83,6 +101,37 @@ describe('folderConfig', () => {
       expect(validateFolderConfig({ extraArgs: ['--username', 'u'] })).toMatch(/restricted argument/);
       expect(validateFolderConfig({ extraArgs: ['--password', 'p'] })).toMatch(/restricted argument/);
       expect(validateFolderConfig({ extraArgs: ['--video-password', 'p'] })).toMatch(/restricted argument/);
+    });
+
+    it('rejects the denylist bypass family (execution and file access)', () => {
+      // These do not share a prefix with any previously listed flag — a
+      // prefix-only check let them through.
+      expect(validateFolderConfig({ extraArgs: ['--netrc-cmd', 'curl -s http://attacker'] })).toMatch(
+        /restricted argument/,
+      );
+      expect(validateFolderConfig({ extraArgs: ['--netrc-cmd=id'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--netrc-location', '/tmp/.netrc'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--print-to-file', '%(id)s', '/tmp/../x.txt'] })).toMatch(
+        /restricted argument/,
+      );
+      expect(validateFolderConfig({ extraArgs: ['--batch-file', '/etc/passwd'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['-a', '/etc/passwd'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--load-info-json', '/tmp/x.info.json'] })).toMatch(
+        /restricted argument/,
+      );
+      expect(validateFolderConfig({ extraArgs: ['--use-postprocessor', 'Exec:/tmp/x'] })).toMatch(
+        /restricted argument/,
+      );
+      expect(validateFolderConfig({ extraArgs: ['--postprocessor-args', 'Exec:id'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--ppa', 'Exec:id'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--downloader-args', 'curl:--config /tmp/x'] })).toMatch(
+        /restricted argument/,
+      );
+      expect(validateFolderConfig({ extraArgs: ['--external-downloader-args', 'ffmpeg:-i /tmp/x'] })).toMatch(
+        /restricted argument/,
+      );
+      expect(validateFolderConfig({ extraArgs: ['--exec-before-download', 'id'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--ffmpeg-location', '/tmp/evil'] })).toMatch(/restricted argument/);
     });
 
     it('rejects extraArgs that shadow pipeline-owned flags', () => {
@@ -228,6 +277,29 @@ describe('folderConfig', () => {
       expect(
         resolveDownloadOptions({
           extraArgs: ['--exec', 'id', '--proxy=http://p', '--no-playlist'],
+        }),
+      ).toEqual({
+        maxHeight: 2160,
+        subLangs: ['en'],
+        writeComments: true,
+        extraArgs: ['--no-playlist'],
+        impersonate: false,
+        concurrentFragments: 1,
+        sponsorblockRemove: false,
+      });
+    });
+
+    it('drops a two-value forbidden flag together with both of its values', () => {
+      expect(
+        resolveDownloadOptions({
+          extraArgs: [
+            '--print-to-file',
+            '%(id)s',
+            '/tmp/../outside.txt',
+            '--netrc-cmd',
+            'curl -s http://attacker',
+            '--no-playlist',
+          ],
         }),
       ).toEqual({
         maxHeight: 2160,

@@ -171,7 +171,7 @@ describe('useCacheRefresh', () => {
       await result.current.refreshCache();
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(START_URL, { signal: expect.any(AbortSignal) });
+    expect(fetchMock).toHaveBeenCalledWith(START_URL, { method: 'POST', signal: expect.any(AbortSignal) });
     expect(fetchMock).toHaveBeenCalledWith(STATUS_URL, { signal: expect.any(AbortSignal) });
     expect(toast.loading).toHaveBeenCalledWith('Rozpoczynanie odświeżania indeksu...');
     expect(toast.success).toHaveBeenCalledWith('Indeksowanie zakończone: 2561 filmów zindeksowanych, 2 pominiętych', {

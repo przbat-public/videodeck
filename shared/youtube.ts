@@ -71,3 +71,42 @@ export function extractYoutubeVideoId(url: string): string | null {
   }
   return candidate !== null && YOUTUBE_ID_RE.test(candidate) ? candidate : null;
 }
+
+/**
+ * Whether a URL points at a YouTube channel. Accepts the canonical shapes:
+ * `/@handle`, `/channel/<id>`, `/c/<name>`, `/user/<name>` and the bare host
+ * (yt-dlp resolves the channel from the home page). Only `https:` URLs on
+ * the allowlisted YouTube hosts pass — this doubles as the SSRF guard for
+ * the playlist endpoint, which otherwise would hand an arbitrary URL to
+ * yt-dlp (file:///etc/passwd, http://169.254.169.254/, …).
+ */
+export function isYoutubeChannelUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:' || !YOUTUBE_HOSTS.has(parsed.hostname)) {
+    return false;
+  }
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  const [first, second] = segments;
+  const rest = segments.slice(1);
+  if (first === undefined) {
+    return true; // bare https://www.youtube.com — yt-dlp resolves the channel
+  }
+  if (first.startsWith('@') || first === 'feed') {
+    // @handle, optionally with a trailing /videos or /featured
+    return rest.length === 0 || (rest.length === 1 && (rest[0] === 'videos' || rest[0] === 'featured'));
+  }
+  const kind = first.toLowerCase();
+  if (kind === 'channel' || kind === 'c' || kind === 'user') {
+    // /channel/<id>, /c/<name>, /user/<name>, optionally with /videos
+    const tail = segments.slice(2);
+    return (
+      second !== undefined && second.length > 0 && (tail.length === 0 || (tail.length === 1 && tail[0] === 'videos'))
+    );
+  }
+  return false;
+}

@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import { Counter } from 'prom-client';
 import { getOpenAiApiKey } from '../config';
 import { metricsRegistry } from '../metricsRegistry';
+import { resolveContainedPath } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 
 /**
@@ -208,7 +209,8 @@ export async function generateSummary(input: GenerateSummaryInput): Promise<Gene
 
   // A summary on disk wins — it was paid for once already
   try {
-    const existingSummary = await fs.readFile(summaryFilePath, 'utf-8');
+    const realPath = await resolveContainedPath(folderPath, `${baseName}.summary.txt`);
+    const existingSummary = await fs.readFile(realPath, 'utf-8');
     if (existingSummary.trim()) {
       return { summary: existingSummary.trim(), truncated: false };
     }
@@ -236,8 +238,8 @@ async function generateUncached(input: GenerateSummaryInput, summaryFilePath: st
     throw new Error('OPENAI_API_KEY environment variable is required');
   }
 
-  const subtitleFilePath = path.join(folderPath, subtitlePath);
-  const subtitleFileContent = await fs.readFile(subtitleFilePath, 'utf-8');
+  const realSubtitlePath = await resolveContainedPath(folderPath, subtitlePath);
+  const subtitleFileContent = await fs.readFile(realSubtitlePath, 'utf-8');
 
   // Extract only text content from VTT, removing timestamps and metadata
   // This significantly reduces token count for OpenAI API calls

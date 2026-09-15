@@ -82,7 +82,7 @@ async function fetchStatus(signal: AbortSignal): Promise<ReindexStatus> {
 
 /** Kicks the server-side run off; a 409 means one is already running */
 async function startReindex(url: string, signal: AbortSignal, loadingToastId: string): Promise<void> {
-  const response = await fetch(url, { signal });
+  const response = await fetch(url, { method: 'POST', signal });
 
   if (!response.ok && response.status !== 409) {
     const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));

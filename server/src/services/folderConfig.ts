@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { DownloadOptions, FolderConfig } from '@shared/api';
+import { isYoutubeChannelUrl } from '@shared/youtube';
 import { getVideosFolderPaths } from '../config';
 import { logger } from '../utils/logger';
 
@@ -63,24 +64,56 @@ const RESERVED_ARGS_WITH_VALUE = [
 
 /**
  * Flags a per-folder config may never pass to yt-dlp, even though the
- * pipeline does not use them: `--exec` runs a shell command (RCE via
- * config.json), `--config-locations` loads an arbitrary yt-dlp config,
- * `--cookies*` exfiltrate the browser cookie jar, `--proxy` routes the
- * traffic through an arbitrary host, and `--netrc`/`--username`/`--password`
- * leak credentials into the process list and logs.
+ * pipeline does not use them:
+ * - `--exec` / `--exec-before-download` / `--ppa` / `--postprocessor-args` /
+ *   `--use-postprocessor` run shell commands or arbitrary binaries (RCE via
+ *   config.json);
+ * - `--config-locations` loads an arbitrary yt-dlp config;
+ * - `--cookies*` exfiltrate the browser cookie jar;
+ * - `--proxy` routes the traffic through an arbitrary host;
+ * - `--netrc` / `--netrc-cmd` / `--netrc-location` /
+ *   `--username` / `--password` leak or read credentials;
+ * - `--print-to-file` appends to an arbitrary file (`..` traversal works),
+ *   `--batch-file` / `--load-info-json` read arbitrary files whose contents
+ *   then land in the job log served to clients;
+ * - `--ffmpeg-location` points the merge step at an arbitrary binary;
+ * - `--downloader-args` / `--external-downloader-args` forward arbitrary
+ *   arguments to external downloaders.
  */
 const FORBIDDEN_EXTRA_ARGS = [
   '--exec',
+  '--exec-before-download',
   '--config-locations',
   '--cookies',
   '--load-cookies',
   '--cookies-from-browser',
   '--proxy',
   '--netrc',
+  '--netrc-cmd',
+  '--netrc-location',
   '--username',
   '--password',
   '--video-password',
+  '--print-to-file',
+  '--batch-file',
+  '-a',
+  '--load-info-json',
+  '--use-postprocessor',
+  '--postprocessor-args',
+  '--ppa',
+  '--downloader-args',
+  '--external-downloader-args',
+  '--ffmpeg-location',
 ];
+
+/**
+ * Total entries a dropped forbidden flag consumes (the flag itself plus its
+ * values). Most flags fall back to orphanValueWidth, but `--print-to-file`
+ * takes TWO values (template + file), so it always consumes three entries.
+ */
+const FORBIDDEN_ARGS_VALUE_WIDTH: Record<string, number> = {
+  '--print-to-file': 3,
+};
 
 /** Whether an `extraArgs` entry shadows a pipeline-owned flag (`-f`, `-f=…`) */
 export function isReservedExtraArg(arg: string): boolean {
@@ -188,6 +221,12 @@ export function validateFolderConfig(config: unknown): string | null {
   if (c.channelUrl !== undefined && typeof c.channelUrl !== 'string') {
     return 'channelUrl must be a string';
   }
+  // The channel URL reaches yt-dlp unquoted — it must be an https YouTube
+  // channel URL, otherwise config.json becomes an SSRF/RCE primitive
+  // (file://, internal hosts, `--` argument injection via `yt-dlp <url>`).
+  if (typeof c.channelUrl === 'string' && c.channelUrl.trim().length > 0 && !isYoutubeChannelUrl(c.channelUrl)) {
+    return 'channelUrl must be a YouTube channel URL (https://youtube.com/@handle, /channel/…, /c/…, /user/…)';
+  }
 
   for (const [key, validate] of CONFIG_FIELD_VALIDATORS) {
     const value = c[key];
@@ -251,8 +290,10 @@ function resolveExtraArgs(extraArgs: unknown[]): string[] {
       continue;
     }
     if (isForbiddenExtraArg(arg)) {
-      // Same orphan-value handling: `--proxy http://p` arrives as two entries.
-      index += orphanValueWidth(arg, extraArgs[index + 1], undefined);
+      // Drop the flag and its value(s): `--proxy http://p` arrives as two
+      // entries, `--print-to-file` as three (template + file).
+      const extraWidth = FORBIDDEN_ARGS_VALUE_WIDTH[arg];
+      index += extraWidth ?? orphanValueWidth(arg, extraArgs[index + 1], undefined);
       continue;
     }
     accepted.push(arg);
