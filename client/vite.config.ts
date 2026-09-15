@@ -1,17 +1,17 @@
-import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vitest/config'
-import react from '@vitejs/plugin-react'
-import { visualizer } from 'rollup-plugin-visualizer'
+import { fileURLToPath } from 'node:url';
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import { visualizer } from 'rollup-plugin-visualizer';
 
 // `ANALYZE=1 npm run build` writes a bundle report (dist/stats.html).
 // Off by default: the report is a one-off inspection, not a build artifact.
-const analyze = process.env.ANALYZE === '1'
+const analyze = process.env.ANALYZE === '1';
 
 const vendorChunks: Record<string, string[]> = {
   'react-vendor': ['react', 'react-dom', 'react-router-dom'],
   'i18n-vendor': ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
   'ui-vendor': ['@radix-ui/react-select', 'react-hot-toast', 'react-window'],
-}
+};
 
 export default defineConfig({
   plugins: [react(), ...(analyze ? [visualizer({ gzipSize: true })] : [])],
@@ -28,12 +28,12 @@ export default defineConfig({
         // app code, so returning users download only the small app chunk.
         manualChunks(id: string): string | undefined {
           if (!id.includes('node_modules')) {
-            return undefined
+            return undefined;
           }
           const chunk = Object.entries(vendorChunks).find(([, packages]) =>
             packages.some((pkg) => id.includes(`/node_modules/${pkg}/`))
-          )
-          return chunk?.[0]
+          );
+          return chunk?.[0];
         },
       },
     },
@@ -43,9 +43,9 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
-        changeOrigin: true
-      }
-    }
+        changeOrigin: true,
+      },
+    },
   },
   test: {
     globals: true,
@@ -68,7 +68,10 @@ export default defineConfig({
         branches: 78,
         functions: 87,
         lines: 86,
+        // Ratchet: `npm run test:coverage` raises these in place whenever
+        // coverage grows, so they can only move up. Commit the change.
+        autoUpdate: true,
       },
     },
   },
-})
+});
