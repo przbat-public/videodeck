@@ -215,6 +215,15 @@
     "occurred": "An error occurred",
     "recreateStart": "Failed to start index rebuild",
     "summary": "Failed to generate a summary",
-    "unknown": "unknown error"
+    "unknown": "unknown error",
+    "job": {
+      "members-only": "This video is for channel members only (members-only)",
+      "private": "This video is private",
+      "removed": "This video has been removed or is unavailable",
+      "no-space": "No space left on the download disk",
+      "geo-restricted": "This video is not available in your country",
+      "bot-wall": "YouTube is asking for a sign-in (bot wall)",
+      "age-gate": "This video is age-restricted and requires a logged-in session"
+    }
   }
 }
