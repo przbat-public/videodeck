@@ -423,7 +423,37 @@ export class FakeElasticsearch {
           ...this.highlight(doc, body),
         })),
       },
+      ...this.aggregations(
+        scored.map(({ doc }) => doc),
+        body,
+      ),
     });
+  }
+
+  /** Minimal terms aggregations over the matched documents (channel facets) */
+  private aggregations(docs: DocumentEntry[], body: SearchBody): Record<string, unknown> {
+    const aggs = (body as { aggs?: Record<string, unknown> }).aggs;
+    if (!aggs) {
+      return {};
+    }
+    const result: Record<string, unknown> = {};
+    for (const [name, definition] of Object.entries(aggs)) {
+      const terms = (definition ?? {}) as { terms?: { field?: string; size?: number } };
+      const field = this.fieldKey(terms.terms?.field ?? '');
+      const counts = new Map<string, number>();
+      for (const doc of docs) {
+        const value = doc.source[field];
+        if (typeof value === 'string' && value.length > 0) {
+          counts.set(value, (counts.get(value) ?? 0) + 1);
+        }
+      }
+      const buckets = [...counts.entries()]
+        .map(([key, docCount]) => ({ key, doc_count: docCount }))
+        .sort((a, b) => b.doc_count - a.doc_count || a.key.localeCompare(b.key))
+        .slice(0, terms.terms?.size ?? 10);
+      result[name] = { doc_count_error_upper_bound: 0, sum_other_doc_count: 0, buckets };
+    }
+    return { aggregations: result };
   }
 
   private matches(doc: DocumentEntry, query: Record<string, unknown>): boolean {
@@ -463,6 +493,12 @@ export class FakeElasticsearch {
     }
     if (clauseType === 'range') {
       return this.matchesRange(doc, clauseBody);
+    }
+    if (clauseType === 'ids') {
+      // The details-by-id lookup depends on this: a folder holding many
+      // videos must still resolve the one document with the requested id.
+      const values = (clauseBody ?? {}) as { values?: unknown };
+      return Array.isArray(values.values) && values.values.includes(doc.id);
     }
     return true; // unknown clauses keep the document (behaviour fidelity is not the goal here)
   }

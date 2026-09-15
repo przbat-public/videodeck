@@ -533,6 +533,28 @@ describe('SearchBar', () => {
       });
     });
 
+    it('does not let the still-pending debounce overwrite an Enter commit', async () => {
+      // The debounced copy lags the input while its timer is pending. An
+      // Enter commit changes the query prop, which re-runs the commit
+      // effect with that stale copy: it must not write the old value back.
+      const { onChange } = renderWithParent({ query: '' });
+
+      type('motor');
+      fireEvent.keyDown(input(), { key: 'Enter' });
+      expect(onChange).toHaveBeenCalledTimes(1);
+
+      await flushTimers();
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith({
+        query: 'motor',
+        sort: 'date-desc',
+        category: '',
+        channel: '',
+        dateFrom: '',
+        dateTo: '',
+      });
+    });
+
     it('Enter does not commit a phrase that is still too short', () => {
       const { onChange } = renderBar();
 

@@ -18,13 +18,30 @@ export async function startBackend(): Promise<DeepServerTestEnv> {
     return env;
   }
   env = await createDeepServerTestEnv({ listen: true });
-  // Seed the channel folder the scenarios operate on (files the fake yt-dlp
-  // would have produced) and point VIDEOS_FOLDER_PATH at it.
+  // Seed the channel folders the scenarios operate on (files the fake
+  // yt-dlp would have produced) and point VIDEOS_FOLDER_PATH at them. Two
+  // folders with different categories give the filter journeys something
+  // to narrow by; the three first-channel videos have distinct dates and
+  // view counts to filter and sort by.
   await env.seedFolder('channel-integration', {
     ...videoFiles('deepE2e0001', 'Głęboka integracja'),
+    ...videoFiles('deepE2e0002', 'Historia kosmosu', {
+      upload_date: '20260215',
+      view_count: 99_000,
+      like_count: 777,
+    }),
+    ...videoFiles('deepE2e0003', 'Nowoczesne kino', {
+      upload_date: '20260320',
+      view_count: 5_000,
+      like_count: 12,
+    }),
     'config.json': folderConfig('https://www.youtube.com/@integrationchannel'),
   });
-  env.setFolders('channel-integration');
+  await env.seedFolder('channel-two', {
+    ...videoFiles('deepE2e0004', 'Drugi kanał wideo', { channel: 'Drugi kanał' }),
+    'config.json': folderConfig('https://www.youtube.com/@secondchannel', 'other'),
+  });
+  env.setFolders('channel-integration', 'channel-two');
   const baseUrl = env.baseUrl;
   if (!baseUrl) {
     throw new Error('the integration environment did not start an HTTP listener');

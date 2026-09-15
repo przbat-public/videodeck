@@ -138,7 +138,11 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
 }
 
 /** The sidecar files of one downloaded video, as the fake yt-dlp writes them */
-export function videoFiles(videoId: string, title: string): Record<string, string> {
+export function videoFiles(
+  videoId: string,
+  title: string,
+  infoOverrides: Record<string, unknown> = {},
+): Record<string, string> {
   const base = `20260101_${title}`;
   return {
     [`${base}.mp4`]: 'fake-mp4-bytes',
@@ -153,12 +157,13 @@ export function videoFiles(videoId: string, title: string): Record<string, strin
       channel: 'Deep test channel',
       description: 'Deep test description.',
       webpage_url: `https://www.youtube.com/watch?v=${videoId}`,
+      ...infoOverrides,
     }),
     [`${base}.en.vtt`]: 'WEBVTT\n\n00:00.000 --> 00:01.000\nDeep test subtitle line.\n',
   };
 }
 
 /** A valid folder config.json for the deep environment */
-export function folderConfig(channelUrl = 'https://www.youtube.com/@deepchannel'): string {
-  return JSON.stringify({ channelUrl, category: 'tests' });
+export function folderConfig(channelUrl = 'https://www.youtube.com/@deepchannel', category = 'tests'): string {
+  return JSON.stringify({ channelUrl, category });
 }
