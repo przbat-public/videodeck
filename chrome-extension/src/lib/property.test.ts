@@ -46,18 +46,10 @@ function parseStreamSplits(events: unknown[], cutPoints: number[]): unknown[] {
 describe('feedSseBuffer (property)', () => {
   it('collects the same events however a stream is split into chunks', () => {
     const event = fc.oneof(
-      fc.record({ type: fc.constant('start' as const), message: fc.string() }),
-      fc.record({ type: fc.constant('output' as const), message: fc.string() }),
-      fc.record({
-        type: fc.constant('done' as const),
-        message: fc.string(),
-        done: fc.constant(true as const),
-      }),
-      fc.record({
-        type: fc.constant('error' as const),
-        error: fc.string(),
-        done: fc.constant(true as const),
-      }),
+      fc.record({ type: fc.constant('downloadStart' as const), videoTitle: fc.string() }),
+      fc.record({ type: fc.constant('downloadProgress' as const), progress: fc.nat(), message: fc.string() }),
+      fc.record({ type: fc.constant('downloadComplete' as const), message: fc.string() }),
+      fc.record({ type: fc.constant('downloadError' as const), error: fc.string() }),
     );
 
     fc.assert(
@@ -78,10 +70,7 @@ describe('parseSseEvent (property)', () => {
       fc.property(fc.string(), (raw) => {
         const event = parseSseEvent(raw);
         if (event !== null) {
-          expect(['start', 'output', 'done', 'error']).toContain(event.type);
-          if (event.type === 'error' || event.type === 'done') {
-            expect(event.done).toBe(true);
-          }
+          expect(['downloadStart', 'downloadProgress', 'downloadComplete', 'downloadError']).toContain(event.type);
         }
       }),
     );

@@ -23,6 +23,7 @@ export type {
   CommentWithReplies,
   DownloadOptions,
   DownloadPlaylistResponse,
+  DownloadVideoEvent,
   EnqueueJobsResponse,
   FolderConfig,
   FolderListResponse,
@@ -125,9 +126,6 @@ export interface DownloadVideoRequest extends FolderPathRequest {
   videoUrl: string;
 }
 
-/** Server-sent events streamed by POST /api/folder/download-video (consumed by the Chrome extension) */
-export type DownloadVideoEvent =
-  | { type: 'start'; message: string }
-  | { type: 'output'; message: string }
-  | { type: 'done'; message: string; done: true }
-  | { type: 'error'; error: string; done: true };
+// The SSE events of POST /api/folder/download-video (`DownloadVideoEvent`)
+// are schema-derived too: see downloadVideoEventSchema in shared/schemas.ts
+// and the re-export at the top of this file.

@@ -155,5 +155,11 @@
   },
   "startingDownload": {
     "message": "Rozpoczynanie pobierania..."
+  },
+  "streamEndedUnexpectedly": {
+    "message": "Strumień został przerwany — pobieranie może dalej trwać po stronie serwera"
+  },
+  "workerRestarted": {
+    "message": "Rozszerzenie zostało zrestartowane — pobieranie trwa dalej po stronie serwera"
   }
 }

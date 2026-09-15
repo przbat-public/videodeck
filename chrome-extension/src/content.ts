@@ -136,7 +136,7 @@ const observer = new MutationObserver(() => {
   if (observerTimeout !== null) {
     clearTimeout(observerTimeout);
   }
-  observerTimeout = setTimeout(() => {
+  observerTimeout = window.setTimeout(() => {
     // Just remember whether video info is available now
     const videoInfo = getVideoInfo();
     if (videoInfo?.videoId && videoInfo.videoId !== lastVideoId) {

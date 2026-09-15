@@ -299,6 +299,32 @@ export const SaveFolderConfigResponseSchema = z.object({
   config: FolderConfigSchema,
 });
 
+/**
+ * One Server-Sent Event of POST /api/folder/download-video (consumed by the
+ * Chrome extension). The server validates every event against this schema
+ * before writing it to the stream and the extension parses the same schema
+ * on the receiving end, so the two sides can never drift apart.
+ */
+export const downloadVideoEventSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('downloadStart'),
+    videoTitle: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('downloadProgress'),
+    progress: z.number().optional(),
+    message: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('downloadComplete'),
+    message: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('downloadError'),
+    error: z.string().optional(),
+  }),
+]);
+
 /** Derived contract types (re-exported from api.ts) */
 export type VideoComment = z.infer<typeof VideoCommentSchema>;
 export type CommentWithReplies = z.infer<typeof CommentWithRepliesSchema>;
@@ -328,4 +354,5 @@ export type VideoDownloadedResponse = z.infer<typeof VideoDownloadedResponseSche
 export type RebuildIndexResponse = z.infer<typeof RebuildIndexResponseSchema>;
 export type DownloadPlaylistResponse = z.infer<typeof DownloadPlaylistResponseSchema>;
 export type SaveFolderConfigResponse = z.infer<typeof SaveFolderConfigResponseSchema>;
+export type DownloadVideoEvent = z.infer<typeof downloadVideoEventSchema>;
 export type ApiError = z.infer<typeof ApiErrorSchema>;

@@ -22,6 +22,7 @@ import type {
   StatusResponse,
   VideoDownloadedResponse,
 } from '@shared/api';
+import { downloadVideoEventSchema } from '@shared/schemas';
 import { extractYoutubeVideoId, isYoutubeChannelUrl, isYoutubeVideoId, toWatchUrl } from '@shared/youtube';
 import type { Response } from 'express';
 import express from 'express';
@@ -583,25 +584,42 @@ function streamJobProgress(
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
+  // Every event is validated against the shared contract before it reaches
+  // the wire: a malformed event would corrupt the client's stream parser.
   const sendEvent = (event: DownloadVideoEvent) => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    const parsed = downloadVideoEventSchema.safeParse(event);
+    if (!parsed.success) {
+      logger.warn(`Dropping invalid SSE event ${JSON.stringify(event)}: ${firstZodError(parsed.error)}`);
+      return;
+    }
+    res.write(`data: ${JSON.stringify(parsed.data)}\n\n`);
   };
 
-  sendEvent({ type: 'start', message: 'Starting download...' });
+  sendEvent({ type: 'downloadStart' });
 
   let seenLogCount = 0;
   let finished = false;
+
+  // SSE comment lines keep the connection alive during quiet merge phases
+  // without being parsed as events — the extension's service worker depends
+  // on that traffic to stay awake. Cleared when the stream closes.
+  const heartbeat = setInterval(() => {
+    if (!finished) {
+      res.write(': ping\n\n');
+    }
+  }, 15_000);
 
   const finish = (snapshot: QueueJob) => {
     if (finished) {
       return;
     }
     finished = true;
+    clearInterval(heartbeat);
     queue.off('job', onJob);
     sendEvent(
       snapshot.status === 'done'
-        ? { type: 'done', message: 'Download completed successfully', done: true }
-        : { type: 'error', error: snapshot.error ?? `Download ${snapshot.status}`, done: true },
+        ? { type: 'downloadComplete', message: 'Download completed successfully' }
+        : { type: 'downloadError', error: snapshot.error ?? `Download ${snapshot.status}` },
     );
     res.end();
   };
@@ -614,7 +632,7 @@ function streamJobProgress(
     const unsent = snapshot.logLineCount - seenLogCount;
     if (unsent > 0) {
       for (const line of snapshot.log.slice(-Math.min(unsent, snapshot.log.length))) {
-        sendEvent({ type: 'output', message: `${line}\n` });
+        sendEvent({ type: 'downloadProgress', progress: snapshot.progress, message: `${line}\n` });
       }
     }
     seenLogCount = snapshot.logLineCount;
@@ -634,6 +652,7 @@ function streamJobProgress(
 
   req.on('close', () => {
     finished = true;
+    clearInterval(heartbeat);
     queue.off('job', onJob);
   });
 }
