@@ -1,9 +1,18 @@
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import type { QueueJob } from '@shared/api';
 import { at } from '../test-utils';
 import { removePartialDownloads } from '../utils/fsUtils';
 import type { EnqueueRequest, SpawnedProcess } from './downloadQueue';
-import { clearIndexRetries, DownloadQueue, indexChangedVideos, readConcurrency } from './downloadQueue';
+import {
+  clearIndexRetries,
+  DownloadQueue,
+  indexChangedVideos,
+  readConcurrency,
+  restoreQueueState,
+} from './downloadQueue';
 import { refreshIndex } from './folderIndex';
 import { indexVideosFromDisk } from './videoScanner';
 import { buildFormatSelector, buildYtDlpArgs, escapeOutputTemplate, PROGRESS_TEMPLATE } from './ytdlp';
@@ -995,6 +1004,145 @@ describe('DownloadQueue', () => {
 
     shortQueue.prune(Date.now() + 5000);
     expect(shortQueue.get(job.id)).toBeUndefined();
+  });
+});
+
+describe('queue state persistence', () => {
+  let stateFile: string;
+
+  beforeEach(async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-state-'));
+    stateFile = path.join(dir, 'state.json');
+  });
+
+  afterEach(async () => {
+    await fs.rm(path.dirname(stateFile), { recursive: true, force: true });
+  });
+
+  const silentAfterJob = (): jest.Mock<Promise<void>, [QueueJob]> => jest.fn().mockResolvedValue(undefined);
+
+  /** Persisted writes are fire-and-forget — poll until the state satisfies the predicate. */
+  const waitForState = async (predicate: (state: { paused?: boolean; jobs?: QueueJob[] }) => boolean) => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      try {
+        if (predicate(JSON.parse(await fs.readFile(stateFile, 'utf-8')))) {
+          return;
+        }
+      } catch {
+        // not written yet
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error('state file never reached the expected shape');
+  };
+
+  it('persists active jobs on enqueue and clears them once they finish', async () => {
+    const spawn = createFakeSpawn();
+    const queue = new DownloadQueue({
+      spawnFn: spawn.spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    queue.enqueue([request('a')]);
+
+    await waitForState((state) => (state.jobs ?? []).some((job) => job.videoId === 'a'));
+    const persisted = JSON.parse(await fs.readFile(stateFile, 'utf-8')) as { paused?: boolean; jobs?: QueueJob[] };
+    const persistedJob = at(persisted.jobs ?? [], 0);
+    expect(persistedJob.folderPath).toBe('/videos/channel-a');
+    expect(persistedJob.log).toEqual([]);
+
+    at(spawn.calls, 0).process.exit(0);
+    await waitForState((state) => (state.jobs ?? []).length === 0);
+  });
+
+  it('persists the paused flag', async () => {
+    const queue = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+    });
+    queue.setPaused(true);
+    await waitForState((state) => state.paused === true);
+  });
+
+  it('restores jobs as queued, honors the paused flag and skips corrupt entries', async () => {
+    await fs.writeFile(
+      stateFile,
+      JSON.stringify({
+        paused: true,
+        jobs: [
+          {
+            folderPath: '/videos/channel-a',
+            videoId: 'a',
+            videoUrl: 'https://www.youtube.com/watch?v=a',
+            title: 'A',
+            type: 'download',
+          },
+          { folderPath: '/videos/channel-a', videoId: 'b', type: 'update', baseName: '20240101_b' },
+          null,
+          7,
+          { folderPath: 42, videoId: 'c' },
+          { folderPath: '/videos/channel-a' },
+        ],
+      }),
+    );
+
+    const spawn = createFakeSpawn();
+    const queue = new DownloadQueue({
+      spawnFn: spawn.spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    await expect(restoreQueueState(queue, stateFile)).resolves.toBe(2);
+
+    const jobs = queue.list('/videos/channel-a');
+    expect(jobs.map((job) => [job.videoId, job.type, job.status])).toEqual([
+      ['a', 'download', 'queued'],
+      ['b', 'update', 'queued'],
+    ]);
+    expect(spawn.spawnFn).not.toHaveBeenCalled();
+  });
+
+  it('returns 0 when the state file is missing or unparseable', async () => {
+    await expect(restoreQueueState(new DownloadQueue({ stateFile }), stateFile)).resolves.toBe(0);
+
+    await fs.writeFile(stateFile, '{not json');
+    await expect(restoreQueueState(new DownloadQueue({ stateFile }), stateFile)).resolves.toBe(0);
+  });
+
+  it('waitForIdle resolves once the last child process is gone', async () => {
+    const spawn = createFakeSpawn();
+    const queue = new DownloadQueue({
+      spawnFn: spawn.spawnFn,
+      afterJob: silentAfterJob(),
+      maxAttempts: 1,
+    });
+    queue.enqueue([request('a')]);
+
+    let resolved = false;
+    const waiting = queue.waitForIdle(5000).then(() => {
+      resolved = true;
+    });
+    await flush();
+    expect(resolved).toBe(false);
+
+    at(spawn.calls, 0).process.exit(0);
+    await waiting;
+    expect(resolved).toBe(true);
+  });
+
+  it('waitForIdle gives up after the timeout with a live child', async () => {
+    const queue = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      maxAttempts: 1,
+    });
+    queue.enqueue([request('a')]);
+
+    await expect(queue.waitForIdle(50)).resolves.toBeUndefined();
+    expect(at(queue.list(), 0).status).toBe('running');
   });
 });
 

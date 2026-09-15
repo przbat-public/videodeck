@@ -29,3 +29,6 @@ shared/*.js
 # Playwright
 client/playwright-report/
 client/test-results/
+
+# Server-side download queue state (runtime persistence; cwd = server/)
+server/.queue-state.json

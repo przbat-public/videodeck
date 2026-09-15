@@ -1,9 +1,10 @@
 import { spawn as nodeSpawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs/promises';
 import type { DownloadOptions, JobStatus, JobType, QueueJob } from '@shared/api';
 import { extractYtDlpProgress } from '@shared/progress';
-import { removePartialDownloads } from '../utils/fsUtils';
+import { removePartialDownloads, writeTextAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/objectUtils';
 import { refreshIndex } from './folderIndex';
@@ -95,6 +96,8 @@ export interface DownloadQueueOptions {
   /** Called after a job finishes successfully (default: refresh folder index) */
   afterJob?: (job: QueueJob) => Promise<void>;
   ytDlpPath?: string;
+  /** Persist the active jobs (and the paused flag) to this file for restarts */
+  stateFile?: string;
 }
 
 function isActive(job: QueueJob): boolean {
@@ -181,6 +184,7 @@ export class DownloadQueue extends EventEmitter {
   private readonly spawnFn: SpawnFn;
   private readonly afterJob: (job: QueueJob) => Promise<void>;
   private readonly ytDlpPath: string;
+  private readonly stateFile: string | undefined;
   /** Spawns already used by a job (cleared when it finishes) */
   private readonly attempts = new Map<string, number>();
   /** Pending retry timers, keyed by job id (cleared on cancel) */
@@ -212,6 +216,32 @@ export class DownloadQueue extends EventEmitter {
         nodeSpawn(command, args, { cwd: opts.cwd, detached: opts.detached }) as unknown as SpawnedProcess);
     this.afterJob = options.afterJob ?? indexChangedVideos;
     this.ytDlpPath = options.ytDlpPath ?? 'yt-dlp';
+    this.stateFile = options.stateFile;
+  }
+
+  /**
+   * Persist the active jobs and the paused flag, so a reboot can re-enqueue
+   * them (archive.txt dedups downloads; updates are idempotent re-scans).
+   * Fire-and-forget: a failed write must never break the queue.
+   */
+  private persistState(): void {
+    if (!this.stateFile) {
+      return;
+    }
+    const jobs = Array.from(this.jobs.values())
+      .filter(isActive)
+      .map((job) => ({ ...job, log: [], logLineCount: 0 }));
+    writeTextAtomic(this.stateFile, JSON.stringify({ paused: this.paused, jobs })).catch((error: unknown) => {
+      logger.warn(`Cannot persist queue state: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+
+  /** Resolve once every process is gone (or the timeout passes) */
+  async waitForIdle(timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (this.processes.size > 0 && Date.now() < deadline) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
   }
 
   /**
@@ -247,6 +277,7 @@ export class DownloadQueue extends EventEmitter {
       this.emitJob(job);
     }
     this.prune();
+    this.persistState();
     this.pump();
     return result.map((job) => this.snapshot(job));
   }
@@ -288,6 +319,7 @@ export class DownloadQueue extends EventEmitter {
     job.status = 'cancelled';
     job.finishedAt = new Date().toISOString();
     this.emitJob(job);
+    this.persistState();
     return true;
   }
 
@@ -378,6 +410,7 @@ export class DownloadQueue extends EventEmitter {
       return;
     }
     this.paused = paused;
+    this.persistState();
     if (!paused) {
       this.pump();
     }
@@ -607,6 +640,7 @@ export class DownloadQueue extends EventEmitter {
     job.finishedAt = new Date().toISOString();
     this.attempts.delete(job.id);
     this.emitJob(job);
+    this.persistState();
     this.pump();
   }
 
@@ -645,9 +679,71 @@ export function readConcurrency(value: string | undefined, fallback: number): nu
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+/** Where the singleton persists its active jobs (cwd = server/) */
+export const QUEUE_STATE_FILE = '.queue-state.json';
+
 /** Application-wide queue instance */
 export const downloadQueue = new DownloadQueue({
   maxConcurrent: readConcurrency(process.env.DOWNLOAD_CONCURRENCY, 2),
   maxConcurrentUpdates: readConcurrency(process.env.UPDATE_CONCURRENCY, 2),
   maxAttempts: readConcurrency(process.env.DOWNLOAD_MAX_ATTEMPTS, 3),
+  stateFile: QUEUE_STATE_FILE,
 });
+
+/**
+ * Re-enqueue the jobs persisted by a previous run (reboot recovery). Jobs
+ * come back as `queued` — the download archive dedups anything that finished
+ * in the meantime and updates are idempotent re-scans. Returns how many jobs
+ * were restored, or 0 when there is no state file.
+ */
+export async function restoreQueueState(
+  queue: DownloadQueue = downloadQueue,
+  stateFile: string = QUEUE_STATE_FILE,
+): Promise<number> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(stateFile, 'utf-8');
+  } catch {
+    return 0;
+  }
+  try {
+    const state = JSON.parse(raw) as { paused?: unknown; jobs?: unknown };
+    if (state.paused === true) {
+      queue.setPaused(true);
+    }
+    const requests = Array.isArray(state.jobs)
+      ? state.jobs.map(toEnqueueRequest).filter((request): request is EnqueueRequest => request !== null)
+      : [];
+    if (requests.length > 0) {
+      queue.enqueue(requests);
+    }
+    return requests.length;
+  } catch (error) {
+    logger.warn(`Cannot restore queue state: ${error instanceof Error ? error.message : String(error)}`);
+    return 0;
+  }
+}
+
+/**
+ * Convert one persisted job back into an enqueue request. Entries that do not
+ * look like a job we wrote (corrupt hand-edited file) are skipped.
+ */
+function toEnqueueRequest(job: unknown): EnqueueRequest | null {
+  if (!job || typeof job !== 'object') {
+    return null;
+  }
+  const record = job as Record<string, unknown>;
+  const { folderPath, videoId } = record;
+  if (typeof folderPath !== 'string' || typeof videoId !== 'string') {
+    return null;
+  }
+  return {
+    folderPath,
+    videoId,
+    videoUrl: typeof record.videoUrl === 'string' ? record.videoUrl : `https://www.youtube.com/watch?v=${videoId}`,
+    ...(typeof record.title === 'string' ? { title: record.title } : {}),
+    type: record.type === 'update' ? 'update' : 'download',
+    ...(typeof record.baseName === 'string' ? { baseName: record.baseName } : {}),
+    ...(record.options && typeof record.options === 'object' ? { options: record.options as DownloadOptions } : {}),
+  };
+}

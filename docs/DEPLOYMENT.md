@@ -48,6 +48,16 @@ warning: a mapping change requires a reindex (`POST /api/videos/refreshCache`).
 Elasticsearch data is rebuildable at any time — the video folders are the
 store of record.
 
+### Restarts and the download queue
+
+The queue persists its active jobs to `.queue-state.json` (in the server
+working directory) and re-enqueues them on boot, so `docker compose restart`
+resumes interrupted work automatically: downloads dedup against `archive.txt`
+and index updates are idempotent re-scans. The state file lives in the
+container filesystem — recreating the container (`docker compose down` +
+`up`) discards it, which only cancels queued jobs; already downloaded videos
+are unaffected.
+
 ## Backups
 
 The folders themselves are the source of truth. Per folder, the files worth

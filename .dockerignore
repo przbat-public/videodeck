@@ -8,6 +8,7 @@ node_modules
 .github
 docs
 server/.env
+server/.queue-state.json
 *.log
 .DS_Store
 chrome-extension

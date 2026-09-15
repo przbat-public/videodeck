@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Download queue persists active jobs across server restarts (jobs resume as
+  queued after reboot; paused state is kept) and graceful shutdown now waits
+  for yt-dlp children to stop and closes open SSE streams before exiting
+
+
 ## [1.0.0] - 2026-09-14
 
 First public release.
