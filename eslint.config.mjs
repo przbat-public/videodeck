@@ -1,12 +1,12 @@
 import js from '@eslint/js';
-import globals from 'globals';
-import tseslint from 'typescript-eslint';
 import eslintReact from '@eslint-react/eslint-plugin';
+import { defineConfig, globalIgnores } from 'eslint/config';
+import biome from 'eslint-config-biome';
+import playwright from 'eslint-plugin-playwright';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
-import prettierRecommended from 'eslint-plugin-prettier/recommended';
-import playwright from 'eslint-plugin-playwright';
-import { defineConfig, globalIgnores } from 'eslint/config';
+import globals from 'globals';
+import tseslint from 'typescript-eslint';
 
 /**
  * One flat config for the whole repo. Flat config only lints files below the
@@ -16,10 +16,7 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 
 /** Rules that server, shared and client all share */
 const commonRules = {
-  '@typescript-eslint/no-unused-vars': [
-    'error',
-    { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
-  ],
+  '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
   '@typescript-eslint/explicit-function-return-type': 'off',
   '@typescript-eslint/explicit-module-boundary-types': 'off',
   '@typescript-eslint/no-explicit-any': 'error',
@@ -129,11 +126,7 @@ export default defineConfig([
   // files used to be linted by the generic TS block only.
   {
     files: ['client/e2e/**/*.ts'],
-    extends: [
-      js.configs.recommended,
-      tseslint.configs.recommended,
-      playwright.configs['flat/recommended'],
-    ],
+    extends: [js.configs.recommended, tseslint.configs.recommended, playwright.configs['flat/recommended']],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
@@ -142,6 +135,6 @@ export default defineConfig([
     rules: commonRules,
   },
 
-  // Must stay last: turns off every rule that would fight Prettier
-  prettierRecommended,
+  // Must stay last: turns off every rule that would fight Biome.
+  /** @type {any} */ (biome),
 ]);

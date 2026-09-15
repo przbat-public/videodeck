@@ -41,8 +41,10 @@ jobs:
       # knip also needs each package's node_modules to verify dependency
       # ownership, so install all four packages.
       - run: npm run install:ci
-      - name: ESLint + repository invariants
+      - name: Biome + repository invariants
         run: npm run lint
+      - name: ESLint (type-aware, React hooks, Playwright)
+        run: npm run lint:types
       - name: Script typecheck + tests
         run: npm run lint:scripts && npm run test:scripts
       - name: Dead code and unused dependencies

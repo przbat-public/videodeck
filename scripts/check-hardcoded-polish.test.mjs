@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { findHardcodedPolish, stripComments } from './check-hardcoded-polish.mjs';
 
 test('stripComments removes line and block comments but keeps string contents', () => {
@@ -29,10 +29,10 @@ test('findHardcodedPolish ignores comments and non-Polish strings', () => {
 });
 
 test('findHardcodedPolish scans single, double and template quotes', () => {
-  const source = 'a = \'ą\'; b = "ę"; c = `Kanał: ${name}`;';
+  const source = `a = 'ą'; b = "ę"; c = \`Kanał: \${name}\`;`;
 
   assert.deepEqual(
     findHardcodedPolish(source).map((hit) => hit.text),
-    ['ą', 'ę', 'Kanał: ${name}']
+    ['ą', 'ę', `Kanał: \${name}`],
   );
 });

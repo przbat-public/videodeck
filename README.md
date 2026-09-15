@@ -49,8 +49,8 @@ A self-hosted web app for searching and browsing YouTube videos downloaded with 
 
 ### Tools
 
-- **ESLint** - code linter (with `--max-warnings 0`; see [Linting](#linting-and-formatting))
-- **Prettier** - code formatter
+- **Biome** - code formatter and linter (strict rule set; see [Linting](#linting-and-formatting))
+- **ESLint** - type-aware lint (`--max-warnings 0`; see [Linting](#linting-and-formatting))
 
 ## Installation
 
@@ -281,25 +281,31 @@ cd chrome-extension && npm run typecheck # src/ + shared/api.ts (shared contract
 
 ## Linting and Formatting
 
-The project uses ESLint and Prettier to keep the code consistent.
+The project uses Biome (formatter + linter) and ESLint (type-aware rules)
+to keep the code consistent.
 
-There is one configuration for the whole repository — `eslint.config.mjs` in
-the root directory covers `server/`, `client/`, `shared/`, and
-`chrome-extension/src/` (the generated `*.js` files of the extension are
-ignored). ESLint's flat config only lints files below its own directory, and
-`shared/` sits outside both workspaces, which is why lint and formatting are
-run from the root. The configuration tells the React plugin that the project
-targets React 19 (`settings['react-x']`) —
-components accept `ref` as a regular prop (without `forwardRef`).
+Biome's `biome.json` in the root directory is the single source of truth for
+formatting (single quotes, line width 120) and for the strict lint rules
+(`noExplicitAny`, `noNonNullAssertion`, cognitive complexity ≤ 15,
+`noConsole`, …). ESLint's flat config (`eslint.config.mjs`) covers `server/`,
+`client/`, `shared/`, and `chrome-extension/src/` (the generated `*.js` files
+of the extension are ignored) and carries only the rules Biome cannot —
+type-aware TypeScript checks, React hooks and Playwright. Flat config only
+lints files below its own directory, and `shared/` sits outside both
+workspaces, which is why lint and formatting are run from the root. The
+configuration tells the React plugin that the project targets React 19
+(`settings['react-x']`) — components accept `ref` as a regular prop (without
+`forwardRef`).
 
 ### Checking the code (lint)
 
 ```bash
-npm run lint
+npm run lint          # biome check + repository-invariant scripts
+npm run lint:types    # eslint --max-warnings 0 (type-aware, React, Playwright)
 ```
 
-Lint runs with `--max-warnings 0`: every warning fails the run, so the list
-of issues cannot grow. Where an indexed access is genuinely safe (e.g. yt-dlp
+Lint runs with zero tolerance: every warning fails the run, so the list of
+issues cannot grow. Where an indexed access is genuinely safe (e.g. yt-dlp
 log lines that never change order), a deliberate `eslint-disable` with
 justification is used.
 
@@ -428,8 +434,8 @@ small, pure logic in `chrome-extension/src/lib/`.
 
 - **TypeScript** - strong typing across the project (details below)
 - **Unit tests** - high test coverage (Jest + Vitest)
-- **Linting** - ESLint to check code quality
-- **Formatting** - Prettier for consistent formatting
+- **Linting** - Biome (strict rules) + ESLint (type-aware) to check code quality
+- **Formatting** - Biome for consistent formatting
 - **Validation** - checking API parameters and file paths
 
 ### Security
@@ -596,7 +602,7 @@ A short overview of the client's architectural decisions and what was consciousl
   server has `isolatedModules` (per-file typecheck), and the extension
   typechecks the whole `../shared` directory, not selected files.
 - **Husky + commitlint + lint-staged** — `pre-commit` formats and lints
-  changed files (prettier + eslint --max-warnings 0), `commit-msg` enforces
+  changed files (biome check --write), `commit-msg` enforces
   the conventional commits convention (`feat:`, `fix:`, `chore(tooling):`, …) —
   the end of mixed styles in the history.
 

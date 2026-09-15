@@ -61,8 +61,7 @@ export function extractYoutubeVideoId(url: string): string | null {
         candidate = first ?? null;
       } else {
         const marker = segments.findIndex(
-          (segment) =>
-            segment === 'shorts' || segment === 'embed' || segment === 'live' || segment === 'v'
+          (segment) => segment === 'shorts' || segment === 'embed' || segment === 'live' || segment === 'v',
         );
         candidate = (marker >= 0 && segments[marker + 1]) || null;
       }

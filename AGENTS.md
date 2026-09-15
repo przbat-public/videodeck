@@ -22,7 +22,8 @@ Run everything from the repo root unless noted:
 ```bash
 npm run install:ci        # npm ci for all four packages (CI/local reset)
 npm run dev               # server :3001 + client :3000
-npm run lint              # eslint --max-warnings 0 + hardcoded-Polish scan + tsconfig strictness check
+npm run lint              # biome check + hardcoded-Polish scan + tsconfig strictness check
+npm run lint:types        # eslint --max-warnings 0 (type-aware & React/Playwright rules)
 npm run lint:scripts      # tsc --noEmit over scripts/ (checkJs)
 npm run test:scripts      # node --test for repository-invariant scripts
 npm run knip              # unused files/deps
@@ -35,8 +36,23 @@ cd client && npm run test:e2e  # Playwright (mocked API)
 Full verification one-liner:
 
 ```bash
-npm run format:check && npm run lint && npm run lint:scripts && npm run test:scripts && npm run knip && npm run lint:deps && npm run typecheck && npm test && cd client && npm run test:e2e
+npm run format:check && npm run lint && npm run lint:types && npm run lint:scripts && npm run test:scripts && npm run knip && npm run lint:deps && npm run typecheck && npm test && cd client && npm run test:e2e
 ```
+
+## Linting (Biome + ESLint)
+
+- **Biome** (`biome.json`, v2) is the formatter and the primary linter:
+  single quotes, line width 120, strict rules — `noExplicitAny`,
+  `noNonNullAssertion`, `noConsole`, cognitive complexity ≤ 15, `noForEach`,
+  empty blocks banned. **Fix violations in code — never disable a rule.**
+  A genuine false positive gets a per-line `biome-ignore` with an English
+  rationale; changing severity in `biome.json` is off the table.
+- `noConsole` exceptions are deliberately narrow: `scripts/**`,
+  `chrome-extension/src/**`, `server/src/utils/logger.ts` and
+  `client/src/utils/logError.ts`.
+- **ESLint** stays only for what Biome cannot do: `@typescript-eslint`,
+  react-hooks, react-refresh and Playwright rules (`lint:types`), with
+  `eslint-config-biome` last so the two linters never fight.
 
 ## Language
 

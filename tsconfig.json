@@ -3,9 +3,5 @@
   // file through the nearest project (server/ or client/) with its own
   // node_modules/@types (jest, vitest, node, ...).
   "files": [],
-  "references": [
-    { "path": "./server" },
-    { "path": "./client" },
-    { "path": "./chrome-extension" }
-  ]
+  "references": [{ "path": "./server" }, { "path": "./client" }, { "path": "./chrome-extension" }]
 }

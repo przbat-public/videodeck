@@ -10,14 +10,15 @@
     "build:server": "cd server && npm run build",
     "build:client": "cd client && npm run build",
     "build:extension": "cd chrome-extension && npm run build",
-    "lint": "eslint . --max-warnings 0 && node scripts/check-hardcoded-polish.mjs && node scripts/check-tsconfig-strict.mjs",
-    "lint:fix": "eslint . --fix --max-warnings 0",
+    "lint": "biome check . && node scripts/check-hardcoded-polish.mjs && node scripts/check-tsconfig-strict.mjs",
+    "lint:types": "eslint . --max-warnings 0",
+    "lint:fix": "biome check --write .",
     "lint:scripts": "tsc -p scripts/tsconfig.json",
     "test:scripts": "node --test scripts/*.test.mjs",
     "knip": "knip",
     "lint:deps": "depcruise --config .dependency-cruiser.cjs server client chrome-extension shared",
-    "format": "prettier --write \"{client/src,server/src,shared}/**/*.{ts,tsx,js,json,css}\" \"chrome-extension/src/**/*.{ts,json}\"",
-    "format:check": "prettier --check \"{client/src,server/src,shared}/**/*.{ts,tsx,js,json,css}\" \"chrome-extension/src/**/*.{ts,json}\"",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
     "typecheck": "cd server && npm run typecheck && cd ../client && npm run typecheck && cd ../chrome-extension && npm run typecheck",
     "test": "cd server && npm run test && cd ../client && npm run test:run && cd ../chrome-extension && npm test",
     "test:watch": "cd server && npm run test:watch",
@@ -28,18 +29,15 @@
   },
   "packageManager": "npm@10.9.3",
   "lint-staged": {
-    "*.{ts,tsx}": [
-      "prettier --write",
-      "eslint --max-warnings 0 --no-warn-ignored"
-    ],
-    "*.{json,css,md,yml,yaml}": [
-      "prettier --write"
+    "*.{ts,tsx,js,mjs,cjs,json}": [
+      "biome check --write --no-errors-on-unmatched"
     ]
   },
   "engines": {
     "node": "22.x"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.13",
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.2",
     "@eslint-react/eslint-plugin": "^5.19.0",
@@ -48,16 +46,14 @@
     "concurrently": "^10.0.5",
     "dependency-cruiser": "^18.3.1",
     "eslint": "^10.10.0",
-    "eslint-config-prettier": "^10.1.8",
+    "eslint-config-biome": "^2.1.3",
     "eslint-plugin-playwright": "^2.12.0",
-    "eslint-plugin-prettier": "^5.5.6",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.6",
     "globals": "^17.12.0",
     "husky": "^9.1.7",
     "knip": "^6.35.1",
     "lint-staged": "^17.5.1",
-    "prettier": "^3.9.6",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.0",
     "zod": "^3.25.76"
