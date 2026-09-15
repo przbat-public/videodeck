@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   language (tokens, typography, spacing, components, a11y), a repo-scoped
   `ui-design` skill turns it into a checklist for UI changes, and a static
   landing page built from the same tokens lives at `docs/landing/index.html`
+- **Engineering skill pack, part one**: repo-scoped skills for test-driven
+  development, code review, debugging and security hardening, shared testing
+  and security checklists in `.agents/references/`, and a repo-invariant
+  script that validates skill frontmatter and the no-em-dash rule
 
 ### Fixed
 
