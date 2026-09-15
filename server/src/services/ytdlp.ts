@@ -27,6 +27,8 @@ export const PROGRESS_TEMPLATE =
  *    with an exponential 1..10 s sleep instead of failing the whole job.
  *  - `--progress-delta 1`: at most one progress line per second — the queue
  *    tail-keeps 40 log lines, and a fast link used to flood them.
+ *  - `--socket-timeout 30`: a dead network path must not pin a job forever
+ *    (the queue watchdog is the second line of defense).
  */
 const RUNTIME_ARGS = [
   '--file-access-retries',
@@ -35,6 +37,8 @@ const RUNTIME_ARGS = [
   'file_access:exp=1:10',
   '--progress-delta',
   '1',
+  '--socket-timeout',
+  '30',
   '--progress-template',
   PROGRESS_TEMPLATE,
 ];
@@ -151,10 +155,17 @@ export function buildPlaylistArgs(channelUrl: string): string[] {
   return ['--flat-playlist', '-i', '-j', channelUrl];
 }
 
+/** Wall-clock limit for a playlist fetch (huge channels are slow) */
+const RUN_TIMEOUT_MS = 10 * 60 * 1000;
+/** Stdout cap: bounds memory for pathological channels (NDJSON is tiny per line) */
+const MAX_STDOUT_BYTES = 64 * 1024 * 1024;
+
 /**
  * Run yt-dlp to completion, resolving with its stdout or rejecting with a
  * message that includes the stderr tail. No shell is involved (`spawn` takes
- * an argument array), so channel URLs cannot inject commands.
+ * an argument array), so channel URLs cannot inject commands. A hung yt-dlp
+ * is killed after `RUN_TIMEOUT_MS` and the collected stdout is capped at
+ * `MAX_STDOUT_BYTES`.
  */
 export function runYtDlp(args: string[], cwd: string, options: { command?: string } = {}): Promise<string> {
   const command = options.command ?? 'yt-dlp';
@@ -162,13 +173,42 @@ export function runYtDlp(args: string[], cwd: string, options: { command?: strin
     const child = spawn(command, args, { cwd });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => out.push(chunk));
+    let outBytes = 0;
+    let settled = false;
+    // Latches the promise: the first terminal event wins (timeout, error or
+    // close), everything after it is ignored.
+    const settle = (): boolean => {
+      if (settled) {
+        return false;
+      }
+      settled = true;
+      clearTimeout(timer);
+      return true;
+    };
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      if (settle()) {
+        reject(new Error(`${command} timed out after ${Math.round(RUN_TIMEOUT_MS / 1000)}s`));
+      }
+    }, RUN_TIMEOUT_MS);
+    child.stdout.on('data', (chunk: Buffer) => {
+      if (outBytes < MAX_STDOUT_BYTES) {
+        out.push(chunk);
+        outBytes += chunk.length;
+      }
+    });
     child.stderr.on('data', (chunk: Buffer) => err.push(chunk));
-    child.on('error', reject);
+    child.on('error', (error) => {
+      if (settle()) {
+        reject(error);
+      }
+    });
     child.on('close', (code) => {
       if (code === 0) {
-        resolve(Buffer.concat(out).toString('utf-8'));
-      } else {
+        if (settle()) {
+          resolve(Buffer.concat(out).toString('utf-8'));
+        }
+      } else if (settle()) {
         reject(new Error(`${command} exited with code ${code}: ${Buffer.concat(err).toString('utf-8').trim()}`));
       }
     });

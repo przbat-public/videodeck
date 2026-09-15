@@ -51,9 +51,29 @@ export interface SpawnedProcess {
   on(event: 'error', listener: (error: Error) => void): this;
   on(event: 'close', listener: (code: number | null) => void): this;
   kill(signal?: NodeJS.Signals): boolean;
+  pid?: number;
 }
 
-export type SpawnFn = (command: string, args: string[], options: { cwd: string }) => SpawnedProcess;
+export type SpawnFn = (command: string, args: string[], options: { cwd: string; detached?: boolean }) => SpawnedProcess;
+
+/**
+ * Signal the child and its whole process group (yt-dlp spawns ffmpeg as a
+ * group member; killing only the parent would orphan the merge process).
+ * Group kills need the child spawned with `detached: true`.
+ */
+export function killProcessGroup(child: SpawnedProcess | undefined, signal: NodeJS.Signals): void {
+  if (!child) {
+    return;
+  }
+  child.kill(signal);
+  if (child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, signal);
+    } catch {
+      // Group already gone — nothing left to signal
+    }
+  }
+}
 
 export interface DownloadQueueOptions {
   /** Running `download` jobs at once (default 2) */
@@ -65,8 +85,12 @@ export interface DownloadQueueOptions {
   retainFinishedMs?: number;
   /** How many times a failed yt-dlp run is retried (default 3) */
   maxAttempts?: number;
-  /** Backoff between attempts (ms, default 30 s) */
+  /** Base of the retry backoff (ms, default 30 s; grows exponentially with jitter) */
   retryDelayMs?: number;
+  /** Kill a job that produced no output for this long (ms, default 10 min) */
+  idleTimeoutMs?: number;
+  /** Kill a job that outlived this wall-clock limit (ms, default 8 h) */
+  maxJobDurationMs?: number;
   spawnFn?: SpawnFn;
   /** Called after a job finishes successfully (default: refresh folder index) */
   afterJob?: (job: QueueJob) => Promise<void>;
@@ -106,6 +130,8 @@ export class DownloadQueue extends EventEmitter {
   private readonly retainFinishedMs: number;
   private readonly maxAttempts: number;
   private readonly retryDelayMs: number;
+  private readonly idleTimeoutMs: number;
+  private readonly maxJobDurationMs: number;
   private readonly spawnFn: SpawnFn;
   private readonly afterJob: (job: QueueJob) => Promise<void>;
   private readonly ytDlpPath: string;
@@ -113,6 +139,12 @@ export class DownloadQueue extends EventEmitter {
   private readonly attempts = new Map<string, number>();
   /** Pending retry timers, keyed by job id (cleared on cancel) */
   private readonly retryTimers = new Map<string, NodeJS.Timeout>();
+  /** Watchdog timers per running job (idle + wall-clock checks) */
+  private readonly watchdogs = new Map<string, { interval: NodeJS.Timeout; maxTimer: NodeJS.Timeout }>();
+  /** Last time a running job produced output (watchdog input) */
+  private readonly lastOutputAt = new Map<string, number>();
+  /** Jobs killed by the watchdog (retried as transient failures) */
+  private readonly hungJobs = new Map<string, true>();
   /** While paused, queued jobs wait; running ones finish (cancel still works) */
   private paused = false;
 
@@ -124,19 +156,28 @@ export class DownloadQueue extends EventEmitter {
     this.retainFinishedMs = options.retainFinishedMs ?? 60 * 60 * 1000;
     this.maxAttempts = Math.max(1, options.maxAttempts ?? 3);
     this.retryDelayMs = options.retryDelayMs ?? 30_000;
-    this.spawnFn = options.spawnFn ?? nodeSpawn;
+    this.idleTimeoutMs = options.idleTimeoutMs ?? 10 * 60 * 1000;
+    this.maxJobDurationMs = options.maxJobDurationMs ?? 8 * 60 * 60 * 1000;
+    this.spawnFn =
+      options.spawnFn ??
+      ((command, args, opts) =>
+        // The real ChildProcess satisfies SpawnedProcess structurally, but
+        // its overloaded EventEmitter typing needs the narrowing cast.
+        nodeSpawn(command, args, { cwd: opts.cwd, detached: opts.detached }) as unknown as SpawnedProcess);
     this.afterJob = options.afterJob ?? indexChangedVideos;
     this.ytDlpPath = options.ytDlpPath ?? 'yt-dlp';
   }
 
   /**
-   * Add jobs. A job identical (folder + videoId + type) to one already queued
-   * or running is not duplicated — the existing job is returned instead.
+   * Add jobs. A job identical (folder + videoId) to one already queued or
+   * running is not duplicated — the existing job is returned instead. The
+   * dedup spans job types on purpose: an update racing a download of the
+   * same video would overwrite the file the download is writing.
    */
   enqueue(requests: EnqueueRequest[]): QueueJob[] {
     const result: QueueJob[] = [];
     for (const request of requests) {
-      const existing = this.findActive(request.folderPath, request.videoId, request.type);
+      const existing = this.findActive(request.folderPath, request.videoId);
       if (existing) {
         result.push(existing);
         continue;
@@ -194,7 +235,7 @@ export class DownloadQueue extends EventEmitter {
         clearTimeout(timer);
         this.retryTimers.delete(id);
       }
-      child?.kill('SIGTERM');
+      killProcessGroup(child, 'SIGTERM');
       // 'close' handler will clean up the process map and pump the queue
       return true;
     }
@@ -223,6 +264,13 @@ export class DownloadQueue extends EventEmitter {
       clearTimeout(timer);
     }
     this.retryTimers.clear();
+    for (const watchdog of this.watchdogs.values()) {
+      clearInterval(watchdog.interval);
+      clearTimeout(watchdog.maxTimer);
+    }
+    this.watchdogs.clear();
+    this.lastOutputAt.clear();
+    this.hungJobs.clear();
     this.attempts.clear();
     this.jobs.clear();
     this.processes.clear();
@@ -240,9 +288,9 @@ export class DownloadQueue extends EventEmitter {
     }
   }
 
-  private findActive(folderPath: string, videoId: string, type: JobType): QueueJob | undefined {
+  private findActive(folderPath: string, videoId: string): QueueJob | undefined {
     for (const job of this.jobs.values()) {
-      if (isActive(job) && job.folderPath === folderPath && job.videoId === videoId && job.type === type) {
+      if (isActive(job) && job.folderPath === folderPath && job.videoId === videoId) {
         return job;
       }
     }
@@ -309,13 +357,17 @@ export class DownloadQueue extends EventEmitter {
 
     let child: SpawnedProcess;
     try {
-      child = this.spawnFn(this.ytDlpPath, buildYtDlpArgs(job), { cwd: job.folderPath });
+      // detached: the child leads its own process group, so a hang can be
+      // killed together with ffmpeg instead of leaving an orphan merge.
+      child = this.spawnFn(this.ytDlpPath, buildYtDlpArgs(job), { cwd: job.folderPath, detached: true });
     } catch (error) {
       this.finish(job, 'error', error instanceof Error ? error.message : String(error), null);
       return;
     }
     this.processes.set(job.id, child);
     this.attempts.set(job.id, (this.attempts.get(job.id) ?? 0) + 1);
+    this.lastOutputAt.set(job.id, Date.now());
+    this.armWatchdog(job);
 
     const onData = (chunk: Buffer | string) => this.appendLog(job, chunk.toString());
     child.stdout?.on('data', onData);
@@ -333,11 +385,74 @@ export class DownloadQueue extends EventEmitter {
   }
 
   /**
+   * Watchdog against hung yt-dlp processes: no output for `idleTimeoutMs`
+   * (a dead network path, a D-state I/O on an unplugged disk, a stuck ffmpeg
+   * merge) or a wall-clock overrun past `maxJobDurationMs` kills the whole
+   * process group. Without it a stall holds the folder's download slot and
+   * the global slot forever — SIGTERM alone cannot kill D-state processes.
+   */
+  private armWatchdog(job: QueueJob): void {
+    const interval = setInterval(
+      () => {
+        if (job.status !== 'running') {
+          return;
+        }
+        const lastOutput = this.lastOutputAt.get(job.id) ?? Date.now();
+        if (Date.now() - lastOutput > this.idleTimeoutMs) {
+          this.killHungJob(
+            job,
+            `No output for ${Math.round(this.idleTimeoutMs / 1000)}s — killing the hung yt-dlp process`,
+          );
+        }
+      },
+      Math.min(Math.floor(this.idleTimeoutMs / 4), 60_000),
+    );
+    interval.unref();
+    const maxTimer = setTimeout(() => {
+      if (job.status === 'running') {
+        this.killHungJob(
+          job,
+          `Job exceeded the ${Math.round(this.maxJobDurationMs / 60_000)}min limit — killing yt-dlp`,
+        );
+      }
+    }, this.maxJobDurationMs);
+    maxTimer.unref();
+    this.watchdogs.set(job.id, { interval, maxTimer });
+  }
+
+  /** SIGTERM the process group of a hung job, escalating to SIGKILL */
+  private killHungJob(job: QueueJob, reason: string): void {
+    this.appendLog(job, reason);
+    this.hungJobs.set(job.id, true);
+    const child = this.processes.get(job.id);
+    killProcessGroup(child, 'SIGTERM');
+    setTimeout(() => {
+      // Only if the same process is still around (the close handler has not run)
+      if (this.processes.get(job.id) === child) {
+        killProcessGroup(child, 'SIGKILL');
+      }
+    }, 5_000).unref();
+  }
+
+  private disarmWatchdog(jobId: string): void {
+    const watchdog = this.watchdogs.get(jobId);
+    if (watchdog) {
+      clearInterval(watchdog.interval);
+      clearTimeout(watchdog.maxTimer);
+      this.watchdogs.delete(jobId);
+    }
+    this.lastOutputAt.delete(jobId);
+  }
+
+  /**
    * Handle the process `close` of a job: success runs the post-job hook,
    * permanent failures fail right away, everything else is retried.
    */
   private onJobClose(job: QueueJob, code: number | null): void {
     this.processes.delete(job.id);
+    this.disarmWatchdog(job.id);
+    const hung = this.hungJobs.has(job.id);
+    this.hungJobs.delete(job.id);
     if (job.status !== 'running') {
       // Already cancelled or failed via 'error'. A cancelled download was
       // killed mid-write: sweep the temporary files yt-dlp left behind.
@@ -347,14 +462,21 @@ export class DownloadQueue extends EventEmitter {
       this.pump();
       return;
     }
+    if (hung) {
+      // The watchdog killed a stalled process: retry like any transient
+      // failure (yt-dlp resumes partial files with -c), bounded by attempts.
+      this.appendLog(job, 'yt-dlp process was killed by the watchdog');
+      this.retryOrFail(job, code);
+      return;
+    }
     if (code === 0) {
       // With -i, yt-dlp exits 0 even for extractor errors (members-only,
       // private, removed) — detect them from the log so such videos are
       // never marked as downloaded.
       const permanent = detectPermanentFailure(job.log);
       if (permanent) {
-        this.appendLog(job, permanent);
-        this.finish(job, 'error', permanent, code);
+        this.appendLog(job, permanent.description);
+        this.finish(job, 'error', permanent.code, code);
         return;
       }
       job.progress = 100;
@@ -362,28 +484,33 @@ export class DownloadQueue extends EventEmitter {
       return;
     }
 
-    // Videos that can never succeed (members-only, private, removed) skip
-    // the retry backoff entirely — waiting would only waste time.
+    // Videos that can never succeed (members-only, private, removed, full
+    // disk, geo-block, bot wall, age gate) skip the retry backoff entirely —
+    // waiting would only waste time.
     const permanent = detectPermanentFailure(job.log);
     if (permanent) {
-      this.appendLog(job, permanent);
-      this.finish(job, 'error', permanent, code);
+      this.appendLog(job, permanent.description);
+      this.finish(job, 'error', permanent.code, code);
       return;
     }
 
     this.retryOrFail(job, code);
   }
 
-  /** Retry a failed yt-dlp run with backoff, or fail when attempts run out */
+  /** Retry a failed yt-dlp run with jittered backoff, or fail when attempts run out */
   private retryOrFail(job: QueueJob, code: number | null): void {
     // YouTube throttles (429) and transient network failures are common:
-    // retry a few times with a backoff before declaring the job failed.
+    // retry a few times with a jittered exponential backoff before declaring
+    // the job failed. Full jitter keeps synchronized retry storms from
+    // hammering YouTube in lockstep.
     const attempts = this.attempts.get(job.id) ?? 1;
     if (attempts >= this.maxAttempts) {
       this.finish(job, 'error', `yt-dlp exited with code ${code} after ${attempts} attempts`, code);
       return;
     }
-    const delay = this.retryDelayMs;
+    const exponent = Math.min(attempts, 5);
+    const cap = this.retryDelayMs * 2 ** exponent;
+    const delay = Math.floor(Math.random() * cap);
     job.progress = 0;
     this.appendLog(
       job,
@@ -438,6 +565,7 @@ export class DownloadQueue extends EventEmitter {
   }
 
   private appendLog(job: QueueJob, text: string): void {
+    this.lastOutputAt.set(job.id, Date.now());
     const lines = text.split(/\r\n|\r|\n/).filter((line) => line.trim().length > 0);
     if (lines.length === 0) {
       return;

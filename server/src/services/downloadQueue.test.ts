@@ -672,13 +672,22 @@ describe('DownloadQueue', () => {
     expect(queue.get(job.id)).toMatchObject({
       status: 'error',
       exitCode: 0,
-      error: 'Video jest dostępne tylko dla członków kanału (members-only)',
+      error: 'members-only',
     });
     expect(afterJob).not.toHaveBeenCalled();
   });
 
   describe('retries', () => {
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+    const waitFor = async (condition: () => boolean): Promise<void> => {
+      for (let i = 0; i < 100; i += 1) {
+        if (condition()) {
+          return;
+        }
+        await sleep(5);
+      }
+      throw new Error('condition not met in time');
+    };
 
     let retryQueue: DownloadQueue;
     beforeEach(() => {
@@ -713,12 +722,10 @@ describe('DownloadQueue', () => {
 
       spawned(0).process.exit(1);
       await flush();
-      await sleep(15);
-      await flush();
+      await waitFor(() => spawn.calls.length === 2);
       spawned(1).process.exit(1);
       await flush();
-      await sleep(15);
-      await flush();
+      await waitFor(() => spawn.calls.length === 3);
       spawned(2).process.exit(1);
       await flush();
 
@@ -757,7 +764,7 @@ describe('DownloadQueue', () => {
       expect(retryQueue.get(job.id)).toMatchObject({
         status: 'error',
         exitCode: 1,
-        error: 'Video jest dostępne tylko dla członków kanału (members-only)',
+        error: 'members-only',
       });
     });
   });
@@ -786,14 +793,16 @@ describe('DownloadQueue', () => {
     expect(snapshot?.progress).toBe(45.5);
   });
 
-  it('does not duplicate an active job for the same folder/video/type', () => {
+  it('does not duplicate an active job for the same folder/video, even across types', () => {
     const first = at(queue.enqueue([request('a')]), 0);
     const second = at(queue.enqueue([request('a')]), 0);
+    // An update racing a download would overwrite the file the download is
+    // writing — the dedup spans job types on purpose.
     const update = at(queue.enqueue([request('a', { type: 'update', baseName: 'x' })]), 0);
 
     expect(second.id).toBe(first.id);
-    expect(update.id).not.toBe(first.id);
-    expect(queue.list()).toHaveLength(2);
+    expect(update.id).toBe(first.id);
+    expect(queue.list()).toHaveLength(1);
   });
 
   it('cancels a queued job without spawning it', () => {
@@ -819,11 +828,44 @@ describe('DownloadQueue', () => {
     expect(mockedRemovePartialDownloads).toHaveBeenCalledWith('/videos/channel-a');
   });
 
+  it('kills a hung job after the idle timeout and retries it as a transient failure', async () => {
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+    const waitFor = async (condition: () => boolean): Promise<void> => {
+      for (let i = 0; i < 100; i += 1) {
+        if (condition()) {
+          return;
+        }
+        await sleep(5);
+      }
+      throw new Error('condition not met in time');
+    };
+
+    const watchdogQueue = new DownloadQueue({
+      maxConcurrent: 1,
+      maxAttempts: 2,
+      retryDelayMs: 5,
+      idleTimeoutMs: 30,
+      spawnFn: spawn.spawnFn,
+      afterJob,
+    });
+    const job = at(watchdogQueue.enqueue([request('a')]), 0);
+
+    // No output ever arrives: the watchdog SIGTERMs the process group and
+    // the queue retries the job like any transient failure.
+    await waitFor(() => spawned().process.kill.mock.calls.some(([signal]) => signal === 'SIGTERM'));
+    await waitFor(() => spawn.calls.length === 2);
+    await flush();
+
+    expect(watchdogQueue.get(job.id)?.status).toBe('running');
+    expect(spawn.calls.length).toBe(2);
+    // The hung attempt must not have run the success hook
+    expect(afterJob).not.toHaveBeenCalled();
+  });
+
   it('returns false when cancelling an unknown or finished job', async () => {
     const job = at(queue.enqueue([request('a')]), 0);
     spawned().process.exit(1);
     await flush();
-
     expect(queue.cancel(job.id)).toBe(false);
     expect(queue.cancel('nope')).toBe(false);
   });

@@ -239,6 +239,15 @@
     "occurred": "Wystąpił błąd",
     "recreateStart": "Nie udało się rozpocząć odbudowy indeksów",
     "summary": "Nie udało się wygenerować streszczenia",
-    "unknown": "nieznany błąd"
+    "unknown": "nieznany błąd",
+    "job": {
+      "members-only": "Ten film jest dostępny tylko dla członków kanału (members-only)",
+      "private": "Ten film jest prywatny",
+      "removed": "Ten film został usunięty lub jest niedostępny",
+      "no-space": "Brak miejsca na dysku pobierania",
+      "geo-restricted": "Ten film nie jest dostępny w Twoim kraju",
+      "bot-wall": "YouTube żąda zalogowania (ściana antybotowa)",
+      "age-gate": "Ten film jest dla dorosłych i wymaga zalogowanej sesji"
+    }
   }
 }

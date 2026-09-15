@@ -10,6 +10,34 @@ export interface ChannelVideoRow extends ChannelVideo {
   lastUpdated?: string | undefined;
 }
 
+/**
+ * Machine-readable failure codes the server stores in `job.error`; the
+ * client translates them through the i18n catalogs. Anything else is shown
+ * verbatim (yt-dlp stderr tails).
+ */
+const FAILURE_MESSAGE_KEYS = {
+  'members-only': 'errors.job.members-only',
+  private: 'errors.job.private',
+  removed: 'errors.job.removed',
+  'no-space': 'errors.job.no-space',
+  'geo-restricted': 'errors.job.geo-restricted',
+  'bot-wall': 'errors.job.bot-wall',
+  'age-gate': 'errors.job.age-gate',
+} as const;
+
+/** Localized message for a job error, or null when there is nothing to show */
+function failureMessage(error: string | undefined, t: TFunction<'common', undefined>): string | null {
+  if (error === undefined || error.length === 0) {
+    return null;
+  }
+  // The keys exist in both catalogs (locales.test.ts enforces parity).
+  const key = FAILURE_MESSAGE_KEYS[error as keyof typeof FAILURE_MESSAGE_KEYS];
+  if (key !== undefined) {
+    return t(key);
+  }
+  return t('app.error', { message: error });
+}
+
 export interface VideoItemProps {
   video: ChannelVideoRow;
   isDownloaded: boolean;
@@ -188,7 +216,7 @@ export function VideoItemInner({ video, isDownloaded, job, onEnqueue, onCancel }
         <div className="download-output">
           {job.status === 'error' && (
             <div className="download-error">
-              <p>{t('app.error', { message: job.error || t('errors.unknown') })}</p>
+              <p>{failureMessage(job.error, t)}</p>
             </div>
           )}
           <div className="download-output-content" ref={outputRef}>
