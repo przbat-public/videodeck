@@ -316,3 +316,68 @@ test.describe('reported layout defects', () => {
     expect(violations, 'toolbar buttons narrower than the toolbar column').toEqual([]);
   });
 });
+
+test.describe('long unbroken content', () => {
+  const unbroken = 'z'.repeat(220);
+
+  test('an unbroken card title wraps instead of widening the page', async ({ page }) => {
+    await mockApi(page, {
+      search: () => ({ videos: [video('v1', unbroken), video('v2', 'Silnik krokowy')], totalCount: 2 }),
+    });
+    for (const width of [360, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/videos');
+      await page.locator('.video-card').first().waitFor();
+      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    }
+  });
+
+  test('an unbroken description wraps on the detail page', async ({ page }) => {
+    await mockApi(page, {
+      details: {
+        details: {
+          title: 'Szczegóły filmu',
+          description: 'opis'.repeat(400),
+          uploadDate: '20240615',
+          duration: '10:30',
+          viewCount: 1234,
+          likeCount: 56,
+          channelName: 'Kanał E2E',
+          comments: [],
+          commentCount: 0,
+          videoPath: 'hedgehogs.mp4',
+          thumbnailPath: 'hedgehogs.webp',
+          subtitles: [],
+          folderPath: '/videos/e2e',
+        },
+      },
+    });
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto('/video/deepE2e0001');
+    await page.locator('.video-detail-page').waitFor();
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+  });
+
+  test('an unbroken queue row title wraps on the status page', async ({ page }) => {
+    await mockApi(page, {
+      status: {
+        videosFolderPath: ['/videos/e2e'],
+        folderConfigs: { '/videos/e2e': { channelUrl: 'https://yt/@e2e', category: 'fpv' } },
+        downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
+        indexedFolders: ['/videos/e2e'],
+        listExists: { '/videos/e2e': true },
+        status: 'ok',
+      },
+      list: {
+        videos: [{ id: 'v1', title: unbroken, url: 'https://yt/v1' }],
+        downloadStatuses: {},
+        lastUpdatedDates: {},
+      },
+    });
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
+    await page.getByText(unbroken.slice(0, 40)).waitFor();
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+  });
+});
