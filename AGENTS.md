@@ -91,6 +91,8 @@ references to the real repo. Shared checklists live in
 
 - `humanizer` — prose rules and the AI-tell gate
 - `ui-design` — the DESIGN.md token, component and a11y checklist for UI work
+- `responsive-design` — responsive layout contract (breakpoints, touch
+  targets, hover rules) and the audit workflow with the static UX scanner
 - `test-driven-development` — RED → GREEN → REFACTOR on this repo's test commands
 - `code-review-and-quality` — five-axis PR review with severity labels
 - `debugging-and-error-recovery` — reproduce, localize, reduce, fix, guard

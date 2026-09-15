@@ -15,6 +15,7 @@
     "lint:fix": "biome check --write .",
     "lint:scripts": "tsc -p scripts/tsconfig.json",
     "test:scripts": "node --test scripts/*.test.mjs",
+    "ux:scan": "node scripts/web-ux-static-scan.mjs client/src",
     "knip": "knip",
     "lint:deps": "depcruise --config .dependency-cruiser.cjs server client chrome-extension shared test-infra",
     "format": "biome format --write .",

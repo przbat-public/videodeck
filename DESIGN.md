@@ -142,3 +142,33 @@ English, key parity enforced by `locales.test.ts`. Rules:
 Changing the design means changing tokens or components, never
 copy-pasting styles. If a component needs a color that has no token, add
 the token to `index.css` for both themes and mention it in this file.
+
+## 11. Responsive
+
+The client is mobile-first. Three breakpoints drive layout changes: 360px
+(small phone), 768px (tablet portrait) and 1024px (desktop). The current
+codebase implements the 768px one; the others are the contract for new
+work.
+
+- Every screen reflows at 360px without horizontal scrolling. Content
+  stacks into one column before it shrinks, and grids use a
+  `minmax(240px, 1fr)` floor or `1fr`.
+- Touch targets are at least 44x44px wherever a pointer can hit them.
+- Text inputs keep a 16px font size so iOS never auto-zooms on focus.
+- No affordance depends on hover alone. Anything revealed on `:hover`
+  also reveals on `:focus-visible`, or the affordance is decorative.
+- Fluid type sizes use `clamp()` between the 360px and 1400px bounds.
+  Fixed font sizes per breakpoint are the exception.
+- Media keeps its aspect ratio: the player uses `aspect-ratio: 16/9`,
+  thumbnails use percentage widths, nothing outgrows its container.
+- Dark mode must read as well as light mode at every breakpoint.
+- Long Polish titles and channel names truncate with ellipsis or wrap;
+  they never overflow a card or a queue row.
+- New breakpoints, a changed grid floor or a removed hover affordance are
+  a contract change: update this section and run the responsive-design
+  skill audit.
+
+The `.agents/skills/responsive-design` skill turns this section into a
+workflow. The static scanner (`pnpm run ux:scan`) flags hover-only
+reveals, removed focus outlines, buttons without a `type`, images without
+`alt` and non-semantic click targets as review signals.
