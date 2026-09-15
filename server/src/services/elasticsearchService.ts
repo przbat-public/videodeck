@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { estypes } from '@elastic/elasticsearch';
 import { Client } from '@elastic/elasticsearch';
-import type { SortOption, VideoListItem } from '@shared/api';
+import type { RecreateIndicesStatus, SortOption, VideoListItem } from '@shared/api';
 import { SEARCH_DEFAULT_PAGE_SIZE } from '@shared/schemas';
 import { ELASTICSEARCH_URL, getVideosFolderPaths } from '../config';
 import { logger } from '../utils/logger';
@@ -435,9 +435,59 @@ export async function deleteAllIndices(): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Index recreation status (single process-wide job)
+// ---------------------------------------------------------------------------
+
+const MAX_RECREATE_STATUS_ERRORS = 20;
+
+function idleRecreateStatus(): RecreateIndicesStatus {
+  return { running: false, foldersDone: 0, foldersTotal: 0, errors: [] };
+}
+
+let recreateStatus: RecreateIndicesStatus = idleRecreateStatus();
+
+export function getRecreateIndicesStatus(): RecreateIndicesStatus {
+  return { ...recreateStatus, errors: [...recreateStatus.errors] };
+}
+
+export function isRecreateIndicesRunning(): boolean {
+  return recreateStatus.running;
+}
+
+/**
+ * Replace every folder's Elasticsearch index with a fresh empty one (current
+ * mapping). Documents are lost — run a reindex afterwards. Per-folder failures
+ * are recorded in the process-wide status (visible via
+ * `getRecreateIndicesStatus()`) and do not stop the remaining folders.
+ */
 export async function recreateAllIndices(): Promise<void> {
-  for (const folderPath of getVideosFolderPaths()) {
-    await recreateIndex(folderPath);
+  if (recreateStatus.running) {
+    throw new Error('Index recreation is already running');
+  }
+  const folderPaths = getVideosFolderPaths();
+  recreateStatus = {
+    ...idleRecreateStatus(),
+    running: true,
+    startedAt: new Date().toISOString(),
+    foldersTotal: folderPaths.length,
+  };
+  try {
+    for (const folderPath of folderPaths) {
+      try {
+        await recreateIndex(folderPath);
+      } catch (error) {
+        const message = `Folder ${folderPath}: ${error instanceof Error ? error.message : String(error)}`;
+        recreateStatus.lastError = message;
+        if (recreateStatus.errors.length < MAX_RECREATE_STATUS_ERRORS) {
+          recreateStatus.errors.push(message);
+        }
+      }
+      recreateStatus.foldersDone += 1;
+    }
+  } finally {
+    recreateStatus.running = false;
+    recreateStatus.finishedAt = new Date().toISOString();
   }
 }
 

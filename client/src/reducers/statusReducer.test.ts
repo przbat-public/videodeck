@@ -60,12 +60,6 @@ describe('statusReducer', () => {
     expect(state.error).toBe('HTTP 500');
   });
 
-  it('RESET goes back to the initial state', () => {
-    const state = statusReducer({ statusData, loading: false, error: 'boom' }, { type: StatusActionType.RESET });
-
-    expect(state).toEqual(initialState);
-  });
-
   it('returns the same state for an unknown action', () => {
     const current = { statusData, loading: false, error: null };
     const state = statusReducer(current, { type: 'NOPE' } as unknown as StatusAction);

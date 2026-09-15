@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Download queue persists active jobs across server restarts (jobs resume as
   queued after reboot; paused state is kept) and graceful shutdown now waits
   for yt-dlp children to stop and closes open SSE streams before exiting
+- Index rebuild ("Odbuduj indeksy") now tracks the background job to
+  completion with a progress toast instead of reporting done immediately;
+  a rebuild that is already running is joined, and failures surface the
+  server-side error
+
+### Fixed
+
+- `GET /api/videos/recreateIndices/status` reports the real state of the
+  index rebuild; per-folder failures no longer abort the remaining folders
+- Removed dead client reducer code (unused `RESET` actions, `video` state
+  field) and switched the remaining hand-cast API responses to zod parsing
 
 
 ## [1.0.0] - 2026-09-14

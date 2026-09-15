@@ -28,7 +28,7 @@ export function useStatus(): UseStatusResult {
         if (!response.ok) {
           throw new Error(i18n.t('errors.fetchStatus'));
         }
-        const data = StatusResponseSchema.parse(await response.json()) as StatusData;
+        const data = StatusResponseSchema.parse(await response.json());
         dispatch({ type: StatusActionType.FETCH_SUCCESS, payload: data });
       } catch (err) {
         if (controller.signal.aborted) {

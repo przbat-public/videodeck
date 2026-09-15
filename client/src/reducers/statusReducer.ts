@@ -13,15 +13,13 @@ export const StatusActionType = {
   FETCH_START: 'FETCH_START',
   FETCH_SUCCESS: 'FETCH_SUCCESS',
   FETCH_ERROR: 'FETCH_ERROR',
-  RESET: 'RESET',
 } as const;
 export type StatusActionType = (typeof StatusActionType)[keyof typeof StatusActionType];
 
 export type StatusAction =
   | { type: 'FETCH_START' }
   | { type: 'FETCH_SUCCESS'; payload: StatusData }
-  | { type: 'FETCH_ERROR'; payload: string }
-  | { type: 'RESET' };
+  | { type: 'FETCH_ERROR'; payload: string };
 
 export const initialState: StatusState = {
   statusData: null,
@@ -50,8 +48,6 @@ export function statusReducer(state: StatusState, action: StatusAction): StatusS
         error: action.payload,
         loading: false,
       };
-    case StatusActionType.RESET:
-      return initialState;
     default:
       return state;
   }

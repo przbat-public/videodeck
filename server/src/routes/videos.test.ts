@@ -4,6 +4,7 @@ import type { CommentWithReplies, ReindexStatus, VideoComment, VideoListItem } f
 import {
   ChannelsResponseSchema,
   CommentsResponseSchema,
+  RecreateIndicesStatusSchema,
   ReindexStatusSchema,
   SearchResponseSchema,
   VideoDetailsResponseSchema,
@@ -14,9 +15,11 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { loadCommentTree } from '../services/commentStore';
 import {
+  getRecreateIndicesStatus,
   getVideoByBaseName,
   getVideoByFilePath,
   getVideoByVideoId,
+  isRecreateIndicesRunning,
   listChannelNames,
   recreateAllIndices,
 } from '../services/elasticsearchService';
@@ -55,6 +58,8 @@ const mockedRefreshVideosCache = refreshVideosCache as jest.MockedFunction<typeo
 const mockedGetReindexStatus = getReindexStatus as jest.MockedFunction<typeof getReindexStatus>;
 const mockedIsReindexRunning = isReindexRunning as jest.MockedFunction<typeof isReindexRunning>;
 const mockedRecreateAllIndices = recreateAllIndices as jest.MockedFunction<typeof recreateAllIndices>;
+const mockedIsRecreateIndicesRunning = isRecreateIndicesRunning as jest.MockedFunction<typeof isRecreateIndicesRunning>;
+const mockedGetRecreateIndicesStatus = getRecreateIndicesStatus as jest.MockedFunction<typeof getRecreateIndicesStatus>;
 const mockedGetVideoByBaseName = getVideoByBaseName as jest.MockedFunction<typeof getVideoByBaseName>;
 const mockedGetVideoByVideoId = getVideoByVideoId as jest.MockedFunction<typeof getVideoByVideoId>;
 const mockedGetVideoByFilePath = getVideoByFilePath as jest.MockedFunction<typeof getVideoByFilePath>;
@@ -455,6 +460,38 @@ describe('videos router', () => {
         expect.stringContaining('Error recreating indices in background:'),
         error,
       );
+    });
+
+    it('should return 409 when a recreation is already running', async () => {
+      mockedIsRecreateIndicesRunning.mockReturnValue(true);
+
+      const response = await request(app).post('/api/videos/recreateIndices');
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({
+        error: 'Index recreation already running',
+        message: 'Index recreation is already in progress',
+      });
+      expect(mockedRecreateAllIndices).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /api/videos/recreateIndices/status', () => {
+    it('should return the current recreation status', async () => {
+      const status = {
+        running: false,
+        startedAt: '2025-01-01T10:00:00.000Z',
+        finishedAt: '2025-01-01T10:01:00.000Z',
+        foldersDone: 2,
+        foldersTotal: 2,
+        errors: [],
+      };
+      mockedGetRecreateIndicesStatus.mockReturnValue(status);
+
+      const response = await request(app).get('/api/videos/recreateIndices/status');
+
+      expect(response.status).toBe(200);
+      expect(RecreateIndicesStatusSchema.parse(response.body)).toEqual(status);
     });
   });
 

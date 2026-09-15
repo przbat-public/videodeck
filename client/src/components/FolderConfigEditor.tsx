@@ -1,4 +1,5 @@
-import type { ApiError, DownloadOptions, FolderConfig, SaveFolderConfigResponse } from '@shared/api';
+import type { DownloadOptions, FolderConfig } from '@shared/api';
+import { ApiErrorSchema, SaveFolderConfigResponseSchema } from '@shared/schemas';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FormState } from '../utils/folderConfigForm';
@@ -62,11 +63,11 @@ export function FolderConfigEditor({
       });
 
       if (!response.ok) {
-        const errorData: ApiError = await response.json();
-        throw new Error(errorData.message || errorData.error || 'Failed to save config');
+        const parsed = ApiErrorSchema.safeParse(await response.json().catch(() => null));
+        throw new Error(parsed.success ? (parsed.data.message ?? parsed.data.error) : 'Failed to save config');
       }
 
-      const result: SaveFolderConfigResponse = await response.json();
+      const result = SaveFolderConfigResponseSchema.parse(await response.json());
       setConfig(result.config);
       onConfigUpdate(folderPath, result.config);
       setIsEditing(false);

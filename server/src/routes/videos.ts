@@ -7,6 +7,7 @@ import type {
   ChannelsResponse,
   CommentsResponse,
   CommentWithReplies,
+  RecreateIndicesStatus,
   ReindexConflictResponse,
   ReindexStatus,
   SearchResponse,
@@ -24,9 +25,11 @@ import { getVideosFolderPaths } from '../config';
 import { loadCommentTree } from '../services/commentStore';
 import type { SearchOptions } from '../services/elasticsearchService';
 import {
+  getRecreateIndicesStatus,
   getVideoByBaseName,
   getVideoByFilePath,
   getVideoByVideoId,
+  isRecreateIndicesRunning,
   listChannelNames,
   recreateAllIndices,
   SEARCH_DEFAULT_LIMIT,
@@ -233,11 +236,24 @@ const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictRes
   });
 };
 
+// GET /api/videos/recreateIndices/status - Progress of the running/last index recreation
+const getRecreateIndicesStatusHandler: RouteHandler<NoParams, RecreateIndicesStatus> = (_req, res) => {
+  res.json(getRecreateIndicesStatus());
+};
+
 // POST /api/videos/recreateIndices - Recreate all Elasticsearch indices
-const recreateIndices: RouteHandler<NoParams, AcceptedResponse> = (_req, res) => {
+const recreateIndices: RouteHandler<NoParams, AcceptedResponse | ApiError> = (_req, res) => {
+  if (isRecreateIndicesRunning()) {
+    res.status(409).json({
+      error: 'Index recreation already running',
+      message: 'Index recreation is already in progress',
+    });
+    return;
+  }
   logger.info('Recreate indices requested...');
 
-  // Start the recreate process asynchronously (fire and forget)
+  // Start the recreate process asynchronously (fire and forget); the client
+  // polls /api/videos/recreateIndices/status until it finishes.
   recreateAllIndices().catch((error: unknown) => {
     logger.error('Error recreating indices in background:', error);
   });
@@ -529,6 +545,7 @@ const router = express.Router();
 
 router.get('/refreshCache/status', getRefreshStatus);
 router.post('/refreshCache', startRefresh);
+router.get('/recreateIndices/status', getRecreateIndicesStatusHandler);
 router.post('/recreateIndices', recreateIndices);
 router.get('/search', search);
 router.get('/categories', getCategories);
