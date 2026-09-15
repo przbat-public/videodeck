@@ -6,7 +6,7 @@ test('stripJsonComments removes line and block comments, keeps strings', () => {
   const source = [
     '{',
     '  // line comment',
-    '  "paths": { "@shared/*": ["../shared/*"] }, // trailing',
+    '  "paths": { "@fixture/*": ["../fixture/*"] }, // trailing',
     '  /* block',
     '     comment */ "strict": true',
     '}',
@@ -16,9 +16,9 @@ test('stripJsonComments removes line and block comments, keeps strings', () => {
 
   assert.ok(!stripped.includes('line comment'));
   assert.ok(!stripped.includes('block'));
-  assert.ok(stripped.includes('"@shared/*"'));
+  assert.ok(stripped.includes('"@fixture/*"'));
   // still valid JSON
-  assert.deepEqual(JSON.parse(stripped), { paths: { '@shared/*': ['../shared/*'] }, strict: true });
+  assert.deepEqual(JSON.parse(stripped), { paths: { '@fixture/*': ['../fixture/*'] }, strict: true });
 });
 
 test('reports weakened and missing flags', () => {
