@@ -120,7 +120,8 @@
       "!**/*.html",
       "!chrome-extension/*.js",
       "!**/.queue-state.json",
-      "!scripts/humanizer/**"
+      "!scripts/humanizer/**",
+      "!.agents/skills/archify/**"
     ]
   }
 }

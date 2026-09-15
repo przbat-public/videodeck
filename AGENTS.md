@@ -99,6 +99,7 @@ live in `.agents/references/`.
 - `ci-cd-and-automation` — the CI checks and the shift-left gate
 - `shipping-and-launch` — release and rollback checklists
 - `deprecation-and-migration` — code as liability, holds and zombie removal
+- `archify` — validated architecture diagrams in docs/architecture/
 - `using-agent-skills` — routes incoming work to the right skill
 
 Review personas live in `.agents/personas/` (code reviewer, test engineer,
