@@ -2,11 +2,12 @@ import dotenv from 'dotenv';
 import { createApp } from './app';
 import { getApiToken, getHost } from './config';
 import { validateEnv } from './env';
-import { downloadQueue } from './services/downloadQueue';
+import { downloadQueue, restoreQueueState } from './services/downloadQueue';
 import { sweepOrphanIndexVersions, warnOnLegacyMappings } from './services/elasticsearchService';
 import { getYtDlpVersion } from './services/ytdlp';
 import { installShutdownHandlers } from './shutdown';
 import { logger } from './utils/logger';
+import { closeAllSseStreams } from './utils/sseRegistry';
 import { validateVideosFolder } from './utils/videoPathUtils';
 
 dotenv.config();
@@ -21,6 +22,13 @@ async function startServer() {
   try {
     await validateVideosFolder();
     logger.info('Videos folder(s) validated');
+
+    // Re-enqueue jobs persisted by a previous run (reboot recovery).
+    const restored = await restoreQueueState();
+    if (restored > 0) {
+      logger.info(`Restored ${restored} queued job(s) from the previous run`);
+    }
+
     logger.info('Server ready. Use GET /api/videos/refreshCache to index videos.');
 
     // YouTube changes break old yt-dlp releases regularly — the version in the
@@ -54,10 +62,13 @@ async function startServer() {
       /* logged inside */
     });
 
-    // Ctrl+C / docker stop: cancel yt-dlp jobs and close cleanly
+    // Ctrl+C / docker stop: cancel yt-dlp jobs, end SSE streams and close
+    // cleanly once the killed children are gone.
     installShutdownHandlers({
       server,
       cancelJobs: () => downloadQueue.cancelAll(),
+      awaitIdle: (timeoutMs) => downloadQueue.waitForIdle(timeoutMs),
+      closeSseStreams: closeAllSseStreams,
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

@@ -29,6 +29,7 @@ import {
 } from '../services/folderConfig';
 import { findEntryByVideoId, getDownloadStatuses, loadIndex, rebuildIndex } from '../services/folderIndex';
 import { at } from '../test-utils';
+import { activeSseStreamCount } from '../utils/sseRegistry';
 
 jest.mock('node:fs/promises');
 jest.mock('node:child_process');
@@ -857,6 +858,7 @@ describe('folder router', () => {
         type: 'downloadComplete',
         message: 'Download completed successfully',
       });
+      expect(activeSseStreamCount()).toBe(0);
     });
 
     it('strips playlist context from the URL before enqueueing', async () => {

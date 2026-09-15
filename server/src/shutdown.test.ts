@@ -41,6 +41,41 @@ describe('shutdown', () => {
 
     expect(exit).toHaveBeenCalledWith(1);
   });
+
+  it('ends open SSE streams before closing the server', () => {
+    const closeSseStreams = jest.fn();
+    const exit = jest.fn();
+    const close = jest.fn((callback?: () => void) => callback?.());
+
+    shutdown({ server: { close }, cancelJobs: jest.fn(), exit, closeSseStreams });
+
+    expect(closeSseStreams).toHaveBeenCalled();
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+
+  it('waits for the download queue to drain before closing the server', async () => {
+    const cancelJobs = jest.fn();
+    const exit = jest.fn();
+    const close = jest.fn((callback?: () => void) => callback?.());
+    let releaseIdle: (() => void) | undefined;
+    const awaitIdle = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseIdle = resolve;
+        }),
+    );
+
+    shutdown({ server: { close }, cancelJobs, exit, awaitIdle, forceExitMs: 1000 });
+
+    expect(cancelJobs).toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+
+    releaseIdle?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(close).toHaveBeenCalled();
+    expect(exit).toHaveBeenCalledWith(0);
+  });
 });
 
 describe('installShutdownHandlers', () => {

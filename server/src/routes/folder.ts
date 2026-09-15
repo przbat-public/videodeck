@@ -44,6 +44,7 @@ import { buildPlaylistArgs, runYtDlp } from '../services/ytdlp';
 import { writeJsonAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/objectUtils';
+import { registerSseStream } from '../utils/sseRegistry';
 import { normalizeFolderPath } from '../utils/videoPathUtils';
 import type { NoParams, RouteHandler } from './http';
 import { errnoCode, readBody, readString, sendError } from './http';
@@ -619,6 +620,10 @@ function streamJobProgress(
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
+  // Track the stream so graceful shutdown can end it and let server.close()
+  // finish instead of waiting on the keep-alive connection.
+  const unregister = registerSseStream(res);
+
   // Every event is validated against the shared contract before it reaches
   // the wire: a malformed event would corrupt the client's stream parser.
   const sendEvent = (event: DownloadVideoEvent) => {
@@ -650,6 +655,7 @@ function streamJobProgress(
     }
     finished = true;
     clearInterval(heartbeat);
+    unregister();
     queue.off('job', onJob);
     sendEvent(
       snapshot.status === 'done'
@@ -688,6 +694,7 @@ function streamJobProgress(
   req.on('close', () => {
     finished = true;
     clearInterval(heartbeat);
+    unregister();
     queue.off('job', onJob);
   });
 }
