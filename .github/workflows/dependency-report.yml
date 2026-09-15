@@ -29,9 +29,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # Match by title prefix: any other open issue carrying the
+          # `dependencies` label must not be overwritten.
           NUMBER="$(gh issue list --repo "$GITHUB_REPOSITORY" \
-            --label dependencies --state open --json number \
-            --jq '.[0].number // empty')"
+            --label dependencies --state open --search 'Dependency report in:title' \
+            --json number --jq '.[0].number // empty')"
           TITLE="Dependency report $(date +%Y-%m-%d)"
           if [ -z "$NUMBER" ]; then
             gh issue create --repo "$GITHUB_REPOSITORY" \

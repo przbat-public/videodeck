@@ -91,7 +91,8 @@ Powinieneś zobaczyć odpowiedź JSON z informacjami o Elasticsearch.
 
 3. Skonfiguruj zmienne środowiskowe:
 
-Utwórz plik `.env` w głównym katalogu projektu:
+Utwórz plik `server/.env` (serwer wczytuje go ze swojego katalogu —
+`dotenv.config()` działa z cwd=`server/`; `.env` w katalogu głównym jest ignorowany):
 
 ```bash
 VIDEOS_FOLDER_PATH=/ścieżka/do/folderu/z/filmami

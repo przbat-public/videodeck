@@ -106,7 +106,8 @@ You should see a JSON response with information about Elasticsearch.
 
 3. Configure environment variables:
 
-Create a `.env` file in the project root:
+Create a `server/.env` file (the server loads it from its own directory —
+`dotenv.config()` runs with cwd=`server/`; a root-level `.env` is ignored):
 
 ```bash
 VIDEOS_FOLDER_PATH=/path/to/videos/folder

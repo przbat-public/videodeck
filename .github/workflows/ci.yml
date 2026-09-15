@@ -70,6 +70,21 @@ jobs:
       - run: npm ci
       - run: npm run format:check
 
+  audit:
+    name: npm audit (moderate+)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # audit reads the committed lockfiles; no install needed
+      - run: npm audit --audit-level=moderate
+      - run: npm audit --prefix server --audit-level=moderate
+      - run: npm audit --prefix client --audit-level=moderate
+      - run: npm audit --prefix chrome-extension --audit-level=moderate
+
   typecheck:
     name: Typecheck (server + client + extension)
     runs-on: ubuntu-latest
