@@ -6,6 +6,7 @@ import type {
   CategoriesResponse,
   ChannelsResponse,
   CommentsResponse,
+  CommentWithReplies,
   ReindexConflictResponse,
   ReindexStatus,
   SearchResponse,
@@ -456,7 +457,20 @@ const getDetails: RouteHandler<{ identifier: string }, VideoDetailsResponse> = a
     ];
   }
 
-  const details = stripUndefined<VideoDetails>({
+  const details = buildDetails(infoJson, video, comments, commentCount, subtitles);
+
+  res.json({ details });
+};
+
+/** The details payload assembled from info.json + the indexed video item */
+function buildDetails(
+  infoJson: VideoInfoJson,
+  video: VideoListItem,
+  comments: CommentWithReplies[],
+  commentCount: number,
+  subtitles: SubtitleTrack[],
+): VideoDetails {
+  return stripUndefined<VideoDetails>({
     title: firstTruthy(infoJson.title, infoJson.fulltitle) ?? '',
     description: firstTruthy(infoJson.description, infoJson.title, infoJson.fulltitle) ?? '',
     uploadDate: firstTruthy(infoJson.upload_date) ?? '',
@@ -466,15 +480,13 @@ const getDetails: RouteHandler<{ identifier: string }, VideoDetailsResponse> = a
     channelName: firstTruthy(infoJson.channel, infoJson.uploader) ?? '',
     comments,
     commentCount,
-    videoPath: video.videoPath,
+    videoPath: video.videoPath ?? '',
     thumbnailPath: video.thumbnailPath,
     subtitlePath: video.subtitlePath,
     subtitles,
     folderPath: video.folderPath,
   });
-
-  res.json({ details });
-};
+}
 
 // GET /api/videos/:identifier/comments?offset=&limit= - one page of the
 // comment tree; the same mtime-keyed cache as the details endpoint serves it

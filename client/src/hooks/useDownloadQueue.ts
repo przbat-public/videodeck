@@ -6,6 +6,8 @@ import i18n from '../i18n';
 export interface UseDownloadQueueOptions {
   /** Poll interval while jobs are active (ms) */
   pollIntervalMs?: number;
+  /** When false the hook does not fetch until enabled again (default true) */
+  enabled?: boolean;
   /** Called once for every job the first time it is seen as finished */
   onJobFinished?: (job: QueueJob) => void;
   /** Called when the queue goes from having active jobs to being idle */
@@ -22,7 +24,7 @@ const DEFAULT_POLL_MS = 1500;
  * is queued/running, and exposes enqueue/cancel helpers.
  */
 export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOptions = {}) {
-  const { pollIntervalMs = DEFAULT_POLL_MS, onJobFinished, onQueueDrained } = options;
+  const { pollIntervalMs = DEFAULT_POLL_MS, onJobFinished, onQueueDrained, enabled = true } = options;
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,24 +116,30 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
     setJobs([]);
   }
 
-  // Load the current state
+  // Load the current state (skipped while disabled — folders without a
+  // list.json have no queue worth polling)
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (enabled) {
+      void refresh();
+    }
+  }, [refresh, enabled]);
 
   const hasActive = useMemo(() => jobs.some(isActiveJob), [jobs]);
   const activeCount = useMemo(() => jobs.filter(isActiveJob).length, [jobs]);
 
-  // Poll only while something is queued or running
+  // Poll only while something is queued or running, and not while the tab
+  // is hidden (the browser throttles timers anyway — skip the work early).
   useEffect(() => {
-    if (!hasActive) {
+    if (!hasActive || !enabled) {
       return;
     }
     const timer = setInterval(() => {
-      void refresh();
+      if (document.visibilityState !== 'hidden') {
+        void refresh();
+      }
     }, pollIntervalMs);
     return () => clearInterval(timer);
-  }, [hasActive, pollIntervalMs, refresh]);
+  }, [hasActive, enabled, pollIntervalMs, refresh]);
 
   // Fire onJobFinished / onQueueDrained callbacks based on transitions
   useEffect(() => {

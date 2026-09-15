@@ -99,6 +99,7 @@ export function VideoListSection({
     cancel,
     jobsByVideoId,
   } = useDownloadQueue(folderPath, {
+    enabled: listExists,
     onJobFinished: handleJobFinished,
     onQueueDrained: handleQueueDrained,
   });

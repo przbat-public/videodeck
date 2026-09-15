@@ -240,9 +240,9 @@ describe('videoScanner', () => {
         likeCount: 12,
         channelName: 'Andrew Newton',
       });
-      expect(result.video.comments).toHaveLength(2);
-      expect(result.video.comments[0]).toMatchObject({ id: 'Ugx1comment1', parent: 'root' });
-      expect(result.video.comments[1]).toMatchObject({
+      expect(result.video.comments ?? []).toHaveLength(2);
+      expect(result.video.comments?.[0]).toMatchObject({ id: 'Ugx1comment1', parent: 'root' });
+      expect(result.video.comments?.[1]).toMatchObject({
         id: 'Ugx2comment2',
         parent: 'Ugx1comment1',
       });
