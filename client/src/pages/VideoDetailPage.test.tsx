@@ -80,6 +80,16 @@ describe('VideoDetailPage', () => {
     expect(player).toHaveAttribute('src', `/api/videos/file/hedgehogs.mp4?folder=${encodeURIComponent('/videos/a')}`);
   });
 
+  it('uses the downloaded thumbnail as the player poster', async () => {
+    renderPage();
+
+    const player = await screen.findByTestId('video-player');
+    expect(player).toHaveAttribute(
+      'poster',
+      `/api/videos/file/hedgehogs.webp?folder=${encodeURIComponent('/videos/a')}`,
+    );
+  });
+
   it('renders one subtitle track per file with the language from its name', async () => {
     installFetch({
       details: () =>

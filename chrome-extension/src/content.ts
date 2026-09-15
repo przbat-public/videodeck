@@ -178,9 +178,13 @@ function init(): void {
       lastVideoId = initialInfo.videoId;
     }
 
-    // Start observing DOM changes
+    // Observe the smallest stable subtree that holds the video title on
+    // YouTube (the watch page re-renders it during SPA navigation); anywhere
+    // else fall back to the whole body. Watching all of document.body would
+    // wake the debounced handler on every comment/live-chat mutation.
     if (document.body) {
-      observer.observe(document.body, {
+      const root = document.querySelector('ytd-watch-flexy') ?? document.body;
+      observer.observe(root, {
         childList: true,
         subtree: true,
       });

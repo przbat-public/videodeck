@@ -25,6 +25,8 @@
   },
   "search": {
     "placeholder": "Szukaj filmów po opisie...",
+    "queryLabel": "Fraza wyszukiwania",
+    "minLengthHint": "Wpisz co najmniej {{min}} znaki, aby wyszukać",
     "sort": "Sort",
     "category": "Kategoria",
     "allCategories": "Wszystkie kategorie",

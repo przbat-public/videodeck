@@ -153,8 +153,16 @@ export default function SearchBar({
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={t('search.placeholder')}
+        aria-label={t('search.queryLabel')}
         className="search-input"
       />
+      {/* 1–2 characters never commit (MIN_SEARCH_LENGTH) — say so instead of
+          silently ignoring the keystrokes */}
+      {text.trim().length > 0 && text.trim().length < MIN_SEARCH_LENGTH && (
+        <span className="search-hint" role="status">
+          {t('search.minLengthHint', { min: MIN_SEARCH_LENGTH })}
+        </span>
+      )}
       {categoryOptions.length > 0 && (
         <Select
           value={category}

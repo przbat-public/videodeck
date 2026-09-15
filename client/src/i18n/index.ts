@@ -34,4 +34,11 @@ i18n
     returnNull: false,
   });
 
+// Keep the document language in sync with the UI language (a11y: screen
+// readers announce the right voice), starting from the resolved value.
+document.documentElement.lang = i18n.language;
+i18n.on('languageChanged', (language) => {
+  document.documentElement.lang = language;
+});
+
 export default i18n;

@@ -25,6 +25,8 @@
   },
   "search": {
     "placeholder": "Search videos by description...",
+    "queryLabel": "Search phrase",
+    "minLengthHint": "Enter at least {{min}} characters to search",
     "sort": "Sort",
     "category": "Category",
     "allCategories": "All categories",

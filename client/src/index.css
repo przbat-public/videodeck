@@ -8,14 +8,14 @@
   --color-text: #333;
   --color-text-muted: #666;
   --color-border: #e0e0e0;
-  --color-primary: #667eea;
-  --color-primary-hover: #5568d3;
+  --color-primary: #5a5fd8; /* ≥4.5:1 on white (WCAG AA for button text) */
+  --color-primary-hover: #4b56c9;
   --color-success: #28a745;
   --color-success-hover: #218838;
   --color-danger: #dc3545;
   --color-info: #17a2b8;
   --color-info-hover: #138496;
-  --color-focus: #667eea;
+  --color-focus: #5a5fd8;
   --radius-card: 8px;
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.1);
   --shadow-card-hover: 0 8px 16px rgba(0, 0, 0, 0.15);
