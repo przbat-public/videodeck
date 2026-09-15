@@ -16,7 +16,7 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3001),
   HOST: z.string().min(1).default('127.0.0.1'),
   VIDEOS_FOLDER_PATH: z.string().min(1, 'VIDEOS_FOLDER_PATH must not be empty'),
-  ELASTICSEARCH_URL: z.string().url().default('http://localhost:9200'),
+  ELASTICSEARCH_URL: z.url().default('http://localhost:9200'),
   API_TOKEN: z.string().optional(),
   REQUIRE_API_TOKEN: z
     .enum(['true', 'false'])

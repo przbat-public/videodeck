@@ -71,7 +71,7 @@ export const CommentWithRepliesSchema: z.ZodType<CommentWithRepliesType> = z
     replies: z.array(z.lazy(() => CommentWithRepliesSchema)).optional(),
     reply_count: z.number().optional(),
   })
-  .passthrough();
+  .loose();
 
 export const VideoListItemSchema = z.object({
   baseName: z.string(),
@@ -201,7 +201,7 @@ export const FolderConfigSchema = z
     concurrentFragments: z.number().int().min(1).max(16).optional(),
     sponsorblockRemove: z.boolean().optional(),
   })
-  .passthrough();
+  .loose();
 
 export const StatusResponseSchema = z.object({
   videosFolderPath: z.array(z.string()),

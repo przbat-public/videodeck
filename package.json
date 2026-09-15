@@ -42,7 +42,7 @@
     "@commitlint/config-conventional": "^21.2.2",
     "@eslint-react/eslint-plugin": "^5.19.0",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.5.1",
+    "@types/node": "^22.20.2",
     "concurrently": "^10.0.5",
     "dependency-cruiser": "^18.3.1",
     "eslint": "^10.10.0",
@@ -56,7 +56,7 @@
     "lint-staged": "^17.5.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.0",
-    "zod": "^3.25.76"
+    "zod": "^4.6.5"
   },
   "private": true
 }
