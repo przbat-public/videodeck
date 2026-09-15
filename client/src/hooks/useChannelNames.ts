@@ -2,7 +2,7 @@ import { ChannelsResponseSchema } from '@videodeck/shared/schemas';
 import { useEffect, useState } from 'react';
 
 interface UseChannelNamesResult {
-  /** Distinct channel names from Elasticsearch, for the filter suggestions */
+  /** Distinct channel names from Elasticsearch, for the channel filter */
   channels: string[];
 }
 
