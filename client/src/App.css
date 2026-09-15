@@ -993,8 +993,8 @@
     min-height: 44px;
   }
 
-  .channel-input,
   .date-filter,
+  .channel-select,
   .sort-select,
   .category-select,
   .config-input,
@@ -1227,22 +1227,6 @@
 }
 
 /* Search bar filters: channel + date range */
-.channel-input {
-  padding: 0.72rem 1rem;
-  font-size: 1rem;
-  color: var(--color-text);
-  background: var(--color-surface);
-  border: 2px solid var(--color-border);
-  border-radius: 6px;
-  min-width: 160px;
-  transition: border-color 0.2s ease;
-}
-
-.channel-input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-}
-
 .date-filter {
   flex: 1 1 10rem;
   padding: 0.62rem 0.75rem;
@@ -1387,11 +1371,6 @@
   margin: 0;
   min-width: 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-/* Theme picker, in the top bar next to the language switcher */
-.theme-select {
-  max-width: 12rem;
 }
 
 .language-switcher-option {

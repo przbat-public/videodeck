@@ -162,7 +162,7 @@ test.describe('responsive contract', () => {
     await page.setViewportSize({ width: 360, height: 800 });
     await searchPage(page);
     const fontSizes = await page.evaluate(() =>
-      ['.channel-input', '.date-filter'].map((selector) => {
+      ['.channel-select', '.date-filter'].map((selector) => {
         const element = document.querySelector<HTMLElement>(selector);
         return element ? parseFloat(window.getComputedStyle(element).fontSize) : 0;
       }),
@@ -274,7 +274,7 @@ test.describe('reported layout defects', () => {
       document.documentElement.setAttribute('data-theme', 'dark');
     });
     const backgrounds = await page.evaluate(() =>
-      ['.search-input', '.channel-input', '.date-filter'].map((selector) => {
+      ['.search-input', '.channel-select', '.date-filter'].map((selector) => {
         const el = document.querySelector<HTMLElement>(selector);
         return el ? window.getComputedStyle(el).backgroundColor : 'missing';
       }),

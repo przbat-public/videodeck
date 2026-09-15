@@ -18,7 +18,7 @@ interface SearchBarProps {
   dateTo: string;
   /** Categories offered by the server; the filter hides when there is nothing to pick */
   categories?: string[];
-  /** Channel names offered by the server (datalist suggestions) */
+  /** Channel names offered by the server; the filter hides when there is nothing to pick */
   channels?: string[];
   onChange: (next: SearchState) => void;
 }
@@ -72,15 +72,6 @@ export default function SearchBar({
   // The debounced copies of what the user is typing (see useDebouncedValue);
   // the effects below commit them to `onChange` once the typing pauses.
   const debouncedText = useDebouncedValue(text, DEBOUNCE_DELAY);
-  const [channelText, setChannelText] = useState(channel);
-  const [seenChannel, setSeenChannel] = useState(channel);
-  if (channel !== seenChannel) {
-    setSeenChannel(channel);
-    if (channel !== channelText.trim()) {
-      setChannelText(channel);
-    }
-  }
-  const debouncedChannel = useDebouncedValue(channelText, DEBOUNCE_DELAY);
 
   // The effects commit only when the debounced value itself changed — the
   // ref guard stops external prop updates (deep links, history) from
@@ -105,33 +96,6 @@ export default function SearchBar({
     onChange({ query: trimmed, sort, category, channel, dateFrom, dateTo });
   }, [debouncedText, text, query, sort, category, channel, dateFrom, dateTo, onChange]);
 
-  // The channel filter would otherwise search on every keystroke; it commits
-  // with the same pause as the phrase (`channel` is the committed value).
-  const committedChannelRef = useRef(debouncedChannel);
-  useEffect(() => {
-    if (debouncedChannel === committedChannelRef.current) {
-      return;
-    }
-    // Same guard as the phrase: a pending timer means the debounced copy
-    // lags the input, and committing it would overwrite a newer state.
-    if (debouncedChannel !== channelText) {
-      return;
-    }
-    committedChannelRef.current = debouncedChannel;
-    const trimmed = debouncedChannel.trim();
-    if (trimmed === channel) {
-      return;
-    }
-    onChange({
-      query,
-      sort,
-      category,
-      channel: trimmed,
-      dateFrom,
-      dateTo,
-    });
-  }, [debouncedChannel, channelText, channel, query, sort, category, dateFrom, dateTo, onChange]);
-
   /**
    * Selects commit right away. A phrase still too short to search stays in
    * the input, and the commit keeps the query the results already show.
@@ -142,7 +106,7 @@ export default function SearchBar({
       query: isSearchable(trimmed) ? trimmed : query,
       sort,
       category,
-      channel: channelText.trim(),
+      channel,
       dateFrom,
       dateTo,
       ...patch,
@@ -172,6 +136,10 @@ export default function SearchBar({
     category.length > 0 && !categories.includes(category)
       ? [...categories, category] // a URL may name a category the list does not (yet) know
       : categories;
+  const channelOptions =
+    channel.length > 0 && !channels.includes(channel)
+      ? [...channels, channel] // a URL may name a channel the list does not (yet) know
+      : channels;
 
   return (
     <div className="search-bar">
@@ -213,23 +181,17 @@ export default function SearchBar({
           label: t(option.labelKey),
         }))}
       />
-      {channels.length > 0 && (
-        <>
-          <input
-            type="text"
-            list="channel-suggestions"
-            value={channelText}
-            onChange={(e) => setChannelText(e.target.value)}
-            placeholder={t('search.channelPlaceholder')}
-            className="channel-input"
-            aria-label={t('search.channel')}
-          />
-          <datalist id="channel-suggestions">
-            {channels.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
-        </>
+      {channelOptions.length > 0 && (
+        <Select
+          value={channel}
+          onChange={(value) => commitWith({ channel: value })}
+          className="channel-select"
+          aria-label={t('search.channel')}
+          items={[
+            { value: '', label: t('search.allChannels') },
+            ...channelOptions.map((name) => ({ value: name, label: name })),
+          ]}
+        />
       )}
       <input
         type="date"

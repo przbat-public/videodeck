@@ -23,7 +23,7 @@ test.describe('search page', () => {
     await expect(page.getByPlaceholder('Szukaj filmów po opisie...')).toHaveValue('motor');
     await expect(page.getByRole('combobox', { name: 'Sort' })).toContainText('Najwięcej wyświetleń');
     await expect(page.getByRole('combobox', { name: 'Kategoria' })).toContainText('fpv');
-    await expect(page.getByLabel('Kanał')).toHaveValue('Kanał E2E');
+    await expect(page.getByRole('combobox', { name: 'Kanał' })).toContainText('Kanał E2E');
     await expect(page.getByLabel('Od daty')).toHaveValue('2024-01-05');
     await expect(page.getByLabel('Do daty')).toHaveValue('2025-12-31');
     await expect(page.getByText('Silnik krokowy')).toBeVisible();

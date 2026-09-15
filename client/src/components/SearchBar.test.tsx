@@ -415,22 +415,17 @@ describe('SearchBar', () => {
   });
 
   describe('channel and date filters', () => {
-    it('hides the channel input when no channels are known', () => {
+    it('hides the channel select when no channels are known', () => {
       renderBar();
 
-      expect(screen.queryByLabelText('Kanał')).not.toBeInTheDocument();
+      expect(screen.queryByRole('combobox', { name: 'Kanał' })).not.toBeInTheDocument();
     });
 
-    it('commits a channel change after the typing pause, keeping the rest of the state', async () => {
+    it('commits a picked channel right away, keeping the rest of the state', () => {
       const { onChange } = renderBar({ query: 'robot' }, CATEGORIES, ['Jordan B Peterson']);
 
-      fireEvent.change(screen.getByLabelText('Kanał'), {
-        target: { value: 'Jordan B Peterson' },
-      });
-      await advance(299);
-      expect(onChange).not.toHaveBeenCalled();
+      pick(screen.getByRole('combobox', { name: 'Kanał' }), 'Jordan B Peterson');
 
-      await advance(1);
       expect(onChange).toHaveBeenCalledWith({
         query: 'robot',
         sort: 'date-desc',
@@ -441,19 +436,12 @@ describe('SearchBar', () => {
       });
     });
 
-    it('commits the final channel value only, after the typing pause', async () => {
-      const { onChange } = renderBar({}, CATEGORIES, ['Jordan B Peterson']);
-      const channelInput = screen.getByLabelText('Kanał');
+    it('offers an all-channels option that clears the filter', () => {
+      const { onChange } = renderBar({ channel: 'Jordan B Peterson' }, CATEGORIES, ['Jordan B Peterson']);
 
-      fireEvent.change(channelInput, { target: { value: 'J' } });
-      await advance(200);
-      fireEvent.change(channelInput, { target: { value: 'Jo' } });
-      await advance(200);
-      fireEvent.change(channelInput, { target: { value: 'Jordan' } });
-      await advance(300);
+      pick(screen.getByRole('combobox', { name: 'Kanał' }), 'Wszystkie kanały');
 
-      expect(onChange).toHaveBeenCalledTimes(1);
-      expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SEARCH_STATE, channel: 'Jordan' });
+      expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SEARCH_STATE, channel: '' });
     });
 
     it('commits well-formed dates and ignores incomplete ones', () => {

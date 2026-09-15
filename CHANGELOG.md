@@ -83,6 +83,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server integration suites on every PR: yt-dlp argument templates against
   an offline fake binary and the Elasticsearch suite against a real
   single-node cluster. Nothing is skipped on CI
+- The search bar channel filter is now the same select control as sort and
+  category, with an "All channels" option that clears the filter, and the
+  theme picker no longer carries its leftover width cap
 
 
 ## [1.0.0] - 2026-09-14
