@@ -83,7 +83,9 @@ Five shared primitives in `client/src/components/ui/`:
   white text), `danger`. Sizes: default and `small`. Disabled state at 60%
   opacity. Always a real `<button>`.
 - **Select** — Radix-based combobox styled like the inputs; used for sort,
-  category, theme. Options in a portal, checked option marked.
+  category, channel and theme. Options in a portal, checked option marked.
+  Keyboard focus draws an inset ring inside the list; mouse hover stays a
+  plain highlight.
 - **Checkbox** — custom 18px box with `--color-primary` check state and a
   visible focus ring.
 - **ErrorMessage** — page-level banner or `compact` inline form; role

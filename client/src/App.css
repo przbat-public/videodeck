@@ -1192,6 +1192,19 @@
   user-select: none;
 }
 
+/* Radix moves focus to the hovered option, so the global :focus-visible
+   ring (index.css) would paint over a plain hover, and the portal's
+   overflow clips the offset outline into stray top/bottom segments. Items
+   keep a ring only for genuine keyboard navigation, drawn inside the box
+   where nothing clips it. */
+.ui-select-item:focus-visible {
+  outline: none;
+}
+
+.ui-select-item:focus-visible:not(:hover) {
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
 .ui-select-item[data-highlighted] {
   background: var(--color-primary-soft);
   color: var(--color-text);

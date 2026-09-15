@@ -86,6 +86,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The search bar channel filter is now the same select control as sort and
   category, with an "All channels" option that clears the filter, and the
   theme picker no longer carries its leftover width cap
+- The select dropdowns no longer leak the keyboard focus ring into mouse
+  hover (Radix focuses the hovered option, and the portal clipped the
+  outline into stray top/bottom segments); keyboard navigation keeps a
+  visible ring, and native form controls like the date picker now follow
+  the dark theme
 
 
 ## [1.0.0] - 2026-09-14
