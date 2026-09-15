@@ -52,7 +52,14 @@ module.exports = {
     },
   ],
   options: {
-    doNotFollow: { path: 'node_modules' },
+    // Follow the workspace packages through their node_modules symlinks (the
+    // rules above must keep seeing the real graph); ignore everything else.
+    doNotFollow: { path: 'node_modules\\/(?!@videodeck\\/)' },
+    // Resolve the workspace packages through their package.json exports.
+    enhancedResolveOptions: {
+      exportsFields: ['exports'],
+      conditionNames: ['require', 'types', 'import', 'node', 'default'],
+    },
     // Generated/build output is never part of the dependency graph.
     exclude: ['(^|/)(dist|coverage|test-results)/'],
     // Resolve `@shared/*` via each package's tsconfig paths.

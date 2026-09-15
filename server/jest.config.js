@@ -26,11 +26,11 @@ module.exports = {
     },
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
-  // runtime imports from shared/ (progress, schemas) and the shared test
-  // infrastructure (fake ES, mock OpenAI, deep-server env)
+  // runtime imports from shared/ (progress, schemas); the test
+  // infrastructure resolves through the @videodeck/test-infra package
+  // exports (pnpm workspace symlink)
   moduleNameMapper: {
     '^@shared/(.*)$': '<rootDir>/../shared/$1',
-    '^@videodeck/test-infra/(.*)$': '<rootDir>/../test-infra/src/$1',
   },
   testTimeout: 10000,
   setupFiles: ['<rootDir>/src/test-env.ts'],

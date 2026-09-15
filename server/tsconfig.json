@@ -5,8 +5,7 @@
     "rootDir": "..",
     "outDir": "./dist",
     "paths": {
-      "@shared/*": ["../shared/*"],
-      "@videodeck/test-infra/*": ["../test-infra/src/*"]
+      "@shared/*": ["../shared/*"]
     },
     "types": ["node", "jest"],
     "esModuleInterop": true,

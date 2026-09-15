@@ -13,11 +13,9 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Types-only module shared with the server (see shared/api.ts)
+      // Types-only module shared with the server (see shared/api.ts);
+      // @videodeck/test-infra resolves through its package exports.
       '@shared': fileURLToPath(new URL('../shared', import.meta.url)),
-      // Shared test infrastructure imported in-process (pnpm workspace);
-      // the config file lives in client/, so one level up is the repo root
-      '@videodeck/test-infra': fileURLToPath(new URL('../test-infra/src', import.meta.url)),
     },
   },
   test: {
