@@ -35,7 +35,11 @@ Every change must pass, from the repo root:
 
 ```bash
 npm run format:check   # prettier
-npm run lint           # eslint --max-warnings 0
+npm run lint           # eslint --max-warnings 0 + hardcoded-Polish scan + tsconfig strictness check
+npm run lint:scripts   # tsc --noEmit over scripts/ (checkJs)
+npm run test:scripts   # node --test for the repository-invariant scripts
+npm run knip           # unused files, exports and dependencies
+npm run lint:deps      # dependency-cruiser: no cycles, no cross-app imports
 npm run typecheck      # server + client + extension
 npm test               # jest (server) + vitest (client, extension)
 cd client && npm run test:e2e   # Playwright (mocked API, needs no backend)
@@ -47,8 +51,10 @@ automatically.
 ## Conventions
 
 - **Commits**: [Conventional Commits](https://www.conventionalcommits.org/)
-  (`feat:`, `fix:`, `chore(tooling):`…) — enforced by commitlint. Keep subjects
-  in English or Polish, be consistent within a change.
+  (`feat:`, `fix:`, `chore(tooling):`…) — enforced by commitlint.
+  **All commit messages, PR titles/descriptions and code comments are written
+  in English.** Polish is reserved for user-facing UI strings only (via the
+  i18n catalogs).
 - **UI text** lives in i18n catalogs (`client/src/i18n/locales/`), Polish by
   default, with an English catalog; `client/src/i18n/locales.test.ts` enforces
   key parity between languages.

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreDependencies": ["zod"],
+  "rules": {
+    "files": "error",
+    "dependencies": "error",
+    "devDependencies": "error",
+    "unlisted": "error",
+    "unresolved": "error",
+    "duplicates": "error",
+    "exports": "off",
+    "types": "off",
+    "nsExports": "off",
+    "nsTypes": "off",
+    "enumMembers": "off"
+  },
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/**/*.mjs"],
+      "project": ["scripts/**/*.mjs"]
+    },
+    "server": {
+      "project": ["src/**/*.ts"],
+      "ignoreBinaries": ["yt-dlp"]
+    },
+    "client": {
+      "project": ["src/**/*.{ts,tsx}", "e2e/**/*.ts"]
+    },
+    "chrome-extension": {
+      "entry": ["src/content.ts", "src/popup.ts", "src/options.ts"],
+      "project": ["src/**/*.ts"]
+    }
+  }
+}

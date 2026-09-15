@@ -1,7 +1,7 @@
 import type { JSX, ReactNode } from 'react';
 
 interface ErrorMessageProps {
-  /** The error text (pages prefix it with "Błąd:" where they used to) */
+  /** The error text (pages prefix it with the localized "error:" label) */
   children: ReactNode;
   /** Compact inline form for forms and lists; full-width block otherwise */
   compact?: boolean;

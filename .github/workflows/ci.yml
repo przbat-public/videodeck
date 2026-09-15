@@ -25,7 +25,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -37,8 +37,18 @@ jobs:
             server/package-lock.json
             client/package-lock.json
             chrome-extension/package-lock.json
-      - run: npm ci
-      - run: npm run lint
+      # Root install matters: shared/*.ts resolves zod from the repo root.
+      # knip also needs each package's node_modules to verify dependency
+      # ownership, so install all four packages.
+      - run: npm run install:ci
+      - name: ESLint + repository invariants
+        run: npm run lint
+      - name: Script typecheck + tests
+        run: npm run lint:scripts && npm run test:scripts
+      - name: Dead code and unused dependencies
+        run: npm run knip
+      - name: Architecture boundaries
+        run: npm run lint:deps
 
   format:
     name: Format check
