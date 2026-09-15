@@ -1,12 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import {
-  buildConfig,
-  collectCategories,
-  parseExtraArgs,
-  parseSubLangs,
-  toFormState,
-} from './folderConfigForm';
 import type { DownloadOptions } from '@shared/api';
+import { describe, expect, it } from 'vitest';
+import { buildConfig, collectCategories, parseExtraArgs, parseSubLangs, toFormState } from './folderConfigForm';
 
 const defaults: DownloadOptions = { maxHeight: 2160, subLangs: ['en'], writeComments: true };
 
@@ -20,14 +14,8 @@ describe('parseSubLangs', () => {
 
 describe('parseExtraArgs', () => {
   it('splits on whitespace and drops empties', () => {
-    expect(parseExtraArgs('--cookies-from-browser chrome')).toEqual([
-      '--cookies-from-browser',
-      'chrome',
-    ]);
-    expect(parseExtraArgs('  --proxy http://127.0.0.1:8080  ')).toEqual([
-      '--proxy',
-      'http://127.0.0.1:8080',
-    ]);
+    expect(parseExtraArgs('--cookies-from-browser chrome')).toEqual(['--cookies-from-browser', 'chrome']);
+    expect(parseExtraArgs('  --proxy http://127.0.0.1:8080  ')).toEqual(['--proxy', 'http://127.0.0.1:8080']);
     expect(parseExtraArgs('')).toEqual([]);
   });
 });
@@ -62,8 +50,8 @@ describe('toFormState', () => {
           sponsorblockRemove: true,
           concurrentFragments: 4,
         },
-        defaults
-      )
+        defaults,
+      ),
     ).toEqual({
       channelUrl: 'https://yt/@a',
       category: 'fpv',
@@ -113,7 +101,7 @@ describe('buildConfig', () => {
         sponsorblockRemove: false,
         concurrentFragments: '',
       },
-      null
+      null,
     );
     expect(config).toEqual({
       writeComments: true,
@@ -136,7 +124,7 @@ describe('buildConfig', () => {
         sponsorblockRemove: false,
         concurrentFragments: '',
       },
-      null
+      null,
     );
     expect(config).toEqual({
       channelUrl: 'https://yt/@a',
@@ -163,7 +151,7 @@ describe('buildConfig', () => {
         sponsorblockRemove: true,
         concurrentFragments: '4',
       },
-      null
+      null,
     );
 
     expect(config).toEqual({
@@ -189,7 +177,7 @@ describe('buildConfig', () => {
         sponsorblockRemove: false,
         concurrentFragments: '',
       },
-      null
+      null,
     );
     expect(withArgs.extraArgs).toEqual(['--cookies-from-browser', 'chrome']);
 
@@ -206,7 +194,7 @@ describe('buildConfig', () => {
         sponsorblockRemove: false,
         concurrentFragments: '',
       },
-      { extraArgs: ['--proxy', 'http://p'] }
+      { extraArgs: ['--proxy', 'http://p'] },
     );
     expect(cleared).not.toHaveProperty('extraArgs');
   });
@@ -225,7 +213,7 @@ describe('buildConfig', () => {
         sponsorblockRemove: false,
         concurrentFragments: '',
       },
-      null
+      null,
     );
     expect(config.subLangs).toEqual([]);
   });
@@ -250,7 +238,7 @@ describe('buildConfig', () => {
         sponsorblockRemove: false,
         concurrentFragments: '',
       },
-      existing
+      existing,
     );
     expect(config).toEqual({
       custom: 'keep',
@@ -271,7 +259,7 @@ describe('collectCategories', () => {
         '/b': { category: 'fpv' },
         '/c': { channelUrl: 'https://yt/@a' },
         '/d': null,
-      })
+      }),
     ).toEqual(['fpv', 'psychology']);
   });
 
@@ -281,7 +269,7 @@ describe('collectCategories', () => {
         '/a': { category: ' FPV ' },
         '/b': { category: 'fpv' },
         '/c': { category: '   ' },
-      })
+      }),
     ).toEqual(['FPV']);
   });
 });

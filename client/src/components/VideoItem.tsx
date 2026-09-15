@@ -1,8 +1,9 @@
-import { memo, useEffect, useRef } from 'react';
-import type { JSX } from 'react';
-import { Link } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
 import type { ChannelVideo, JobType, QueueJob } from '@shared/api';
+import type { TFunction } from 'i18next';
+import type { JSX } from 'react';
+import { memo, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 
 /** A list.json entry plus the local "last updated" date from the folder index */
 export interface ChannelVideoRow extends ChannelVideo {
@@ -32,45 +33,133 @@ const formatLastUpdated = (dateString: string | undefined, locale: string): stri
   }).format(date);
 };
 
-export function VideoItemInner({
+/** Human-readable job status shown next to the row */
+function describeJob(job: QueueJob, t: TFunction): string {
+  const verb = job.type === 'update' ? t('queue.verbUpdate') : t('queue.verbDownload');
+  switch (job.status) {
+    case 'queued':
+      return t('queue.statusQueued', { verb });
+    case 'running':
+      return job.progress !== undefined && job.type === 'download'
+        ? t('queue.statusRunningProgress', { verb, progress: Math.round(job.progress) })
+        : t('queue.statusRunning', { verb });
+    case 'done':
+      return job.type === 'update' ? t('queue.statusUpdated') : t('queue.statusDownloaded');
+    case 'error':
+      return t('queue.statusError');
+    case 'cancelled':
+      return t('queue.statusCancelled');
+    default:
+      return '';
+  }
+}
+
+/**
+ * The append-only log has no line ids and lines can repeat verbatim, so the
+ * key is the content plus its occurrence count — stable while the tail only
+ * grows, and unique among siblings.
+ */
+const keyedLines = (lines: string[]): Array<{ line: string; key: string }> => {
+  const occurrences = new Map<string, number>();
+  return lines.map((line) => {
+    const occurrence = occurrences.get(line) ?? 0;
+    occurrences.set(line, occurrence + 1);
+    return { line, key: occurrence === 0 ? line : `${line}-${occurrence}` };
+  });
+};
+
+/** Pins the log to the bottom while a job is running and lines arrive */
+function scrollLogToBottom(output: HTMLDivElement | null, isRunning: boolean, jobLog: string[] | undefined): void {
+  if (isRunning && jobLog && output) {
+    output.scrollTop = output.scrollHeight;
+  }
+}
+
+interface VideoTitleProps {
+  video: ChannelVideoRow;
+  isDownloaded: boolean;
+  titleWithDate: string;
+}
+
+/** Downloaded rows link to the detail page, the rest to YouTube or plain text */
+function VideoTitle({ video, isDownloaded, titleWithDate }: VideoTitleProps): JSX.Element {
+  if (isDownloaded && video.id) {
+    return (
+      <Link to={`/video/${encodeURIComponent(video.id)}`} className="video-title-link">
+        {titleWithDate}
+      </Link>
+    );
+  }
+  if (video.url) {
+    return (
+      <a href={video.url} target="_blank" rel="noopener noreferrer" className="video-title-link">
+        {titleWithDate}
+      </a>
+    );
+  }
+  return <span className="video-title">{titleWithDate}</span>;
+}
+
+interface VideoItemActionsProps {
+  video: ChannelVideoRow;
+  job?: QueueJob | undefined;
+  isActive: boolean;
+  isDownloaded: boolean;
+  actionType: JobType;
+  onEnqueue: (video: ChannelVideoRow, type: JobType) => void;
+  onCancel: (jobId: string) => void;
+}
+
+/** Job status badge plus the enqueue/cancel button */
+function VideoItemActions({
   video,
-  isDownloaded,
   job,
+  isActive,
+  isDownloaded,
+  actionType,
   onEnqueue,
   onCancel,
-}: VideoItemProps): JSX.Element {
+}: VideoItemActionsProps): JSX.Element {
+  const { t } = useTranslation();
+  const actionLabel = isDownloaded ? t('app.update') : t('app.download');
+  return (
+    <div className="video-item-actions">
+      {job && (
+        <span className={`job-status job-status--${job.status}`} title={job.error}>
+          {describeJob(job, t)}
+        </span>
+      )}
+      {isActive ? (
+        <button className="cancel-job-button" onClick={() => job && onCancel(job.id)} type="button">
+          {t('app.cancel')}
+        </button>
+      ) : (
+        <button
+          className={isDownloaded ? 'update-video-button' : 'download-video-button'}
+          onClick={() => onEnqueue(video, actionType)}
+          disabled={!video.url}
+          title={video.url ? undefined : t('video.noUrl')}
+          type="button"
+        >
+          {actionLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function VideoItemInner({ video, isDownloaded, job, onEnqueue, onCancel }: VideoItemProps): JSX.Element {
   const { t, i18n } = useTranslation();
   const outputRef = useRef<HTMLDivElement>(null);
 
   const isActive = job?.status === 'queued' || job?.status === 'running';
   const isRunning = job?.status === 'running';
+  const jobLog = job?.log;
 
-  // Keep the log scrolled to the bottom
+  // Keep the log scrolled to the bottom while new lines arrive
   useEffect(() => {
-    if (isRunning && outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
-  }, [job?.log, isRunning]);
-
-  const describeJob = (job: QueueJob): string => {
-    const verb = job.type === 'update' ? t('queue.verbUpdate') : t('queue.verbDownload');
-    switch (job.status) {
-      case 'queued':
-        return t('queue.statusQueued', { verb });
-      case 'running':
-        return job.progress !== undefined && job.type === 'download'
-          ? t('queue.statusRunningProgress', { verb, progress: Math.round(job.progress) })
-          : t('queue.statusRunning', { verb });
-      case 'done':
-        return job.type === 'update' ? t('queue.statusUpdated') : t('queue.statusDownloaded');
-      case 'error':
-        return t('queue.statusError');
-      case 'cancelled':
-        return t('queue.statusCancelled');
-      default:
-        return '';
-    }
-  };
+    scrollLogToBottom(outputRef.current, isRunning, jobLog);
+  }, [jobLog, isRunning]);
 
   const videoTitle = video.title || t('video.noTitle');
   const lastUpdatedFormatted = formatLastUpdated(video.lastUpdated, i18n.language);
@@ -79,54 +168,21 @@ export function VideoItemInner({
     : videoTitle;
 
   const actionType: JobType = isDownloaded ? 'update' : 'download';
-  const actionLabel = isDownloaded ? t('app.update') : t('app.download');
   const showLog = job && (isRunning || job.status === 'error') && job.log.length > 0;
 
   return (
     <div className={`video-item${isActive ? ' video-item--active' : ''}`}>
       <div className="video-item-header">
-        {isDownloaded && video.id ? (
-          <Link to={`/video/${encodeURIComponent(video.id)}`} className="video-title-link">
-            {titleWithDate}
-          </Link>
-        ) : video.url ? (
-          <a
-            href={video.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="video-title-link"
-          >
-            {titleWithDate}
-          </a>
-        ) : (
-          <span className="video-title">{titleWithDate}</span>
-        )}
-        <div className="video-item-actions">
-          {job && (
-            <span className={`job-status job-status--${job.status}`} title={job.error}>
-              {describeJob(job)}
-            </span>
-          )}
-          {isActive ? (
-            <button
-              className="cancel-job-button"
-              onClick={() => job && onCancel(job.id)}
-              type="button"
-            >
-              {t('app.cancel')}
-            </button>
-          ) : (
-            <button
-              className={isDownloaded ? 'update-video-button' : 'download-video-button'}
-              onClick={() => onEnqueue(video, actionType)}
-              disabled={!video.url}
-              title={video.url ? undefined : t('video.noUrl')}
-              type="button"
-            >
-              {actionLabel}
-            </button>
-          )}
-        </div>
+        <VideoTitle video={video} isDownloaded={isDownloaded} titleWithDate={titleWithDate} />
+        <VideoItemActions
+          video={video}
+          job={job}
+          isActive={isActive}
+          isDownloaded={isDownloaded}
+          actionType={actionType}
+          onEnqueue={onEnqueue}
+          onCancel={onCancel}
+        />
       </div>
       {showLog && (
         <div className="download-output">
@@ -136,12 +192,8 @@ export function VideoItemInner({
             </div>
           )}
           <div className="download-output-content" ref={outputRef}>
-            {/* Log lines are a bounded append-only tail; order never changes,
-                so the position is a stable identity. Lines have no id of
-                their own and can repeat verbatim. */}
-            {job.log.map((line, index) => (
-              // eslint-disable-next-line @eslint-react/no-array-index-key
-              <div key={index} className="output-line">
+            {keyedLines(job.log).map(({ line, key }) => (
+              <div key={key} className="output-line">
                 {line}
               </div>
             ))}

@@ -1,6 +1,7 @@
-import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
+import { Component } from 'react';
 import i18n from '../i18n';
+import { logError } from '../utils/logError';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -39,7 +40,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
   };
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error('ErrorBoundary caught a render error:', error, info.componentStack);
+    logError({ message: 'ErrorBoundary caught a render error', error, componentStack: info.componentStack });
   }
 
   override render(): ReactNode {

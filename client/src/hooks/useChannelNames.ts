@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { ChannelsResponseSchema } from '@shared/schemas';
+import { useEffect, useState } from 'react';
 
 interface UseChannelNamesResult {
   /** Distinct channel names from Elasticsearch, for the filter suggestions */

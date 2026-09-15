@@ -46,36 +46,25 @@ export function VideoListHeader({
         {t('queue.videoListCount', { count: videosCount })}
         {notDownloadedCount > 0 && ` ${t('queue.notDownloaded', { count: notDownloadedCount })}`}
         {notUpdatedCount > 0 && ` ${t('queue.notUpdated', { count: notUpdatedCount })}`}
-        {downloadedCount > 0 &&
-          notDownloadedCount === 0 &&
-          notUpdatedCount === 0 &&
-          ` ${t('queue.allDownloaded')}`}
+        {downloadedCount > 0 && notDownloadedCount === 0 && notUpdatedCount === 0 && ` ${t('queue.allDownloaded')}`}
         {hasActive && (
-          <span className="queue-summary">
-            {t('queue.inProgress', { running: runningCount, queued: queuedCount })}
-          </span>
+          <span className="queue-summary">{t('queue.inProgress', { running: runningCount, queued: queuedCount })}</span>
         )}
       </p>
       <div className="videos-list-buttons">
         {notDownloadedCount > 0 && (
           <Button variant="primary" onClick={onDownloadAll}>
-            {armedBulk === 'download'
-              ? t('queue.confirmMany', { count: notDownloadedCount })
-              : t('queue.downloadAll')}
+            {armedBulk === 'download' ? t('queue.confirmMany', { count: notDownloadedCount }) : t('queue.downloadAll')}
           </Button>
         )}
         {notUpdatedCount > 0 && (
           <Button variant="primary" onClick={onUpdateOld}>
-            {armedBulk === 'update-old'
-              ? t('queue.confirmMany', { count: notUpdatedCount })
-              : t('queue.updateOld')}
+            {armedBulk === 'update-old' ? t('queue.confirmMany', { count: notUpdatedCount }) : t('queue.updateOld')}
           </Button>
         )}
         {downloadedCount > 0 && (
           <Button variant="primary" onClick={onUpdateAll}>
-            {armedBulk === 'update'
-              ? t('queue.confirmMany', { count: downloadedCount })
-              : t('queue.updateAll')}
+            {armedBulk === 'update' ? t('queue.confirmMany', { count: downloadedCount }) : t('queue.updateAll')}
           </Button>
         )}
         {hasActive && (

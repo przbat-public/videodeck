@@ -7,10 +7,7 @@ interface VideoSummaryProps {
   subtitlePath: string | undefined;
 }
 
-export default function VideoSummary({
-  baseName,
-  subtitlePath,
-}: VideoSummaryProps): JSX.Element | null {
+export default function VideoSummary({ baseName, subtitlePath }: VideoSummaryProps): JSX.Element | null {
   const { t } = useTranslation();
   const { state: summaryState } = useVideoSummary(baseName, subtitlePath);
 

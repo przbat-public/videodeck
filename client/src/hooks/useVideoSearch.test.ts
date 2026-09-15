@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { VideoListItem } from '@shared/api';
 import { renderHook, waitFor } from '@testing-library/react';
 import { act } from 'react';
-import type { VideoListItem } from '@shared/api';
-import type { SearchState } from '../utils/searchUrlState';
-import { installFetchMock, jsonResponse } from '../test/fetchMock';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
+import { installFetchMock, jsonResponse } from '../test/fetchMock';
 import { toast } from '../test/toastMock';
+import type { SearchState } from '../utils/searchUrlState';
 import { useVideoSearch } from './useVideoSearch';
 
 const fetchMock = installFetchMock();
@@ -60,21 +60,9 @@ describe('useVideoSearch', () => {
   describe('request URL', () => {
     it.each<[string, SearchState, string]>([
       ['the defaults', state(), '/api/videos/search?sort=date-desc&offset=0&limit=100'],
-      [
-        'a query',
-        state({ query: 'drone' }),
-        '/api/videos/search?q=drone&sort=date-desc&offset=0&limit=100',
-      ],
-      [
-        'a sort',
-        state({ sort: 'views-desc' }),
-        '/api/videos/search?sort=views-desc&offset=0&limit=100',
-      ],
-      [
-        'a category',
-        state({ category: 'fpv' }),
-        '/api/videos/search?sort=date-desc&category=fpv&offset=0&limit=100',
-      ],
+      ['a query', state({ query: 'drone' }), '/api/videos/search?q=drone&sort=date-desc&offset=0&limit=100'],
+      ['a sort', state({ sort: 'views-desc' }), '/api/videos/search?sort=views-desc&offset=0&limit=100'],
+      ['a category', state({ category: 'fpv' }), '/api/videos/search?sort=date-desc&category=fpv&offset=0&limit=100'],
       [
         'everything at once',
         state({ query: 'drone motor', sort: 'likes-asc', category: 'fpv' }),
@@ -146,10 +134,9 @@ describe('useVideoSearch', () => {
 
       expect(result.current.videos).toEqual([video('a'), video('b')]);
       expect(result.current.hasMore).toBe(true);
-      expect(fetchMock).toHaveBeenLastCalledWith(
-        '/api/videos/search?sort=date-desc&offset=1&limit=100',
-        { signal: expect.any(AbortSignal) }
-      );
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/videos/search?sort=date-desc&offset=1&limit=100', {
+        signal: expect.any(AbortSignal),
+      });
     });
 
     it('reports hasMore=false once everything is loaded', async () => {
@@ -173,7 +160,7 @@ describe('useVideoSearch', () => {
 
       expect(fetchMock).toHaveBeenLastCalledWith(
         '/api/videos/search?q=drone&sort=date-desc&category=fpv&offset=1&limit=100',
-        { signal: expect.any(AbortSignal) }
+        { signal: expect.any(AbortSignal) },
       );
     });
 

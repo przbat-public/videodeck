@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { Mock } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { act, useState } from 'react';
+import type { Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SearchState } from '../utils/searchUrlState';
 import { DEFAULT_SEARCH_STATE } from '../utils/searchUrlState';
 import SearchBar from './SearchBar';
@@ -23,8 +23,7 @@ const clearInput = () => fireEvent.change(input(), { target: { value: '' } });
 // the select interactions independent of timers too. Options live in a
 // portal and are found by role.
 const openSelect = (select: HTMLElement) => fireEvent.click(select);
-const optionLabels = () =>
-  screen.getAllByRole('option').map((option) => (option.textContent ?? '').replace('✓', ''));
+const optionLabels = () => screen.getAllByRole('option').map((option) => (option.textContent ?? '').replace('✓', ''));
 const pick = (select: HTMLElement, label: string) => {
   openSelect(select);
   fireEvent.click(screen.getByRole('option', { name: label }));
@@ -46,13 +45,11 @@ const flushTimers = async () => {
 function renderBar(
   state: Partial<SearchState> = {},
   categories: string[] = CATEGORIES,
-  channels: string[] = []
+  channels: string[] = [],
 ): { onChange: Mock<(next: SearchState) => void>; update: (patch: Partial<SearchState>) => void } {
   const onChange = vi.fn<(next: SearchState) => void>();
   let current: SearchState = { ...DEFAULT_SEARCH_STATE, ...state };
-  const element = () => (
-    <SearchBar {...current} categories={categories} channels={channels} onChange={onChange} />
-  );
+  const element = () => <SearchBar {...current} categories={categories} channels={channels} onChange={onChange} />;
   const { rerender } = render(element());
   return {
     onChange,
@@ -88,16 +85,10 @@ function Parent({
 
 function renderWithParent(
   state: Partial<SearchState> = {},
-  categories: string[] = CATEGORIES
+  categories: string[] = CATEGORIES,
 ): { onChange: Mock<(next: SearchState) => void> } {
   const onChange = vi.fn<(next: SearchState) => void>();
-  render(
-    <Parent
-      initial={{ ...DEFAULT_SEARCH_STATE, ...state }}
-      categories={categories}
-      onChange={onChange}
-    />
-  );
+  render(<Parent initial={{ ...DEFAULT_SEARCH_STATE, ...state }} categories={categories} onChange={onChange} />);
   return { onChange };
 }
 

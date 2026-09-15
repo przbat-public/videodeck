@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { installFetchMock } from '../test/fetchMock';
 import { act } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { installFetchMock } from '../test/fetchMock';
 import { useVideoDetail } from './useVideoDetail';
 
 const fetchMock = installFetchMock();
@@ -144,10 +144,9 @@ describe('useVideoDetail', () => {
       expect(result.current.state.loading).toBe(false);
     });
 
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/videos/video%20with%20spaces%20%26%20special%20chars/details',
-      { signal: expect.any(AbortSignal) }
-    );
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/videos/video%20with%20spaces%20%26%20special%20chars/details', {
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it('should refetch when baseName changes', async () => {
@@ -197,7 +196,7 @@ describe('useVideoDetail', () => {
       (props: { baseName: string | undefined }) => useVideoDetail(props.baseName),
       {
         initialProps: { baseName: 'video1' } as { baseName: string | undefined },
-      }
+      },
     );
 
     await waitFor(() => {
@@ -250,7 +249,7 @@ describe('useVideoDetail', () => {
       (props: { baseName: string | undefined }) => useVideoDetail(props.baseName),
       {
         initialProps: { baseName: undefined } as { baseName: string | undefined },
-      }
+      },
     );
 
     await waitFor(() => {
@@ -296,7 +295,7 @@ describe('useVideoDetail', () => {
       (props: { baseName: string | undefined }) => useVideoDetail(props.baseName),
       {
         initialProps: { baseName: 'test-video' } as { baseName: string | undefined },
-      }
+      },
     );
 
     await waitFor(() => {

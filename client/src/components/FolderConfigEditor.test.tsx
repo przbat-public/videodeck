@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { DownloadOptions, FolderConfig } from '@shared/api';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { FolderConfigEditor } from './FolderConfigEditor';
-import type { DownloadOptions, FolderConfig } from '@shared/api';
-import { installFetchMock } from '../test/fetchMock';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchMock } from '../test/fetchMock';
+import { installFetchMock } from '../test/fetchMock';
+import { FolderConfigEditor } from './FolderConfigEditor';
 
 const FOLDER = '/videos/channel-a';
 const defaults: DownloadOptions = { maxHeight: 2160, subLangs: ['en'], writeComments: true };
@@ -18,7 +18,7 @@ const renderEditor = (config: FolderConfig | null, knownCategories: string[] = [
       downloadDefaults={defaults}
       knownCategories={knownCategories}
       onConfigUpdate={onConfigUpdate}
-    />
+    />,
   );
   return { onConfigUpdate };
 };
@@ -56,10 +56,7 @@ describe('FolderConfigEditor', () => {
 
     expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('Domyślnie (2160p)');
     expect(screen.getByLabelText('Pobieraj napisy')).toBeChecked();
-    expect(screen.getByLabelText('Języki napisów (po przecinku):')).toHaveAttribute(
-      'placeholder',
-      'domyślnie: en'
-    );
+    expect(screen.getByLabelText('Języki napisów (po przecinku):')).toHaveAttribute('placeholder', 'domyślnie: en');
     expect(screen.getByLabelText('Pobieraj komentarze')).toBeChecked();
   });
 
@@ -102,10 +99,7 @@ describe('FolderConfigEditor', () => {
     await user.click(screen.getByRole('button', { name: 'Zapisz' }));
 
     await waitFor(() => expect(onConfigUpdate).toHaveBeenCalledWith(FOLDER, saved));
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/folder/config',
-      expect.objectContaining({ method: 'PUT' })
-    );
+    expect(fetchMock).toHaveBeenCalledWith('/api/folder/config', expect.objectContaining({ method: 'PUT' }));
     expect(lastPutBody(fetchMock)).toEqual({ folderPath: FOLDER, config: saved });
 
     await user.click(await screen.findByRole('button', { name: 'Edytuj konfigurację' }));
@@ -174,9 +168,7 @@ describe('FolderConfigEditor', () => {
     await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
     await user.click(screen.getByRole('button', { name: 'Zapisz' }));
 
-    expect(
-      await screen.findByText('Błąd: maxHeight must be an integer between 144 and 4320')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Błąd: maxHeight must be an integer between 144 and 4320')).toBeInTheDocument();
   });
 
   it('saves the category and suggests the ones other folders use', async () => {
@@ -191,9 +183,7 @@ describe('FolderConfigEditor', () => {
     const input = screen.getByLabelText('Kategoria kanału:');
     expect(input).toHaveValue('fpv');
     // datalist options carry no accessible role, so read them off the DOM
-    const suggestions = [...document.querySelectorAll('datalist option')].map((option) =>
-      option.getAttribute('value')
-    );
+    const suggestions = [...document.querySelectorAll('datalist option')].map((option) => option.getAttribute('value'));
     expect(suggestions).toEqual(['fpv', 'psychology']);
     expect(input).toHaveAttribute('list', 'categories-videos-channel-a');
 

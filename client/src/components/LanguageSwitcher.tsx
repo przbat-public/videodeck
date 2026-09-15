@@ -10,7 +10,7 @@ export function LanguageSwitcher(): JSX.Element {
   const { t, i18n } = useTranslation();
 
   return (
-    <div className="language-switcher" role="group" aria-label={t('app.language')}>
+    <fieldset className="language-switcher" aria-label={t('app.language')}>
       {SUPPORTED_LANGUAGES.map((lang) => (
         <button
           key={lang}
@@ -22,6 +22,6 @@ export function LanguageSwitcher(): JSX.Element {
           {lang.toUpperCase()}
         </button>
       ))}
-    </div>
+    </fieldset>
   );
 }

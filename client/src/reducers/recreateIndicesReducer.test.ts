@@ -1,10 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { RecreateIndicesAction } from './recreateIndicesReducer';
-import {
-  RecreateIndicesActionType,
-  initialState,
-  recreateIndicesReducer,
-} from './recreateIndicesReducer';
+import { initialState, RecreateIndicesActionType, recreateIndicesReducer } from './recreateIndicesReducer';
 
 describe('recreateIndicesReducer', () => {
   it('starts idle with no message', () => {
@@ -14,7 +10,7 @@ describe('recreateIndicesReducer', () => {
   it('RECREATE_START drops the previous message', () => {
     const state = recreateIndicesReducer(
       { loading: false, message: { type: 'error', text: 'boom' } },
-      { type: RecreateIndicesActionType.RECREATE_START }
+      { type: RecreateIndicesActionType.RECREATE_START },
     );
 
     expect(state).toEqual({ loading: true, message: null });
@@ -23,7 +19,7 @@ describe('recreateIndicesReducer', () => {
   it('RECREATE_SUCCESS reports success and stops loading', () => {
     const state = recreateIndicesReducer(
       { loading: true, message: null },
-      { type: RecreateIndicesActionType.RECREATE_SUCCESS, payload: '2561 videos indexed' }
+      { type: RecreateIndicesActionType.RECREATE_SUCCESS, payload: '2561 videos indexed' },
     );
 
     expect(state).toEqual({
@@ -35,7 +31,7 @@ describe('recreateIndicesReducer', () => {
   it('RECREATE_ERROR reports failure and stops loading', () => {
     const state = recreateIndicesReducer(
       { loading: true, message: null },
-      { type: RecreateIndicesActionType.RECREATE_ERROR, payload: 'Elasticsearch unreachable' }
+      { type: RecreateIndicesActionType.RECREATE_ERROR, payload: 'Elasticsearch unreachable' },
     );
 
     expect(state).toEqual({
@@ -47,7 +43,7 @@ describe('recreateIndicesReducer', () => {
   it('CLEAR_MESSAGE removes the message but leaves loading alone', () => {
     const state = recreateIndicesReducer(
       { loading: true, message: { type: 'success', text: 'done' } },
-      { type: RecreateIndicesActionType.CLEAR_MESSAGE }
+      { type: RecreateIndicesActionType.CLEAR_MESSAGE },
     );
 
     expect(state).toEqual({ loading: true, message: null });

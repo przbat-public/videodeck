@@ -17,13 +17,11 @@ test.describe('wyszukiwarka', () => {
     });
 
     await page.goto(
-      '/videos?q=motor&sort=views-desc&category=fpv&channel=Kana%C5%82+E2E&dateFrom=2024-01-05&dateTo=2025-12-31'
+      '/videos?q=motor&sort=views-desc&category=fpv&channel=Kana%C5%82+E2E&dateFrom=2024-01-05&dateTo=2025-12-31',
     );
 
     await expect(page.getByPlaceholder('Szukaj filmów po opisie...')).toHaveValue('motor');
-    await expect(page.getByRole('combobox', { name: 'Sort' })).toContainText(
-      'Najwięcej wyświetleń'
-    );
+    await expect(page.getByRole('combobox', { name: 'Sort' })).toContainText('Najwięcej wyświetleń');
     await expect(page.getByRole('combobox', { name: 'Kategoria' })).toContainText('fpv');
     await expect(page.getByLabel('Kanał')).toHaveValue('Kanał E2E');
     await expect(page.getByLabel('Od daty')).toHaveValue('2024-01-05');
@@ -132,17 +130,14 @@ test.describe('szczegóły filmu', () => {
 
     const player = detailPage.getByTestId('video-player');
     await expect(player).toBeVisible();
-    await expect(player).toHaveAttribute(
-      'src',
-      `/api/videos/file/v1.mp4?folder=${encodeURIComponent('/videos/e2e')}`
-    );
+    await expect(player).toHaveAttribute('src', `/api/videos/file/v1.mp4?folder=${encodeURIComponent('/videos/e2e')}`);
     const track = player.locator('track');
     await expect(track).toHaveAttribute('kind', 'subtitles');
     await expect(track).toHaveAttribute('srcLang', 'en');
     await expect(track).toHaveAttribute('label', 'Angielski');
     await expect(track).toHaveAttribute(
       'src',
-      `/api/videos/file/v1.en.vtt?folder=${encodeURIComponent('/videos/e2e')}`
+      `/api/videos/file/v1.en.vtt?folder=${encodeURIComponent('/videos/e2e')}`,
     );
     await expect(detailPage.getByText('Streszczenie E2E')).toBeVisible();
 

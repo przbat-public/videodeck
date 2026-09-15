@@ -1,17 +1,68 @@
-import { useReducer, useCallback, useRef } from 'react';
-import toast from 'react-hot-toast';
-import i18n from '../i18n';
 import type { VideoListItem } from '@shared/api';
 import { SearchResponseSchema } from '@shared/schemas';
-import type { SearchState } from '../utils/searchUrlState';
+import type { Dispatch } from 'react';
+import { useCallback, useReducer, useRef } from 'react';
+import toast from 'react-hot-toast';
+import i18n from '../i18n';
 import {
-  videoSearchReducer,
   initialState,
+  type VideoSearchAction,
   VideoSearchActionType,
+  videoSearchReducer,
 } from '../reducers/videoSearchReducer';
+import type { SearchState } from '../utils/searchUrlState';
 
 /** How many videos one request pulls; matches the server's default page size */
 const PAGE_SIZE = 100;
+
+/** Transforms the search state into the query params the server understands */
+function buildSearchParams(searchState: SearchState, offset: number): URLSearchParams {
+  const params = new URLSearchParams();
+  const trimmedQuery = searchState.query.trim();
+  if (trimmedQuery) {
+    params.set('q', trimmedQuery);
+  }
+  params.set('sort', searchState.sort);
+  const trimmedCategory = searchState.category.trim();
+  if (trimmedCategory) {
+    params.set('category', trimmedCategory);
+  }
+  const channel = searchState.channel.trim();
+  if (channel) {
+    params.set('channel', channel);
+  }
+  if (/^\d{8}$/.test(searchState.dateFrom)) {
+    params.set('dateFrom', searchState.dateFrom);
+  }
+  if (/^\d{8}$/.test(searchState.dateTo)) {
+    params.set('dateTo', searchState.dateTo);
+  }
+  params.set('offset', String(offset));
+  params.set('limit', String(PAGE_SIZE));
+  return params;
+}
+
+/** Reports the failure unless the request was superseded or aborted */
+function reportSearchError(
+  err: unknown,
+  wasAborted: boolean,
+  isCurrent: () => boolean,
+  dispatch: Dispatch<VideoSearchAction>,
+): void {
+  if (wasAborted || !isCurrent()) {
+    return;
+  }
+  const errorMessage = err instanceof Error ? err.message : i18n.t('errors.occurred');
+  dispatch({
+    type: VideoSearchActionType.SEARCH_ERROR,
+    payload: errorMessage,
+  });
+
+  // One toast slot: rapid typing must not stack a toast per keystroke
+  toast.error(i18n.t('toast.searchFailed', { message: errorMessage }), {
+    id: 'video-search-error',
+  });
+}
 
 interface UseVideoSearchResult {
   videos: VideoListItem[];
@@ -48,90 +99,52 @@ export function useVideoSearch(): UseVideoSearchResult {
   // too late to prevent two pages with the same offset)
   const inFlightRef = useRef(false);
 
-  const runSearch = useCallback(
-    async (searchState: SearchState, offset: number, append: boolean): Promise<void> => {
-      const requestId = ++latestRequestRef.current;
-      const isCurrent = () => requestId === latestRequestRef.current;
+  const runSearch = useCallback(async (searchState: SearchState, offset: number, append: boolean): Promise<void> => {
+    const requestId = ++latestRequestRef.current;
+    const isCurrent = () => requestId === latestRequestRef.current;
 
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-      inFlightRef.current = true;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    inFlightRef.current = true;
 
-      const trimmedQuery = searchState.query.trim();
-      const trimmedCategory = searchState.category.trim();
-      dispatch({ type: VideoSearchActionType.SEARCH_START });
+    dispatch({ type: VideoSearchActionType.SEARCH_START });
 
-      try {
-        const params = new URLSearchParams();
-        if (trimmedQuery) {
-          params.set('q', trimmedQuery);
-        }
-        params.set('sort', searchState.sort);
-        if (trimmedCategory) {
-          params.set('category', trimmedCategory);
-        }
-        const channel = searchState.channel.trim();
-        if (channel) {
-          params.set('channel', channel);
-        }
-        if (/^\d{8}$/.test(searchState.dateFrom)) {
-          params.set('dateFrom', searchState.dateFrom);
-        }
-        if (/^\d{8}$/.test(searchState.dateTo)) {
-          params.set('dateTo', searchState.dateTo);
-        }
-        params.set('offset', String(offset));
-        params.set('limit', String(PAGE_SIZE));
-
-        const response = await fetch(`/api/videos/search?${params.toString()}`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          throw new Error(i18n.t('errors.search'));
-        }
-        const data = SearchResponseSchema.parse(await response.json());
-        if (!isCurrent()) {
-          return;
-        }
-        dispatch({
-          type: VideoSearchActionType.SEARCH_SUCCESS,
-          payload: {
-            videos: data.videos || [],
-            totalCount: data.totalCount || 0,
-            ...(append ? { append } : {}),
-          },
-        });
-      } catch (err) {
-        // Superseded by a newer request — its own lifecycle reports
-        if (controller.signal.aborted || !isCurrent()) {
-          return;
-        }
-        const errorMessage = err instanceof Error ? err.message : i18n.t('errors.occurred');
-        dispatch({
-          type: VideoSearchActionType.SEARCH_ERROR,
-          payload: errorMessage,
-        });
-
-        // One toast slot: rapid typing must not stack a toast per keystroke
-        toast.error(i18n.t('toast.searchFailed', { message: errorMessage }), {
-          id: 'video-search-error',
-        });
-      } finally {
-        if (isCurrent()) {
-          inFlightRef.current = false;
-        }
+    try {
+      const params = buildSearchParams(searchState, offset);
+      const response = await fetch(`/api/videos/search?${params.toString()}`, {
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(i18n.t('errors.search'));
       }
-    },
-    []
-  );
+      const data = SearchResponseSchema.parse(await response.json());
+      if (!isCurrent()) {
+        return;
+      }
+      dispatch({
+        type: VideoSearchActionType.SEARCH_SUCCESS,
+        payload: {
+          videos: data.videos || [],
+          totalCount: data.totalCount || 0,
+          ...(append ? { append } : {}),
+        },
+      });
+    } catch (err) {
+      reportSearchError(err, controller.signal.aborted, isCurrent, dispatch);
+    } finally {
+      if (isCurrent()) {
+        inFlightRef.current = false;
+      }
+    }
+  }, []);
 
   const search = useCallback(
     async (searchState: SearchState): Promise<void> => {
       searchStateRef.current = searchState;
       await runSearch(searchState, 0, false);
     },
-    [runSearch]
+    [runSearch],
   );
 
   const loadMore = useCallback(async (): Promise<void> => {

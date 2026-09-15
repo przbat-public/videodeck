@@ -1,14 +1,15 @@
-import { useState, useRef, useEffect, useImperativeHandle, useCallback, useMemo } from 'react';
-import type { JSX, Ref } from 'react';
-import { useTranslation } from 'react-i18next';
-import toast from 'react-hot-toast';
-import { VariableSizeList } from 'react-window';
 import type { ChannelVideo, FolderListResponse, JobType, QueueJob } from '@shared/api';
+import type { JSX, Ref } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
+import { useTranslation } from 'react-i18next';
+import { VariableSizeList } from 'react-window';
+import { useDownloadQueue } from '../hooks/useDownloadQueue';
+import { logError } from '../utils/logError';
+import { isOlderThanMonth } from '../utils/videoDates';
+import { ErrorMessage } from './ui/ErrorMessage';
 import { VideoItem } from './VideoItem';
 import { VideoListHeader } from './VideoListHeader';
-import { ErrorMessage } from './ui/ErrorMessage';
-import { useDownloadQueue } from '../hooks/useDownloadQueue';
-import { isOlderThanMonth } from '../utils/videoDates';
 
 /** Fixed viewport of the windowed list and the two row heights */
 const LIST_HEIGHT = 400;
@@ -65,7 +66,7 @@ export function VideoListSection({
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';
       setVideosError(errorMessage);
-      console.error('Error loading videos:', err);
+      logError(err);
     } finally {
       setIsLoadingVideos(false);
     }
@@ -83,7 +84,7 @@ export function VideoListSection({
   }, []);
 
   const handleQueueDrained = useCallback(() => {
-    fetchList().catch((err) => console.error('Error refreshing video list:', err));
+    fetchList().catch((err) => logError(err));
   }, [fetchList]);
 
   // Destructured so the useCallback dependencies below reference the stable
@@ -128,21 +129,19 @@ export function VideoListSection({
         // thousands of videos — titles/urls would blow up the request body
         const result = await enqueue(
           items.map((video) => ({ videoId: video.id })),
-          type
+          type,
         );
         const verb = type === 'update' ? t('toast.updateTarget') : t('toast.downloadTarget');
         toast.success(t('toast.addedToQueue', { count: result.jobs.length, target: verb }));
         const [firstSkipped] = result.skipped;
         if (firstSkipped) {
-          toast.error(
-            t('toast.skipped', { count: result.skipped.length, reason: firstSkipped.reason })
-          );
+          toast.error(t('toast.skipped', { count: result.skipped.length, reason: firstSkipped.reason }));
         }
       } catch (err) {
         toast.error(err instanceof Error ? err.message : t('toast.enqueueFailed'));
       }
     },
-    [enqueue, t]
+    [enqueue, t],
   );
 
   // Stable per-render callbacks: VideoItem is memoized and a new callback
@@ -151,21 +150,21 @@ export function VideoListSection({
     (video: ChannelVideo, type: JobType) => {
       void enqueueVideos([video], type);
     },
-    [enqueueVideos]
+    [enqueueVideos],
   );
 
   const handleCancel = useCallback(
     (jobId: string) => {
-      cancel(jobId).catch((err) => console.error('Error cancelling job:', err));
+      cancel(jobId).catch((err) => logError(err));
     },
-    [cancel]
+    [cancel],
   );
 
   // Rows carry their "last updated" date; memoized so a queue poll does not
   // rebuild every row object (VideoItem is memoized on prop identity)
   const rows = useMemo(
     () => videos.map((video) => ({ ...video, lastUpdated: lastUpdatedDates[video.id] })),
-    [videos, lastUpdatedDates]
+    [videos, lastUpdatedDates],
   );
 
   // Windowed list: only the visible rows (plus overscan) exist in the DOM,
@@ -175,27 +174,29 @@ export function VideoListSection({
     (index: number): number => {
       const row = rows[index];
       const job = row?.id ? jobsByVideoId[row.id] : undefined;
-      const showLog =
-        job && (job.status === 'running' || job.status === 'error') && job.log.length > 0;
+      const showLog = job && (job.status === 'running' || job.status === 'error') && job.log.length > 0;
       return showLog ? ITEM_HEIGHT_WITH_LOG : ITEM_HEIGHT;
     },
-    [rows, jobsByVideoId]
+    [rows, jobsByVideoId],
   );
 
   // A job gaining/losing its log changes the row height — let the list
-  // re-measure instead of keeping stale offsets.
+  // re-measure instead of keeping stale offsets. `jobs` and `rows` are the
+  // two inputs of getRowHeight, so re-measuring on either change covers
+  // every height transition; with nothing rendered there is nothing to
+  // measure yet.
   useEffect(() => {
+    if (jobs.length === 0 && rows.length === 0) {
+      return;
+    }
     listRef.current?.resetAfterIndex(0);
-  }, [jobs, getRowHeight]);
+  }, [jobs, rows]);
 
   // When a job starts running, bring its row into view. The windowed list is
   // the source of truth — scrollToItem knows the row's exact offset (the
   // per-item scrollIntoView fallback that used to live in VideoItem could
   // not, and never ran because no container ref was passed down).
-  const runningJobVideoId = useMemo(
-    () => jobs.find((job) => job.status === 'running')?.videoId,
-    [jobs]
-  );
+  const runningJobVideoId = useMemo(() => jobs.find((job) => job.status === 'running')?.videoId, [jobs]);
   useEffect(() => {
     if (!runningJobVideoId) {
       return;
@@ -259,12 +260,8 @@ export function VideoListSection({
 
   return (
     <div className="videos-list-section">
-      {videosError && (
-        <ErrorMessage compact>{t('app.error', { message: videosError })}</ErrorMessage>
-      )}
-      {queueError && (
-        <ErrorMessage compact>{t('queue.queueError', { message: queueError })}</ErrorMessage>
-      )}
+      {videosError && <ErrorMessage compact>{t('app.error', { message: videosError })}</ErrorMessage>}
+      {queueError && <ErrorMessage compact>{t('queue.queueError', { message: queueError })}</ErrorMessage>}
       {isLoadingVideos ? (
         <p>{t('queue.loadingVideos')}</p>
       ) : videos.length > 0 ? (

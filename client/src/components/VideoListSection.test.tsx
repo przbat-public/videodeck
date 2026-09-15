@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { VideoListSection } from './VideoListSection';
-import { isOlderThanMonth } from '../utils/videoDates';
 import type { QueueJob } from '@shared/api';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
 import { toast } from '../test/toastMock';
+import { isOlderThanMonth } from '../utils/videoDates';
+import { VideoListSection } from './VideoListSection';
 
 const FOLDER = '/videos/channel-a';
 const QUEUE_URL = `/api/folder/queue?folderPath=${encodeURIComponent(FOLDER)}`;
@@ -51,27 +51,34 @@ const json = (body: unknown, status = 200): MockResponse => ({
   json: async () => body,
 });
 
-/** Route fetch calls by URL/method so that tests can describe server state declaratively */
-function installFetch(handlers: {
+interface FetchHandlers {
   list?: () => unknown;
   queue?: () => unknown;
   enqueue?: (body: unknown) => unknown;
-}): FetchMock {
+}
+
+/** Response for the folder queue endpoints (GET/POST/DELETE share the prefix) */
+function folderFetchResponse(url: string, init: RequestInit | undefined, handlers: FetchHandlers): MockResponse {
+  if (url === LIST_URL) {
+    return json(handlers.list?.() ?? listResponse);
+  }
+  if (url === QUEUE_URL && (init?.method || 'GET') === 'GET') {
+    return json(handlers.queue?.() ?? { jobs: [], paused: false });
+  }
+  if (url === '/api/folder/queue' && init?.method === 'POST') {
+    const body = JSON.parse(String(init.body));
+    return json(handlers.enqueue?.(body) ?? { jobs: [], skipped: [] }, 202);
+  }
+  if (url.startsWith('/api/folder/queue') && init?.method === 'DELETE') {
+    return json({ cancelled: true });
+  }
+  throw new Error(`Unexpected fetch: ${init?.method ?? 'GET'} ${url}`);
+}
+
+/** Route fetch calls by URL/method so that tests can describe server state declaratively */
+function installFetch(handlers: FetchHandlers): FetchMock {
   const fetchMock: FetchMock = vi.fn(
-    async (url: string, init?: RequestInit): Promise<MockResponse> => {
-      if (url === LIST_URL) return json(handlers.list?.() ?? listResponse);
-      if (url === QUEUE_URL && (!init || !init.method || init.method === 'GET')) {
-        return json(handlers.queue?.() ?? { jobs: [], paused: false });
-      }
-      if (url === '/api/folder/queue' && init?.method === 'POST') {
-        const body = JSON.parse(String(init.body));
-        return json(handlers.enqueue?.(body) ?? { jobs: [], skipped: [] }, 202);
-      }
-      if (url.startsWith('/api/folder/queue') && init?.method === 'DELETE') {
-        return json({ cancelled: true });
-      }
-      throw new Error(`Unexpected fetch: ${init?.method ?? 'GET'} ${url}`);
-    }
+    async (url: string, init?: RequestInit): Promise<MockResponse> => folderFetchResponse(url, init, handlers),
   );
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   return fetchMock;
@@ -79,20 +86,27 @@ function installFetch(handlers: {
 
 const postCalls = (fetchMock: FetchMock) =>
   fetchMock.mock.calls
-    .filter(
-      ([url, init]) => url === '/api/folder/queue' && (init as RequestInit)?.method === 'POST'
-    )
+    .filter(([url, init]) => url === '/api/folder/queue' && (init as RequestInit)?.method === 'POST')
     .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+
+/** The section must expose loadVideos through its ref; a missing handle is a test bug */
+const loadVideosViaRef = (ref: { current: null | { loadVideos: () => Promise<void> } }): Promise<void> => {
+  const handle = ref.current;
+  if (!handle) {
+    throw new Error('VideoListSection did not expose loadVideos');
+  }
+  return handle.loadVideos();
+};
 
 async function renderLoaded() {
   const ref = { current: null as null | { loadVideos: () => Promise<void> } };
   render(
     <MemoryRouter>
       <VideoListSection ref={ref} folderPath={FOLDER} listExists={true} />
-    </MemoryRouter>
+    </MemoryRouter>,
   );
   await act(async () => {
-    await ref.current!.loadVideos();
+    await loadVideosViaRef(ref);
   });
   await screen.findByText(/Liczba filmów: 4/);
   return ref;
@@ -114,7 +128,9 @@ describe('VideoListSection', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true, now });
     vi.clearAllMocks();
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {
+      /* silence the expected error logs */
+    });
   });
 
   afterEach(() => {
@@ -127,7 +143,7 @@ describe('VideoListSection', () => {
     const { container } = render(
       <MemoryRouter>
         <VideoListSection folderPath={FOLDER} listExists={false} />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
     expect(container.innerHTML).toBe('');
   });
@@ -217,18 +233,16 @@ describe('VideoListSection', () => {
     render(
       <MemoryRouter>
         <VideoListSection ref={ref} folderPath={FOLDER} listExists={true} />
-      </MemoryRouter>
+      </MemoryRouter>,
     );
     await act(async () => {
-      await ref.current!.loadVideos();
+      await loadVideosViaRef(ref);
     });
     await screen.findByText(/Liczba filmów: 60/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj wszystkie' }));
 
-    expect(
-      await screen.findByRole('button', { name: 'Na pewno? (60 filmów)' })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Na pewno? (60 filmów)' })).toBeInTheDocument();
     expect(postCalls(fetchMock)).toHaveLength(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'Na pewno? (60 filmów)' }));
@@ -243,7 +257,10 @@ describe('VideoListSection', () => {
 
     const enabledDownload = screen
       .getAllByRole('button', { name: 'Pobierz' })
-      .find((button) => !(button as HTMLButtonElement).disabled)!;
+      .find((button) => !(button as HTMLButtonElement).disabled);
+    if (!enabledDownload) {
+      throw new Error('Expected an enabled download button');
+    }
     fireEvent.click(enabledDownload);
 
     await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
@@ -264,18 +281,14 @@ describe('VideoListSection', () => {
   it('shows a toast when the server rejects the enqueue', async () => {
     const fetchMock = installFetch({});
     fetchMock.mockImplementationOnce(async (url: string) =>
-      json(url === LIST_URL ? listResponse : { jobs: [], paused: false })
+      json(url === LIST_URL ? listResponse : { jobs: [], paused: false }),
     );
     await renderLoaded();
-    fetchMock.mockImplementationOnce(async () =>
-      json({ error: 'Folder path is not in the allowed list' }, 403)
-    );
+    fetchMock.mockImplementationOnce(async () => json({ error: 'Folder path is not in the allowed list' }, 403));
 
     fireEvent.click(screen.getByRole('button', { name: 'Pobierz wszystkie' }));
 
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith('Folder path is not in the allowed list')
-    );
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Folder path is not in the allowed list'));
   });
 
   it('shows queue state, marks finished downloads locally and re-syncs when the queue drains', async () => {
@@ -302,9 +315,7 @@ describe('VideoListSection', () => {
     await waitFor(() => expect(screen.getByText('Pobrano')).toBeInTheDocument(), { timeout: 4000 });
     expect(screen.queryByText(/kolejka:/)).toBeNull();
     // v3 is now downloaded: "Pobierz wszystkie" disappears and the item links to the detail page
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Pobierz wszystkie' })).toBeNull()
-    );
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Pobierz wszystkie' })).toBeNull());
     expect(screen.getByRole('link', { name: /Missing/ })).toHaveAttribute('href', '/video/v3');
 
     // the list was re-fetched after the queue drained

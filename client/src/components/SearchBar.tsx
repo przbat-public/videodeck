@@ -1,10 +1,9 @@
+import type { SortOption } from '@shared/api';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-
-import type { SortOption } from '@shared/api';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { SearchState } from '../utils/searchUrlState';
 import { SORT_OPTIONS } from '../utils/searchUrlState';
-import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { Button } from './ui/Button';
 import { Select } from './ui/Select';
 
@@ -27,8 +26,7 @@ const MIN_SEARCH_LENGTH = 3;
 const DEBOUNCE_DELAY = 300;
 
 /** A phrase worth searching for: nothing at all, or enough to be selective */
-const isSearchable = (trimmed: string): boolean =>
-  trimmed.length === 0 || trimmed.length >= MIN_SEARCH_LENGTH;
+const isSearchable = (trimmed: string): boolean => trimmed.length === 0 || trimmed.length >= MIN_SEARCH_LENGTH;
 
 /** `20240105` ↔ `2024-01-05` (what a date input displays) */
 const toDisplayDate = (digits: string): string =>

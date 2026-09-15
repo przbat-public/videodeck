@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { CategoriesResponseSchema } from '@shared/schemas';
+import { useEffect, useState } from 'react';
 
 interface UseCategoriesResult {
   categories: string[];
@@ -7,9 +7,9 @@ interface UseCategoriesResult {
 
 /**
  * Categories declared in the folders' config.json, for the search filter.
- * A failure here only leaves the filter empty, so it is logged rather than
- * surfaced as a toast — search itself still works. The fetch is aborted on
- * unmount so a navigated-away page does not keep the request alive.
+ * A failure here only leaves the filter empty — search itself still works.
+ * The fetch is aborted on unmount so a navigated-away page does not keep the
+ * request alive.
  */
 export function useCategories(): UseCategoriesResult {
   const [categories, setCategories] = useState<string[]>([]);
@@ -25,11 +25,11 @@ export function useCategories(): UseCategoriesResult {
         }
         const data = CategoriesResponseSchema.parse(await response.json());
         setCategories(data.categories || []);
-      } catch (err) {
+      } catch {
         if (controller.signal.aborted) {
           return; // unmounted — nothing to report
         }
-        console.error('Failed to load categories:', err);
+        // The filter simply stays empty; search itself still works
       }
     };
 

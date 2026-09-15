@@ -1,12 +1,8 @@
+import { VideoDetailsResponseSchema } from '@shared/schemas';
 import { useEffect, useReducer } from 'react';
 import i18n from '../i18n';
-import { VideoDetailsResponseSchema } from '@shared/schemas';
 import type { VideoDetailState } from '../reducers/videoDetailReducer';
-import {
-  videoDetailReducer,
-  initialState,
-  VideoDetailActionType,
-} from '../reducers/videoDetailReducer';
+import { initialState, VideoDetailActionType, videoDetailReducer } from '../reducers/videoDetailReducer';
 
 interface UseVideoDetailResult {
   state: VideoDetailState;

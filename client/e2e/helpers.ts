@@ -13,11 +13,7 @@ export interface E2eVideo {
   comments?: unknown[];
 }
 
-export const video = (
-  baseName: string,
-  title: string,
-  overrides: Partial<E2eVideo> = {}
-): E2eVideo => ({
+export const video = (baseName: string, title: string, overrides: Partial<E2eVideo> = {}): E2eVideo => ({
   baseName,
   title,
   description: 'A description',
@@ -48,7 +44,7 @@ export async function mockApi(
     categories?: string[];
     details?: unknown;
     status?: unknown;
-  } = {}
+  } = {},
 ): Promise<void> {
   const context = page.context();
   await context.route('**/api/videos/search**', async (route) => {
@@ -57,11 +53,9 @@ export async function mockApi(
     await route.fulfill(json(body));
   });
   await context.route('**/api/videos/categories', (route) =>
-    route.fulfill(json({ categories: handlers.categories ?? ['fpv', 'lego'] }))
+    route.fulfill(json({ categories: handlers.categories ?? ['fpv', 'lego'] })),
   );
-  await context.route('**/api/videos/channels', (route) =>
-    route.fulfill(json({ channels: ['Kanał E2E'] }))
-  );
+  await context.route('**/api/videos/channels', (route) => route.fulfill(json({ channels: ['Kanał E2E'] })));
   await context.route('**/api/videos/**/details', async (route) => {
     const body = handlers.details ?? {
       details: {
@@ -82,17 +76,15 @@ export async function mockApi(
     };
     await route.fulfill(json(body));
   });
-  await context.route('**/api/videos/**/summary', (route) =>
-    route.fulfill(json({ summary: 'Streszczenie E2E' }))
-  );
+  await context.route('**/api/videos/**/summary', (route) => route.fulfill(json({ summary: 'Streszczenie E2E' })));
   await context.route('**/api/videos/**/comments**', (route) =>
     route.fulfill(
       json({
         comments: [{ id: 'e2e-c2', text: 'Komentarz drugi' }],
         totalCount: 2,
         offset: 1,
-      })
-    )
+      }),
+    ),
   );
   await context.route('**/api/status', (route) =>
     route.fulfill(
@@ -104,27 +96,25 @@ export async function mockApi(
           indexedFolders: ['/videos/e2e'],
           listExists: { '/videos/e2e': false },
           status: 'ok',
-        }
-      )
-    )
+        },
+      ),
+    ),
   );
   // list-exists and list calls used by the status page's folder section
-  await context.route('**/api/folder/list-exists**', (route) =>
-    route.fulfill(json({ exists: false }))
-  );
+  await context.route('**/api/folder/list-exists**', (route) => route.fulfill(json({ exists: false })));
   await context.route('**/api/folder/list**', (route) =>
     route.fulfill(
       json({
         videos: [],
         downloadStatuses: {},
         lastUpdatedDates: {},
-      })
-    )
+      }),
+    ),
   );
   // Video/thumbnail/subtitle files: serve a tiny placeholder instead of
   // leaking the request to the vite proxy (ECONNREFUSED noise on CI)
   await context.route('**/api/videos/file/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.alloc(1) })
+    route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.alloc(1) }),
   );
   // the download queue hook polls while it thinks jobs may exist; the mock
   // keeps the pause state like the real server, so a late GET cannot race

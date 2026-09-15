@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import { Select } from './Select';
 
 const items = [
@@ -22,9 +22,7 @@ describe('Select', () => {
   it('maps the empty value to the "none" option and back', () => {
     render(<Select value="" onChange={vi.fn()} aria-label="Kategoria" items={items} />);
 
-    expect(screen.getByRole('combobox', { name: 'Kategoria' })).toHaveTextContent(
-      'Wszystkie kategorie'
-    );
+    expect(screen.getByRole('combobox', { name: 'Kategoria' })).toHaveTextContent('Wszystkie kategorie');
   });
 
   it('opens on click and reports the chosen option', async () => {
@@ -53,9 +51,7 @@ describe('Select', () => {
   it('does not open and reports nothing when disabled', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    render(
-      <Select value="fpv" onChange={onChange} disabled aria-label="Kategoria" items={items} />
-    );
+    render(<Select value="fpv" onChange={onChange} disabled aria-label="Kategoria" items={items} />);
 
     const combobox = screen.getByRole('combobox', { name: 'Kategoria' });
     expect(combobox).toBeDisabled();
@@ -68,15 +64,7 @@ describe('Select', () => {
   it('closes after picking and keeps external classes on the trigger', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    render(
-      <Select
-        value="fpv"
-        onChange={onChange}
-        className="sort-select"
-        aria-label="Sort"
-        items={items}
-      />
-    );
+    render(<Select value="fpv" onChange={onChange} className="sort-select" aria-label="Sort" items={items} />);
 
     const combobox = screen.getByRole('combobox', { name: 'Sort' });
     expect(combobox.className).toContain('sort-select');

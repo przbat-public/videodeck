@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
 import type { DownloadOptions, FolderConfig, ListExistsResponse } from '@shared/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FolderConfigEditor } from './FolderConfigEditor';
 import { PlaylistDownloadSection } from './PlaylistDownloadSection';
 import type { VideoListSectionHandle } from './VideoListSection';
@@ -43,15 +43,13 @@ export function FolderSection({
 
   const checkListExists = useCallback(async () => {
     try {
-      const response = await fetch(
-        `/api/folder/list-exists?folderPath=${encodeURIComponent(folderPath)}`
-      );
+      const response = await fetch(`/api/folder/list-exists?folderPath=${encodeURIComponent(folderPath)}`);
       if (response.ok) {
         const data: ListExistsResponse = await response.json();
         setListExists(data.exists);
       }
-    } catch (err) {
-      console.error('Error checking list.json:', err);
+    } catch {
+      // Best-effort check: an unknown list.json state is handled by the parent
     }
   }, [folderPath]);
 
@@ -96,11 +94,7 @@ export function FolderSection({
         onLoadVideosList={() => videoListSectionRef.current?.loadVideos()}
       />
 
-      <VideoListSection
-        ref={videoListSectionRef}
-        folderPath={folderPath}
-        listExists={listExists === true}
-      />
+      <VideoListSection ref={videoListSectionRef} folderPath={folderPath} listExists={listExists === true} />
     </div>
   );
 }

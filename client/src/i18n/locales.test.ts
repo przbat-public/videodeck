@@ -65,7 +65,7 @@ describe('locale catalogs', () => {
       }
       expect(
         IDENTICAL_ALLOWLIST.has(key) || INTERPOLATION.test(value),
-        `"${key}" is identical in pl and en — translate it or allowlist it`
+        `"${key}" is identical in pl and en — translate it or allowlist it`,
       ).toBe(true);
     }
   });

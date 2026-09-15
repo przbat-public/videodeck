@@ -1,22 +1,15 @@
-import { useEffect, useReducer } from 'react';
-import i18n from '../i18n';
 import { VideoSummaryResponseSchema } from '@shared/schemas';
+import { useEffect, useReducer } from 'react';
 import toast from 'react-hot-toast';
+import i18n from '../i18n';
 import type { VideoSummaryState } from '../reducers/videoSummaryReducer';
-import {
-  videoSummaryReducer,
-  initialState,
-  VideoSummaryActionType,
-} from '../reducers/videoSummaryReducer';
+import { initialState, VideoSummaryActionType, videoSummaryReducer } from '../reducers/videoSummaryReducer';
 
 interface UseVideoSummaryResult {
   state: VideoSummaryState;
 }
 
-export function useVideoSummary(
-  baseName: string | undefined,
-  subtitlePath: string | undefined
-): UseVideoSummaryResult {
+export function useVideoSummary(baseName: string | undefined, subtitlePath: string | undefined): UseVideoSummaryResult {
   const [state, dispatch] = useReducer(videoSummaryReducer, initialState);
 
   useEffect(() => {

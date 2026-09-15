@@ -1,9 +1,5 @@
+import { ClearFinishedResponseSchema, QueueListResponseSchema, QueuePauseResponseSchema } from '@shared/schemas';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  QueueListResponseSchema,
-  ClearFinishedResponseSchema,
-  QueuePauseResponseSchema,
-} from '@shared/schemas';
 
 interface UseQueueControlsResult {
   /** True while a control request is in flight */
@@ -42,9 +38,7 @@ export function useQueueControls(): UseQueueControlsResult {
     }
     setIsPaused(data.paused);
     setFinishedCount(
-      data.jobs.filter(
-        (job) => job.status === 'done' || job.status === 'error' || job.status === 'cancelled'
-      ).length
+      data.jobs.filter((job) => job.status === 'done' || job.status === 'error' || job.status === 'cancelled').length,
     );
   }, []);
 
@@ -58,10 +52,9 @@ export function useQueueControls(): UseQueueControlsResult {
     mutationVersionRef.current += 1;
     setLoading(true);
     try {
-      const response = await fetch(
-        `/api/folder/queue/${next ? 'pause' : 'resume'}?paused=${next ? '1' : '0'}`,
-        { method: 'POST' }
-      );
+      const response = await fetch(`/api/folder/queue/${next ? 'pause' : 'resume'}?paused=${next ? '1' : '0'}`, {
+        method: 'POST',
+      });
       if (!response.ok) {
         throw new Error(`Failed to ${next ? 'pause' : 'resume'} queue (HTTP ${response.status})`);
       }

@@ -23,7 +23,7 @@ export function useSearchUrlState(): UseSearchUrlStateResult {
     (next: SearchState) => {
       setSearchParams(toSearchParams(next), { replace: true });
     },
-    [setSearchParams]
+    [setSearchParams],
   );
 
   return { searchState, setSearchState };

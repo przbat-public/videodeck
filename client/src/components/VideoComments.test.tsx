@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { CommentWithReplies } from '@shared/api';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { CommentWithReplies } from '@shared/api';
-import VideoComments from './VideoComments';
-import { installFetchMock } from '../test/fetchMock';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
+import { installFetchMock } from '../test/fetchMock';
+import VideoComments from './VideoComments';
 
 const comment = (id: string): CommentWithReplies => ({ id, text: `Comment ${id}` });
 
@@ -35,15 +35,13 @@ describe('VideoComments', () => {
     expect(screen.getByText('Komentarze (3)')).toBeInTheDocument();
     expect(screen.getByText('Comment c1')).toBeInTheDocument();
 
-    fetchMock.mockResolvedValueOnce(
-      json({ comments: [comment('c2'), comment('c3')], totalCount: 3, offset: 1 })
-    );
+    fetchMock.mockResolvedValueOnce(json({ comments: [comment('c2'), comment('c3')], totalCount: 3, offset: 1 }));
     await user.click(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/3)' }));
 
     await waitFor(() => expect(screen.getByText('Comment c3')).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/videos/v1/comments?offset=1&limit=50',
-      expect.objectContaining({ signal: expect.any(AbortSignal) })
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(screen.queryByRole('button', { name: /Pokaż więcej/ })).toBeNull();
   });
@@ -55,9 +53,7 @@ describe('VideoComments', () => {
     fetchMock.mockResolvedValueOnce(json({ error: 'boom' }, 500));
     await user.click(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/5)' }));
 
-    expect(
-      await screen.findByText('Nie udało się załadować kolejnych komentarzy.')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Nie udało się załadować kolejnych komentarzy.')).toBeInTheDocument();
   });
 
   it('does not offer more when everything is already shown', () => {
@@ -70,12 +66,14 @@ describe('VideoComments', () => {
     const user = userEvent.setup();
     render(<VideoComments videoId="v1" comments={[comment('c1')]} commentCount={5} />);
 
-    let resolveFetch: (response: MockResponse) => void = () => {};
+    let resolveFetch: (response: MockResponse) => void = () => {
+      /* assigned by the deferred fetch below */
+    };
     fetchMock.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           resolveFetch = resolve;
-        })
+        }),
     );
 
     const button = screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/5)' });
@@ -91,13 +89,16 @@ describe('VideoComments', () => {
 
   it('aborts the pending page when the component unmounts', async () => {
     const user = userEvent.setup();
-    const { unmount } = render(
-      <VideoComments videoId="v1" comments={[comment('c1')]} commentCount={5} />
-    );
+    const { unmount } = render(<VideoComments videoId="v1" comments={[comment('c1')]} commentCount={5} />);
 
     // A page that never resolves: the request must still be in flight when
     // the component goes away, so the abort is observable.
-    fetchMock.mockImplementationOnce(() => new Promise(() => {}));
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise(() => {
+          /* never resolves: keeps the request in flight */
+        }),
+    );
     await user.click(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/5)' }));
     unmount();
 

@@ -1,18 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { useCategories } from './useCategories';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { installFetchMock, jsonResponse } from '../test/fetchMock';
+import { useCategories } from './useCategories';
 
 const fetchMock = installFetchMock();
 
 describe('useCategories', () => {
   beforeEach(() => {
     fetchMock.mockReset();
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   it('loads the categories once on mount', async () => {
@@ -41,16 +36,13 @@ describe('useCategories', () => {
     expect(result.current.categories).toEqual([]);
   });
 
-  it('logs and leaves the filter empty when the request fails', async () => {
+  it('leaves the filter empty when the request fails', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ error: 'nope' }, 500));
 
     const { result } = renderHook(() => useCategories());
 
     await waitFor(() => {
-      expect(console.error).toHaveBeenCalledWith(
-        'Failed to load categories:',
-        expect.objectContaining({ message: 'HTTP error! status: 500' })
-      );
+      expect(fetchMock).toHaveBeenCalled();
     });
     expect(result.current.categories).toEqual([]);
   });
@@ -60,7 +52,7 @@ describe('useCategories', () => {
     fetchMock.mockReturnValue(
       new Promise((resolve) => {
         resolveFetch = resolve;
-      })
+      }),
     );
 
     const { result, unmount } = renderHook(() => useCategories());

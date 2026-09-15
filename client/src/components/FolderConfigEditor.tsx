@@ -1,18 +1,8 @@
+import type { ApiError, DownloadOptions, FolderConfig, SaveFolderConfigResponse } from '@shared/api';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type {
-  ApiError,
-  DownloadOptions,
-  FolderConfig,
-  SaveFolderConfigResponse,
-} from '@shared/api';
 import type { FormState } from '../utils/folderConfigForm';
-import {
-  FRAGMENT_CHOICES,
-  MAX_HEIGHT_CHOICES,
-  buildConfig,
-  toFormState,
-} from '../utils/folderConfigForm';
+import { buildConfig, FRAGMENT_CHOICES, MAX_HEIGHT_CHOICES, toFormState } from '../utils/folderConfigForm';
 import { Button } from './ui/Button';
 import { Checkbox } from './ui/Checkbox';
 import { ErrorMessage } from './ui/ErrorMessage';

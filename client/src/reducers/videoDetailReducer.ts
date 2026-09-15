@@ -13,8 +13,7 @@ export const VideoDetailActionType = {
   FETCH_ERROR: 'FETCH_ERROR',
   RESET: 'RESET',
 } as const;
-export type VideoDetailActionType =
-  (typeof VideoDetailActionType)[keyof typeof VideoDetailActionType];
+export type VideoDetailActionType = (typeof VideoDetailActionType)[keyof typeof VideoDetailActionType];
 
 export type VideoDetailAction =
   | { type: 'FETCH_DETAILS_START' }
@@ -29,10 +28,7 @@ export const initialState: VideoDetailState = {
   error: null,
 };
 
-export function videoDetailReducer(
-  state: VideoDetailState,
-  action: VideoDetailAction
-): VideoDetailState {
+export function videoDetailReducer(state: VideoDetailState, action: VideoDetailAction): VideoDetailState {
   switch (action.type) {
     case VideoDetailActionType.FETCH_DETAILS_START:
       return {

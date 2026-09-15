@@ -9,8 +9,7 @@ export const CacheRefreshActionType = {
   REFRESH_ERROR: 'REFRESH_ERROR',
   CLEAR_MESSAGE: 'CLEAR_MESSAGE',
 } as const;
-export type CacheRefreshActionType =
-  (typeof CacheRefreshActionType)[keyof typeof CacheRefreshActionType];
+export type CacheRefreshActionType = (typeof CacheRefreshActionType)[keyof typeof CacheRefreshActionType];
 
 export type CacheRefreshAction =
   | { type: 'REFRESH_START' }
@@ -23,10 +22,7 @@ export const initialState: CacheRefreshState = {
   message: null,
 };
 
-export function cacheRefreshReducer(
-  state: CacheRefreshState,
-  action: CacheRefreshAction
-): CacheRefreshState {
+export function cacheRefreshReducer(state: CacheRefreshState, action: CacheRefreshAction): CacheRefreshState {
   switch (action.type) {
     case CacheRefreshActionType.REFRESH_START:
       return {
