@@ -251,9 +251,12 @@ describe('folder router', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ success: true, config });
-      expect(mockedFs.open).toHaveBeenCalledWith(`${FOLDER}/config.json.tmp`, 'w');
+      expect(mockedFs.open).toHaveBeenCalledWith(
+        expect.stringMatching(new RegExp(`^${FOLDER}/config.json..*.tmp$`)),
+        'w',
+      );
       expect(mockFileHandle.writeFile).toHaveBeenCalledWith(JSON.stringify(config, null, 2), 'utf-8');
-      expect(mockedFs.rename).toHaveBeenCalledWith(`${FOLDER}/config.json.tmp`, `${FOLDER}/config.json`);
+      expect(mockedFs.rename).toHaveBeenCalledWith(expect.any(String), `${FOLDER}/config.json`);
     });
 
     it('stores the category trimmed and drops the category cache', async () => {
@@ -263,7 +266,7 @@ describe('folder router', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.config).toEqual({ channelUrl: 'https://www.youtube.com/@a', category: 'fpv' });
-      expect(mockedFs.open).toHaveBeenCalledWith(`${FOLDER}/config.json.tmp`, 'w');
+      expect(mockedFs.open).toHaveBeenCalledWith(expect.stringMatching(/config\.json\..*\.tmp$/), 'w');
       expect(mockFileHandle.writeFile).toHaveBeenCalledWith(
         JSON.stringify({ channelUrl: 'https://www.youtube.com/@a', category: 'fpv' }, null, 2),
         'utf-8',
@@ -299,9 +302,12 @@ describe('folder router', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ success: true, config });
-      expect(mockedFs.open).toHaveBeenCalledWith(`${FOLDER}/config.json.tmp`, 'w');
+      expect(mockedFs.open).toHaveBeenCalledWith(
+        expect.stringMatching(new RegExp(`^${FOLDER}/config.json..*.tmp$`)),
+        'w',
+      );
       expect(mockFileHandle.writeFile).toHaveBeenCalledWith(JSON.stringify(config, null, 2), 'utf-8');
-      expect(mockedFs.rename).toHaveBeenCalledWith(`${FOLDER}/config.json.tmp`, `${FOLDER}/config.json`);
+      expect(mockedFs.rename).toHaveBeenCalledWith(expect.any(String), `${FOLDER}/config.json`);
     });
   });
 
@@ -509,7 +515,7 @@ describe('folder router', () => {
         ['--flat-playlist', '-i', '-j', 'https://www.youtube.com/@a/videos'],
         { cwd: FOLDER },
       );
-      expect(mockedFs.open).toHaveBeenCalledWith(`${FOLDER}/list.json.tmp`, 'w');
+      expect(mockedFs.open).toHaveBeenCalledWith(expect.stringMatching(/list\.json\..*\.tmp$/), 'w');
       expect(mockFileHandle.writeFile).toHaveBeenCalledWith(
         JSON.stringify(
           [
@@ -521,7 +527,7 @@ describe('folder router', () => {
         ),
         'utf-8',
       );
-      expect(mockedFs.rename).toHaveBeenCalledWith(`${FOLDER}/list.json.tmp`, `${FOLDER}/list.json`);
+      expect(mockedFs.rename).toHaveBeenCalledWith(expect.any(String), `${FOLDER}/list.json`);
     });
 
     it('returns 500 when yt-dlp fails', async () => {

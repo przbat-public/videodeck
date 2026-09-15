@@ -168,7 +168,7 @@ const MAX_STDOUT_BYTES = 64 * 1024 * 1024;
  * `MAX_STDOUT_BYTES`.
  */
 export function runYtDlp(args: string[], cwd: string, options: { command?: string } = {}): Promise<string> {
-  const command = options.command ?? 'yt-dlp';
+  const command = options.command ?? process.env.YTDLP_PATH ?? 'yt-dlp';
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd });
     const out: Buffer[] = [];

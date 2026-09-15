@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { removePartialDownloads } from './fsUtils';
+import { removePartialDownloads, writeTextAtomic } from './fsUtils';
 
 describe('removePartialDownloads', () => {
   let dir: string;
@@ -53,5 +53,37 @@ describe('removePartialDownloads', () => {
     expect(await fs.readdir(dir)).toEqual(['other.ytdl']);
     expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('other.ytdl'));
     unlink.mockRestore();
+  });
+});
+
+describe('writeTextAtomic', () => {
+  let dir: string;
+  let filePath: string;
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'atomic-'));
+    filePath = path.join(dir, 'state.json');
+  });
+
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('writes the final file as one complete payload', async () => {
+    await writeTextAtomic(filePath, '{"n":1}');
+    expect(await fs.readFile(filePath, 'utf-8')).toBe('{"n":1}');
+    expect((await fs.readdir(dir)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('keeps concurrent writes whole — the final file is one payload, never an interleaving', async () => {
+    // The queue persists its state on several rapid events; every write must
+    // land as a complete payload (unique temp files per write), so the final
+    // content is exactly one of the payloads.
+    const payloads = Array.from({ length: 20 }, (_, index) => JSON.stringify({ index, blob: 'x'.repeat(500 + index) }));
+    await Promise.all(payloads.map((payload) => writeTextAtomic(filePath, payload)));
+
+    const content = await fs.readFile(filePath, 'utf-8');
+    expect(payloads).toContain(content);
+    expect(JSON.parse(content)).toHaveProperty('index');
   });
 });

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from './logger';
@@ -49,30 +50,14 @@ export async function resolveContainedPath(folderPath: string, fileName: string)
 }
 
 /**
- * Atomic JSON write of `fileName` inside `folderPath`: temp file + fsync +
- * rename, so a crash or a full disk never leaves a truncated file at the
- * final path (readers would otherwise serve or fall back on half-written
- * JSON forever). The file name must stay inside the folder (no traversal).
+ * Atomic plain-text write: unique temp file + fsync + rename, so a crash or
+ * a full disk never leaves a truncated file at the final path. The temp name
+ * is unique per write — concurrent writers (the queue persists its state on
+ * several rapid events) must never truncate each other's temp file, which
+ * used to interleave their payloads.
  */
-export async function writeJsonAtomic(folderPath: string, fileName: string, data: unknown): Promise<void> {
-  const filePath = containedFilePath(folderPath, fileName, 'write');
-  const tmp = `${filePath}.tmp`;
-  const handle = await fs.open(tmp, 'w');
-  try {
-    await handle.writeFile(JSON.stringify(data, null, 2), 'utf-8');
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await fs.rename(tmp, filePath);
-}
-
-/**
- * Atomic plain-text write: temp file + fsync + rename (the JSON sibling
- * writeJsonAtomic stringifies; this one writes raw text).
- */
-export async function writeTextAtomic(filePath: string, text: string): Promise<void> {
-  const tmp = `${filePath}.tmp`;
+async function writeTextAtomicPrivate(filePath: string, text: string): Promise<void> {
+  const tmp = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   const handle = await fs.open(tmp, 'w');
   try {
     await handle.writeFile(text, 'utf-8');
@@ -80,7 +65,33 @@ export async function writeTextAtomic(filePath: string, text: string): Promise<v
   } finally {
     await handle.close();
   }
-  await fs.rename(tmp, filePath);
+  try {
+    await fs.rename(tmp, filePath);
+  } catch (error) {
+    await fs.unlink(tmp).catch(() => {
+      /* best-effort cleanup of the temp file */
+    });
+    throw error;
+  }
+}
+
+/**
+ * Atomic JSON write of `fileName` inside `folderPath`: temp file + fsync +
+ * rename, so a crash or a full disk never leaves a truncated file at the
+ * final path (readers would otherwise serve or fall back on half-written
+ * JSON forever). The file name must stay inside the folder (no traversal).
+ */
+export async function writeJsonAtomic(folderPath: string, fileName: string, data: unknown): Promise<void> {
+  const filePath = containedFilePath(folderPath, fileName, 'write');
+  await writeTextAtomicPrivate(filePath, JSON.stringify(data, null, 2));
+}
+
+/**
+ * Atomic plain-text write: temp file + fsync + rename (the JSON sibling
+ * writeJsonAtomic stringifies; this one writes raw text).
+ */
+export async function writeTextAtomic(filePath: string, text: string): Promise<void> {
+  await writeTextAtomicPrivate(filePath, text);
 }
 
 /**

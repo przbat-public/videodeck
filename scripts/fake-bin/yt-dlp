@@ -1,10 +1,24 @@
 #!/usr/bin/env node
 /**
- * Fake yt-dlp for CI and offline tests: validates the argument templates the
- * download queue builds without touching the network. `--version` answers
- * the boot-time probe; anything else must be a `--simulate` run with a
- * canonical watch URL and none of the forbidden cookie flags.
+ * Fake yt-dlp: a deterministic stand-in for CI and deep integration tests.
+ *
+ * Modes:
+ *  - `--version`               answers the boot-time probe
+ *  - `--simulate`              validates the argument template, writes nothing
+ *  - `--flat-playlist -j`      prints NDJSON playlist entries
+ *  - a download/update run     writes the video file + sidecars (.info.json,
+ *                              thumbnail, description, subtitles) into the
+ *                              cwd, emits machine-readable progress lines and
+ *                              records the id in archive.txt
+ *
+ * Failure simulation: video ids containing `member` / `private` / `removed`
+ * print the corresponding YouTube error and exit 1, so permanent-failure
+ * detection can be exercised offline. Everything else is a strict no-op
+ * success.
  */
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+
 const args = process.argv.slice(2);
 
 if (args.includes('--version')) {
@@ -19,14 +33,141 @@ if (forbidden) {
   process.exit(2);
 }
 
-if (!args.includes('--simulate')) {
-  console.error('fake-ytdlp: integration tests must run with --simulate (no real downloads)');
+/** https://www.youtube.com/watch?v=ID | https://youtu.be/ID */
+function videoIdOf(url) {
+  const match = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{6,})/.exec(url);
+  return match?.[1];
+}
+
+const FAILURE_CASES = {
+  member: "ERROR: This video is available to this channel's members on level: Channel Member",
+  private: 'ERROR: Private video. Sign in if you have been granted access',
+  removed: 'ERROR: Video unavailable. This video has been removed by the uploader',
+};
+
+function failOnKnownError(id) {
+  const key = Object.keys(FAILURE_CASES).find((candidate) => id.includes(candidate));
+  const message = key ? FAILURE_CASES[key] : undefined;
+  if (message) {
+    console.error(message);
+    process.exit(1);
+  }
+}
+
+/** Emit machine-readable progress lines the queue parses (shared/progress.ts) */
+function emitProgress(steps) {
+  for (const percent of steps) {
+    console.log(`download  ${percent}% (~12.34MiB @ 5.00MiB/s, ETA 00:02)`);
+  }
+}
+
+if (args.includes('--flat-playlist')) {
+  console.log(
+    JSON.stringify({
+      id: 'aaaaaaaaaaa',
+      title: 'Fake playlist video 1',
+      url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+    }),
+  );
+  console.log(
+    JSON.stringify({
+      id: 'bbbbbbbbbbb',
+      title: 'Fake playlist video 2',
+      url: 'https://www.youtube.com/watch?v=bbbbbbbbbbb',
+    }),
+  );
+  process.exit(0);
+}
+
+const url = args.find((arg) => arg.startsWith('https://'));
+if (!url) {
+  console.error('fake-ytdlp: expected a YouTube URL');
   process.exit(2);
 }
 
-if (!args.some((arg) => arg.startsWith('https://www.youtube.com/watch?v='))) {
+const id = videoIdOf(url);
+if (!id) {
   console.error('fake-ytdlp: expected a canonical YouTube watch URL');
   process.exit(2);
 }
+failOnKnownError(id);
 
+if (args.includes('--simulate')) {
+  process.exit(0);
+}
+
+// -o template: downloads use %(upload_date)s_%(title)s.%(ext)s, updates use
+// <baseName>.%(ext)s with --skip-download. baseName is the STEM; the fake
+// writes the video as <stem>.mp4 and the sidecars as <stem>.<sidecar>.
+const outputArgIndex = args.indexOf('-o');
+const outputTemplate = outputArgIndex >= 0 ? args[outputArgIndex + 1] : '';
+const skipDownload = args.includes('--skip-download');
+const baseName = skipDownload
+  ? outputTemplate.replace(/\.%\(ext\)s$/, '')
+  : outputTemplate
+      .replace('%(upload_date)s', '20260101')
+      .replace('%(title)s', `Fake video ${id}`)
+      .replace(/\.%\(ext\)s$/, '');
+if (!baseName) {
+  console.error('fake-ytdlp: missing -o template');
+  process.exit(2);
+}
+
+// --download-archive dedup: an id already recorded is a silent success
+const archiveIndex = args.indexOf('--download-archive');
+if (archiveIndex >= 0) {
+  const archivePath = path.join(process.cwd(), args[archiveIndex + 1]);
+  if (existsSync(archivePath) && readFileSync(archivePath, 'utf-8').split('\n').includes(`youtube ${id}`)) {
+    console.log(`[download] ${url} has already been recorded in the archive`);
+    process.exit(0);
+  }
+}
+
+emitProgress(skipDownload ? [50, 100] : [25, 75, 100]);
+
+const writeInfoJson = args.includes('--write-info-json');
+const writeThumbnail = args.includes('--write-thumbnail');
+const writeDescription = args.includes('--write-description');
+const writeSubs = args.includes('--write-subs') || args.includes('--write-auto-subs');
+const subLangIndex = args.indexOf('--sub-lang');
+const subLangs = subLangIndex >= 0 ? (args[subLangIndex + 1] ?? 'en').split(',') : ['en'];
+
+if (!skipDownload) {
+  writeFileSync(path.join(process.cwd(), `${baseName}.mp4`), 'fake-mp4-bytes');
+}
+if (writeInfoJson) {
+  writeFileSync(
+    path.join(process.cwd(), `${baseName}.info.json`),
+    JSON.stringify({
+      id,
+      title: `Fake video ${id}`,
+      upload_date: '20260101',
+      duration: 42,
+      view_count: 1234,
+      like_count: 56,
+      channel: 'Fake channel',
+      description: 'Fake description for deep integration tests.',
+      webpage_url: url,
+    }),
+  );
+}
+if (writeThumbnail) {
+  writeFileSync(path.join(process.cwd(), `${baseName}.webp`), 'fake-webp');
+}
+if (writeDescription) {
+  writeFileSync(path.join(process.cwd(), `${baseName}.description`), 'Fake description for deep integration tests.');
+}
+if (writeSubs) {
+  for (const lang of subLangs) {
+    writeFileSync(
+      path.join(process.cwd(), `${baseName}.${lang}.vtt`),
+      'WEBVTT\n\n00:00.000 --> 00:01.000\nFake subtitle line.\n',
+    );
+  }
+}
+if (archiveIndex >= 0) {
+  appendFileSync(path.join(process.cwd(), args[archiveIndex + 1]), `youtube ${id}\n`);
+}
+
+console.log(`[download] Destination: ${baseName}.mp4`);
 process.exit(0);

@@ -207,7 +207,7 @@ describe('generateSummary', () => {
     expect(result).toEqual({ summary: 'Fresh summary', truncated: false });
     expect(mockOpenAIInstance.chat.completions.create).toHaveBeenCalledTimes(1);
     expect(mockFileHandle.writeFile).toHaveBeenCalledWith('Fresh summary', 'utf-8');
-    expect(mockedFs.rename).toHaveBeenCalledWith(`${SUMMARY_PATH}.tmp`, SUMMARY_PATH);
+    expect(mockedFs.rename).toHaveBeenCalledWith(expect.any(String), SUMMARY_PATH);
   });
 
   it('regenerates when the cache file is empty and writes the new summary back', async () => {
@@ -237,7 +237,7 @@ describe('generateSummary', () => {
     expect(result.summary).toBe('Summary of a long video');
     expect(result.truncated).toBe(true);
     expect(mockFileHandle.writeFile).toHaveBeenCalledWith('1', 'utf-8');
-    expect(mockedFs.rename).toHaveBeenCalledWith(`${TRUNCATED_MARKER_PATH}.tmp`, TRUNCATED_MARKER_PATH);
+    expect(mockedFs.rename).toHaveBeenCalledWith(expect.any(String), TRUNCATED_MARKER_PATH);
   });
 
   it('serves the persisted truncated marker with a cached summary', async () => {

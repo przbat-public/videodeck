@@ -679,8 +679,14 @@ export function readConcurrency(value: string | undefined, fallback: number): nu
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-/** Where the singleton persists its active jobs (cwd = server/) */
-export const QUEUE_STATE_FILE = '.queue-state.json';
+/** Where the singleton persists its active jobs (cwd = server/ by default) */
+export const QUEUE_STATE_FILE = process.env.QUEUE_STATE_FILE ?? '.queue-state.json';
+
+/**
+ * The yt-dlp binary the queue spawns: overridable per process (deep
+ * integration tests point it at the fake binary), defaulting to PATH.
+ */
+export const YTDLP_PATH = process.env.YTDLP_PATH ?? 'yt-dlp';
 
 /** Application-wide queue instance */
 export const downloadQueue = new DownloadQueue({
@@ -688,6 +694,7 @@ export const downloadQueue = new DownloadQueue({
   maxConcurrentUpdates: readConcurrency(process.env.UPDATE_CONCURRENCY, 2),
   maxAttempts: readConcurrency(process.env.DOWNLOAD_MAX_ATTEMPTS, 3),
   stateFile: QUEUE_STATE_FILE,
+  ytDlpPath: YTDLP_PATH,
 });
 
 /**
