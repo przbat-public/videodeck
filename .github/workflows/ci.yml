@@ -37,7 +37,10 @@ jobs:
             server/package-lock.json
             client/package-lock.json
             chrome-extension/package-lock.json
-      - run: npm ci
+      # Root install matters: shared/*.ts resolves zod from the repo root.
+      # knip also needs each package's node_modules to verify dependency
+      # ownership, so install all four packages.
+      - run: npm run install:ci
       - name: ESLint + repository invariants
         run: npm run lint
       - name: Script typecheck + tests
