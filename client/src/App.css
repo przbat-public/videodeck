@@ -34,6 +34,7 @@
 /* Search Bar */
 .search-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
   margin-bottom: 2rem;
   background: var(--color-surface);
@@ -87,9 +88,11 @@
 }
 
 .search-input {
-  flex: 1;
+  flex: 1 1 14rem;
   padding: 0.75rem 1rem;
   font-size: 1rem;
+  color: var(--color-text);
+  background: var(--color-surface);
   border: 2px solid var(--color-border);
   border-radius: 6px;
   transition: border-color 0.3s;
@@ -696,6 +699,8 @@
   border-radius: 4px;
   font-size: 0.95rem;
   font-family: 'Courier New', monospace;
+  color: var(--color-text);
+  background: var(--color-surface);
   transition: border-color 0.3s;
   box-sizing: border-box;
 }
@@ -1051,6 +1056,7 @@
 
   .toolbar-left {
     flex-direction: column;
+    align-items: stretch;
     width: 100%;
   }
 
@@ -1102,8 +1108,13 @@
   .date-filter,
   .sort-select,
   .category-select,
-  .config-input {
+  .config-input,
+  .theme-select {
     min-height: 44px;
+  }
+
+  .app-topbar {
+    padding: 0.5rem 1rem;
   }
 
   .ui-checkbox {
@@ -1330,6 +1341,8 @@
 .channel-input {
   padding: 0.72rem 1rem;
   font-size: 1rem;
+  color: var(--color-text);
+  background: var(--color-surface);
   border: 2px solid var(--color-border);
   border-radius: 6px;
   min-width: 160px;
@@ -1342,11 +1355,13 @@
 }
 
 .date-filter {
+  flex: 1 1 10rem;
   padding: 0.62rem 0.75rem;
   font-size: 1rem;
   border: 2px solid var(--color-border);
   border-radius: 6px;
   color: var(--color-text);
+  background: var(--color-surface);
   transition: border-color 0.2s ease;
 }
 
@@ -1457,12 +1472,23 @@
   font-size: 0.9rem;
 }
 
-/* Language switcher (top right) */
+/* Top bar: language and theme live in the page flow, never on top of
+   content. On a phone they simply sit above the page instead of floating
+   over the toolbar. */
+.app-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0.5rem 2rem;
+}
+
+/* Language switcher */
 .language-switcher {
-  position: fixed;
-  top: 0.75rem;
-  right: 0.75rem;
-  z-index: 1000;
   display: flex;
   gap: 0.25rem;
   background: var(--color-surface);
@@ -1474,12 +1500,8 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-/* Theme picker (top right, below the language switcher) */
+/* Theme picker, in the top bar next to the language switcher */
 .theme-select {
-  position: fixed;
-  top: 3.4rem;
-  right: 0.75rem;
-  z-index: 1000;
   max-width: 12rem;
 }
 
