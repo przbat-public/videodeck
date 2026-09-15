@@ -1,6 +1,6 @@
 ---
 name: ui-design
-description: videodeck UI design conventions. Reads DESIGN.md and enforces the token palette, the five shared primitives, dark-mode parity, accessibility and i18n rules whenever UI changes. Use when editing React components, CSS, or adding user-visible text in this repository, or when asked to restyle, polish, audit, or redesign the client.
+description: videodeck UI design conventions. Reads DESIGN.md and enforces the token palette, the five shared primitives, dark-mode parity, WCAG 2.1 AA accessibility and i18n rules whenever UI changes. Use when editing React components, CSS, or adding user-visible text in this repository, or when asked to restyle, polish, audit, or redesign the client.
 user-invocable: true
 argument-hint: '"the change I plan" [--mode audit|guide|review]'
 ---
@@ -32,9 +32,11 @@ rules and the copy rules. This skill turns that contract into a checklist.
    spinner.
 4. **Spacing rhythm.** Use the 0.25/0.5/1/2rem scale; 1rem between
    controls; cards get `--radius-card` and `--shadow-card`.
-5. **Accessibility.** Every input gets an accessible name. Focus stays
-   visible (`:focus-visible`). Text contrast at least 4.5:1, including
-   white text on `--color-primary`. Error banners use `role="alert"`.
+5. **Accessibility.** WCAG 2.1 AA is the bar. Every input gets an
+   accessible name. Focus stays visible (`:focus-visible`). Text contrast
+   at least 4.5:1, including white text on `--color-primary`. Error
+   banners use `role="alert"`. The full checklist lives at
+   `../../references/accessibility-checklist.md`.
 6. **Motion.** Transitions only, 0.15-0.3s, and `prefers-reduced-motion`
    already collapses them. No entrance animations.
 7. **Copy.** User-visible text goes into the i18n catalogs, pl and en in
@@ -42,6 +44,28 @@ rules and the copy rules. This skill turns that contract into a checklist.
    commands, short labels, no exclamation marks, no emoji.
 8. **Tests.** Component behavior changes ship with tests; UI text is
    asserted by key or by the localized label the test locale renders.
+
+## Component architecture
+
+- **Boundaries.** A component does one job; composites in
+  `client/src/components/` coordinate, primitives in `ui/` never know
+  about pages, routes or API shapes. A shared module stays generic; keep
+  feature logic in the page or hook that owns it.
+- **State placement.** Server data lives in hooks under
+  `client/src/hooks/` (`useVideoSearch`, `useDownloadQueue`,
+  `useVideoDetail`). Reducer-shaped state lives in
+  `client/src/reducers/`. Do not hoist state into a page just to pass it
+  down; URL-backed state (search phrase, sort) stays in the URL via
+  `searchUrlState`.
+- **Lists.** The video list virtualizes with react-window; new long lists
+  reuse it instead of rendering thousands of nodes. Keys are stable
+  (`summary-${videoId}-${subtitlePath}`), never array indexes.
+- **Responsive.** One real breakpoint exists, max-width 768px in
+  `App.css`. New layouts collapse there; do not add a second system of
+  breakpoints.
+- **Errors.** Runtime errors fall through `ErrorBoundary`; expected
+  failures use `ui/ErrorMessage`, toasts are additional signals, never
+  the only one.
 
 ## Audit output format
 
@@ -58,3 +82,11 @@ For `--mode audit`, report one table:
 Rank findings by user impact, not by file order. Skip false positives:
 semantic button colors and the player background are deliberate (see
 DESIGN.md section 2).
+
+## See also
+
+- `DESIGN.md`: the contract this checklist enforces
+- `../../references/accessibility-checklist.md`: the WCAG 2.1 AA checklist
+- `test-driven-development`: how component tests get written
+
+> Adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) (MIT), rewritten for videodeck conventions.

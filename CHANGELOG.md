@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   task breakdown, incremental slices, requirement interviews, and the
   git/CI/shipping/deprecation workflow adapted to the branch, PR and
   squash-merge flow and our CI checks
+- **Engineering skill pack, part three**: the ui-design skill gains
+  component-architecture and WCAG 2.1 AA guidance with an accessibility
+  checklist, a using-agent-skills routing skill, and four review personas in
+  `.agents/personas/`
 
 ### Fixed
 
