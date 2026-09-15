@@ -1,12 +1,8 @@
-import { useReducer, useCallback } from 'react';
+import { useCallback, useReducer } from 'react';
 import toast from 'react-hot-toast';
 import i18n from '../i18n';
 
-import {
-  recreateIndicesReducer,
-  initialState,
-  RecreateIndicesActionType,
-} from '../reducers/recreateIndicesReducer';
+import { initialState, RecreateIndicesActionType, recreateIndicesReducer } from '../reducers/recreateIndicesReducer';
 
 interface UseRecreateIndicesResult {
   loading: boolean;

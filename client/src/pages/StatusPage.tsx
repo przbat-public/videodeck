@@ -1,11 +1,11 @@
 import type { JSX } from 'react';
-import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useStatus } from '../hooks/useStatus';
+import { Link } from 'react-router-dom';
 import { FolderSection } from '../components/FolderSection';
 import { QueueControls } from '../components/QueueControls';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { Loading } from '../components/ui/Loading';
+import { useStatus } from '../hooks/useStatus';
 import { collectCategories } from '../utils/folderConfigForm';
 
 export default function StatusPage(): JSX.Element {

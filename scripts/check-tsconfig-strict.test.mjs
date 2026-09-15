@@ -1,5 +1,5 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { findMissingFlags, stripJsonComments } from './check-tsconfig-strict.mjs';
 
 test('stripJsonComments removes line and block comments, keeps strings', () => {
@@ -24,7 +24,7 @@ test('stripJsonComments removes line and block comments, keeps strings', () => {
 test('reports weakened and missing flags', () => {
   const missing = findMissingFlags(
     { strict: true, exactOptionalPropertyTypes: false },
-    { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true }
+    { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true },
   );
 
   assert.deepEqual(missing, {
@@ -37,8 +37,8 @@ test('accepts a fully strict config', () => {
   assert.deepEqual(
     findMissingFlags(
       { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true },
-      { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true }
+      { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true },
     ),
-    {}
+    {},
   );
 });

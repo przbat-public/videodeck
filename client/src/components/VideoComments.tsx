@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import type { CommentWithReplies } from '@shared/api';
+import { CommentsResponseSchema } from '@shared/schemas';
 import type { JSX } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import CommentComponent from './CommentComponent';
 import { Button } from './ui/Button';
 import { ErrorMessage } from './ui/ErrorMessage';
-import type { CommentWithReplies } from '@shared/api';
-import { CommentsResponseSchema } from '@shared/schemas';
 
 interface VideoCommentsProps {
   videoId: string;
@@ -17,11 +17,7 @@ interface VideoCommentsProps {
 
 const COMMENTS_PAGE_SIZE = 50;
 
-export default function VideoComments({
-  videoId,
-  comments,
-  commentCount,
-}: VideoCommentsProps): JSX.Element | null {
+export default function VideoComments({ videoId, comments, commentCount }: VideoCommentsProps): JSX.Element | null {
   const { t } = useTranslation();
   const [items, setItems] = useState(comments);
   const [previousComments, setPreviousComments] = useState(comments);
@@ -63,18 +59,17 @@ export default function VideoComments({
     try {
       const response = await fetch(
         `/api/videos/${encodeURIComponent(videoId)}/comments?offset=${items.length}&limit=${COMMENTS_PAGE_SIZE}`,
-        { signal: controller.signal }
+        { signal: controller.signal },
       );
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
       const page = CommentsResponseSchema.parse(await response.json());
       setItems((current) => [...current, ...page.comments]);
-    } catch (error) {
+    } catch {
       if (controller.signal.aborted) {
         return; // superseded by a newer page or an unmount — not an error
       }
-      console.error('Error loading comments:', error);
       setLoadError(true);
     } finally {
       if (abortRef.current === controller) {
@@ -88,9 +83,7 @@ export default function VideoComments({
   return (
     <div className="video-comments-section">
       <h2>
-        {commentCount !== undefined
-          ? t('video.commentsWithCount', { count: commentCount })
-          : t('video.comments')}
+        {commentCount !== undefined ? t('video.commentsWithCount', { count: commentCount }) : t('video.comments')}
       </h2>
 
       <div className="comments-list">
@@ -103,9 +96,7 @@ export default function VideoComments({
 
       {hasMore && (
         <Button onClick={() => void loadMore()} disabled={loadingMore}>
-          {loadingMore
-            ? t('app.loading')
-            : t('video.showMoreComments', { shown: items.length, total: commentCount })}
+          {loadingMore ? t('app.loading') : t('video.showMoreComments', { shown: items.length, total: commentCount })}
         </Button>
       )}
       {loadError && <ErrorMessage compact>{t('video.commentsError')}</ErrorMessage>}

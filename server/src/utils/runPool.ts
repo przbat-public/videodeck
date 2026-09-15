@@ -7,7 +7,7 @@
 export async function runPool<T>(
   items: readonly T[],
   limit: number,
-  worker: (item: T) => Promise<void>
+  worker: (item: T) => Promise<void>,
 ): Promise<void> {
   const size = Math.max(1, Math.min(limit, items.length));
   let nextIndex = 0;

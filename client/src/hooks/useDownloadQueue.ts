@@ -1,13 +1,7 @@
+import type { ApiError, EnqueueJobsResponse, JobType, QueueJob, QueueVideoInput } from '@shared/api';
+import { EnqueueJobsResponseSchema, QueueListResponseSchema } from '@shared/schemas';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import i18n from '../i18n';
-import type {
-  ApiError,
-  EnqueueJobsResponse,
-  JobType,
-  QueueJob,
-  QueueVideoInput,
-} from '@shared/api';
-import { EnqueueJobsResponseSchema, QueueListResponseSchema } from '@shared/schemas';
 
 export interface UseDownloadQueueOptions {
   /** Poll interval while jobs are active (ms) */
@@ -18,8 +12,7 @@ export interface UseDownloadQueueOptions {
   onQueueDrained?: () => void;
 }
 
-export const isActiveJob = (job: QueueJob): boolean =>
-  job.status === 'queued' || job.status === 'running';
+export const isActiveJob = (job: QueueJob): boolean => job.status === 'queued' || job.status === 'running';
 
 const DEFAULT_POLL_MS = 1500;
 
@@ -52,10 +45,9 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
     abortRef.current = controller;
 
     try {
-      const response = await fetch(
-        `/api/folder/queue?folderPath=${encodeURIComponent(folderPath)}`,
-        { signal: controller.signal }
-      );
+      const response = await fetch(`/api/folder/queue?folderPath=${encodeURIComponent(folderPath)}`, {
+        signal: controller.signal,
+      });
       if (!response.ok) {
         throw new Error(i18n.t('errors.loadQueue'));
       }
@@ -94,7 +86,7 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
       await refresh();
       return result;
     },
-    [folderPath, refresh]
+    [folderPath, refresh],
   );
 
   const cancel = useCallback(
@@ -102,7 +94,7 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
       await fetch(`/api/folder/queue/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
       await refresh();
     },
-    [refresh]
+    [refresh],
   );
 
   const cancelAll = useCallback(async () => {

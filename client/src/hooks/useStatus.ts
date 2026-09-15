@@ -1,9 +1,9 @@
-import { useEffect, useReducer } from 'react';
 import type { FolderConfig } from '@shared/api';
-import i18n from '../i18n';
 import { StatusResponseSchema } from '@shared/schemas';
-import { statusReducer, initialState, StatusActionType } from '../reducers/statusReducer';
+import { useEffect, useReducer } from 'react';
+import i18n from '../i18n';
 import type { StatusData } from '../reducers/statusReducer';
+import { initialState, StatusActionType, statusReducer } from '../reducers/statusReducer';
 
 interface UseStatusResult {
   state: { statusData: StatusData | null; loading: boolean; error: string | null };

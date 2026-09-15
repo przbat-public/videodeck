@@ -16,10 +16,10 @@ import type { ApiError, FolderConfig, QueueJob, ReindexStatus } from './schemas'
 export type {
   ApiError,
   CategoriesResponse,
-  ChannelVideo,
   ChannelsResponse,
-  CommentsResponse,
+  ChannelVideo,
   ClearFinishedResponse,
+  CommentsResponse,
   CommentWithReplies,
   DownloadOptions,
   DownloadPlaylistResponse,
@@ -60,7 +60,13 @@ export interface AcceptedResponse {
 // ---------------------------------------------------------------------------
 
 export type SortOption =
-  'relevance' | 'date-desc' | 'date-asc' | 'views-desc' | 'views-asc' | 'likes-desc' | 'likes-asc';
+  | 'relevance'
+  | 'date-desc'
+  | 'date-asc'
+  | 'views-desc'
+  | 'views-asc'
+  | 'likes-desc'
+  | 'likes-asc';
 
 /** 409 body of GET /api/videos/refreshCache while a reindex is running */
 export interface ReindexConflictResponse extends ApiError {

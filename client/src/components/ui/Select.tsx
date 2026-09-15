@@ -76,9 +76,7 @@ export function Select({
                 className="ui-select-item"
               >
                 <SelectPrimitive.ItemText>{item.label}</SelectPrimitive.ItemText>
-                <SelectPrimitive.ItemIndicator className="ui-select-item-indicator">
-                  ✓
-                </SelectPrimitive.ItemIndicator>
+                <SelectPrimitive.ItemIndicator className="ui-select-item-indicator">✓</SelectPrimitive.ItemIndicator>
               </SelectPrimitive.Item>
             ))}
           </SelectPrimitive.Viewport>

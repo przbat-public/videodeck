@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
 import type { JSX } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useVideoSearch } from '../hooks/useVideoSearch';
+import SearchBar from '../components/SearchBar';
+import { Button } from '../components/ui/Button';
+import { Checkbox } from '../components/ui/Checkbox';
+import { Loading } from '../components/ui/Loading';
+import VideoList from '../components/VideoList';
 import { useCacheRefresh } from '../hooks/useCacheRefresh';
 import { useCategories } from '../hooks/useCategories';
 import { useChannelNames } from '../hooks/useChannelNames';
 import { useRecreateIndices } from '../hooks/useRecreateIndices';
 import { useSearchUrlState } from '../hooks/useSearchUrlState';
-import SearchBar from '../components/SearchBar';
-import VideoList from '../components/VideoList';
-import { Button } from '../components/ui/Button';
-import { Checkbox } from '../components/ui/Checkbox';
-import { Loading } from '../components/ui/Loading';
+import { useVideoSearch } from '../hooks/useVideoSearch';
 
 export default function VideoListPage(): JSX.Element {
   const { searchState, setSearchState } = useSearchUrlState();
@@ -52,18 +52,10 @@ export default function VideoListPage(): JSX.Element {
     <main className="app-main">
       <div className="toolbar">
         <div className="toolbar-left">
-          <Button
-            onClick={handleRecreateIndices}
-            disabled={recreateIndicesLoading}
-            title={t('reindex.recreateTitle')}
-          >
+          <Button onClick={handleRecreateIndices} disabled={recreateIndicesLoading} title={t('reindex.recreateTitle')}>
             {recreateIndicesLoading ? t('reindex.recreating') : t('reindex.recreate')}
           </Button>
-          <Button
-            onClick={handleRefreshCache}
-            disabled={refreshLoading}
-            title={t('reindex.startTitle')}
-          >
+          <Button onClick={handleRefreshCache} disabled={refreshLoading} title={t('reindex.startTitle')}>
             {refreshLoading ? t('reindex.refreshing') : t('reindex.start')}
           </Button>
           <Checkbox

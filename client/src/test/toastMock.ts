@@ -1,5 +1,5 @@
-import { vi } from 'vitest';
 import type { Mock } from 'vitest';
+import { vi } from 'vitest';
 
 /**
  * One shared mock for react-hot-toast, registered once in test/setup.ts.

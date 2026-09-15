@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { StatusResponse } from '@shared/api';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import type { StatusResponse } from '@shared/api';
-import StatusPage from './StatusPage';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
+import StatusPage from './StatusPage';
 
 const statusResponse: StatusResponse = {
   videosFolderPath: ['/videos/a', '/videos/b'],
@@ -29,12 +29,7 @@ const json = (body: unknown, status = 200): MockResponse => ({
  * queue controls — hence the routing mock rather than a single canned
  * response.
  */
-function installFetch(
-  handlers: {
-    status?: () => MockResponse;
-    queue?: () => MockResponse;
-  } = {}
-): FetchMock {
+function installFetch(handlers: { status?: () => MockResponse; queue?: () => MockResponse } = {}): FetchMock {
   const fetchMock: FetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/status') {
       return handlers.status?.() ?? json(statusResponse);
@@ -61,7 +56,7 @@ const renderPage = () =>
   render(
     <MemoryRouter>
       <StatusPage />
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 
 describe('StatusPage', () => {
@@ -81,10 +76,7 @@ describe('StatusPage', () => {
 
     expect(await screen.findByText('/videos/a')).toBeInTheDocument();
     expect(screen.getByText('/videos/b')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Przejdź do listy filmów' })).toHaveAttribute(
-      'href',
-      '/videos'
-    );
+    expect(screen.getByRole('link', { name: 'Przejdź do listy filmów' })).toHaveAttribute('href', '/videos');
   });
 
   it('marks only the folders whose Elasticsearch index is missing', async () => {
@@ -107,7 +99,7 @@ describe('StatusPage', () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue/pause?paused=1', {
         method: 'POST',
-      })
+      }),
     );
     expect(await screen.findByRole('button', { name: 'Wznów kolejkę' })).toBeInTheDocument();
 
@@ -115,7 +107,7 @@ describe('StatusPage', () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue/resume?paused=0', {
         method: 'POST',
-      })
+      }),
     );
   });
 
@@ -145,9 +137,7 @@ describe('StatusPage', () => {
     const clear = await screen.findByRole('button', { name: 'Wyczyść zakończone (2)' });
     await user.click(clear);
 
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue/finished', { method: 'DELETE' })
-    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue/finished', { method: 'DELETE' }));
   });
 
   it('offers to create config.json for a folder that has none', async () => {

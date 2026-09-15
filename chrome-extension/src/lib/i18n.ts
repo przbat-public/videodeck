@@ -19,11 +19,12 @@ const localizedAttributes = [
 
 export function localizeDom(root: ParentNode = document): void {
   for (const { attribute, apply } of localizedAttributes) {
-    root.querySelectorAll<HTMLElement>(`[${attribute}]`).forEach((element) => {
+    const elements = root.querySelectorAll<HTMLElement>(`[${attribute}]`);
+    for (const element of elements) {
       const key = element.getAttribute(attribute);
       if (key) {
         apply(element, chrome.i18n.getMessage(key) || key);
       }
-    });
+    }
   }
 }

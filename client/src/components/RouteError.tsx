@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
-import { Link, useRouteError } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { Link, useRouteError } from 'react-router-dom';
+import { logError } from '../utils/logError';
 
 /**
  * Error element of the root route: covers both thrown route data and a lazy
@@ -10,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 export default function RouteError(): JSX.Element {
   const { t } = useTranslation();
   const error = useRouteError();
-  console.error('Route error:', error);
+  logError({ message: 'Route error', error });
 
   return (
     <div className="route-error">

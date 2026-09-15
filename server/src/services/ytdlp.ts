@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn } from 'node:child_process';
 import type { DownloadOptions, JobType } from '@shared/api';
 import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 
@@ -156,11 +156,7 @@ export function buildPlaylistArgs(channelUrl: string): string[] {
  * message that includes the stderr tail. No shell is involved (`spawn` takes
  * an argument array), so channel URLs cannot inject commands.
  */
-export function runYtDlp(
-  args: string[],
-  cwd: string,
-  options: { command?: string } = {}
-): Promise<string> {
+export function runYtDlp(args: string[], cwd: string, options: { command?: string } = {}): Promise<string> {
   const command = options.command ?? 'yt-dlp';
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd });
@@ -173,11 +169,7 @@ export function runYtDlp(
       if (code === 0) {
         resolve(Buffer.concat(out).toString('utf-8'));
       } else {
-        reject(
-          new Error(
-            `${command} exited with code ${code}: ${Buffer.concat(err).toString('utf-8').trim()}`
-          )
-        );
+        reject(new Error(`${command} exited with code ${code}: ${Buffer.concat(err).toString('utf-8').trim()}`));
       }
     });
   });

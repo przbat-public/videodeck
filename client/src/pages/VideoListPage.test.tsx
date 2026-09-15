@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { VideoListItem } from '@shared/api';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import type { VideoListItem } from '@shared/api';
-import VideoListPage from './VideoListPage';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
+import VideoListPage from './VideoListPage';
 
 const CATEGORIES = ['fpv', 'lego'];
 
@@ -24,18 +24,44 @@ const json = (body: unknown, status = 200): MockResponse => ({
   json: async () => body,
 });
 
+const defaultSearchPage = () => ({ videos: [video('v1', 'First')], totalCount: 1 });
+
+const reindexStatus = () => ({
+  running: false,
+  foldersDone: 0,
+  foldersTotal: 0,
+  filesDone: 0,
+  filesTotal: 0,
+  indexed: 0,
+  skipped: 0,
+  errors: [],
+});
+
+interface FetchHandlers {
+  search?: (params: URLSearchParams) => unknown;
+  categories?: string[];
+}
+
+function searchResponse(handlers: FetchHandlers, url: string): MockResponse {
+  const params = new URLSearchParams(url.slice(url.indexOf('?') + 1));
+  return json(handlers.search?.(params) ?? defaultSearchPage());
+}
+
+function refreshCacheResponse(url: string): MockResponse {
+  return url.includes('status')
+    ? json(reindexStatus())
+    : json({ message: 'Cache refresh process started', status: 'ok' });
+}
+
 /**
  * Route fetch by URL so tests can describe server state declaratively.
  * The search handler sees the query string the page built, so a test can
  * answer differently per category or phrase.
  */
-function installFetch(
-  handlers: { search?: (params: URLSearchParams) => unknown; categories?: string[] } = {}
-): FetchMock {
-  const fetchMock: FetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+function installFetch(handlers: FetchHandlers = {}): FetchMock {
+  const fetchMock: FetchMock = vi.fn(async (url: string, init?: RequestInit): Promise<MockResponse> => {
     if (url.startsWith('/api/videos/search?')) {
-      const params = new URLSearchParams(url.slice(url.indexOf('?') + 1));
-      return json(handlers.search?.(params) ?? { videos: [video('v1', 'First')], totalCount: 1 });
+      return searchResponse(handlers, url);
     }
     if (url === '/api/videos/categories') {
       return json({ categories: handlers.categories ?? CATEGORIES });
@@ -47,18 +73,7 @@ function installFetch(
       return json({ message: 'Recreation started' }, 202);
     }
     if (url.startsWith('/api/videos/refreshCache')) {
-      return url.includes('status')
-        ? json({
-            running: false,
-            foldersDone: 0,
-            foldersTotal: 0,
-            filesDone: 0,
-            filesTotal: 0,
-            indexed: 0,
-            skipped: 0,
-            errors: [],
-          })
-        : json({ message: 'Cache refresh process started', status: 'ok' });
+      return refreshCacheResponse(url);
     }
     throw new Error(`Unexpected fetch: ${init?.method ?? 'GET'} ${url}`);
   });
@@ -97,7 +112,7 @@ const renderAt = (url: string) =>
           }
         />
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 
 const currentUrl = () => screen.getByTestId('url').textContent;
@@ -137,9 +152,7 @@ describe('VideoListPage', () => {
       await screen.findByRole('combobox', { name: 'Kategoria' }); // categories loaded too
       await sleep(350); // past the search bar's debounce: nothing else may fire
 
-      expect(searchUrls(fetchMock)).toEqual([
-        '/api/videos/search?sort=date-desc&offset=0&limit=100',
-      ]);
+      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?sort=date-desc&offset=0&limit=100']);
       expect(currentUrl()).toBe('/videos');
     });
 
@@ -172,8 +185,7 @@ describe('VideoListPage', () => {
       renderAt('/videos?q=robot');
 
       const title = await screen.findByText(
-        (_, element) =>
-          element?.className === 'video-title' && element.textContent === 'A robot in the garden'
+        (_, element) => element?.className === 'video-title' && element.textContent === 'A robot in the garden',
       );
       expect(within(title).getByText('robot')).toHaveClass('search-highlight');
     });
@@ -196,7 +208,7 @@ describe('VideoListPage', () => {
 
       expect(await screen.findByText('Brak filmów. Spróbuj innego zapytania.')).toBeInTheDocument();
       expect(searchUrls(fetchMock).at(-1)).toBe(
-        '/api/videos/search?sort=date-desc&channel=Kana%C5%82+A&dateFrom=20240105&dateTo=20251231&offset=0&limit=100'
+        '/api/videos/search?sort=date-desc&channel=Kana%C5%82+A&dateFrom=20240105&dateTo=20251231&offset=0&limit=100',
       );
     });
 
@@ -205,17 +217,17 @@ describe('VideoListPage', () => {
       renderAt('/videos?category=archive');
 
       expect(await screen.findByText('Brak filmów. Spróbuj innego zapytania.')).toBeInTheDocument();
-      expect(searchUrls(fetchMock)).toEqual([
-        '/api/videos/search?sort=date-desc&category=archive&offset=0&limit=100',
-      ]);
+      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?sort=date-desc&category=archive&offset=0&limit=100']);
       expect(await categorySelect()).toHaveTextContent('archive');
     });
 
     it('keeps the URL filter visible when the category list fails to load', async () => {
-      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(console, 'error').mockImplementation(() => {
+        /* silence the expected categories-error log */
+      });
       const base = installFetch();
       fetchMock = vi.fn(async (url: string, init?: RequestInit) =>
-        url === '/api/videos/categories' ? json({ error: 'boom' }, 500) : base(url, init)
+        url === '/api/videos/categories' ? json({ error: 'boom' }, 500) : base(url, init),
       );
       globalThis.fetch = fetchMock as unknown as typeof fetch;
       renderAt('/videos?category=lego');
@@ -223,9 +235,7 @@ describe('VideoListPage', () => {
       await screen.findByText('First');
 
       expect(await categorySelect()).toHaveTextContent('lego');
-      expect(searchUrls(fetchMock)).toEqual([
-        '/api/videos/search?sort=date-desc&category=lego&offset=0&limit=100',
-      ]);
+      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?sort=date-desc&category=lego&offset=0&limit=100']);
     });
   });
 
@@ -241,7 +251,7 @@ describe('VideoListPage', () => {
         expect(searchUrls(fetchMock)).toEqual([
           '/api/videos/search?sort=date-desc&offset=0&limit=100',
           '/api/videos/search?sort=date-desc&category=lego&offset=0&limit=100',
-        ])
+        ]),
       );
     });
 
@@ -274,7 +284,7 @@ describe('VideoListPage', () => {
         expect(searchUrls(fetchMock)).toEqual([
           '/api/videos/search?sort=date-desc&category=fpv&offset=0&limit=100',
           '/api/videos/search?q=motor&sort=date-desc&category=fpv&offset=0&limit=100',
-        ])
+        ]),
       );
     });
 
@@ -288,9 +298,7 @@ describe('VideoListPage', () => {
 
       expect(searchInput()).toHaveValue('dr');
       expect(currentUrl()).toBe('/videos?q=drone');
-      expect(searchUrls(fetchMock)).toEqual([
-        '/api/videos/search?q=drone&sort=date-desc&offset=0&limit=100',
-      ]);
+      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?q=drone&sort=date-desc&offset=0&limit=100']);
     });
 
     it('returns to the bare URL when everything is cleared', async () => {
@@ -303,9 +311,7 @@ describe('VideoListPage', () => {
 
       await waitFor(() => expect(currentUrl()).toBe('/videos'));
       await waitFor(() =>
-        expect(searchUrls(fetchMock).at(-1)).toBe(
-          '/api/videos/search?sort=date-desc&offset=0&limit=100'
-        )
+        expect(searchUrls(fetchMock).at(-1)).toBe('/api/videos/search?sort=date-desc&offset=0&limit=100'),
       );
     });
   });
@@ -327,8 +333,8 @@ describe('VideoListPage', () => {
       await waitFor(() => expect(currentUrl()).toBe('/videos?sort=views-desc&category=lego'));
       await waitFor(() =>
         expect(searchUrls(fetchMock).at(-1)).toBe(
-          '/api/videos/search?sort=views-desc&category=lego&offset=0&limit=100'
-        )
+          '/api/videos/search?sort=views-desc&category=lego&offset=0&limit=100',
+        ),
       );
       expect(sortSelect()).toHaveTextContent('Najwięcej wyświetleń');
       expect(await categorySelect()).toHaveTextContent('lego');
@@ -346,9 +352,7 @@ describe('VideoListPage', () => {
       await user.click(screen.getByRole('button', { name: 'go-elsewhere' }));
 
       await waitFor(() =>
-        expect(searchUrls(fetchMock).at(-1)).toBe(
-          '/api/videos/search?sort=likes-desc&category=fpv&offset=0&limit=100'
-        )
+        expect(searchUrls(fetchMock).at(-1)).toBe('/api/videos/search?sort=likes-desc&category=fpv&offset=0&limit=100'),
       );
       expect(searchInput()).toHaveValue('');
       expect(sortSelect()).toHaveTextContent('Najwięcej polubień');
@@ -368,7 +372,7 @@ describe('VideoListPage', () => {
         expect(searchUrls(fetchMock)).toEqual([
           '/api/videos/search?q=drone&sort=date-desc&category=lego&offset=0&limit=100',
           '/api/videos/search?q=drone&sort=date-desc&category=lego&offset=0&limit=100',
-        ])
+        ]),
       );
     });
 
@@ -378,9 +382,7 @@ describe('VideoListPage', () => {
 
       await user.click(screen.getByRole('button', { name: 'Odbuduj indeksy' }));
 
-      await waitFor(() =>
-        expect(fetchMock).toHaveBeenCalledWith('/api/videos/recreateIndices', { method: 'POST' })
-      );
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/videos/recreateIndices', { method: 'POST' }));
     });
 
     it('Refresh cache can skip folders that already have an index (onlyMissing)', async () => {
@@ -391,9 +393,7 @@ describe('VideoListPage', () => {
       await user.click(screen.getByRole('button', { name: 'Odśwież indeks' }));
 
       await waitFor(() =>
-        expect(
-          fetchMock.mock.calls.some(([url]) => url === '/api/videos/refreshCache?onlyMissing=1')
-        ).toBe(true)
+        expect(fetchMock.mock.calls.some(([url]) => url === '/api/videos/refreshCache?onlyMissing=1')).toBe(true),
       );
       expect(fetchMock.mock.calls.some(([url]) => url === '/api/videos/refreshCache')).toBe(false);
     });
@@ -431,9 +431,7 @@ describe('VideoListPage', () => {
       await user.click(screen.getByRole('button', { name: 'Pokaż więcej' }));
 
       expect(await screen.findByText('Second')).toBeInTheDocument();
-      expect(searchUrls(fetchMock).at(-1)).toBe(
-        '/api/videos/search?sort=date-desc&offset=1&limit=100'
-      );
+      expect(searchUrls(fetchMock).at(-1)).toBe('/api/videos/search?sort=date-desc&offset=1&limit=100');
     });
 
     it('hides the button once everything is loaded', async () => {

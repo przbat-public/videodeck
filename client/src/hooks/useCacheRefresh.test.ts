@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { renderHook, waitFor, act } from '@testing-library/react';
 import type { ReindexStatus } from '@shared/api';
-import { useCacheRefresh, formatReindexProgress, formatReindexResult } from './useCacheRefresh';
-import { installFetchMock } from '../test/fetchMock';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
+import { installFetchMock } from '../test/fetchMock';
 import { toast } from '../test/toastMock';
+import { formatReindexProgress, formatReindexResult, useCacheRefresh } from './useCacheRefresh';
 
 const LOADING_TOAST_ID = 'toast-id';
 
@@ -38,8 +38,7 @@ const running = (overrides: Partial<ReindexStatus> = {}): ReindexStatus => ({
   ...overrides,
 });
 
-const withoutFolder = ({ currentFolder: _folder, ...status }: ReindexStatus): ReindexStatus =>
-  status;
+const withoutFolder = ({ currentFolder: _folder, ...status }: ReindexStatus): ReindexStatus => status;
 
 const jsonResponse = (body: unknown, status = 200): MockResponse => ({
   ok: status >= 200 && status < 300,
@@ -65,36 +64,34 @@ const statusCalls = () => fetchMock.mock.calls.filter(([url]) => url === STATUS_
 describe('formatReindexProgress', () => {
   it('shows folder, file progress and indexed count', () => {
     expect(formatReindexProgress(running())).toBe(
-      'Indeksowanie · folder 1/2 · channel-a · 3/10 plików · 3 zindeksowanych'
+      'Indeksowanie · folder 1/2 · channel-a · 3/10 plików · 3 zindeksowanych',
     );
   });
 
   it('omits parts that are not known yet', () => {
-    expect(
-      formatReindexProgress(withoutFolder(running({ foldersTotal: 0, filesTotal: 0, indexed: 0 })))
-    ).toBe('Indeksowanie · 0 zindeksowanych');
+    expect(formatReindexProgress(withoutFolder(running({ foldersTotal: 0, filesTotal: 0, indexed: 0 })))).toBe(
+      'Indeksowanie · 0 zindeksowanych',
+    );
   });
 });
 
 describe('formatReindexResult', () => {
   it('summarises a clean run', () => {
-    expect(formatReindexResult(finished())).toBe(
-      'Indeksowanie zakończone: 20 filmów zindeksowanych'
-    );
+    expect(formatReindexResult(finished())).toBe('Indeksowanie zakończone: 20 filmów zindeksowanych');
   });
 
   it('reports a skipped run (every folder already cached) specially', () => {
     expect(formatReindexResult(finished({ foldersTotal: 0, indexed: 0 }))).toBe(
-      'Wszystkie foldery mają już indeks w Elasticsearch — nic do zrobienia'
+      'Wszystkie foldery mają już indeks w Elasticsearch — nic do zrobienia',
     );
   });
 
   it('mentions skipped files and folder errors', () => {
     expect(formatReindexResult(finished({ skipped: 2, errors: ['a', 'b'] }))).toBe(
-      'Indeksowanie zakończone: 20 filmów zindeksowanych, 2 pominiętych, 2 błędy folderów'
+      'Indeksowanie zakończone: 20 filmów zindeksowanych, 2 pominiętych, 2 błędy folderów',
     );
     expect(formatReindexResult(finished({ errors: ['a'] }))).toBe(
-      'Indeksowanie zakończone: 20 filmów zindeksowanych, 1 błąd folderu'
+      'Indeksowanie zakończone: 20 filmów zindeksowanych, 1 błąd folderu',
     );
   });
 });
@@ -118,9 +115,7 @@ describe('useCacheRefresh', () => {
   });
 
   it('should set loading to true while the reindex runs', async () => {
-    mockServer(jsonResponse({ message: 'Cache refresh process started', status: 'ok' }), [
-      jsonResponse(finished()),
-    ]);
+    mockServer(jsonResponse({ message: 'Cache refresh process started', status: 'ok' }), [jsonResponse(finished())]);
 
     const { result } = renderHook(() => useCacheRefresh());
 
@@ -160,10 +155,9 @@ describe('useCacheRefresh', () => {
       .map(([url]) => url)
       .filter((url) => url === START_URL || url === `${START_URL}?onlyMissing=1`);
     expect(startCalls).toEqual(['/api/videos/refreshCache?onlyMissing=1']);
-    expect(toast.success).toHaveBeenCalledWith(
-      'Wszystkie foldery mają już indeks w Elasticsearch — nic do zrobienia',
-      { id: LOADING_TOAST_ID }
-    );
+    expect(toast.success).toHaveBeenCalledWith('Wszystkie foldery mają już indeks w Elasticsearch — nic do zrobienia', {
+      id: LOADING_TOAST_ID,
+    });
   });
 
   it('starts the reindex, reads the status and shows the summary', async () => {
@@ -180,12 +174,9 @@ describe('useCacheRefresh', () => {
     expect(fetchMock).toHaveBeenCalledWith(START_URL, { signal: expect.any(AbortSignal) });
     expect(fetchMock).toHaveBeenCalledWith(STATUS_URL, { signal: expect.any(AbortSignal) });
     expect(toast.loading).toHaveBeenCalledWith('Rozpoczynanie odświeżania indeksu...');
-    expect(toast.success).toHaveBeenCalledWith(
-      'Indeksowanie zakończone: 2561 filmów zindeksowanych, 2 pominiętych',
-      {
-        id: LOADING_TOAST_ID,
-      }
-    );
+    expect(toast.success).toHaveBeenCalledWith('Indeksowanie zakończone: 2561 filmów zindeksowanych, 2 pominiętych', {
+      id: LOADING_TOAST_ID,
+    });
     expect(toast.error).not.toHaveBeenCalled();
     expect(result.current.status).toEqual(finished({ indexed: 2561, skipped: 2 }));
   });
@@ -194,15 +185,13 @@ describe('useCacheRefresh', () => {
     vi.useFakeTimers();
     mockServer(jsonResponse({ status: 'ok' }), [
       jsonResponse(running()),
-      jsonResponse(
-        running({ foldersDone: 1, currentFolder: '/videos/channel-b', filesDone: 5, indexed: 15 })
-      ),
+      jsonResponse(running({ foldersDone: 1, currentFolder: '/videos/channel-b', filesDone: 5, indexed: 15 })),
       jsonResponse(finished()),
     ]);
 
     const { result } = renderHook(() => useCacheRefresh({ pollIntervalMs: 1000 }));
 
-    let done: Promise<void>;
+    let done: Promise<void> | undefined;
     act(() => {
       done = result.current.refreshCache();
     });
@@ -213,7 +202,7 @@ describe('useCacheRefresh', () => {
     expect(statusCalls()).toBe(1);
     expect(toast.loading).toHaveBeenLastCalledWith(
       'Indeksowanie · folder 1/2 · channel-a · 3/10 plików · 3 zindeksowanych',
-      { id: LOADING_TOAST_ID }
+      { id: LOADING_TOAST_ID },
     );
     expect(result.current.loading).toBe(true);
     expect(result.current.status?.running).toBe(true);
@@ -224,21 +213,18 @@ describe('useCacheRefresh', () => {
     expect(statusCalls()).toBe(2);
     expect(toast.loading).toHaveBeenLastCalledWith(
       'Indeksowanie · folder 2/2 · channel-b · 5/10 plików · 15 zindeksowanych',
-      { id: LOADING_TOAST_ID }
+      { id: LOADING_TOAST_ID },
     );
     expect(toast.success).not.toHaveBeenCalled();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
-      await done!;
+      await done;
     });
     expect(statusCalls()).toBe(3);
-    expect(toast.success).toHaveBeenCalledWith(
-      'Indeksowanie zakończone: 20 filmów zindeksowanych',
-      {
-        id: LOADING_TOAST_ID,
-      }
-    );
+    expect(toast.success).toHaveBeenCalledWith('Indeksowanie zakończone: 20 filmów zindeksowanych', {
+      id: LOADING_TOAST_ID,
+    });
     expect(result.current.loading).toBe(false);
     expect(result.current.status?.running).toBe(false);
   });
@@ -249,7 +235,7 @@ describe('useCacheRefresh', () => {
 
     const { result, unmount } = renderHook(() => useCacheRefresh({ pollIntervalMs: 1000 }));
 
-    let done: Promise<void>;
+    let done: Promise<void> | undefined;
     act(() => {
       done = result.current.refreshCache();
     });
@@ -282,12 +268,9 @@ describe('useCacheRefresh', () => {
     expect(toast.loading).toHaveBeenCalledWith('Indeksowanie już trwa — śledzę postęp...', {
       id: LOADING_TOAST_ID,
     });
-    expect(toast.success).toHaveBeenCalledWith(
-      'Indeksowanie zakończone: 20 filmów zindeksowanych',
-      {
-        id: LOADING_TOAST_ID,
-      }
-    );
+    expect(toast.success).toHaveBeenCalledWith('Indeksowanie zakończone: 20 filmów zindeksowanych', {
+      id: LOADING_TOAST_ID,
+    });
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -297,7 +280,7 @@ describe('useCacheRefresh', () => {
         finished({
           errors: ['Error scanning folder /videos/x: ENOENT'],
           lastError: 'Error scanning folder /videos/x: ENOENT',
-        })
+        }),
       ),
     ]);
 
@@ -309,7 +292,7 @@ describe('useCacheRefresh', () => {
 
     expect(toast.error).toHaveBeenCalledWith(
       'Indeksowanie zakończone: 20 filmów zindeksowanych, 1 błąd folderu. Error scanning folder /videos/x: ENOENT',
-      { id: LOADING_TOAST_ID }
+      { id: LOADING_TOAST_ID },
     );
     expect(toast.success).not.toHaveBeenCalled();
     expect(result.current.loading).toBe(false);
@@ -351,7 +334,7 @@ describe('useCacheRefresh', () => {
           throw new Error('JSON parse error');
         },
       },
-      []
+      [],
     );
 
     const { result } = renderHook(() => useCacheRefresh());
@@ -372,12 +355,9 @@ describe('useCacheRefresh', () => {
       await result.current.refreshCache();
     });
 
-    expect(toast.error).toHaveBeenCalledWith(
-      'Nie udało się odczytać statusu indeksowania (HTTP 500)',
-      {
-        id: LOADING_TOAST_ID,
-      }
-    );
+    expect(toast.error).toHaveBeenCalledWith('Nie udało się odczytać statusu indeksowania (HTTP 500)', {
+      id: LOADING_TOAST_ID,
+    });
     expect(result.current.loading).toBe(false);
   });
 

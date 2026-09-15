@@ -1,6 +1,6 @@
-import fs from 'fs/promises';
-import os from 'os';
-import path from 'path';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { invalidateCommentCache, loadCommentTree } from './commentStore';
 
 describe('loadCommentTree', () => {
@@ -17,8 +17,7 @@ describe('loadCommentTree', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  const writeInfo = (comments: unknown) =>
-    fs.writeFile(filePath, JSON.stringify({ comments }), 'utf-8');
+  const writeInfo = (comments: unknown) => fs.writeFile(filePath, JSON.stringify({ comments }), 'utf-8');
 
   it('returns the parsed tree and reuses it while the file is unchanged', async () => {
     await writeInfo([{ id: 'c1', text: 'root', like_count: 3, replies: [] }]);

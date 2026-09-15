@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import { Button } from './Button';
 
 describe('Button', () => {
@@ -22,7 +22,7 @@ describe('Button', () => {
     render(
       <Button onClick={onClick} disabled>
         Czekaj
-      </Button>
+      </Button>,
     );
 
     const button = screen.getByRole('button', { name: 'Czekaj' });
@@ -47,7 +47,7 @@ describe('Button', () => {
     render(
       <Button size="small" title="Podpowiedź" className="extra">
         x
-      </Button>
+      </Button>,
     );
 
     const button = screen.getByRole('button', { name: 'x' });

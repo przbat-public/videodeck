@@ -34,8 +34,8 @@ Aplikacja webowa do wyszukiwania i przeglądania filmów pobranych przez yt-dlp.
 
 ### Narzędzia
 
-- **ESLint** - linter kodu (z `--max-warnings 0`, patrz [Linting](#linting-i-formatowanie))
-- **Prettier** - formatter kodu
+- **Biome** - formatter i linter kodu (restrykcyjne reguły, patrz [Linting](#linting-i-formatowanie))
+- **ESLint** - lint type-aware (`--max-warnings 0`, patrz [Linting](#linting-i-formatowanie))
 
 ## Instalacja
 
@@ -263,23 +263,29 @@ cd chrome-extension && npm run typecheck # src/ + shared/api.ts (wspólny kontra
 
 ## Linting i Formatowanie
 
-Projekt używa ESLint i Prettier do utrzymania spójności kodu.
+Projekt używa Biome (formatter + linter) oraz ESLinta (reguły type-aware)
+do utrzymania spójności kodu.
 
-Konfiguracja jest jedna dla całego repozytorium — `eslint.config.mjs` w katalogu
-głównym obejmuje `server/`, `client/`, `shared/` i `chrome-extension/src/`
-(wygenerowane `*.js` rozszerzenia są ignorowane). Flat config ESLinta lintuje
-tylko pliki poniżej swojego katalogu, a `shared/` leży poza oboma
-workspace'ami, dlatego lint i formatowanie uruchamia się z roota. Konfiguracja
-mówi pluginowi React, że projekt celuje w React 19 (`settings['react-x']`) —
-komponenty przyjmują `ref` jako zwykły prop (bez `forwardRef`).
+`biome.json` w katalogu głównym jest jedynym źródłem prawdy dla formatowania
+(pojedyncze cudzysłowy, szerokość 120) i restrykcyjnych reguł lintu
+(`noExplicitAny`, `noNonNullAssertion`, złożoność poznawcza ≤ 15, `noConsole`,
+…). Flat config ESLinta (`eslint.config.mjs`) obejmuje `server/`, `client/`,
+`shared/` i `chrome-extension/src/` (wygenerowane `*.js` rozszerzenia są
+ignorowane) i zawiera tylko reguły, których Biome nie ma — type-aware
+TypeScript, React hooks i Playwright. Flat config lintuje tylko pliki poniżej
+swojego katalogu, a `shared/` leży poza oboma workspace'ami, dlatego lint
+i formatowanie uruchamia się z roota. Konfiguracja mówi pluginowi React, że
+projekt celuje w React 19 (`settings['react-x']`) — komponenty przyjmują
+`ref` jako zwykły prop (bez `forwardRef`).
 
 ### Sprawdzenie kodu (lint)
 
 ```bash
-npm run lint
+npm run lint          # biome check + skrypty niezmienników repozytorium
+npm run lint:types    # eslint --max-warnings 0 (type-aware, React, Playwright)
 ```
 
-Lint działa z `--max-warnings 0`: każdy warning psuje przebieg, więc lista
+Lint działa z zerową tolerancją: każdy warning psuje przebieg, więc lista
 problemów nie może narastać. Tam, gdzie klucz-w-pozycji jest naprawdę
 bezpieczny (np. linie logu yt-dlp, które nigdy nie zmieniają kolejności),
 stosowany jest celowy `eslint-disable` z uzasadnieniem.
@@ -409,8 +415,8 @@ Chrome ma testy jednostkowe bez progów — to niewielka, czysta logika w
 
 - **TypeScript** - silne typowanie w całym projekcie (szczegóły niżej)
 - **Testy jednostkowe** - wysoka pokrycie testami (Jest + Vitest)
-- **Linting** - ESLint do sprawdzania jakości kodu
-- **Formatting** - Prettier do spójnego formatowania
+- **Linting** - Biome (restrykcyjne reguły) + ESLint (type-aware) do sprawdzania jakości kodu
+- **Formatting** - Biome do spójnego formatowania
 - **Walidacja** - sprawdzanie parametrów API i ścieżek plików
 
 ### Bezpieczeństwo
@@ -576,7 +582,7 @@ Krótki przegląd decyzji architektonicznych klienta i tego, co świadomie **nie
   `isolatedModules` (typecheck per plik), a rozszerzenie typecheckuje cały
   katalog `../shared`, a nie wybrane pliki.
 - **Husky + commitlint + lint-staged** — `pre-commit` formatuje i lintuje
-  zmienione pliki (prettier + eslint --max-warnings 0), `commit-msg` wymusza
+  zmienione pliki (biome check --write), `commit-msg` wymusza
   konwencję conventional commits (`feat:`, `fix:`, `chore(tooling):`, …) —
   to koniec mieszanych stylów w historii.
 

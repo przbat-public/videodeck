@@ -1,6 +1,6 @@
-import type { JSX } from 'react';
-import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import type { JSX } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import ErrorBoundary from './ErrorBoundary';
 
 function Bomb(): JSX.Element {
@@ -16,19 +16,21 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <Healthy />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     expect(screen.getByText('wszystko gra')).toBeInTheDocument();
   });
 
   it('shows the fallback with the error message when a child throws', () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {
+      /* silence the expected render-error log */
+    });
     try {
       render(
         <ErrorBoundary>
           <Bomb />
-        </ErrorBoundary>
+        </ErrorBoundary>,
       );
     } finally {
       consoleSpy.mockRestore();

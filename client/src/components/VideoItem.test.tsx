@@ -1,10 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import type { QueueJob } from '@shared/api';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import type { QueueJob } from '@shared/api';
-import { VideoItem } from './VideoItem';
+import { describe, expect, it, vi } from 'vitest';
 import type { ChannelVideoRow } from './VideoItem';
+import { VideoItem } from './VideoItem';
 
 const video: ChannelVideoRow = {
   id: 'abc123',
@@ -30,14 +30,8 @@ const renderItem = (props: Partial<React.ComponentProps<typeof VideoItem>> = {})
   const onCancel = vi.fn();
   render(
     <MemoryRouter>
-      <VideoItem
-        video={video}
-        isDownloaded={false}
-        onEnqueue={onEnqueue}
-        onCancel={onCancel}
-        {...props}
-      />
-    </MemoryRouter>
+      <VideoItem video={video} isDownloaded={false} onEnqueue={onEnqueue} onCancel={onCancel} {...props} />
+    </MemoryRouter>,
   );
   return { onEnqueue, onCancel };
 };

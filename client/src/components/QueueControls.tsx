@@ -26,9 +26,7 @@ export function QueueControls(): JSX.Element {
         onClick={() => void clearFinished()}
         title={t('queue.clearTitle')}
       >
-        {finishedCount > 0
-          ? t('queue.clearFinishedWithCount', { count: finishedCount })
-          : t('queue.clearFinished')}
+        {finishedCount > 0 ? t('queue.clearFinishedWithCount', { count: finishedCount }) : t('queue.clearFinished')}
       </Button>
     </div>
   );

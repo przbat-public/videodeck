@@ -14,9 +14,10 @@
  *
  * Wired into `npm run lint`; fails CI with file:line of every violation.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments as stripAllComments } from './strip-comments.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -38,64 +39,7 @@ const QUOTED_STRING_RE = new RegExp(`['"\`]([^'"\`]*[${POLISH_CHARS}][^'"\`]*)['
  * @returns {string}
  */
 export function stripComments(source) {
-  let out = '';
-  let i = 0;
-  let inLine = false;
-  let inBlock = false;
-  let quote = null;
-  while (i < source.length) {
-    const c = source[i];
-    const next = source[i + 1] ?? '';
-    if (inLine) {
-      if (c === '\n') {
-        inLine = false;
-        out += c;
-      }
-      i += 1;
-      continue;
-    }
-    if (inBlock) {
-      if (c === '*' && next === '/') {
-        inBlock = false;
-        out += '  ';
-        i += 2;
-        continue;
-      }
-      if (c === '\n') out += c;
-      i += 1;
-      continue;
-    }
-    if (quote !== null) {
-      out += c;
-      if (c === '\\') {
-        out += next;
-        i += 2;
-        continue;
-      }
-      if (c === quote) quote = null;
-      i += 1;
-      continue;
-    }
-    if (c === '/' && next === '/') {
-      inLine = true;
-      i += 2;
-      continue;
-    }
-    if (c === '/' && next === '*') {
-      inBlock = true;
-      i += 2;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === '`') {
-      quote = c;
-      out += c;
-      i += 1;
-      continue;
-    }
-    out += c;
-    i += 1;
-  }
-  return out;
+  return stripAllComments(source, '"\'`');
 }
 
 /**
@@ -149,9 +93,7 @@ function main() {
     }
   }
   if (violations.length > 0) {
-    console.error(
-      `Hardcoded Polish strings found — move them to the i18n catalogs:\n${violations.join('\n')}`
-    );
+    console.error(`Hardcoded Polish strings found — move them to the i18n catalogs:\n${violations.join('\n')}`);
     process.exitCode = 1;
     return;
   }

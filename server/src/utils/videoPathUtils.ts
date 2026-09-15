@@ -1,6 +1,6 @@
-import os from 'os';
-import path from 'path';
-import fs from 'fs/promises';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { getVideosFolderPaths } from '../config';
 import { logger } from './logger';
 
@@ -31,7 +31,7 @@ export async function validateVideosFolder(): Promise<void> {
   // soon as the drive comes back (the list is re-scanned every few seconds).
   if (folderPaths.length === 0) {
     logger.warn(
-      'No video folders found — search, downloads and reindexing stay unavailable until a configured drive is mounted.'
+      'No video folders found — search, downloads and reindexing stay unavailable until a configured drive is mounted.',
     );
     return;
   }
@@ -48,9 +48,7 @@ export async function validateVideosFolder(): Promise<void> {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         errors.push(`${folderPath} does not exist`);
       } else {
-        errors.push(
-          `Error accessing ${folderPath}: ${error instanceof Error ? error.message : String(error)}`
-        );
+        errors.push(`Error accessing ${folderPath}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }

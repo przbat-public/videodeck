@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import type { VideoListItem } from '@shared/api';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
+import { describe, expect, it } from 'vitest';
 import VideoList from './VideoList';
-import type { VideoListItem } from '@shared/api';
 
 const mockVideos: VideoListItem[] = [
   {

@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { act } from 'react';
-import userEvent from '@testing-library/user-event';
-import CommentComponent from './CommentComponent';
 import type { CommentWithReplies } from '@shared/api';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { act } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import CommentComponent from './CommentComponent';
 
 describe('CommentComponent', () => {
   describe('Basic rendering', () => {
@@ -102,7 +102,7 @@ describe('CommentComponent', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByText(new RegExp(`^a{300}$`))).toBeInTheDocument();
+        expect(screen.getByText(/^a{300}$/)).toBeInTheDocument();
       });
       expect(await screen.findByRole('button', { name: /zwiń/i })).toBeInTheDocument();
     });
@@ -132,7 +132,7 @@ describe('CommentComponent', () => {
       const comment = createLongComment(100);
       render(<CommentComponent comment={comment} />);
 
-      expect(screen.getByText(new RegExp(`^a{100}$`))).toBeInTheDocument();
+      expect(screen.getByText(/^a{100}$/)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /czytaj więcej/i })).not.toBeInTheDocument();
     });
   });

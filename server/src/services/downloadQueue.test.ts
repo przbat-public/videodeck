@@ -1,17 +1,12 @@
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import type { QueueJob } from '@shared/api';
-import { DownloadQueue, indexChangedVideos, readConcurrency } from './downloadQueue';
-import {
-  buildFormatSelector,
-  buildYtDlpArgs,
-  escapeOutputTemplate,
-  PROGRESS_TEMPLATE,
-} from './ytdlp';
+import { at } from '../test-utils';
+import { removePartialDownloads } from '../utils/fsUtils';
 import type { EnqueueRequest, SpawnedProcess } from './downloadQueue';
+import { DownloadQueue, indexChangedVideos, readConcurrency } from './downloadQueue';
 import { refreshIndex } from './folderIndex';
 import { indexVideosFromDisk } from './videoScanner';
-import { removePartialDownloads } from '../utils/fsUtils';
-import { at } from '../test-utils';
+import { buildFormatSelector, buildYtDlpArgs, escapeOutputTemplate, PROGRESS_TEMPLATE } from './ytdlp';
 
 jest.mock('./folderIndex', () => ({
   ...jest.requireActual('./folderIndex'),
@@ -26,12 +21,8 @@ jest.mock('../utils/fsUtils', () => ({
 }));
 
 const mockedRefreshIndex = refreshIndex as jest.MockedFunction<typeof refreshIndex>;
-const mockedIndexVideosFromDisk = indexVideosFromDisk as jest.MockedFunction<
-  typeof indexVideosFromDisk
->;
-const mockedRemovePartialDownloads = removePartialDownloads as jest.MockedFunction<
-  typeof removePartialDownloads
->;
+const mockedIndexVideosFromDisk = indexVideosFromDisk as jest.MockedFunction<typeof indexVideosFromDisk>;
+const mockedRemovePartialDownloads = removePartialDownloads as jest.MockedFunction<typeof removePartialDownloads>;
 
 class FakeProcess extends EventEmitter implements SpawnedProcess {
   stdout = new EventEmitter();
@@ -95,7 +86,9 @@ describe('indexChangedVideos', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'log').mockImplementation(() => {
+      /* silence the job-progress info logs */
+    });
   });
 
   afterEach(() => {
@@ -120,7 +113,7 @@ describe('indexChangedVideos', () => {
 
     expect(mockedRefreshIndex).toHaveBeenCalledWith(
       '/videos/channel-a',
-      new Date('2025-01-01T10:05:00.000Z').getTime()
+      new Date('2025-01-01T10:05:00.000Z').getTime(),
     );
     expect(mockedIndexVideosFromDisk).toHaveBeenCalledWith('/videos/channel-a', ['20250101_New']);
   });
@@ -135,7 +128,7 @@ describe('indexChangedVideos', () => {
 
     expect(mockedRefreshIndex).toHaveBeenCalledWith(
       '/videos/channel-a',
-      new Date('2025-01-01T10:00:00.000Z').getTime()
+      new Date('2025-01-01T10:00:00.000Z').getTime(),
     );
     expect(mockedIndexVideosFromDisk).not.toHaveBeenCalled();
   });
@@ -197,7 +190,7 @@ describe('buildYtDlpArgs', () => {
 
     const format = args[args.indexOf('-f') + 1];
     expect(format).toBe(
-      'bestvideo[height<=1080][vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]'
+      'bestvideo[height<=1080][vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]',
     );
     expect(format).not.toContain('2160');
     expect(format).toContain('[vcodec^=avc1]');
@@ -294,12 +287,15 @@ describe('DownloadQueue', () => {
   let spawn: ReturnType<typeof createFakeSpawn>;
   let afterJob: jest.Mock<Promise<void>, [QueueJob]>;
   let queue: DownloadQueue;
+  let consoleErrorSpy: jest.SpyInstance;
 
   /** n-th spawned yt-dlp process (fails the test when there is none) */
   const spawned = (index = 0): SpawnCall => at(spawn.calls, index);
 
   beforeEach(() => {
-    jest.spyOn(console, 'error').mockImplementation(() => {});
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {
+      /* silence expected error logs */
+    });
     spawn = createFakeSpawn();
     afterJob = jest.fn().mockResolvedValue(undefined);
     queue = new DownloadQueue({
@@ -341,7 +337,7 @@ describe('DownloadQueue', () => {
           type: 'download',
         },
       ]),
-      0
+      0,
     );
 
     expect('title' in job).toBe(false);
@@ -350,9 +346,7 @@ describe('DownloadQueue', () => {
   });
 
   it('passes per-folder options through to the spawned command', () => {
-    queue.enqueue([
-      request('a', { options: { maxHeight: 1080, subLangs: ['pl'], writeComments: false } }),
-    ]);
+    queue.enqueue([request('a', { options: { maxHeight: 1080, subLangs: ['pl'], writeComments: false } })]);
 
     const args = spawned().args;
     expect(args[args.indexOf('-f') + 1]).toContain('height<=1080');
@@ -489,7 +483,7 @@ describe('DownloadQueue', () => {
         (job) =>
           new Promise<void>((resolve) => {
             release.set(job.videoId, resolve);
-          })
+          }),
       );
       return async (videoId: string) => {
         release.get(videoId)?.();
@@ -558,9 +552,9 @@ describe('DownloadQueue', () => {
 
       expect(afterJob).toHaveBeenCalledTimes(2);
       expect(statuses().map(([, status]) => status)).toEqual(['done', 'done']);
-      expect(console.error).toHaveBeenCalledWith(
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining('downloadQueue: afterJob failed for a:'),
-        expect.any(Error)
+        expect.any(Error),
       );
     });
 
@@ -575,7 +569,7 @@ describe('DownloadQueue', () => {
       await flush();
 
       expect(queue.get(job.id)?.status).toBe('done');
-      expect(console.error).toHaveBeenCalled();
+      expect(consoleErrorSpy).toHaveBeenCalled();
     });
 
     it('frees the folder slot once its last hook is done, so a later job starts a fresh chain', async () => {
@@ -613,12 +607,14 @@ describe('DownloadQueue', () => {
   });
 
   it('calls afterJob before marking a successful job done', async () => {
-    let resolveAfter: () => void = () => {};
+    let resolveAfter: () => void = () => {
+      /* replaced by the pending hook's promise executor below */
+    };
     afterJob.mockImplementation(
       () =>
         new Promise<void>((resolve) => {
           resolveAfter = resolve;
-        })
+        }),
     );
     const job = at(queue.enqueue([request('a')]), 0);
 
@@ -644,7 +640,7 @@ describe('DownloadQueue', () => {
     await flush();
 
     expect(queue.get(job.id)?.status).toBe('done');
-    expect(console.error).toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalled();
   });
 
   it('marks a job as error on a non-zero exit code', async () => {
@@ -667,7 +663,7 @@ describe('DownloadQueue', () => {
     const job = at(queue.enqueue([request('a')]), 0);
 
     spawned().process.output(
-      "ERROR: [youtube] a: This video is available to this channel's members. Join this channel to get access to members-only content.\n"
+      "ERROR: [youtube] a: This video is available to this channel's members. Join this channel to get access to members-only content.\n",
     );
     spawned().process.exit(0);
     await flush();
@@ -750,7 +746,7 @@ describe('DownloadQueue', () => {
       const job = at(retryQueue.enqueue([request('a')]), 0);
 
       spawned(0).process.output(
-        "ERROR: [youtube] obNLctxL3_c: This video is available to this channel's members on level: Supporter (or any higher level). Join this channel to get access to members-only content and other exclusive perks.\n"
+        "ERROR: [youtube] obNLctxL3_c: This video is available to this channel's members on level: Supporter (or any higher level). Join this channel to get access to members-only content and other exclusive perks.\n",
       );
       spawned(0).process.exit(1);
       await flush();

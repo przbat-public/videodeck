@@ -17,7 +17,7 @@ export const queueBodySchema = z.object({
         videoUrl: z.string().optional(),
         url: z.string().optional(),
         title: z.string().optional(),
-      })
+      }),
     )
     .min(1, 'videos must be a non-empty array'),
 });

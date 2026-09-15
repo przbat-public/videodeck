@@ -1,5 +1,5 @@
-import { vi } from 'vitest';
 import type { Mock } from 'vitest';
+import { vi } from 'vitest';
 
 /**
  * Response-like object returned by mocked fetch calls. Tests describe server

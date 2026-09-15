@@ -1,8 +1,8 @@
-import { Client } from '@elastic/elasticsearch';
+import { createHash } from 'node:crypto';
 import type { estypes } from '@elastic/elasticsearch';
+import { Client } from '@elastic/elasticsearch';
 import type { SortOption, VideoListItem } from '@shared/api';
-import { getVideosFolderPaths, ELASTICSEARCH_URL } from '../config';
-import { createHash } from 'crypto';
+import { ELASTICSEARCH_URL, getVideosFolderPaths } from '../config';
 import { logger } from '../utils/logger';
 import { runPool } from '../utils/runPool';
 
@@ -65,9 +65,7 @@ export function buildIndexVersionName(folderPath: string, now: Date = new Date()
  */
 function getIndexPattern(folderPaths: string[] = getVideosFolderPaths()): string | string[] {
   if (folderPaths.length === 0) {
-    throw new Error(
-      'No video folders configured — refusing to search across all Elasticsearch indices'
-    );
+    throw new Error('No video folders configured — refusing to search across all Elasticsearch indices');
   }
   return folderPaths.map((folderPath) => getIndexNameFromFolderPath(folderPath));
 }
@@ -107,7 +105,6 @@ export function toDocument(video: VideoListItem): VideoDocument {
 /** Convert a stored document back into the API shape */
 export function fromDocument(document: VideoDocument): VideoListItem {
   // Search-only blobs never leave the server
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { commentsText, transcriptText, ...rest } = document;
   return { ...rest, comments: [] };
 }
@@ -258,9 +255,7 @@ export async function listCachedFolders(folderPaths: string[]): Promise<Set<stri
       }
     } catch (error) {
       logger.warn(
-        `Cannot check the index cache of ${folderPath}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Cannot check the index cache of ${folderPath}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   });
@@ -290,10 +285,7 @@ export async function promoteIndexVersion(folderPath: string, indexName: string)
   }
 
   await esClient.indices.updateAliases({
-    actions: [
-      ...previous.map((index) => ({ remove: { index, alias } })),
-      { add: { index: indexName, alias } },
-    ],
+    actions: [...previous.map((index) => ({ remove: { index, alias } })), { add: { index: indexName, alias } }],
   });
 
   const stale = new Set([
@@ -411,10 +403,7 @@ export async function indexVideo(video: VideoListItem): Promise<void> {
  * index (used by reindex); otherwise videos are grouped by folder and written
  * through the folder aliases.
  */
-export async function bulkIndexVideos(
-  videos: VideoListItem[],
-  options: BulkIndexOptions = {}
-): Promise<void> {
+export async function bulkIndexVideos(videos: VideoListItem[], options: BulkIndexOptions = {}): Promise<void> {
   if (videos.length === 0) {
     return;
   }
@@ -445,11 +434,7 @@ export async function bulkIndexVideos(
  * request. Callers are responsible for keeping the batch under
  * Elasticsearch's `http.max_content_length` (100 MB by default).
  */
-export async function bulkIndexDocuments(
-  indexName: string,
-  documents: VideoDocument[],
-  refresh = true
-): Promise<void> {
+export async function bulkIndexDocuments(indexName: string, documents: VideoDocument[], refresh = true): Promise<void> {
   if (documents.length === 0) {
     return;
   }
@@ -536,13 +521,7 @@ function buildSortOptions(sortOption: SortOption): estypes.SortCombinations[] {
   }
 }
 
-export const SEARCH_FIELDS = [
-  'baseName.text^4',
-  'title^3',
-  'description^2',
-  'transcriptText^2',
-  'commentsText',
-];
+export const SEARCH_FIELDS = ['baseName.text^4', 'title^3', 'description^2', 'transcriptText^2', 'commentsText'];
 
 /** How many results one page holds by default */
 export const SEARCH_DEFAULT_LIMIT = 100;
@@ -567,10 +546,7 @@ const HIGHLIGHT_CLOSE = '\u0002';
 
 function normalizePaging(options: SearchOptions): { from: number; size: number } {
   const from = Math.max(0, Math.trunc(options.offset ?? 0));
-  const size = Math.min(
-    SEARCH_MAX_LIMIT,
-    Math.max(1, Math.trunc(options.limit ?? SEARCH_DEFAULT_LIMIT))
-  );
+  const size = Math.min(SEARCH_MAX_LIMIT, Math.max(1, Math.trunc(options.limit ?? SEARCH_DEFAULT_LIMIT)));
   return { from, size };
 }
 
@@ -583,7 +559,7 @@ export async function searchVideos(
   query?: string,
   sortOption: SortOption = 'date-desc',
   folderPaths?: string[],
-  options: SearchOptions = {}
+  options: SearchOptions = {},
 ): Promise<VideoListItem[]> {
   if (folderPaths?.length === 0) {
     return [];
@@ -592,12 +568,13 @@ export async function searchVideos(
   const { from, size } = normalizePaging(options);
 
   let mustQuery: Record<string, unknown> = { match_all: {} };
-  const hasQuery = Boolean(query && query.trim().length > 0);
+  const trimmedQuery = query?.trim() ?? '';
+  const hasQuery = trimmedQuery.length > 0;
 
   if (hasQuery) {
     mustQuery = {
       multi_match: {
-        query: query!.trim(),
+        query: trimmedQuery,
         fields: SEARCH_FIELDS,
         type: 'best_fields',
         fuzziness: 'AUTO',
@@ -622,11 +599,7 @@ export async function searchVideos(
     index: getIndexPattern(folderPaths),
     ignore_unavailable: true,
     query:
-      filters.length > 0
-        ? { bool: { must: [mustQuery], filter: filters } }
-        : hasQuery
-          ? mustQuery
-          : { match_all: {} },
+      filters.length > 0 ? { bool: { must: [mustQuery], filter: filters } } : hasQuery ? mustQuery : { match_all: {} },
     sort: buildSortOptions(sortOption),
     from,
     size,
@@ -666,9 +639,7 @@ export async function searchVideos(
  * `description` fragments under their own keys, one merged `snippet` from
  * the search-only text fields (comments/transcript) for the result cards.
  */
-function buildHighlights(
-  highlight: Record<string, string[]> | undefined
-): Record<string, string[]> | undefined {
+function buildHighlights(highlight: Record<string, string[]> | undefined): Record<string, string[]> | undefined {
   if (!highlight) {
     return undefined;
   }
@@ -694,9 +665,7 @@ export async function listChannelNames(): Promise<string[]> {
     size: 0,
     aggs: { channels: { terms: { field: 'channelName.keyword', size: 200 } } },
   });
-  const buckets = (
-    response.aggregations?.channels as { buckets?: Array<{ key: string }> } | undefined
-  )?.buckets;
+  const buckets = (response.aggregations?.channels as { buckets?: Array<{ key: string }> } | undefined)?.buckets;
   return (buckets ?? []).map((bucket) => bucket.key).sort((a, b) => a.localeCompare(b));
 }
 

@@ -1,13 +1,47 @@
-import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { feedSseBuffer, parseSseEvent } from './sse';
+import { describe, expect, it } from 'vitest';
 import { extractProgress } from './progress';
+import { feedSseBuffer, parseSseEvent } from './sse';
 import { getYouTubeVideoId } from './youtube';
 
 /**
  * Property-based tests for the extension's parsers: invariants that must hold
  * for every input, not just the examples.
  */
+
+/** Feeds a stream split at cumulative cut points through the SSE buffer and collects the parsed events. */
+function parseStreamSplits(events: unknown[], cutPoints: number[]): unknown[] {
+  const stream = events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('');
+
+  // split the stream at the cumulative cut points
+  const cuts = new Set<number>();
+  let total = 0;
+  for (const cut of cutPoints) {
+    total += cut;
+    cuts.add(Math.min(total, stream.length));
+  }
+  const chunks: string[] = [];
+  let start = 0;
+  for (const end of [...cuts, stream.length].sort((a, b) => a - b)) {
+    chunks.push(stream.slice(start, end));
+    start = end;
+  }
+
+  const collected: unknown[] = [];
+  let buffer = '';
+  for (const chunk of chunks) {
+    const frame = feedSseBuffer(buffer, chunk);
+    buffer = frame.buffer;
+    for (const raw of frame.events) {
+      const event = parseSseEvent(raw);
+      if (event !== null) {
+        collected.push(event);
+      }
+    }
+  }
+
+  return collected;
+}
 
 describe('feedSseBuffer (property)', () => {
   it('collects the same events however a stream is split into chunks', () => {
@@ -23,7 +57,7 @@ describe('feedSseBuffer (property)', () => {
         type: fc.constant('error' as const),
         error: fc.string(),
         done: fc.constant(true as const),
-      })
+      }),
     );
 
     fc.assert(
@@ -31,38 +65,9 @@ describe('feedSseBuffer (property)', () => {
         fc.array(event, { maxLength: 10 }),
         fc.array(fc.integer({ min: 1, max: 20 }), { minLength: 1, maxLength: 20 }),
         (events, cutPoints) => {
-          const stream = events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('');
-
-          // split the stream at the cumulative cut points
-          const cuts = new Set<number>();
-          let total = 0;
-          for (const cut of cutPoints) {
-            total += cut;
-            cuts.add(Math.min(total, stream.length));
-          }
-          const chunks: string[] = [];
-          let start = 0;
-          for (const end of [...cuts, stream.length].sort((a, b) => a - b)) {
-            chunks.push(stream.slice(start, end));
-            start = end;
-          }
-
-          const collected: unknown[] = [];
-          let buffer = '';
-          for (const chunk of chunks) {
-            const frame = feedSseBuffer(buffer, chunk);
-            buffer = frame.buffer;
-            for (const raw of frame.events) {
-              const event = parseSseEvent(raw);
-              if (event !== null) {
-                collected.push(event);
-              }
-            }
-          }
-
-          expect(collected).toEqual(events);
-        }
-      )
+          expect(parseStreamSplits(events, cutPoints)).toEqual(events);
+        },
+      ),
     );
   });
 });
@@ -78,7 +83,7 @@ describe('parseSseEvent (property)', () => {
             expect(event.done).toBe(true);
           }
         }
-      })
+      }),
     );
   });
 });
@@ -92,7 +97,7 @@ describe('extractProgress (property)', () => {
           expect(progress).toBeGreaterThanOrEqual(0);
           expect(progress).toBeLessThanOrEqual(100);
         }
-      })
+      }),
     );
   });
 });
@@ -105,7 +110,7 @@ describe('getYouTubeVideoId (property)', () => {
         if (id !== null) {
           expect(id).toMatch(/^[a-zA-Z0-9_-]{11}$/);
         }
-      })
+      }),
     );
   });
 });

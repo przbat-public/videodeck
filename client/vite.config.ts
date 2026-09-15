@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { visualizer } from 'rollup-plugin-visualizer';
+import { defineConfig } from 'vitest/config';
 
 // `ANALYZE=1 npm run build` writes a bundle report (dist/stats.html).
 // Off by default: the report is a one-off inspection, not a build artifact.
@@ -31,7 +31,7 @@ export default defineConfig({
             return undefined;
           }
           const chunk = Object.entries(vendorChunks).find(([, packages]) =>
-            packages.some((pkg) => id.includes(`/node_modules/${pkg}/`))
+            packages.some((pkg) => id.includes(`/node_modules/${pkg}/`)),
           );
           return chunk?.[0];
         },

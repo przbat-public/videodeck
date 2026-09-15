@@ -1,6 +1,7 @@
+import type { DownloadVideoEvent } from '@shared/api';
+import type { ActiveDownloadSummary, RuntimeMessage } from './lib/messages';
 import { extractProgress } from './lib/progress';
 import { feedSseBuffer, parseSseEvent } from './lib/sse';
-import type { ActiveDownloadSummary, RuntimeMessage } from './lib/messages';
 
 /**
  * Background service worker: owns the list of active downloads and streams
@@ -42,19 +43,15 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
     updateBadge();
     notifyDownloadUpdate(downloadId, 'downloadStart', { videoTitle });
 
-    downloadVideo(
-      downloadId,
-      message.videoUrl,
-      message.serverUrl,
-      message.folderPath,
-      message.apiToken
-    ).catch((error: unknown) => {
-      activeDownloads.delete(downloadId);
-      updateBadge();
-      notifyDownloadUpdate(downloadId, 'downloadError', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
+    downloadVideo(downloadId, message.videoUrl, message.serverUrl, message.folderPath, message.apiToken).catch(
+      (error: unknown) => {
+        activeDownloads.delete(downloadId);
+        updateBadge();
+        notifyDownloadUpdate(downloadId, 'downloadError', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
     return true; // keep the message channel open for the async work
   }
 
@@ -90,7 +87,7 @@ async function downloadVideo(
   videoUrl: string,
   serverUrl: string,
   folderPath: string,
-  apiToken?: string
+  apiToken?: string,
 ): Promise<void> {
   const apiUrl = `${serverUrl}/api/folder/download-video`;
 
@@ -121,71 +118,8 @@ async function downloadVideo(
     if (!reader) {
       throw new Error('Response has no body');
     }
-    const decoder = new TextDecoder();
-    let buffer = '';
 
-    while (true) {
-      // Check if the download was cancelled
-      if (!activeDownloads.has(downloadId)) {
-        await reader.cancel();
-        return;
-      }
-
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      const { events, buffer: rest } = feedSseBuffer(
-        buffer,
-        decoder.decode(value, { stream: true })
-      );
-      buffer = rest;
-
-      for (const raw of events) {
-        const event = parseSseEvent(raw);
-        if (event === null) {
-          continue;
-        }
-        if (event.type === 'start') {
-          notifyDownloadUpdate(downloadId, 'downloadProgress', {
-            progress: 0,
-            message: event.message || 'Rozpoczynanie pobierania...',
-          });
-        } else if (event.type === 'output') {
-          const progress = extractProgress(event.message);
-          if (progress !== undefined) {
-            const download = activeDownloads.get(downloadId);
-            if (download) {
-              download.progress = progress;
-            }
-          }
-          notifyDownloadUpdate(downloadId, 'downloadProgress', {
-            ...(progress !== undefined ? { progress } : {}),
-            message: event.message,
-          });
-        } else if (event.type === 'done') {
-          activeDownloads.delete(downloadId);
-          updateBadge();
-          notifyDownloadUpdate(downloadId, 'downloadComplete', {
-            message: event.message || chrome.i18n.getMessage('downloadFinished'),
-          });
-          return;
-        } else {
-          // event.type === 'error'
-          activeDownloads.delete(downloadId);
-          updateBadge();
-          throw new Error(event.error || chrome.i18n.getMessage('downloadFailed'));
-        }
-      }
-    }
-
-    // The stream ended without a 'done' event
-    activeDownloads.delete(downloadId);
-    updateBadge();
-    notifyDownloadUpdate(downloadId, 'downloadComplete', {
-      message: chrome.i18n.getMessage('downloadFinished'),
-    });
+    await streamDownload(downloadId, reader);
   } catch (error) {
     activeDownloads.delete(downloadId);
     updateBadge();
@@ -193,6 +127,80 @@ async function downloadVideo(
       error: error instanceof Error ? error.message : chrome.i18n.getMessage('unknownError'),
     });
     throw error;
+  }
+}
+
+/** Reads the SSE stream and reacts to each event; returns when it ends or is cancelled. */
+async function streamDownload(downloadId: number, reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    // Check if the download was cancelled
+    if (!activeDownloads.has(downloadId)) {
+      await reader.cancel();
+      return;
+    }
+
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    const { events, buffer: rest } = feedSseBuffer(buffer, decoder.decode(value, { stream: true }));
+    buffer = rest;
+
+    for (const raw of events) {
+      const event = parseSseEvent(raw);
+      if (event !== null && handleSseEvent(downloadId, event)) {
+        return;
+      }
+    }
+  }
+
+  // The stream ended without a 'done' event
+  activeDownloads.delete(downloadId);
+  updateBadge();
+  notifyDownloadUpdate(downloadId, 'downloadComplete', {
+    message: chrome.i18n.getMessage('downloadFinished'),
+  });
+}
+
+/** Reacts to one SSE event; returns true when the stream is finished. */
+function handleSseEvent(downloadId: number, event: DownloadVideoEvent): boolean {
+  switch (event.type) {
+    case 'start':
+      notifyDownloadUpdate(downloadId, 'downloadProgress', {
+        progress: 0,
+        message: event.message || 'Rozpoczynanie pobierania...',
+      });
+      return false;
+    case 'output': {
+      const progress = extractProgress(event.message);
+      if (progress !== undefined) {
+        const download = activeDownloads.get(downloadId);
+        if (download) {
+          download.progress = progress;
+        }
+      }
+      notifyDownloadUpdate(downloadId, 'downloadProgress', {
+        ...(progress !== undefined ? { progress } : {}),
+        message: event.message,
+      });
+      return false;
+    }
+    case 'done':
+      activeDownloads.delete(downloadId);
+      updateBadge();
+      notifyDownloadUpdate(downloadId, 'downloadComplete', {
+        message: event.message || chrome.i18n.getMessage('downloadFinished'),
+      });
+      return true;
+    default:
+      // event.type === 'error'
+      activeDownloads.delete(downloadId);
+      updateBadge();
+      throw new Error(event.error || chrome.i18n.getMessage('downloadFailed'));
   }
 }
 
@@ -214,7 +222,7 @@ async function readApiError(response: Response): Promise<string | null> {
 function notifyDownloadUpdate<K extends BackgroundEvent['action']>(
   downloadId: number,
   action: K,
-  data: Omit<Extract<BackgroundEvent, { action: K }>, 'action' | 'downloadId'>
+  data: Omit<Extract<BackgroundEvent, { action: K }>, 'action' | 'downloadId'>,
 ): void {
   chrome.runtime.sendMessage({ action, downloadId, ...data }).catch(() => {
     // Ignore errors when no listener is around (popup might be closed)

@@ -22,8 +22,7 @@ const PERMANENT_FAILURES: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
     reason: 'Video jest prywatne',
   },
   {
-    pattern:
-      /This video has been removed|This video is no longer available|This video isn't available/i,
+    pattern: /This video has been removed|This video is no longer available|This video isn't available/i,
     reason: 'Video zostało usunięte lub jest niedostępne',
   },
 ];

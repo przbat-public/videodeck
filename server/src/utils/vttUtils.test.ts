@@ -33,15 +33,11 @@ centered already
   });
 
   it('keeps timings that have no settings exactly as they are', () => {
-    expect(stripVttCueSettings('00:00:01.000 --> 00:00:02.000\n')).toBe(
-      '00:00:01.000 --> 00:00:02.000\n'
-    );
+    expect(stripVttCueSettings('00:00:01.000 --> 00:00:02.000\n')).toBe('00:00:01.000 --> 00:00:02.000\n');
   });
 
   it('accepts hour-less timestamps and trailing spaces', () => {
-    expect(stripVttCueSettings('00:03.360 --> 00:05.200 line:0% \ntext')).toBe(
-      '00:03.360 --> 00:05.200\ntext'
-    );
+    expect(stripVttCueSettings('00:03.360 --> 00:05.200 line:0% \ntext')).toBe('00:03.360 --> 00:05.200\ntext');
   });
 
   it('leaves text lines containing --> untouched', () => {
@@ -50,9 +46,9 @@ centered already
   });
 
   it('preserves other cue settings-free lines and CRLF where present', () => {
-    expect(
-      stripVttCueSettings('WEBVTT\r\n\r\n00:00:01.000 --> 00:00:02.000 align:start\r\ntext')
-    ).toBe('WEBVTT\r\n\r\n00:00:01.000 --> 00:00:02.000\r\ntext');
+    expect(stripVttCueSettings('WEBVTT\r\n\r\n00:00:01.000 --> 00:00:02.000 align:start\r\ntext')).toBe(
+      'WEBVTT\r\n\r\n00:00:01.000 --> 00:00:02.000\r\ntext',
+    );
   });
 
   it('is idempotent', () => {

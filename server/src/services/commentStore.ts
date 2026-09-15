@@ -1,5 +1,5 @@
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import type { CommentWithReplies } from '@shared/api';
 import type { VideoInfoJson } from '../types';
 import { buildCommentTree } from '../utils/commentTreeUtils';
@@ -30,10 +30,7 @@ export function invalidateCommentCache(): void {
  * The top-level comment tree of a video, or null when its info.json does
  * not exist. Other read errors propagate (the caller maps them to 500).
  */
-export async function loadCommentTree(
-  folderPath: string,
-  baseName: string
-): Promise<CommentWithReplies[] | null> {
+export async function loadCommentTree(folderPath: string, baseName: string): Promise<CommentWithReplies[] | null> {
   const filePath = path.join(folderPath, `${baseName}.info.json`);
   const key = `${folderPath}\n${baseName}`;
 

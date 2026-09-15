@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { VideoDetails } from '@shared/api';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import type { VideoDetails } from '@shared/api';
-import VideoDetailPage from './VideoDetailPage';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
+import VideoDetailPage from './VideoDetailPage';
 
 const details: VideoDetails = {
   title: 'A talk about hedgehogs',
@@ -47,7 +47,7 @@ const renderPage = () =>
       <Routes>
         <Route path="/video/:videoId" element={<VideoDetailPage />} />
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 
 describe('VideoDetailPage', () => {
@@ -77,10 +77,7 @@ describe('VideoDetailPage', () => {
     renderPage();
 
     const player = await screen.findByTestId('video-player');
-    expect(player).toHaveAttribute(
-      'src',
-      `/api/videos/file/hedgehogs.mp4?folder=${encodeURIComponent('/videos/a')}`
-    );
+    expect(player).toHaveAttribute('src', `/api/videos/file/hedgehogs.mp4?folder=${encodeURIComponent('/videos/a')}`);
   });
 
   it('renders one subtitle track per file with the language from its name', async () => {
@@ -107,10 +104,7 @@ describe('VideoDetailPage', () => {
     expect(en).toHaveAttribute('kind', 'subtitles');
     expect(en).toHaveAttribute('srcLang', 'en');
     expect(en).toHaveAttribute('label', 'Angielski');
-    expect(en).toHaveAttribute(
-      'src',
-      `/api/videos/file/hedgehogs.en.vtt?folder=${encodeURIComponent('/videos/a')}`
-    );
+    expect(en).toHaveAttribute('src', `/api/videos/file/hedgehogs.en.vtt?folder=${encodeURIComponent('/videos/a')}`);
     expect(en).toHaveAttribute('default');
 
     expect(pl).toHaveAttribute('srcLang', 'pl');
@@ -179,9 +173,7 @@ describe('VideoDetailPage', () => {
     renderPage();
 
     expect(await screen.findByText('Komentarze (3)')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/3)' })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/3)' })).toBeInTheDocument();
   });
 
   it('shows an error with a way back when the request fails', async () => {
@@ -189,9 +181,6 @@ describe('VideoDetailPage', () => {
     renderPage();
 
     expect(await screen.findByText(/^Błąd:/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '← Wróć do wyszukiwania' })).toHaveAttribute(
-      'href',
-      '/videos'
-    );
+    expect(screen.getByRole('link', { name: '← Wróć do wyszukiwania' })).toHaveAttribute('href', '/videos');
   });
 });

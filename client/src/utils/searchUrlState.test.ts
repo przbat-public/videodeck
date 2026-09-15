@@ -1,12 +1,12 @@
-import { describe, it, expect } from 'vitest';
 import type { SortOption } from '@shared/api';
+import { describe, expect, it } from 'vitest';
 import type { SearchState } from './searchUrlState';
 import {
   DEFAULT_SEARCH_STATE,
   DEFAULT_SORT,
-  SORT_OPTIONS,
   isSortOption,
   parseSearchState,
+  SORT_OPTIONS,
   toSearchParams,
 } from './searchUrlState';
 
@@ -34,10 +34,10 @@ describe('parseSearchState', () => {
 
   it('reads every field', () => {
     expect(parse('q=drone+motor&sort=views-desc&category=fpv')).toEqual(
-      state({ query: 'drone motor', sort: 'views-desc', category: 'fpv' })
+      state({ query: 'drone motor', sort: 'views-desc', category: 'fpv' }),
     );
     expect(parse('channel=Jordan+B+Peterson&dateFrom=2024-01-05&dateTo=2025-12-31')).toEqual(
-      state({ channel: 'Jordan B Peterson', dateFrom: '20240105', dateTo: '20251231' })
+      state({ channel: 'Jordan B Peterson', dateFrom: '20240105', dateTo: '20251231' }),
     );
   });
 
@@ -48,13 +48,13 @@ describe('parseSearchState', () => {
 
   it('decodes percent-encoded and unicode values', () => {
     expect(parse('q=%C5%9Bmig%C5%82o%20%26%20rama&category=modele%2Bsamoloty')).toEqual(
-      state({ query: 'śmigło & rama', category: 'modele+samoloty' })
+      state({ query: 'śmigło & rama', category: 'modele+samoloty' }),
     );
   });
 
   it('trims surrounding whitespace from the phrase, category and channel', () => {
     expect(parse('q=%20%20robot%20&category=+lego+&channel=+fpv+')).toEqual(
-      state({ query: 'robot', category: 'lego', channel: 'fpv' })
+      state({ query: 'robot', category: 'lego', channel: 'fpv' }),
     );
   });
 
@@ -71,12 +71,12 @@ describe('parseSearchState', () => {
     'falls back to the default for the unknown sort %j',
     (sort) => {
       expect(parse(`sort=${encodeURIComponent(sort)}`).sort).toBe(DEFAULT_SORT);
-    }
+    },
   );
 
   it('uses the first value when a parameter is repeated', () => {
     expect(parse('q=first&q=second&sort=likes-asc&sort=views-desc')).toEqual(
-      state({ query: 'first', sort: 'likes-asc' })
+      state({ query: 'first', sort: 'likes-asc' }),
     );
   });
 
@@ -100,13 +100,13 @@ describe('toSearchParams', () => {
     expect(serialize(state({ category: 'lego' }))).toBe('category=lego');
     expect(serialize(state({ channel: 'Jordan B Peterson' }))).toBe('channel=Jordan+B+Peterson');
     expect(serialize(state({ dateFrom: '20240105', dateTo: '20251231' }))).toBe(
-      'dateFrom=2024-01-05&dateTo=2025-12-31'
+      'dateFrom=2024-01-05&dateTo=2025-12-31',
     );
   });
 
   it('keeps a stable key order so equal states give equal URLs', () => {
     expect(serialize(state({ query: 'a b', sort: 'date-asc', category: 'fpv' }))).toBe(
-      'q=a+b&sort=date-asc&category=fpv'
+      'q=a+b&sort=date-asc&category=fpv',
     );
   });
 
@@ -138,13 +138,10 @@ describe('round trip', () => {
     expect(parseSearchState(toSearchParams(item))).toEqual(item);
   });
 
-  it.each(SORT_OPTIONS.map((option) => option.value))(
-    'survives the round trip for sort=%s',
-    (sort: SortOption) => {
-      const item: SearchState = state({ query: 'q', sort, category: 'c' });
-      expect(parseSearchState(toSearchParams(item))).toEqual(item);
-    }
-  );
+  it.each(SORT_OPTIONS.map((option) => option.value))('survives the round trip for sort=%s', (sort: SortOption) => {
+    const item: SearchState = state({ query: 'q', sort, category: 'c' });
+    expect(parseSearchState(toSearchParams(item))).toEqual(item);
+  });
 
   it('normalises whitespace on the way, then stays fixed', () => {
     const once = parseSearchState(toSearchParams(state({ query: ' a ', category: ' c ' })));

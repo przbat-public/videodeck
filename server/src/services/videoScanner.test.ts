@@ -1,3 +1,8 @@
+import * as fs from 'node:fs/promises';
+import * as config from '../config';
+import { at } from '../test-utils';
+import type { VideoDocument } from './elasticsearchService';
+import * as elasticsearchService from './elasticsearchService';
 import {
   buildVideoItem,
   describeError,
@@ -7,17 +12,12 @@ import {
   indexVideosFromDisk,
   isReindexRunning,
   loadVideosCache,
-  refreshVideosCache,
   REINDEX_BATCH_BYTES,
   REINDEX_BATCH_SIZE,
+  refreshVideosCache,
 } from './videoScanner';
-import * as fs from 'fs/promises';
-import * as config from '../config';
-import * as elasticsearchService from './elasticsearchService';
-import type { VideoDocument } from './elasticsearchService';
-import { at } from '../test-utils';
 
-jest.mock('fs/promises');
+jest.mock('node:fs/promises');
 jest.mock('../config');
 jest.mock('./elasticsearchService', () => {
   const actual = jest.requireActual('./elasticsearchService');
@@ -44,10 +44,7 @@ function bulkIndexedVideos(): VideoDocument[] {
   return mockedEs.bulkIndexDocuments.mock.calls.flatMap(([, documents]) => documents);
 }
 
-function mockFolder(
-  files: string[],
-  infoJson: Record<string, unknown> = { title: 'Test Video 1' }
-) {
+function mockFolder(files: string[], infoJson: Record<string, unknown> = { title: 'Test Video 1' }) {
   mockedConfig.getVideosFolderPaths.mockReturnValue([FOLDER]);
   readdirMock.mockResolvedValue(files);
   mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJson));
@@ -56,8 +53,12 @@ function mockFolder(
 describe('videoScanner', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.spyOn(console, 'log').mockImplementation(() => {});
-    jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.spyOn(console, 'log').mockImplementation(() => {
+      /* silence expected info logs */
+    });
+    jest.spyOn(console, 'error').mockImplementation(() => {
+      /* silence expected error logs */
+    });
 
     mockedEs.checkElasticsearchConnection.mockResolvedValue(true);
     mockedEs.createIndexVersion.mockResolvedValue(NEW_INDEX);
@@ -97,12 +98,7 @@ describe('videoScanner', () => {
       mockedEs.searchVideos.mockResolvedValue([]);
 
       await getVideos('test', 'views-desc');
-      expect(mockedEs.searchVideos).toHaveBeenCalledWith(
-        'test',
-        'views-desc',
-        undefined,
-        undefined
-      );
+      expect(mockedEs.searchVideos).toHaveBeenCalledWith('test', 'views-desc', undefined, undefined);
 
       await getVideos('test', 'views-desc', ['/videos/a'], { offset: 10, limit: 20 });
       expect(mockedEs.searchVideos).toHaveBeenLastCalledWith('test', 'views-desc', ['/videos/a'], {
@@ -125,11 +121,7 @@ describe('videoScanner', () => {
       ]);
 
       expect(found.subtitleFile).toBe('20231201_X.en.vtt');
-      expect(found.subtitleFiles).toEqual([
-        '20231201_X.en.vtt',
-        '20231201_X.pl.vtt',
-        '20231201_X.de.vtt',
-      ]);
+      expect(found.subtitleFiles).toEqual(['20231201_X.en.vtt', '20231201_X.pl.vtt', '20231201_X.de.vtt']);
     });
   });
 
@@ -179,14 +171,8 @@ describe('videoScanner', () => {
         transcriptText: 'Hello transcript world',
       });
       expect(result.video.comments).toHaveLength(1);
-      expect(mockedFs.readFile).toHaveBeenCalledWith(
-        `${FOLDER}/20231201_TestVideo1.info.json`,
-        'utf-8'
-      );
-      expect(mockedFs.readFile).toHaveBeenCalledWith(
-        `${FOLDER}/20231201_TestVideo1.en.vtt`,
-        'utf-8'
-      );
+      expect(mockedFs.readFile).toHaveBeenCalledWith(`${FOLDER}/20231201_TestVideo1.info.json`, 'utf-8');
+      expect(mockedFs.readFile).toHaveBeenCalledWith(`${FOLDER}/20231201_TestVideo1.en.vtt`, 'utf-8');
     });
 
     it('indexes the transcript of every subtitle language on disk', async () => {
@@ -201,10 +187,7 @@ describe('videoScanner', () => {
         return JSON.stringify({ id: 'abcdefghijk', title: 'T' });
       });
 
-      const result = await buildVideoItem(FOLDER, '20231201_TestVideo1', [
-        ...files,
-        '20231201_TestVideo1.pl.vtt',
-      ]);
+      const result = await buildVideoItem(FOLDER, '20231201_TestVideo1', [...files, '20231201_TestVideo1.pl.vtt']);
 
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') return;
@@ -303,7 +286,7 @@ describe('videoScanner', () => {
             view_count: 1000,
             like_count: 50,
             channel: 'Test Channel',
-          })
+          }),
         )
         .mockResolvedValueOnce(JSON.stringify({ title: 'Test Video 2' }));
 
@@ -469,21 +452,15 @@ describe('videoScanner', () => {
 
       await loadVideosCache();
 
-      expect(getReindexStatus().errors).toEqual([
-        `Error scanning folder ${FOLDER}: ResponseError (HTTP 413)`,
-      ]);
+      expect(getReindexStatus().errors).toEqual([`Error scanning folder ${FOLDER}: ResponseError (HTTP 413)`]);
     });
 
     it('discards the new version and keeps going when a folder fails', async () => {
       mockedConfig.getVideosFolderPaths.mockReturnValue(['/broken', '/fine']);
       readdirMock.mockResolvedValue(['a.info.json', 'a.mp4', 'a.webp']);
       mockedFs.readFile.mockResolvedValue(JSON.stringify({ title: 'A' }));
-      mockedEs.createIndexVersion
-        .mockResolvedValueOnce('broken_v1')
-        .mockResolvedValueOnce('fine_v1');
-      mockedEs.bulkIndexDocuments
-        .mockRejectedValueOnce(new Error('bulk exploded'))
-        .mockResolvedValueOnce(undefined);
+      mockedEs.createIndexVersion.mockResolvedValueOnce('broken_v1').mockResolvedValueOnce('fine_v1');
+      mockedEs.bulkIndexDocuments.mockRejectedValueOnce(new Error('bulk exploded')).mockResolvedValueOnce(undefined);
 
       await expect(loadVideosCache()).resolves.toBeUndefined();
 
@@ -527,7 +504,7 @@ describe('videoScanner', () => {
       readdirMock.mockReturnValue(
         new Promise<string[]>((resolve) => {
           release = resolve;
-        })
+        }),
       );
 
       const first = loadVideosCache();
@@ -625,7 +602,7 @@ describe('videoScanner', () => {
         'c.webp',
       ]);
       mockedFs.readFile.mockImplementation(async (file) =>
-        JSON.stringify({ id: String(file).includes('/a.') ? 'id-a' : 'id-b', title: 'T' })
+        JSON.stringify({ id: String(file).includes('/a.') ? 'id-a' : 'id-b', title: 'T' }),
       );
 
       const indexed = await indexVideosFromDisk(FOLDER, ['a', 'b']);

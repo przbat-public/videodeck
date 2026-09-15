@@ -1,11 +1,11 @@
 import { lazy, Suspense } from 'react';
-import { RouterProvider, createBrowserRouter } from 'react-router-dom';
 import type { DefaultToastOptions } from 'react-hot-toast';
 import { Toaster } from 'react-hot-toast';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
-import { Loading } from './components/ui/Loading';
 import RouteError from './components/RouteError';
+import { Loading } from './components/ui/Loading';
 import './App.css';
 
 // Lazy routes: the status page does not need the search page's bundle and

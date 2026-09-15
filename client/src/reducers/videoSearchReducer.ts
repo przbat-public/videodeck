@@ -12,8 +12,7 @@ export const VideoSearchActionType = {
   SEARCH_SUCCESS: 'SEARCH_SUCCESS',
   SEARCH_ERROR: 'SEARCH_ERROR',
 } as const;
-export type VideoSearchActionType =
-  (typeof VideoSearchActionType)[keyof typeof VideoSearchActionType];
+export type VideoSearchActionType = (typeof VideoSearchActionType)[keyof typeof VideoSearchActionType];
 
 export type VideoSearchAction =
   | { type: 'SEARCH_START' }
@@ -30,10 +29,7 @@ export const initialState: VideoSearchState = {
   error: null,
 };
 
-export function videoSearchReducer(
-  state: VideoSearchState,
-  action: VideoSearchAction
-): VideoSearchState {
+export function videoSearchReducer(state: VideoSearchState, action: VideoSearchAction): VideoSearchState {
   switch (action.type) {
     case VideoSearchActionType.SEARCH_START:
       return {
@@ -45,9 +41,7 @@ export function videoSearchReducer(
       return {
         ...state,
         // `append` accumulates a "load more" page onto the current results
-        videos: action.payload.append
-          ? [...state.videos, ...action.payload.videos]
-          : action.payload.videos,
+        videos: action.payload.append ? [...state.videos, ...action.payload.videos] : action.payload.videos,
         totalCount: action.payload.totalCount,
         loading: false,
       };

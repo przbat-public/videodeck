@@ -1,8 +1,8 @@
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { listVisibleFiles as sharedListVisibleFiles } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { runPool } from '../utils/runPool';
-import { listVisibleFiles as sharedListVisibleFiles } from '../utils/fsUtils';
 
 /**
  * Per-folder index of downloaded videos.
@@ -92,6 +92,15 @@ function findVideoFile(baseName: string, files: Set<string>): string | undefined
 async function listVisibleFiles(folderPath: string): Promise<Set<string>> {
   const files = await sharedListVisibleFiles(folderPath);
   return new Set(files);
+}
+
+/** fs.stat result, or null when the file vanished mid-scan */
+async function statOrNull(filePath: string): Promise<import('node:fs').Stats | null> {
+  try {
+    return await fs.stat(filePath);
+  } catch {
+    return null;
+  }
 }
 
 async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
@@ -261,10 +270,8 @@ export async function refreshIndex(folderPath: string, sinceMs: number): Promise
       continue;
     }
     const infoPath = path.join(folderPath, file);
-    let stats;
-    try {
-      stats = await fs.stat(infoPath);
-    } catch {
+    const stats = await statOrNull(infoPath);
+    if (!stats) {
       continue;
     }
     if (stats.mtimeMs < threshold) {
@@ -308,10 +315,7 @@ export async function getDownloadStatuses(folderPath: string): Promise<DownloadS
   return { downloadStatuses, lastUpdatedDates };
 }
 
-export async function findEntryByVideoId(
-  folderPath: string,
-  videoId: string
-): Promise<FolderIndexEntry | null> {
+export async function findEntryByVideoId(folderPath: string, videoId: string): Promise<FolderIndexEntry | null> {
   const index = await loadIndex(folderPath);
   return index.entries[videoId] ?? null;
 }

@@ -1,6 +1,6 @@
+import type { ApiError, FolderConfig } from '@shared/api';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ApiError, FolderConfig } from '@shared/api';
 import { Button } from './ui/Button';
 import { ErrorMessage } from './ui/ErrorMessage';
 
@@ -58,16 +58,14 @@ export function PlaylistDownloadSection({
     }
   };
 
-  if (!config || !config.channelUrl) {
+  if (!config?.channelUrl) {
     return null;
   }
 
   return (
     <div className="playlist-download-section">
       <h4 className="playlist-section-title">{t('playlist.title')}</h4>
-      {downloadError && (
-        <ErrorMessage compact>{t('app.error', { message: downloadError })}</ErrorMessage>
-      )}
+      {downloadError && <ErrorMessage compact>{t('app.error', { message: downloadError })}</ErrorMessage>}
       <div className="playlist-info">
         {listExists === null ? (
           <p>{t('playlist.checking')}</p>
@@ -77,20 +75,10 @@ export function PlaylistDownloadSection({
           <p>{t('playlist.missing')}</p>
         )}
         <div className="playlist-buttons">
-          <Button
-            variant="primary"
-            onClick={() => void handleDownloadPlaylist()}
-            disabled={isDownloading}
-          >
-            {isDownloading
-              ? t('playlist.downloading')
-              : listExists
-                ? t('playlist.update')
-                : t('playlist.download')}
+          <Button variant="primary" onClick={() => void handleDownloadPlaylist()} disabled={isDownloading}>
+            {isDownloading ? t('playlist.downloading') : listExists ? t('playlist.update') : t('playlist.download')}
           </Button>
-          {listExists && onLoadVideosList && (
-            <Button onClick={onLoadVideosList}>{t('playlist.loadVideos')}</Button>
-          )}
+          {listExists && onLoadVideosList && <Button onClick={onLoadVideosList}>{t('playlist.loadVideos')}</Button>}
         </div>
       </div>
     </div>

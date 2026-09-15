@@ -9,8 +9,7 @@ export const RecreateIndicesActionType = {
   RECREATE_ERROR: 'RECREATE_ERROR',
   CLEAR_MESSAGE: 'CLEAR_MESSAGE',
 } as const;
-export type RecreateIndicesActionType =
-  (typeof RecreateIndicesActionType)[keyof typeof RecreateIndicesActionType];
+export type RecreateIndicesActionType = (typeof RecreateIndicesActionType)[keyof typeof RecreateIndicesActionType];
 
 export type RecreateIndicesAction =
   | { type: 'RECREATE_START' }
@@ -25,7 +24,7 @@ export const initialState: RecreateIndicesState = {
 
 export function recreateIndicesReducer(
   state: RecreateIndicesState,
-  action: RecreateIndicesAction
+  action: RecreateIndicesAction,
 ): RecreateIndicesState {
   switch (action.type) {
     case RecreateIndicesActionType.RECREATE_START:

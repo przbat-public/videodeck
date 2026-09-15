@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { installFetchMock } from '../test/fetchMock';
+import { act, renderHook } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
+import { installFetchMock } from '../test/fetchMock';
 import { useQueueControls } from './useQueueControls';
 
 const fetchMock = installFetchMock();

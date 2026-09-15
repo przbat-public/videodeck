@@ -18,9 +18,7 @@ export interface SseFrame {
 export function feedSseBuffer(buffer: string, chunk: string): SseFrame {
   const lines = `${buffer}${chunk}`.split('\n');
   const rest = lines.pop() ?? '';
-  const events = lines
-    .filter((line) => line.startsWith('data: '))
-    .map((line) => line.slice('data: '.length));
+  const events = lines.filter((line) => line.startsWith('data: ')).map((line) => line.slice('data: '.length));
   return { events, buffer: rest };
 }
 

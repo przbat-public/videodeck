@@ -1,14 +1,9 @@
-import { useReducer, useCallback, useEffect, useRef, useState } from 'react';
-import toast from 'react-hot-toast';
-
-import i18n from '../i18n';
 import type { ReindexStatus } from '@shared/api';
 import { ReindexStatusSchema } from '@shared/schemas';
-import {
-  cacheRefreshReducer,
-  initialState,
-  CacheRefreshActionType,
-} from '../reducers/cacheRefreshReducer';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
+import i18n from '../i18n';
+import { CacheRefreshActionType, cacheRefreshReducer, initialState } from '../reducers/cacheRefreshReducer';
 
 interface UseCacheRefreshResult {
   /** True from the click until the server reports the reindex finished */
@@ -71,10 +66,7 @@ export function formatReindexResult(status: ReindexStatus): string {
     indexed: status.indexed,
     skipped: status.skipped,
   });
-  const errors =
-    status.errors.length > 0
-      ? `, ${i18n.t('reindex.folderError', { count: status.errors.length })}`
-      : '';
+  const errors = status.errors.length > 0 ? `, ${i18n.t('reindex.folderError', { count: status.errors.length })}` : '';
   return `${base}${errors}`;
 }
 
@@ -86,6 +78,41 @@ async function fetchStatus(signal: AbortSignal): Promise<ReindexStatus> {
     throw new Error(i18n.t('reindex.statusFailed', { status: response.status }));
   }
   return ReindexStatusSchema.parse(await response.json());
+}
+
+/** Kicks the server-side run off; a 409 means one is already running */
+async function startReindex(url: string, signal: AbortSignal, loadingToastId: string): Promise<void> {
+  const response = await fetch(url, { signal });
+
+  if (!response.ok && response.status !== 409) {
+    const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  if (response.status === 409) {
+    toast.loading(i18n.t('reindex.alreadyRunning'), { id: loadingToastId });
+  }
+}
+
+/** Follows the background job until the server says it is done */
+async function pollReindexUntilFinished(
+  signal: AbortSignal,
+  pollIntervalMs: number,
+  loadingToastId: string,
+  onStatus: (status: ReindexStatus) => void,
+): Promise<ReindexStatus> {
+  let current = await fetchStatus(signal);
+  onStatus(current);
+  while (current.running && !signal.aborted) {
+    toast.loading(formatReindexProgress(current), { id: loadingToastId });
+    await sleep(pollIntervalMs);
+    if (signal.aborted) {
+      return current; // unmounted mid-poll — the caller stops reporting
+    }
+    current = await fetchStatus(signal);
+    onStatus(current);
+  }
+  return current;
 }
 
 export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheRefreshResult {
@@ -112,32 +139,10 @@ export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheR
       const loadingToastId = toast.loading(i18n.t('reindex.starting'));
 
       try {
-        const url = options?.onlyMissing
-          ? '/api/videos/refreshCache?onlyMissing=1'
-          : '/api/videos/refreshCache';
-        const response = await fetch(url, { signal: controller.signal });
+        const url = options?.onlyMissing ? '/api/videos/refreshCache?onlyMissing=1' : '/api/videos/refreshCache';
+        await startReindex(url, controller.signal, loadingToastId);
 
-        if (!response.ok && response.status !== 409) {
-          const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-        }
-
-        if (response.status === 409) {
-          toast.loading(i18n.t('reindex.alreadyRunning'), { id: loadingToastId });
-        }
-
-        // Follow the background job until the server says it is done
-        let current = await fetchStatus(controller.signal);
-        setStatus(current);
-        while (current.running && !controller.signal.aborted) {
-          toast.loading(formatReindexProgress(current), { id: loadingToastId });
-          await sleep(pollIntervalMs);
-          if (controller.signal.aborted) {
-            return; // unmounted mid-poll — nothing to report
-          }
-          current = await fetchStatus(controller.signal);
-          setStatus(current);
-        }
+        const current = await pollReindexUntilFinished(controller.signal, pollIntervalMs, loadingToastId, setStatus);
         if (controller.signal.aborted) {
           return; // unmounted mid-poll — nothing to report
         }
@@ -163,7 +168,7 @@ export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheR
         toast.error(errorMessage, { id: loadingToastId });
       }
     },
-    [pollIntervalMs]
+    [pollIntervalMs],
   );
 
   return {

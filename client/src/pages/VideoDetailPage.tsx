@@ -1,11 +1,10 @@
 import type { JSX } from 'react';
-import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-
-import VideoSummary from '../components/VideoSummary';
-import VideoComments from '../components/VideoComments';
+import { Link, useParams } from 'react-router-dom';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { Loading } from '../components/ui/Loading';
+import VideoComments from '../components/VideoComments';
+import VideoSummary from '../components/VideoSummary';
 import { useVideoDetail } from '../hooks/useVideoDetail';
 import { formatUploadDate } from '../utils/videoDates';
 
@@ -25,9 +24,7 @@ export default function VideoDetailPage(): JSX.Element {
   if (state.error || !state.details) {
     return (
       <div className="video-detail-page">
-        <ErrorMessage>
-          {t('app.error', { message: state.error || t('video.notFound') })}
-        </ErrorMessage>
+        <ErrorMessage>{t('app.error', { message: state.error || t('video.notFound') })}</ErrorMessage>
         <Link to="/videos" className="back-link">
           {t('video.back')}
         </Link>
@@ -35,12 +32,9 @@ export default function VideoDetailPage(): JSX.Element {
     );
   }
 
-  const folderQuery = state.details.folderPath
-    ? `?folder=${encodeURIComponent(state.details.folderPath)}`
-    : '';
+  const folderQuery = state.details.folderPath ? `?folder=${encodeURIComponent(state.details.folderPath)}` : '';
   const videoUrl = `/api/videos/file/${encodeURIComponent(state.details.videoPath)}${folderQuery}`;
-  const subtitleUrl = (subtitlePath: string) =>
-    `/api/videos/file/${encodeURIComponent(subtitlePath)}${folderQuery}`;
+  const subtitleUrl = (subtitlePath: string) => `/api/videos/file/${encodeURIComponent(subtitlePath)}${folderQuery}`;
 
   return (
     <div className="video-detail-page">
@@ -55,6 +49,7 @@ export default function VideoDetailPage(): JSX.Element {
           <div className="video-player-section">
             {/* Native HTML5 video: the files are plain mp4s and the server
                 supports Range requests — no react-player dependency needed */}
+            {/* biome-ignore lint/a11y/useMediaCaption: subtitle tracks are injected dynamically from the API */}
             <video src={videoUrl} controls className="video-player-full" data-testid="video-player">
               {state.details.subtitles.map((subtitle) => (
                 <track
@@ -94,9 +89,7 @@ export default function VideoDetailPage(): JSX.Element {
                     })}
                   </span>
                 )}
-                {state.details.uploadDate && (
-                  <span>{formatUploadDate(state.details.uploadDate)}</span>
-                )}
+                {state.details.uploadDate && <span>{formatUploadDate(state.details.uploadDate)}</span>}
               </div>
             )}
           </div>

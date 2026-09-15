@@ -69,9 +69,52 @@ export const toFormState = (config: FolderConfig | null, defaults: DownloadOptio
   extraArgs: config?.extraArgs ? config.extraArgs.join(' ') : '',
   impersonate: config?.impersonate ?? defaults.impersonate ?? false,
   sponsorblockRemove: config?.sponsorblockRemove ?? defaults.sponsorblockRemove ?? false,
-  concurrentFragments:
-    config?.concurrentFragments !== undefined ? String(config.concurrentFragments) : '',
+  concurrentFragments: config?.concurrentFragments !== undefined ? String(config.concurrentFragments) : '',
 });
+
+/**
+ * Trimmed text fields: a non-empty value is kept, otherwise the key is
+ * removed so config.json only contains what the user actually chose.
+ */
+const applyTrimmedText = (next: FolderConfig, key: 'channelUrl' | 'category', value: string): void => {
+  const trimmed = value.trim();
+  if (trimmed) {
+    next[key] = trimmed;
+  } else {
+    delete next[key];
+  }
+};
+
+/** Numeric fields: an empty form value means "use default" (key removed) */
+const applyNumberChoice = (next: FolderConfig, key: 'maxHeight' | 'concurrentFragments', value: string): void => {
+  if (value) {
+    next[key] = Number(value);
+  } else {
+    delete next[key];
+  }
+};
+
+const applySubLangs = (next: FolderConfig, subtitlesEnabled: boolean, rawLangs: string): void => {
+  if (!subtitlesEnabled) {
+    next.subLangs = [];
+  } else {
+    const langs = parseSubLangs(rawLangs);
+    if (langs.length > 0) {
+      next.subLangs = langs;
+    } else {
+      delete next.subLangs;
+    }
+  }
+};
+
+const applyExtraArgs = (next: FolderConfig, rawArgs: string): void => {
+  const extraArgs = parseExtraArgs(rawArgs);
+  if (extraArgs.length > 0) {
+    next.extraArgs = extraArgs;
+  } else {
+    delete next.extraArgs;
+  }
+};
 
 /**
  * Turn the form back into a config object. Keys left at "default" are removed
@@ -81,53 +124,17 @@ export const toFormState = (config: FolderConfig | null, defaults: DownloadOptio
 export const buildConfig = (form: FormState, existing: FolderConfig | null): FolderConfig => {
   const next: FolderConfig = { ...(existing ?? {}) };
 
-  const channelUrl = form.channelUrl.trim();
-  if (channelUrl) {
-    next.channelUrl = channelUrl;
-  } else {
-    delete next.channelUrl;
-  }
-
-  const category = form.category.trim();
-  if (category) {
-    next.category = category;
-  } else {
-    delete next.category;
-  }
-
-  if (form.maxHeight) {
-    next.maxHeight = Number(form.maxHeight);
-  } else {
-    delete next.maxHeight;
-  }
-
-  if (!form.subtitlesEnabled) {
-    next.subLangs = [];
-  } else {
-    const langs = parseSubLangs(form.subLangs);
-    if (langs.length > 0) {
-      next.subLangs = langs;
-    } else {
-      delete next.subLangs;
-    }
-  }
+  applyTrimmedText(next, 'channelUrl', form.channelUrl);
+  applyTrimmedText(next, 'category', form.category);
+  applyNumberChoice(next, 'maxHeight', form.maxHeight);
+  applySubLangs(next, form.subtitlesEnabled, form.subLangs);
 
   next.writeComments = form.writeComments;
   next.impersonate = form.impersonate;
   next.sponsorblockRemove = form.sponsorblockRemove;
 
-  if (form.concurrentFragments) {
-    next.concurrentFragments = Number(form.concurrentFragments);
-  } else {
-    delete next.concurrentFragments;
-  }
-
-  const extraArgs = parseExtraArgs(form.extraArgs);
-  if (extraArgs.length > 0) {
-    next.extraArgs = extraArgs;
-  } else {
-    delete next.extraArgs;
-  }
+  applyNumberChoice(next, 'concurrentFragments', form.concurrentFragments);
+  applyExtraArgs(next, form.extraArgs);
 
   return next;
 };

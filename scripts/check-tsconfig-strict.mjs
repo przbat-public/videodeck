@@ -17,6 +17,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './strip-comments.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -86,64 +87,7 @@ function readJson(file) {
  * @returns {string}
  */
 export function stripJsonComments(source) {
-  let out = '';
-  let i = 0;
-  let inLine = false;
-  let inBlock = false;
-  let quote = null;
-  while (i < source.length) {
-    const c = source[i];
-    const next = source[i + 1] ?? '';
-    if (inLine) {
-      if (c === '\n') {
-        inLine = false;
-        out += c;
-      }
-      i += 1;
-      continue;
-    }
-    if (inBlock) {
-      if (c === '*' && next === '/') {
-        inBlock = false;
-        out += '  ';
-        i += 2;
-        continue;
-      }
-      if (c === '\n') out += c;
-      i += 1;
-      continue;
-    }
-    if (quote !== null) {
-      out += c;
-      if (c === '\\') {
-        out += next;
-        i += 2;
-        continue;
-      }
-      if (c === quote) quote = null;
-      i += 1;
-      continue;
-    }
-    if (c === '/' && next === '/') {
-      inLine = true;
-      i += 2;
-      continue;
-    }
-    if (c === '/' && next === '*') {
-      inBlock = true;
-      i += 2;
-      continue;
-    }
-    if (c === '"') {
-      quote = c;
-      out += c;
-      i += 1;
-      continue;
-    }
-    out += c;
-    i += 1;
-  }
-  return out;
+  return stripComments(source, '"');
 }
 
 /** CLI: exit 1 listing every weakened flag. */

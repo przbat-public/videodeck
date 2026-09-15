@@ -1,8 +1,8 @@
 import express from 'express';
 import request from 'supertest';
-import { createAuthMiddleware, isAllowedCorsOrigin } from './http';
 import { createApp } from '../app';
 import { checkElasticsearchConnection } from '../services/elasticsearchService';
+import { createAuthMiddleware, isAllowedCorsOrigin } from './http';
 
 jest.mock('../services/elasticsearchService', () => ({
   checkElasticsearchConnection: jest.fn(),
@@ -54,23 +54,17 @@ describe('createAuthMiddleware', () => {
   });
 
   it('rejects a wrong bearer token', async () => {
-    const response = await request(buildApp('secret'))
-      .get('/test')
-      .set('Authorization', 'Bearer wrong');
+    const response = await request(buildApp('secret')).get('/test').set('Authorization', 'Bearer wrong');
     expect(response.status).toBe(401);
   });
 
   it('rejects non-bearer auth schemes', async () => {
-    const response = await request(buildApp('secret'))
-      .get('/test')
-      .set('Authorization', 'Basic secret');
+    const response = await request(buildApp('secret')).get('/test').set('Authorization', 'Basic secret');
     expect(response.status).toBe(401);
   });
 
   it('accepts the configured bearer token', async () => {
-    const response = await request(buildApp('secret'))
-      .get('/test')
-      .set('Authorization', 'Bearer secret');
+    const response = await request(buildApp('secret')).get('/test').set('Authorization', 'Bearer secret');
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ok: true });
   });
@@ -88,9 +82,7 @@ describe('createApp auth wiring', () => {
     const guarded = await request(app).get('/api/status');
     expect(guarded.status).toBe(401);
 
-    const allowed = await request(app)
-      .get('/api/status')
-      .set('Authorization', 'Bearer integration-token');
+    const allowed = await request(app).get('/api/status').set('Authorization', 'Bearer integration-token');
     expect(allowed.status).not.toBe(401);
 
     const health = await request(app).get('/health');
@@ -178,9 +170,7 @@ describe('createApp auth wiring', () => {
     };
     const app = createApp({ downloadQueue: fakeQueue });
 
-    const response = await request(app)
-      .get('/api/folder/queue')
-      .query({ folderPath: '/test/videos' });
+    const response = await request(app).get('/api/folder/queue').query({ folderPath: '/test/videos' });
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ jobs: [], paused: false });
@@ -204,22 +194,14 @@ describe('isAllowedCorsOrigin', () => {
   });
 
   it('restricts extension origins to the configured list', () => {
+    expect(isAllowedCorsOrigin('chrome-extension://abcdefghijklmnop', [], ['chrome-extension://otherid'])).toBe(false);
     expect(
-      isAllowedCorsOrigin('chrome-extension://abcdefghijklmnop', [], ['chrome-extension://otherid'])
-    ).toBe(false);
-    expect(
-      isAllowedCorsOrigin(
-        'chrome-extension://abcdefghijklmnop',
-        [],
-        ['chrome-extension://abcdefghijklmnop']
-      )
+      isAllowedCorsOrigin('chrome-extension://abcdefghijklmnop', [], ['chrome-extension://abcdefghijklmnop']),
     ).toBe(true);
   });
 
   it('allows explicitly configured extra origins', () => {
-    expect(isAllowedCorsOrigin('https://videos.example.com', ['https://videos.example.com'])).toBe(
-      true
-    );
+    expect(isAllowedCorsOrigin('https://videos.example.com', ['https://videos.example.com'])).toBe(true);
   });
 
   it('rejects everything else', () => {
@@ -242,14 +224,7 @@ describe('Host header guard (DNS rebinding)', () => {
 
   it('accepts loopback Host headers with any port', async () => {
     const app = createApp();
-    for (const host of [
-      '127.0.0.1',
-      '127.0.0.1:3000',
-      'localhost',
-      'localhost:5173',
-      '[::1]',
-      '[::1]:8080',
-    ]) {
+    for (const host of ['127.0.0.1', '127.0.0.1:3000', 'localhost', 'localhost:5173', '[::1]', '[::1]:8080']) {
       const response = await request(app).get('/health').set('Host', host);
       expect(response.status).toBe(200);
     }

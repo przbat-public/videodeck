@@ -1,5 +1,5 @@
-import { getYouTubeVideoId, toWatchUrl } from './lib/youtube';
 import type { RuntimeMessage, VideoInfo } from './lib/messages';
+import { getYouTubeVideoId, toWatchUrl } from './lib/youtube';
 
 /**
  * Content script: detects the video on the current page (YouTube or a direct
@@ -19,68 +19,84 @@ function getVideoInfo(): VideoInfo | null {
 
     // YouTube detection
     if (url.includes('youtube.com/watch') || url.includes('youtu.be/')) {
-      const videoId = getYouTubeVideoId(url);
-      if (!videoId) {
-        return null;
-      }
-
-      let title: string | null = null;
-      for (const selector of YOUTUBE_TITLE_SELECTORS) {
-        const element = document.querySelector(selector);
-        const text =
-          element?.textContent?.trim() ||
-          (element instanceof HTMLElement ? element.innerText.trim() : '');
-        if (text && text !== 'YouTube' && text.length > 0) {
-          title = text;
-          break;
-        }
-      }
-
-      // Fallback to the meta tag or the document title
-      if (!title || title === 'YouTube') {
-        const metaTitle = document.querySelector('meta[property="og:title"]');
-        if (metaTitle instanceof HTMLMetaElement && metaTitle.content) {
-          title = metaTitle.content;
-        } else {
-          title = document.title.replace(' - YouTube', '').trim() || 'YouTube Video';
-        }
-      }
-
-      return {
-        // Canonical single-video URL: the page URL may carry &list=…&index=…
-        // (opened from a playlist), which would make the server download the
-        // whole playlist instead of this one video.
-        videoUrl: toWatchUrl(videoId),
-        videoTitle: title || 'YouTube Video',
-        videoId,
-        platform: 'youtube',
-      };
+      return getYouTubeVideoInfo(url);
     }
 
-    // Generic video detection - look for video elements
-    const videoElement = document.querySelector('video');
-    if (videoElement && videoElement.src) {
-      return {
-        videoUrl: videoElement.src || url,
-        videoTitle: document.title || 'Video',
-        platform: 'generic',
-      };
-    }
-
-    // Common direct video URL patterns
-    if (url.match(/\.(mp4|webm|ogg|mov|avi|mkv)(\?|$)/i)) {
-      return {
-        videoUrl: url,
-        videoTitle: document.title || 'Video',
-        platform: 'direct',
-      };
-    }
-
-    return null;
+    return getGenericVideoInfo(url);
   } catch (error) {
     console.error('Error in getVideoInfo:', error);
     return null;
   }
+}
+
+/** Builds the YouTube video info from the page DOM and its URL. */
+function getYouTubeVideoInfo(url: string): VideoInfo | null {
+  const videoId = getYouTubeVideoId(url);
+  if (!videoId) {
+    return null;
+  }
+
+  let title = findYoutubeTitle();
+
+  // Fallback to the meta tag or the document title
+  if (!title || title === 'YouTube') {
+    title = readMetaTitle() ?? (document.title.replace(' - YouTube', '').trim() || 'YouTube Video');
+  }
+
+  return {
+    // Canonical single-video URL: the page URL may carry &list=…&index=…
+    // (opened from a playlist), which would make the server download the
+    // whole playlist instead of this one video.
+    videoUrl: toWatchUrl(videoId),
+    videoTitle: title || 'YouTube Video',
+    videoId,
+    platform: 'youtube',
+  };
+}
+
+/** Finds a plausible video title in the YouTube player markup. */
+function findYoutubeTitle(): string | null {
+  for (const selector of YOUTUBE_TITLE_SELECTORS) {
+    const element = document.querySelector(selector);
+    const text = element?.textContent?.trim() || (element instanceof HTMLElement ? element.innerText.trim() : '');
+    if (text && text !== 'YouTube' && text.length > 0) {
+      return text;
+    }
+  }
+  return null;
+}
+
+/** Reads the og:title meta tag, when present and non-empty. */
+function readMetaTitle(): string | null {
+  const metaTitle = document.querySelector('meta[property="og:title"]');
+  if (metaTitle instanceof HTMLMetaElement && metaTitle.content) {
+    return metaTitle.content;
+  }
+  return null;
+}
+
+/** Detects a non-YouTube video: a <video> element or a direct video URL. */
+function getGenericVideoInfo(url: string): VideoInfo | null {
+  // Generic video detection - look for video elements
+  const videoElement = document.querySelector('video');
+  if (videoElement?.src) {
+    return {
+      videoUrl: videoElement.src || url,
+      videoTitle: document.title || 'Video',
+      platform: 'generic',
+    };
+  }
+
+  // Common direct video URL patterns
+  if (url.match(/\.(mp4|webm|ogg|mov|avi|mkv)(\?|$)/i)) {
+    return {
+      videoUrl: url,
+      videoTitle: document.title || 'Video',
+      platform: 'direct',
+    };
+  }
+
+  return null;
 }
 
 // Answer the popup's requests - the main way the popup gets video info
@@ -144,11 +160,11 @@ function setupUrlWatcher(): void {
   const originalPushState = history.pushState.bind(history);
   const originalReplaceState = history.replaceState.bind(history);
 
-  history.pushState = function (...args: Parameters<History['pushState']>) {
+  history.pushState = (...args: Parameters<History['pushState']>) => {
     originalPushState(...args);
     setTimeout(() => checkForVideoChange(), 100);
   };
-  history.replaceState = function (...args: Parameters<History['replaceState']>) {
+  history.replaceState = (...args: Parameters<History['replaceState']>) => {
     originalReplaceState(...args);
     setTimeout(() => checkForVideoChange(), 100);
   };

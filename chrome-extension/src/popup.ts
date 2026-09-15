@@ -1,11 +1,6 @@
 import { byId } from './lib/dom';
 import { localizeDom } from './lib/i18n';
-import type {
-  ActiveDownloadSummary,
-  ActiveDownloadsResponse,
-  PopupConfig,
-  RuntimeMessage,
-} from './lib/messages';
+import type { ActiveDownloadSummary, ActiveDownloadsResponse, PopupConfig, RuntimeMessage } from './lib/messages';
 
 /**
  * Popup script: shows the video on the current tab, starts downloads through
@@ -15,6 +10,26 @@ import type {
 interface PopupDownload {
   element: HTMLDivElement;
   progress: number;
+}
+
+/** Updates the progress bar and the percentage label of one download item. */
+function applyProgressToItem(item: HTMLDivElement, progress: number): void {
+  const progressFill = item.querySelector<HTMLElement>('.download-item-progress-fill');
+  const statusLine = item.querySelector<HTMLElement>('.download-item-status');
+  if (progressFill) {
+    progressFill.style.width = `${progress}%`;
+  }
+  if (statusLine) {
+    statusLine.textContent = `${progress}%`;
+  }
+}
+
+/** Shows a status message (truncated to 50 characters) on one download item. */
+function showProgressMessage(item: HTMLDivElement, message: string): void {
+  const statusLine = item.querySelector<HTMLElement>('.download-item-status');
+  if (statusLine) {
+    statusLine.textContent = message.substring(0, 50) + (message.length > 50 ? '...' : '');
+  }
 }
 
 async function main(): Promise<void> {
@@ -42,11 +57,7 @@ async function main(): Promise<void> {
   }
 
   // Load configuration
-  const config = (await chrome.storage.sync.get([
-    'serverUrl',
-    'folderPath',
-    'apiToken',
-  ])) as Partial<PopupConfig>;
+  const config = (await chrome.storage.sync.get(['serverUrl', 'folderPath', 'apiToken'])) as Partial<PopupConfig>;
 
   if (!config.serverUrl || !config.folderPath) {
     configWarning.style.display = 'block';
@@ -142,30 +153,17 @@ async function main(): Promise<void> {
     return item;
   }
 
-  function updateDownloadProgress(
-    downloadId: number,
-    progress: number | undefined,
-    message: string | undefined
-  ): void {
+  function updateDownloadProgress(downloadId: number, progress: number | undefined, message: string | undefined): void {
     const download = popupDownloads.get(downloadId);
     if (!download) {
       return;
     }
-    const progressFill = download.element.querySelector<HTMLElement>(
-      '.download-item-progress-fill'
-    );
-    const statusLine = download.element.querySelector<HTMLElement>('.download-item-status');
 
     if (progress !== undefined && progress !== null) {
       download.progress = progress;
-      if (progressFill) {
-        progressFill.style.width = `${progress}%`;
-      }
-      if (statusLine) {
-        statusLine.textContent = `${progress}%`;
-      }
-    } else if (message && statusLine) {
-      statusLine.textContent = message.substring(0, 50) + (message.length > 50 ? '...' : '');
+      applyProgressToItem(download.element, progress);
+    } else if (message) {
+      showProgressMessage(download.element, message);
     }
   }
 
@@ -211,49 +209,50 @@ async function main(): Promise<void> {
 
   // Download button handler
   downloadBtn.addEventListener('click', () => {
-    void (async () => {
-      if (!config.serverUrl || !config.folderPath) {
-        showStatus('error', chrome.i18n.getMessage('configureFirst'));
+    void startDownload(config);
+  });
+
+  /** Asks the content script for the current video and sends it to the background worker. */
+  async function startDownload(config: Partial<PopupConfig>): Promise<void> {
+    if (!config.serverUrl || !config.folderPath) {
+      showStatus('error', chrome.i18n.getMessage('configureFirst'));
+      return;
+    }
+
+    try {
+      const tabId = await getActiveTabId();
+      const response = (await chrome.tabs.sendMessage(tabId, {
+        action: 'getVideoInfo',
+      } satisfies RuntimeMessage)) as { videoUrl?: string; videoTitle?: string } | undefined;
+
+      if (!response?.videoUrl) {
+        showStatus('error', chrome.i18n.getMessage('noVideo'));
         return;
       }
 
-      try {
-        const tabId = await getActiveTabId();
-        const response = (await chrome.tabs.sendMessage(tabId, {
-          action: 'getVideoInfo',
-        } satisfies RuntimeMessage)) as { videoUrl?: string; videoTitle?: string } | undefined;
+      downloadBtn.disabled = false; // keep enabled so the user can add more downloads
+      showStatus('info', chrome.i18n.getMessage('addingToQueue'));
 
-        if (!response?.videoUrl) {
-          showStatus('error', chrome.i18n.getMessage('noVideo'));
-          return;
-        }
+      await chrome.runtime.sendMessage({
+        action: 'downloadVideo',
+        videoUrl: response.videoUrl,
+        videoTitle: response.videoTitle || 'Wideo',
+        serverUrl: config.serverUrl,
+        folderPath: config.folderPath,
+        ...(config.apiToken ? { apiToken: config.apiToken } : {}),
+      } satisfies RuntimeMessage);
 
-        downloadBtn.disabled = false; // keep enabled so the user can add more downloads
-        showStatus('info', chrome.i18n.getMessage('addingToQueue'));
-
-        await chrome.runtime.sendMessage({
-          action: 'downloadVideo',
-          videoUrl: response.videoUrl,
-          videoTitle: response.videoTitle || 'Wideo',
-          serverUrl: config.serverUrl,
-          folderPath: config.folderPath,
-          ...(config.apiToken ? { apiToken: config.apiToken } : {}),
-        } satisfies RuntimeMessage);
-
-        // Reload active downloads to show the new one
-        setTimeout(() => void loadActiveDownloads(), 100);
-      } catch (error) {
-        showStatus(
-          'error',
-          chrome.i18n.getMessage('errorWithMessage', [
-            error instanceof Error ? error.message : String(error),
-          ])
-        );
-        downloadBtn.disabled = false;
-        progressContainer.classList.remove('active');
-      }
-    })();
-  });
+      // Reload active downloads to show the new one
+      setTimeout(() => void loadActiveDownloads(), 100);
+    } catch (error) {
+      showStatus(
+        'error',
+        chrome.i18n.getMessage('errorWithMessage', [error instanceof Error ? error.message : String(error)]),
+      );
+      downloadBtn.disabled = false;
+      progressContainer.classList.remove('active');
+    }
+  }
 
   // Options button handler
   optionsBtn.addEventListener('click', () => {

@@ -1,6 +1,6 @@
+import type { VideoListItem } from '@shared/api';
 import type { JSX } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { VideoListItem } from '@shared/api';
 import VideoCard from './VideoCard';
 
 interface VideoListProps {

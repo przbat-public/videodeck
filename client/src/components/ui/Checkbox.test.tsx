@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import { Checkbox } from './Checkbox';
 
 describe('Checkbox', () => {
@@ -47,7 +47,7 @@ describe('Checkbox', () => {
 
   it('keeps an external class name', () => {
     const { container } = render(
-      <Checkbox checked={false} onChange={vi.fn()} label="x" className="toolbar-checkbox" />
+      <Checkbox checked={false} onChange={vi.fn()} label="x" className="toolbar-checkbox" />,
     );
 
     expect(container.querySelector('.ui-checkbox.toolbar-checkbox')).not.toBeNull();

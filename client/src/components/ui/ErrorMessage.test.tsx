@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 import { ErrorMessage } from './ErrorMessage';
 
 describe('ErrorMessage', () => {
@@ -14,7 +14,7 @@ describe('ErrorMessage', () => {
     render(
       <ErrorMessage>
         <a href="/videos">wróć</a>
-      </ErrorMessage>
+      </ErrorMessage>,
     );
 
     expect(screen.getByRole('link', { name: 'wróć' })).toBeInTheDocument();

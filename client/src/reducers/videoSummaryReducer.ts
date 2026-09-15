@@ -10,8 +10,7 @@ export const VideoSummaryActionType = {
   FETCH_SUMMARY_ERROR: 'FETCH_SUMMARY_ERROR',
   RESET: 'RESET',
 } as const;
-export type VideoSummaryActionType =
-  (typeof VideoSummaryActionType)[keyof typeof VideoSummaryActionType];
+export type VideoSummaryActionType = (typeof VideoSummaryActionType)[keyof typeof VideoSummaryActionType];
 
 export type VideoSummaryAction =
   | { type: 'FETCH_SUMMARY_START' }
@@ -25,10 +24,7 @@ export const initialState: VideoSummaryState = {
   error: null,
 };
 
-export function videoSummaryReducer(
-  state: VideoSummaryState,
-  action: VideoSummaryAction
-): VideoSummaryState {
+export function videoSummaryReducer(state: VideoSummaryState, action: VideoSummaryAction): VideoSummaryState {
   switch (action.type) {
     case VideoSummaryActionType.FETCH_SUMMARY_START:
       return {

@@ -1,8 +1,7 @@
-import { memo } from 'react';
-import type { JSX } from 'react';
-import { Link } from 'react-router-dom';
 import type { VideoListItem } from '@shared/api';
-import React from 'react';
+import type { JSX } from 'react';
+import React, { memo } from 'react';
+import { Link } from 'react-router-dom';
 
 interface VideoCardProps {
   video: VideoListItem;
@@ -12,7 +11,7 @@ interface VideoCardProps {
 }
 
 const formatVideoDate = (dateStr?: string): string => {
-  if (!dateStr || dateStr.length !== 8) return '';
+  if (dateStr?.length !== 8) return '';
   return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
 };
 
@@ -27,8 +26,23 @@ const formatViewCount = (viewCount?: number): string => {
   return viewCount.toString();
 };
 
+/**
+ * Stable keys for fragments of a split string: the content plus its
+ * occurrence count (a phrase can match twice, and plain parts can repeat).
+ * The split produces the same array on every render, so these keys stay
+ * stable across re-renders and are unique among siblings.
+ */
+const keyedParts = (parts: string[]): Array<{ part: string; key: string }> => {
+  const occurrences = new Map<string, number>();
+  return parts.map((part) => {
+    const occurrence = occurrences.get(part) ?? 0;
+    occurrences.set(part, occurrence + 1);
+    return { part, key: occurrence === 0 ? part : `${part}-${occurrence}` };
+  });
+};
+
 const highlightText = (text: string, query?: string): React.ReactNode => {
-  if (!query || !query.trim()) {
+  if (!query?.trim()) {
     return text;
   }
 
@@ -37,18 +51,14 @@ const highlightText = (text: string, query?: string): React.ReactNode => {
   const regex = new RegExp(`(${escapedTerm})`, 'gi');
   const parts = text.split(regex);
 
-  // Position is a stable identity here: the array is rebuilt from the same
-  // split on every render and React never reorders it.
-  return parts.map((part, index) =>
+  return keyedParts(parts).map(({ part, key }) =>
     part.toLowerCase() === searchTerm.toLowerCase() ? (
-      // eslint-disable-next-line @eslint-react/no-array-index-key
-      <mark key={index} className="search-highlight">
+      <mark key={key} className="search-highlight">
         {part}
       </mark>
     ) : (
-      // eslint-disable-next-line @eslint-react/no-array-index-key
-      <React.Fragment key={index}>{part}</React.Fragment>
-    )
+      <React.Fragment key={key}>{part}</React.Fragment>
+    ),
   );
 };
 
@@ -60,16 +70,14 @@ const HIGHLIGHT_MARK_RE = new RegExp(`[${String.fromCharCode(1)}${String.fromCha
 
 const renderMarkedFragment = (fragment: string): React.ReactNode => {
   const parts = fragment.split(HIGHLIGHT_MARK_RE);
-  return parts.map((part, index) =>
+  return keyedParts(parts).map(({ part, key }, index) =>
     index % 2 === 1 ? (
-      // eslint-disable-next-line @eslint-react/no-array-index-key
-      <mark key={index} className="search-highlight">
+      <mark key={key} className="search-highlight">
         {part}
       </mark>
     ) : (
-      // eslint-disable-next-line @eslint-react/no-array-index-key
-      <React.Fragment key={index}>{part}</React.Fragment>
-    )
+      <React.Fragment key={key}>{part}</React.Fragment>
+    ),
   );
 };
 
@@ -81,11 +89,7 @@ function VideoCardInner({ video, searchQuery, index }: VideoCardProps): JSX.Elem
   const serverSnippet = video.highlights?.description?.[0] ?? video.highlights?.snippet?.[0];
 
   return (
-    <Link
-      to={`/video/${encodeURIComponent(videoIdentifier)}`}
-      target="_blank"
-      className="video-card-link"
-    >
+    <Link to={`/video/${encodeURIComponent(videoIdentifier)}`} target="_blank" className="video-card-link">
       <div className="video-card">
         <div className="video-thumbnail">
           <img
@@ -103,6 +107,7 @@ function VideoCardInner({ video, searchQuery, index }: VideoCardProps): JSX.Elem
           />
           <div className="play-overlay">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="white">
+              <title>Play</title>
               <path d="M8 5v14l11-7z" />
             </svg>
           </div>
@@ -110,21 +115,15 @@ function VideoCardInner({ video, searchQuery, index }: VideoCardProps): JSX.Elem
         <div className="video-info">
           {video.channelName && <div className="video-card-channel">{video.channelName}</div>}
           <div className="video-card-meta">
-            {video.uploadDate && (
-              <div className="video-card-date">{formatVideoDate(video.uploadDate)}</div>
-            )}
+            {video.uploadDate && <div className="video-card-date">{formatVideoDate(video.uploadDate)}</div>}
             {video.viewCount !== undefined && (
               <div className="video-card-views">{formatViewCount(video.viewCount)}</div>
             )}
           </div>
           <h3 className="video-title">
-            {serverTitle
-              ? renderMarkedFragment(serverTitle)
-              : highlightText(video.title, searchQuery)}
+            {serverTitle ? renderMarkedFragment(serverTitle) : highlightText(video.title, searchQuery)}
           </h3>
-          {serverSnippet && (
-            <p className="video-card-snippet">{renderMarkedFragment(serverSnippet)}</p>
-          )}
+          {serverSnippet && <p className="video-card-snippet">{renderMarkedFragment(serverSnippet)}</p>}
         </div>
       </div>
     </Link>

@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import type { VideoListItem } from '@shared/api';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
+import { describe, expect, it } from 'vitest';
 import VideoCard from './VideoCard';
-import type { VideoListItem } from '@shared/api';
 
 const mockVideo: VideoListItem = {
   baseName: '20231201_TestVideo',
@@ -36,7 +36,7 @@ describe('VideoCard', () => {
     expect(img).toBeInTheDocument();
     expect(img).toHaveAttribute(
       'src',
-      `/api/videos/file/20231201_TestVideo.webp?folder=${encodeURIComponent(mockVideo.folderPath)}`
+      `/api/videos/file/20231201_TestVideo.webp?folder=${encodeURIComponent(mockVideo.folderPath)}`,
     );
   });
 

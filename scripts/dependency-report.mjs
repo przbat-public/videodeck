@@ -114,16 +114,14 @@ export function composeReport(date, packages) {
       lines.push('| package | current | wanted | latest |');
       lines.push('| --- | --- | --- | --- |');
       for (const row of pkg.outdated) {
-        lines.push(
-          `| \`${row.package}\` | \`${row.current}\` | \`${row.wanted}\` | \`${row.latest}\` |`
-        );
+        lines.push(`| \`${row.package}\` | \`${row.current}\` | \`${row.wanted}\` | \`${row.latest}\` |`);
       }
       lines.push('');
     }
 
     const { low, moderate, high, critical, total } = pkg.audit;
     lines.push(
-      `Audit: ${total} vuln${total === 1 ? '' : 's'} (low ${low}, moderate ${moderate}, high ${high}, critical ${critical}).`
+      `Audit: ${total} vuln${total === 1 ? '' : 's'} (low ${low}, moderate ${moderate}, high ${high}, critical ${critical}).`,
     );
     lines.push('');
   }
@@ -143,8 +141,7 @@ export function collectReports() {
   }));
 }
 
-const isMain =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isMain) {
   const date = new Date().toISOString().slice(0, 10);

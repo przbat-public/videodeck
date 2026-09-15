@@ -34,8 +34,9 @@ npm run dev          # server on :3001 + Vite client on :3000 (proxies /api)
 Every change must pass, from the repo root:
 
 ```bash
-npm run format:check   # prettier
-npm run lint           # eslint --max-warnings 0 + hardcoded-Polish scan + tsconfig strictness check
+npm run format:check   # biome format check
+npm run lint           # biome check + hardcoded-Polish scan + tsconfig strictness check
+npm run lint:types     # eslint --max-warnings 0 (type-aware, React hooks, Playwright)
 npm run lint:scripts   # tsc --noEmit over scripts/ (checkJs)
 npm run test:scripts   # node --test for the repository-invariant scripts
 npm run knip           # unused files, exports and dependencies
@@ -45,8 +46,8 @@ npm test               # jest (server) + vitest (client, extension)
 cd client && npm run test:e2e   # Playwright (mocked API, needs no backend)
 ```
 
-Commit hooks (husky + lint-staged) format and lint the staged files
-automatically.
+Commit hooks (husky + lint-staged) run `biome check --write` on the staged
+files automatically.
 
 ## Conventions
 
@@ -55,6 +56,12 @@ automatically.
   **All commit messages, PR titles/descriptions and code comments are written
   in English.** Polish is reserved for user-facing UI strings only (via the
   i18n catalogs).
+- **Formatting & linting**: Biome (`biome.json`) is the single formatter and
+  primary linter. Its rules are strict (`noExplicitAny`, `noNonNullAssertion`,
+  cognitive complexity ≤ 15, `noConsole`, …) — fix violations in code, never
+  disable a rule; a false positive gets a per-line `biome-ignore` with a
+  rationale. ESLint covers only what Biome cannot (type-aware TS, React
+  hooks, Playwright).
 - **UI text** lives in i18n catalogs (`client/src/i18n/locales/`), Polish by
   default, with an English catalog; `client/src/i18n/locales.test.ts` enforces
   key parity between languages.

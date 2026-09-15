@@ -1,7 +1,7 @@
+import { EventEmitter } from 'node:events';
 import fc from 'fast-check';
-import { EventEmitter } from 'events';
-import { DownloadQueue } from './downloadQueue';
 import type { SpawnedProcess } from './downloadQueue';
+import { DownloadQueue } from './downloadQueue';
 
 /**
  * Property tests for the queue's concurrency semantics: whatever the
@@ -63,7 +63,40 @@ type Op =
   | { op: 'exit'; slot: number }
   | { op: 'cancel-all' };
 
+type FakeSpawner = ReturnType<typeof createFakeSpawner>;
+
 const flush = async () => new Promise<void>((resolve) => setImmediate(resolve));
+
+/** Apply one generated operation to the queue under test */
+function applyOperation(queue: DownloadQueue, spawner: FakeSpawner, op: Op): void {
+  if (op.op === 'enqueue') {
+    queue.enqueue([
+      {
+        folderPath: op.folder,
+        videoId: op.videoId,
+        videoUrl: `https://yt/${op.videoId}`,
+        type: op.type,
+        ...(op.type === 'update' ? { baseName: op.videoId } : {}),
+      },
+    ]);
+    return;
+  }
+  if (op.op === 'exit') {
+    spawner.exit(op.slot);
+    return;
+  }
+  queue.cancelAll();
+}
+
+/** The invariants that protect downloads: separate limits, one download per folder */
+function assertConcurrencyLimits(spawner: FakeSpawner): void {
+  // downloads and updates have separate limits (2 + 2)
+  expect(spawner.totalActive()).toBeLessThanOrEqual(4);
+  expect(spawner.runningUpdates()).toBeLessThanOrEqual(2);
+  for (const folder of ['/videos/a', '/videos/b', '/videos/c']) {
+    expect(spawner.runningDownloads(folder)).toBeLessThanOrEqual(1);
+  }
+}
 
 describe('DownloadQueue (property)', () => {
   it('deduplicates identical requests and keeps distinct ones', () => {
@@ -78,7 +111,9 @@ describe('DownloadQueue (property)', () => {
               stderr: new EventEmitter(),
               kill: () => true,
             }),
-          afterJob: async () => {},
+          afterJob: async () => {
+            /* no post-job hook in this property */
+          },
         });
         queue.clear();
 
@@ -89,7 +124,7 @@ describe('DownloadQueue (property)', () => {
             videoId,
             videoUrl: `https://yt/${videoId}`,
             type: 'download',
-          }))
+          })),
         );
         const repeated = queue.enqueue(
           ids.map((videoId) => ({
@@ -97,13 +132,13 @@ describe('DownloadQueue (property)', () => {
             videoId,
             videoUrl: `https://yt/${videoId}`,
             type: 'download',
-          }))
+          })),
         );
 
         expect(jobs).toHaveLength(unique.length);
         expect(repeated).toHaveLength(ids.length);
         expect(new Set(repeated.map((job) => job.id)).size).toBe(unique.length);
-      })
+      }),
     );
   });
 
@@ -119,9 +154,9 @@ describe('DownloadQueue (property)', () => {
               type: fc.constantFrom('download' as const, 'update' as const),
             }),
             fc.record({ op: fc.constant('exit' as const), slot: fc.integer({ min: 0, max: 3 }) }),
-            fc.record({ op: fc.constant('cancel-all' as const) })
+            fc.record({ op: fc.constant('cancel-all' as const) }),
           ),
-          { minLength: 1, maxLength: 40 }
+          { minLength: 1, maxLength: 40 },
         ),
         async (ops: Op[]) => {
           const spawner = createFakeSpawner();
@@ -130,37 +165,19 @@ describe('DownloadQueue (property)', () => {
             maxConcurrentUpdates: 2,
             maxAttempts: 1,
             spawnFn: spawner.spawnFn,
-            afterJob: async () => {},
+            afterJob: async () => {
+              /* no post-job hook in this property */
+            },
           });
           queue.clear();
 
           for (const op of ops) {
-            if (op.op === 'enqueue') {
-              queue.enqueue([
-                {
-                  folderPath: op.folder,
-                  videoId: op.videoId,
-                  videoUrl: `https://yt/${op.videoId}`,
-                  type: op.type,
-                  ...(op.type === 'update' ? { baseName: op.videoId } : {}),
-                },
-              ]);
-            } else if (op.op === 'exit') {
-              spawner.exit(op.slot);
-            } else {
-              queue.cancelAll();
-            }
+            applyOperation(queue, spawner, op);
             await flush();
-
-            // downloads and updates have separate limits (2 + 2)
-            expect(spawner.totalActive()).toBeLessThanOrEqual(4);
-            expect(spawner.runningUpdates()).toBeLessThanOrEqual(2);
-            for (const folder of ['/videos/a', '/videos/b', '/videos/c']) {
-              expect(spawner.runningDownloads(folder)).toBeLessThanOrEqual(1);
-            }
+            assertConcurrencyLimits(spawner);
           }
-        }
-      )
+        },
+      ),
     );
   });
 });
