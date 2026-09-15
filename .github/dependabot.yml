@@ -24,6 +24,10 @@ updates:
       # migration of shared/schemas.ts before we accept it
       - dependency-name: 'zod'
         update-types: ['version-update:semver-major']
+      # v2 changes the API/types — needs a deliberate migration of the
+      # channel list (VariableSizeList usage)
+      - dependency-name: 'react-window'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: npm
     directory: /server
@@ -48,6 +52,10 @@ updates:
       # zod 4 changes the API (z.record, error handling) — needs a planned
       # migration of shared/schemas.ts before we accept it
       - dependency-name: 'zod'
+        update-types: ['version-update:semver-major']
+      # v2 changes the API/types — needs a deliberate migration of the
+      # channel list (VariableSizeList usage)
+      - dependency-name: 'react-window'
         update-types: ['version-update:semver-major']
 
   - package-ecosystem: npm
@@ -74,6 +82,10 @@ updates:
       # migration of shared/schemas.ts before we accept it
       - dependency-name: 'zod'
         update-types: ['version-update:semver-major']
+      # v2 changes the API/types — needs a deliberate migration of the
+      # channel list (VariableSizeList usage)
+      - dependency-name: 'react-window'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: npm
     directory: /chrome-extension
@@ -98,6 +110,10 @@ updates:
       # zod 4 changes the API (z.record, error handling) — needs a planned
       # migration of shared/schemas.ts before we accept it
       - dependency-name: 'zod'
+        update-types: ['version-update:semver-major']
+      # v2 changes the API/types — needs a deliberate migration of the
+      # channel list (VariableSizeList usage)
+      - dependency-name: 'react-window'
         update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
