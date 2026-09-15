@@ -35,8 +35,10 @@ test.describe('select and date controls', () => {
     await expect(item).toHaveAttribute('data-highlighted');
     const second = await itemState(item);
 
-    expect(first).toEqual({ outlineStyle: 'none', boxShadow: 'none' });
-    expect(second).toEqual(first);
+    expect(first.outlineStyle).toBe('none');
+    expect(first.boxShadow).toBe('none');
+    expect(second.outlineStyle).toBe('none');
+    expect(second.boxShadow).toBe('none');
   });
 
   test('keyboard navigation keeps a visible focus indicator on the item', async ({ page }) => {
@@ -51,15 +53,30 @@ test.describe('select and date controls', () => {
     // mouse in the top corner where the list never opens.
     await page.mouse.move(0, 0);
     await sort.focus();
+
     await page.keyboard.press('Enter');
     await expect(content).toBeVisible();
     await page.keyboard.press('ArrowDown');
 
     const highlighted = content.locator('.ui-select-item[data-highlighted]');
     await expect(highlighted).toHaveCount(1);
+
+    // Radix lands the focus asynchronously after the arrow key, so poll for
+    // the settled state: the focused option carries the inset ring and the
+    // leaky outline stays suppressed.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const active = document.activeElement;
+          if (!(active instanceof HTMLElement) || !active.classList.contains('ui-select-item')) {
+            return '';
+          }
+          return getComputedStyle(active).boxShadow;
+        }),
+      )
+      .toContain('inset');
     const state = await itemState(highlighted);
     expect(state.outlineStyle).toBe('none');
-    expect(state.boxShadow).toContain('inset');
   });
 
   test('native date inputs follow the dark theme', async ({ page }: { page: Page }) => {
