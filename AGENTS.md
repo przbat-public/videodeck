@@ -20,7 +20,7 @@ Node 22 (`.nvmrc`), npm 10.9.3 (pinned in `packageManager`).
 Run everything from the repo root unless noted:
 
 ```bash
-npm run install:ci        # npm ci for all four packages (CI/local reset)
+npm run install:ci        # npm ci for all four packages (CI/local reset — run when CI disagrees with your machine)
 npm run dev               # server :3001 + client :3000
 npm run lint              # biome check + hardcoded-Polish scan + tsconfig strictness check
 npm run lint:types        # eslint --max-warnings 0 (type-aware & React/Playwright rules)
@@ -125,3 +125,5 @@ enforces Conventional Commits with lowercase subjects.
 
 `main` is protected: every change is a branch → PR → **squash merge**
 (ruleset-enforced). Commits must already pass commitlint locally.
+Releases follow `RELEASING.md`; the Docker stack lives in
+`docker-compose.yml` + `docs/DEPLOYMENT.md`.

@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/test-results
+**/playwright-report
+.git
+.github
+docs
+server/.env
+*.log
+.DS_Store
+chrome-extension

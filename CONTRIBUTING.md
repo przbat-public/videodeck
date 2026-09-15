@@ -46,6 +46,9 @@ npm test               # jest (server) + vitest (client, extension)
 cd client && npm run test:e2e   # Playwright (mocked API, needs no backend)
 ```
 
+CI also runs an `npm audit --audit-level=moderate` job and the weekly
+dependency report; releases follow `RELEASING.md`.
+
 Commit hooks (husky + lint-staged) run `biome check --write` on the staged
 files automatically.
 
