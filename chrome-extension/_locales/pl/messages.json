@@ -55,6 +55,9 @@
       }
     }
   },
+  "optionsLink": {
+    "message": "Otwórz opcje"
+  },
   "optionsTitle": {
     "message": "Opcje Video Downloader"
   },

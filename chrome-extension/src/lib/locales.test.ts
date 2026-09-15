@@ -45,4 +45,17 @@ describe('_locales parity', () => {
       }
     }
   });
+
+  it('defines a message for every data-i18n reference in the pages', () => {
+    // localizeDom falls back to the key itself, so a page binding to a
+    // missing key renders the literal key text to the user.
+    const pages = ['popup.html', 'options.html'];
+    for (const page of pages) {
+      const html = readFileSync(fileURLToPath(new URL(`../../${page}`, import.meta.url)), 'utf-8');
+      const keys = [...html.matchAll(/data-i18n(?:-placeholder|-title)?="([^"]+)"/g)].map((match) => match[1] ?? '');
+      for (const key of keys) {
+        expect(en[key], `${page} binds the missing key ${key}`).toBeDefined();
+      }
+    }
+  });
 });
