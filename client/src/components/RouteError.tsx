@@ -1,4 +1,5 @@
 import type { JSX } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useRouteError } from 'react-router-dom';
 import { logError } from '../utils/logError';
@@ -11,7 +12,11 @@ import { logError } from '../utils/logError';
 export default function RouteError(): JSX.Element {
   const { t } = useTranslation();
   const error = useRouteError();
-  logError({ message: 'Route error', error });
+  // Logged in an effect: StrictMode double-invokes render, which used to
+  // double-log every route error.
+  useEffect(() => {
+    logError({ message: 'Route error', error });
+  }, [error]);
 
   return (
     <div className="route-error">

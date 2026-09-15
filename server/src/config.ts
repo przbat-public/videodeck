@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import fsPromises from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import dotenv from 'dotenv';
@@ -225,6 +226,136 @@ function isChannelFolder(folderPath: string): boolean {
   }
 }
 
+/** Direct subdirectory names via async fs; [] when unreadable */
+async function listDirectoriesAsync(dir: string): Promise<string[]> {
+  try {
+    const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+async function isDirectoryAsync(dir: string): Promise<boolean> {
+  try {
+    return (await fsPromises.stat(dir)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function isChannelFolderAsync(folderPath: string): Promise<boolean> {
+  try {
+    const entries = await fsPromises.readdir(folderPath, { withFileTypes: true });
+    return entries.some(
+      (entry) => entry.isFile() && (entry.name === 'config.json' || entry.name.endsWith('.info.json')),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Directories matched by one pattern segment below the given bases (async) */
+async function expandSegmentAsync(segment: string, bases: readonly string[]): Promise<string[]> {
+  const next: string[] = [];
+  if (segment.includes('*')) {
+    const matcher = globSegmentToRegExp(segment);
+    for (const base of bases) {
+      for (const name of await listDirectoriesAsync(base)) {
+        if (matcher.test(name)) {
+          next.push(path.join(base, name));
+        }
+      }
+    }
+    return next;
+  }
+  for (const base of bases) {
+    const candidate = path.join(base, segment);
+    if (await isDirectoryAsync(candidate)) {
+      next.push(candidate);
+    }
+  }
+  return next;
+}
+
+async function expandGlobAsync(pattern: string): Promise<string[]> {
+  const segments = pattern.split('/').filter((segment) => segment.length > 0);
+  let current = [pattern.startsWith('/') ? '/' : '.'];
+  for (const segment of segments) {
+    current = await expandSegmentAsync(segment, current);
+    if (current.length === 0) {
+      return [];
+    }
+  }
+  return current;
+}
+
+/** The expanded folder list for one raw env value (async — never on the request path) */
+async function scanFoldersAsync(raw: string): Promise<string[]> {
+  const entries = raw
+    .split(/[;,]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  if (entries.length === 0) {
+    throw new Error('VIDEOS_FOLDER_PATH must contain at least one valid folder path');
+  }
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    const expanded = expandTilde(entry);
+    let matches: string[];
+    if (hasGlobMagic(expanded)) {
+      const candidates = await expandGlobAsync(expanded);
+      const filtered: string[] = [];
+      for (const folderPath of candidates) {
+        if (await isChannelFolderAsync(folderPath)) {
+          filtered.push(folderPath);
+        }
+      }
+      matches = filtered.sort();
+    } else {
+      matches = [expanded];
+    }
+    for (const folderPath of matches) {
+      if (!seen.has(folderPath)) {
+        seen.add(folderPath);
+        paths.push(folderPath);
+      }
+    }
+  }
+  return paths;
+}
+
+/** In-flight background rescan (one at a time) */
+let folderScanInFlight: Promise<void> | null = null;
+
+/**
+ * Re-scan the disk asynchronously and replace the cache. Used when the cache
+ * is stale: callers keep getting the previous list while the scan runs, so a
+ * slow network drive can no longer block the event loop (the synchronous scan
+ * only ever runs on the cold boot path).
+ */
+async function refreshFoldersCache(raw: string): Promise<void> {
+  if (folderScanInFlight) {
+    return;
+  }
+  folderScanInFlight = (async () => {
+    try {
+      const paths = await scanFoldersAsync(raw);
+      if (paths.length === 0) {
+        logger.warn(
+          'VIDEOS_FOLDER_PATH is set, but no folder matched right now (drive unmounted?). Search and downloads are unavailable until a configured folder appears.',
+        );
+      }
+      foldersCache = { raw, readAt: Date.now(), paths };
+    } catch (error) {
+      logger.warn(`Background folder rescan failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      folderScanInFlight = null;
+    }
+  })();
+}
+
 /**
  * Get all video folder paths from `VIDEOS_FOLDER_PATH`.
  *
@@ -242,7 +373,14 @@ function isChannelFolder(folderPath: string): boolean {
 export function getVideosFolderPaths(): string[] {
   const raw = process.env.VIDEOS_FOLDER_PATH ?? '';
   const cached = foldersCache;
-  if (cached !== null && cached.raw === raw && Date.now() - cached.readAt < VIDEOS_FOLDER_CACHE_TTL_MS) {
+  if (cached !== null && cached.raw === raw) {
+    if (Date.now() - cached.readAt < VIDEOS_FOLDER_CACHE_TTL_MS) {
+      return cached.paths;
+    }
+    // Stale: serve the last list and refresh in the background. The scan
+    // used to run synchronously on the request path, blocking the event
+    // loop for seconds over network drives on every cache expiry.
+    void refreshFoldersCache(raw);
     return cached.paths;
   }
 

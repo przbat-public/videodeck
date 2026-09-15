@@ -33,6 +33,13 @@ export type VideoDocument = Omit<VideoListItem, 'comments'> & {
  */
 const SEARCH_ONLY_SOURCE_FIELDS = ['commentsText', 'transcriptText'] as const;
 
+/**
+ * Fields the SEARCH response leaves out on top of the search-only blobs:
+ * descriptions are full yt-dlp text (MBs across a 500-result page) and
+ * nothing in the list UI renders them — the details endpoint serves them.
+ */
+const SEARCH_EXCLUDED_SOURCE_FIELDS = ['description', 'videoPath', 'subtitlePath', 'likeCount'] as const;
+
 let client: Client | null = null;
 
 /**
@@ -155,9 +162,10 @@ function coerceInteger(value: unknown): number | undefined {
 
 /** Convert a stored document back into the API shape */
 export function fromDocument(document: VideoDocument): VideoListItem {
-  // Search-only blobs never leave the server
+  // Search-only blobs never leave the server; the (always empty) comments
+  // array is not emitted either — it was pure payload bloat.
   const { commentsText, transcriptText, ...rest } = document;
-  return { ...rest, comments: [] };
+  return rest;
 }
 
 /**
@@ -694,7 +702,7 @@ export async function searchVideosWithTotal(
     size,
     track_total_hits: true,
     _source: {
-      excludes: [...SEARCH_ONLY_SOURCE_FIELDS],
+      excludes: [...SEARCH_ONLY_SOURCE_FIELDS, ...SEARCH_EXCLUDED_SOURCE_FIELDS],
     },
     // Fragments wrap matches in control chars the client turns into <mark>s;
     // never HTML from the server into dangerouslySetInnerHTML.

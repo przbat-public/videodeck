@@ -10,7 +10,8 @@ const analyze = process.env.ANALYZE === '1';
 const vendorChunks: Record<string, string[]> = {
   'react-vendor': ['react', 'react-dom', 'react-router-dom'],
   'i18n-vendor': ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
-  'ui-vendor': ['@radix-ui/react-select', 'react-hot-toast', 'react-window'],
+  'ui-vendor': ['@radix-ui/react-select', 'react-hot-toast'],
+  'list-vendor': ['react-window'],
 };
 
 export default defineConfig({

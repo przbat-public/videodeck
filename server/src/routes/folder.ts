@@ -158,6 +158,27 @@ export type DownloadQueueLike = Pick<
  * queue (createApp options) instead of the handlers reaching for a module
  * singleton. Each call closes over its own queue instance.
  */
+/** 5 s cache of GET /api/status keyed by the expanded folder list */
+const STATUS_CACHE_TTL_MS = 5_000;
+let statusCache: { key: string; readAt: number; body: StatusResponse } | null = null;
+
+function readStatusCache(folderPaths: string[]): StatusResponse | undefined {
+  const cached = statusCache;
+  if (cached === null || cached.key !== folderPaths.join('\n') || Date.now() - cached.readAt >= STATUS_CACHE_TTL_MS) {
+    return undefined;
+  }
+  return cached.body;
+}
+
+function writeStatusCache(folderPaths: string[], body: StatusResponse): void {
+  statusCache = { key: folderPaths.join('\n'), readAt: Date.now(), body };
+}
+
+/** Tests: drop the status cache */
+export function invalidateStatusCache(): void {
+  statusCache = null;
+}
+
 export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): express.Router {
   // Paused state is mirrored here so listJobs can report it (the injected
   // queue only exposes setPaused)
@@ -165,6 +186,17 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
 
   const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, res) => {
     const videosFolderPaths = getVideosFolderPaths();
+
+    // The status page polls this endpoint; building it reads every folder's
+    // config.json plus one ES alias check per folder (up to ~3 s over
+    // external disks). Serve a 5 s cache so a burst of page loads cannot
+    // hammer the drives or Elasticsearch.
+    const cached = readStatusCache(videosFolderPaths);
+    if (cached !== undefined) {
+      res.json(cached);
+      return;
+    }
+
     // Configs live on an external disk: 56 folders read one after another
     // cost up to 3 s (the same reason categories are read in parallel).
     // readFolderConfig never throws, so the whole list is always built.
@@ -189,14 +221,16 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
         }
       }),
     );
-    res.json({
+    const body: StatusResponse = {
       videosFolderPath: videosFolderPaths,
       folderConfigs,
       downloadDefaults: DEFAULT_DOWNLOAD_OPTIONS,
       indexedFolders: videosFolderPaths.filter((folderPath) => cachedFolders.has(folderPath)),
       listExists,
       status: 'ok',
-    });
+    };
+    writeStatusCache(videosFolderPaths, body);
+    res.json(body);
   };
 
   const saveFolderConfig: RouteHandler<NoParams, SaveFolderConfigResponse> = async (req, res) => {
@@ -224,6 +258,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     await fs.mkdir(folderPath, { recursive: true });
     await writeJsonAtomic(folderPath, 'config.json', validConfig);
     invalidateCategoryCache();
+    invalidateStatusCache();
     res.json({ success: true, config: validConfig });
   };
 

@@ -158,7 +158,7 @@ describe('elasticsearchService', () => {
     it('restores the API shape with empty comments', () => {
       const item = fromDocument({ ...toDocument(video()), commentsText: 'x' });
       expect(item).not.toHaveProperty('commentsText');
-      expect(item.comments).toEqual([]);
+      expect(item).not.toHaveProperty('comments');
       expect(item.baseName).toBe('20240101_Video');
     });
 
@@ -550,11 +550,13 @@ describe('elasticsearchService', () => {
       expect(request.sort).toEqual([{ viewCount: { order: 'desc', missing: '_last' } }]);
       expect(request.from).toBe(0);
       expect(request.size).toBe(100);
-      expect(request._source).toEqual({ excludes: ['commentsText', 'transcriptText'] });
+      expect(request._source).toEqual({
+        excludes: ['commentsText', 'transcriptText', 'description', 'videoPath', 'subtitlePath', 'likeCount'],
+      });
 
       expect(results).toHaveLength(1);
       expect(at(results, 0)).not.toHaveProperty('commentsText');
-      expect(at(results, 0).comments).toEqual([]);
+      expect(at(results, 0)).not.toHaveProperty('comments');
     });
 
     it('returns the query-aware total from hits.total (track_total_hits)', async () => {
@@ -723,7 +725,7 @@ describe('elasticsearchService', () => {
       const found = await getVideoByBaseName('20240101_Video');
 
       expect(found?.baseName).toBe('20240101_Video');
-      expect(found?.comments).toEqual([]);
+      expect(found?.comments).toBeUndefined();
       expect(mockClient.search.mock.calls[0][0].query).toEqual({
         term: { baseName: '20240101_Video' },
       });

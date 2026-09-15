@@ -77,15 +77,18 @@ export const VideoListItemSchema = z.object({
   baseName: z.string(),
   videoId: z.string().optional(),
   title: z.string(),
-  description: z.string(),
-  videoPath: z.string(),
+  // Optional on purpose: search responses exclude the heavyweight fields
+  // (full yt-dlp descriptions are MBs of payload) — the details endpoint
+  // serves them from info.json instead.
+  description: z.string().optional(),
+  videoPath: z.string().optional(),
   thumbnailPath: z.string(),
   folderPath: z.string(),
   uploadDate: z.string().optional(),
   viewCount: z.number().optional(),
   likeCount: z.number().optional(),
   channelName: z.string().optional(),
-  comments: z.array(VideoCommentSchema),
+  comments: z.array(VideoCommentSchema).optional(),
   subtitlePath: z.string().optional(),
   // search-only; must be absent from responses (never parsed here)
   transcriptText: z.string().optional(),
