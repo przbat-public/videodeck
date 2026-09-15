@@ -16,9 +16,7 @@ describe('getYouTubeVideoId', () => {
   });
 
   it('keeps working when the URL carries extra query parameters', () => {
-    expect(getYouTubeVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1s&list=abc')).toBe(
-      'dQw4w9WgXcQ'
-    );
+    expect(getYouTubeVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1s&list=abc')).toBe('dQw4w9WgXcQ');
   });
 
   it('returns null for URLs without a video id', () => {
