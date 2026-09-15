@@ -3,7 +3,7 @@
  * service worker through chrome.runtime / chrome.tabs.
  */
 
-/** Settings stored in chrome.storage.sync by the options page */
+/** Settings stored in chrome.storage.local by the options page */
 export interface PopupConfig {
   serverUrl: string;
   folderPath: string;

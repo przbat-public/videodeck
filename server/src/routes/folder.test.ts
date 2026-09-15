@@ -114,6 +114,13 @@ const OTHER_FOLDER = '/videos/channel-b';
 const enoent = () => Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
+/** File handle handed out by the fs.open mock (writeJsonAtomic) */
+const mockFileHandle = {
+  writeFile: jest.fn<Promise<void>, [string, BufferEncoding]>(),
+  sync: jest.fn<Promise<void>, []>(),
+  close: jest.fn<Promise<void>, []>(),
+};
+
 /** The real app wiring (host guard, CORS, auth, routers, error handling) */
 function createApp() {
   return createRealApp();
@@ -158,6 +165,11 @@ describe('folder router', () => {
     mockedGetVideosFolderPaths.mockReturnValue([FOLDER, OTHER_FOLDER]);
     mockedFs.mkdir.mockResolvedValue(undefined);
     mockedFs.writeFile.mockResolvedValue(undefined);
+    mockedFs.open.mockResolvedValue(mockFileHandle as unknown as import('node:fs/promises').FileHandle);
+    mockedFs.rename.mockResolvedValue(undefined);
+    mockFileHandle.writeFile.mockResolvedValue(undefined);
+    mockFileHandle.sync.mockResolvedValue(undefined);
+    mockFileHandle.close.mockResolvedValue(undefined);
     mockedReadFolderConfig.mockResolvedValue(null);
     mockedLoadDownloadOptions.mockResolvedValue({ ...DEFAULT_DOWNLOAD_OPTIONS });
     mockedListCachedFolders.mockResolvedValue(new Set([FOLDER]));
@@ -173,7 +185,7 @@ describe('folder router', () => {
   describe('GET /api/status', () => {
     it('returns folders with their configs (null when config.json is missing) and defaults', async () => {
       mockedReadFolderConfig.mockImplementation(async (folder) =>
-        folder === FOLDER ? { channelUrl: 'https://yt/@a', maxHeight: 1080 } : null,
+        folder === FOLDER ? { channelUrl: 'https://www.youtube.com/@a', maxHeight: 1080 } : null,
       );
 
       const response = await request(app).get('/api/status');
@@ -182,7 +194,7 @@ describe('folder router', () => {
       expect(StatusResponseSchema.parse(response.body)).toEqual({
         videosFolderPath: [FOLDER, OTHER_FOLDER],
         folderConfigs: {
-          [FOLDER]: { channelUrl: 'https://yt/@a', maxHeight: 1080 },
+          [FOLDER]: { channelUrl: 'https://www.youtube.com/@a', maxHeight: 1080 },
           [OTHER_FOLDER]: null,
         },
         downloadDefaults: {
@@ -222,12 +234,12 @@ describe('folder router', () => {
       expect((await put({ maxHeight: 100 })).body.error).toMatch(/maxHeight/);
       expect((await put({ subLangs: 'en' })).body.error).toMatch(/subLangs/);
       expect((await put({ writeComments: 'yes' })).body.error).toMatch(/writeComments/);
-      expect(mockedFs.writeFile).not.toHaveBeenCalled();
+      expect(mockedFs.open).not.toHaveBeenCalled();
     });
 
     it('writes config.json with download options', async () => {
       const config = {
-        channelUrl: 'https://yt/@a',
+        channelUrl: 'https://www.youtube.com/@a',
         maxHeight: 1080,
         subLangs: ['pl', 'en'],
         writeComments: false,
@@ -237,23 +249,21 @@ describe('folder router', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ success: true, config });
-      expect(mockedFs.writeFile).toHaveBeenCalledWith(
-        `${FOLDER}/config.json`,
-        JSON.stringify(config, null, 2),
-        'utf-8',
-      );
+      expect(mockedFs.open).toHaveBeenCalledWith(`${FOLDER}/config.json.tmp`, 'w');
+      expect(mockFileHandle.writeFile).toHaveBeenCalledWith(JSON.stringify(config, null, 2), 'utf-8');
+      expect(mockedFs.rename).toHaveBeenCalledWith(`${FOLDER}/config.json.tmp`, `${FOLDER}/config.json`);
     });
 
     it('stores the category trimmed and drops the category cache', async () => {
       const response = await request(app)
         .put('/api/folder/config')
-        .send({ folderPath: FOLDER, config: { channelUrl: 'https://yt/@a', category: '  fpv ' } });
+        .send({ folderPath: FOLDER, config: { channelUrl: 'https://www.youtube.com/@a', category: '  fpv ' } });
 
       expect(response.status).toBe(200);
-      expect(response.body.config).toEqual({ channelUrl: 'https://yt/@a', category: 'fpv' });
-      expect(mockedFs.writeFile).toHaveBeenCalledWith(
-        `${FOLDER}/config.json`,
-        JSON.stringify({ channelUrl: 'https://yt/@a', category: 'fpv' }, null, 2),
+      expect(response.body.config).toEqual({ channelUrl: 'https://www.youtube.com/@a', category: 'fpv' });
+      expect(mockedFs.open).toHaveBeenCalledWith(`${FOLDER}/config.json.tmp`, 'w');
+      expect(mockFileHandle.writeFile).toHaveBeenCalledWith(
+        JSON.stringify({ channelUrl: 'https://www.youtube.com/@a', category: 'fpv' }, null, 2),
         'utf-8',
       );
       expect(invalidateCategoryCache).toHaveBeenCalledTimes(1);
@@ -266,22 +276,30 @@ describe('folder router', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.error).toMatch(/category/);
-      expect(mockedFs.writeFile).not.toHaveBeenCalled();
+      expect(mockedFs.open).not.toHaveBeenCalled();
       expect(invalidateCategoryCache).not.toHaveBeenCalled();
     });
 
+    it('rejects a channelUrl that is not a YouTube channel URL', async () => {
+      const response = await request(app)
+        .put('/api/folder/config')
+        .send({ folderPath: FOLDER, config: { channelUrl: 'http://169.254.169.254/latest/meta-data' } });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/YouTube channel URL/);
+      expect(mockedFs.open).not.toHaveBeenCalled();
+    });
+
     it('writes config.json', async () => {
-      const config = { channelUrl: 'https://yt/@a' };
+      const config = { channelUrl: 'https://www.youtube.com/@a' };
 
       const response = await request(app).put('/api/folder/config').send({ folderPath: FOLDER, config });
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ success: true, config });
-      expect(mockedFs.writeFile).toHaveBeenCalledWith(
-        `${FOLDER}/config.json`,
-        JSON.stringify(config, null, 2),
-        'utf-8',
-      );
+      expect(mockedFs.open).toHaveBeenCalledWith(`${FOLDER}/config.json.tmp`, 'w');
+      expect(mockFileHandle.writeFile).toHaveBeenCalledWith(JSON.stringify(config, null, 2), 'utf-8');
+      expect(mockedFs.rename).toHaveBeenCalledWith(`${FOLDER}/config.json.tmp`, `${FOLDER}/config.json`);
     });
   });
 
@@ -462,6 +480,16 @@ describe('folder router', () => {
       expect(response.status).toBe(400);
     });
 
+    it('returns 400 when the configured channelUrl is not a YouTube channel URL', async () => {
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'http://169.254.169.254/latest/meta-data' });
+
+      const response = await request(app).post('/api/folder/download-playlist').send({ folderPath: FOLDER });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/YouTube channel URL/);
+      expect(mockedSpawn).not.toHaveBeenCalled();
+    });
+
     it('runs yt-dlp without a shell, appends /videos and stores NDJSON as an array', async () => {
       mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
       fakeYtDlp('{"id":"v1","title":"One"}\n{"id":"v2","title":"Two"}\n');
@@ -479,8 +507,8 @@ describe('folder router', () => {
         ['--flat-playlist', '-i', '-j', 'https://www.youtube.com/@a/videos'],
         { cwd: FOLDER },
       );
-      expect(mockedFs.writeFile).toHaveBeenCalledWith(
-        `${FOLDER}/list.json`,
+      expect(mockedFs.open).toHaveBeenCalledWith(`${FOLDER}/list.json.tmp`, 'w');
+      expect(mockFileHandle.writeFile).toHaveBeenCalledWith(
         JSON.stringify(
           [
             { id: 'v1', title: 'One' },
@@ -491,6 +519,7 @@ describe('folder router', () => {
         ),
         'utf-8',
       );
+      expect(mockedFs.rename).toHaveBeenCalledWith(`${FOLDER}/list.json.tmp`, `${FOLDER}/list.json`);
     });
 
     it('returns 500 when yt-dlp fails', async () => {
@@ -500,8 +529,9 @@ describe('folder router', () => {
       const response = await request(app).post('/api/folder/download-playlist').send({ folderPath: FOLDER });
 
       expect(response.status).toBe(500);
-      expect(response.body.message).toMatch(/exited with code 1/);
-      expect(mockedFs.writeFile).not.toHaveBeenCalled();
+      expect(response.body.error).toBe('Failed to download playlist');
+      expect(response.body.message).toBeUndefined();
+      expect(mockedFs.open).not.toHaveBeenCalled();
     });
   });
 

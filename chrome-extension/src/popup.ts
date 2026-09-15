@@ -57,7 +57,7 @@ async function main(): Promise<void> {
   }
 
   // Load configuration
-  const config = (await chrome.storage.sync.get(['serverUrl', 'folderPath', 'apiToken'])) as Partial<PopupConfig>;
+  const config = (await chrome.storage.local.get(['serverUrl', 'folderPath', 'apiToken'])) as Partial<PopupConfig>;
 
   if (!config.serverUrl || !config.folderPath) {
     configWarning.style.display = 'block';
@@ -236,7 +236,7 @@ async function main(): Promise<void> {
       await chrome.runtime.sendMessage({
         action: 'downloadVideo',
         videoUrl: response.videoUrl,
-        videoTitle: response.videoTitle || 'Wideo',
+        videoTitle: response.videoTitle || chrome.i18n.getMessage('videoTitleFallback'),
         serverUrl: config.serverUrl,
         folderPath: config.folderPath,
         ...(config.apiToken ? { apiToken: config.apiToken } : {}),

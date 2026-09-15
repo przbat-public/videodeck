@@ -22,7 +22,7 @@ import type {
   StatusResponse,
   VideoDownloadedResponse,
 } from '@shared/api';
-import { extractYoutubeVideoId, isYoutubeVideoId, toWatchUrl } from '@shared/youtube';
+import { extractYoutubeVideoId, isYoutubeChannelUrl, isYoutubeVideoId, toWatchUrl } from '@shared/youtube';
 import type { Response } from 'express';
 import express from 'express';
 import { getVideosFolderPaths } from '../config';
@@ -40,6 +40,7 @@ import {
 import type { FolderIndex } from '../services/folderIndex';
 import { findEntryByVideoId, getDownloadStatuses, loadIndex, rebuildIndex } from '../services/folderIndex';
 import { buildPlaylistArgs, runYtDlp } from '../services/ytdlp';
+import { writeJsonAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/objectUtils';
 import { normalizeFolderPath } from '../utils/videoPathUtils';
@@ -220,7 +221,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     if (!folderPath) return;
 
     await fs.mkdir(folderPath, { recursive: true });
-    await fs.writeFile(path.join(folderPath, 'config.json'), JSON.stringify(validConfig, null, 2), 'utf-8');
+    await writeJsonAtomic(folderPath, 'config.json', validConfig);
     invalidateCategoryCache();
     res.json({ success: true, config: validConfig });
   };
@@ -312,6 +313,18 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
       });
       return;
     }
+    // Defense in depth: the save path validates too, but a hand-edited
+    // config.json bypasses it. The URL must be an https YouTube channel
+    // before yt-dlp ever sees it — anything else is an SSRF/argument-
+    // injection primitive.
+    if (!isYoutubeChannelUrl(configuredUrl)) {
+      res.status(400).json({
+        error: 'channelUrl is not a YouTube channel URL',
+        message:
+          'Please set channelUrl to a YouTube channel URL (https://youtube.com/@handle, /channel/…, /c/…, /user/…)',
+      });
+      return;
+    }
 
     await fs.mkdir(folderPath, { recursive: true });
     const channelUrl = configuredUrl.endsWith('/videos') ? configuredUrl : `${configuredUrl}/videos`;
@@ -341,7 +354,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
       });
 
     const listPath = path.join(folderPath, 'list.json');
-    await fs.writeFile(listPath, JSON.stringify(entries, null, 2), 'utf-8');
+    await writeJsonAtomic(folderPath, 'list.json', entries);
     res.json({
       success: true,
       message: 'Playlist downloaded successfully',

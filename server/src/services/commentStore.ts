@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { CommentWithReplies } from '@shared/api';
 import type { VideoInfoJson } from '../types';
 import { buildCommentTree } from '../utils/commentTreeUtils';
+import { resolveContainedPath } from '../utils/fsUtils';
 
 /**
  * Parsed comment trees with a cache keyed by the info.json mtime. Videos
@@ -49,7 +50,10 @@ export async function loadCommentTree(folderPath: string, baseName: string): Pro
     return cached.tree;
   }
 
-  const infoJson = JSON.parse(await fs.readFile(filePath, 'utf-8')) as VideoInfoJson;
+  // Containment check: the info.json must resolve inside the folder even if
+  // a symlink tries to redirect the read elsewhere on the disk.
+  const realPath = await resolveContainedPath(folderPath, `${baseName}.info.json`);
+  const infoJson = JSON.parse(await fs.readFile(realPath, 'utf-8')) as VideoInfoJson;
   const tree = buildCommentTree(infoJson.comments || []);
   cache.set(key, { mtimeMs, tree });
   if (cache.size > CACHE_MAX_ENTRIES) {

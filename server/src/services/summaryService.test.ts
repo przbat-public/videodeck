@@ -155,6 +155,8 @@ describe('generateSummary', () => {
     process.env.OPENAI_API_KEY = 'test-api-key';
     MockedOpenAI.mockImplementation(() => mockOpenAIInstance as unknown as OpenAI);
     mockedFs.writeFile.mockResolvedValue(undefined);
+    // resolveContainedPath: identity realpath keeps the containment check green
+    mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
   });
 
   it('returns the cached summary without touching OpenAI or the subtitles', async () => {

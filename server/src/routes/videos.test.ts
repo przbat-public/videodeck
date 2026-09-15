@@ -81,6 +81,9 @@ describe('videos router', () => {
     jest.spyOn(console, 'log').mockImplementation(() => {
       /* silence expected info logs */
     });
+    // Defaults for the real fs mocks: access/realpath succeed
+    mockedFs.access.mockResolvedValue(undefined);
+    mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
 
     app = createApp();
   });
@@ -362,11 +365,11 @@ describe('videos router', () => {
     });
   });
 
-  describe('GET /api/videos/refreshCache', () => {
+  describe('POST /api/videos/refreshCache', () => {
     it('should start cache refresh process and return immediately', async () => {
       mockedRefreshVideosCache.mockResolvedValue(undefined);
 
-      const response = await request(app).get('/api/videos/refreshCache');
+      const response = await request(app).post('/api/videos/refreshCache');
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
@@ -379,7 +382,7 @@ describe('videos router', () => {
     it('passes onlyMissing=1 so cached folders are skipped', async () => {
       mockedRefreshVideosCache.mockResolvedValue(undefined);
 
-      const response = await request(app).get('/api/videos/refreshCache?onlyMissing=1');
+      const response = await request(app).post('/api/videos/refreshCache?onlyMissing=1');
 
       expect(response.status).toBe(200);
       expect(mockedRefreshVideosCache).toHaveBeenCalledWith({ onlyMissing: true });
@@ -389,7 +392,7 @@ describe('videos router', () => {
       const error = new Error('Failed to refresh');
       mockedRefreshVideosCache.mockRejectedValue(error);
 
-      const response = await request(app).get('/api/videos/refreshCache');
+      const response = await request(app).post('/api/videos/refreshCache');
 
       // Response should still be 200 because errors are handled in background
       expect(response.status).toBe(200);
@@ -421,7 +424,7 @@ describe('videos router', () => {
       mockedIsReindexRunning.mockReturnValue(true);
       mockedGetReindexStatus.mockReturnValue(running);
 
-      const response = await request(app).get('/api/videos/refreshCache');
+      const response = await request(app).post('/api/videos/refreshCache');
 
       expect(response.status).toBe(409);
       expect(response.body).toMatchObject({ error: 'Reindex already running', status: running });
@@ -536,14 +539,14 @@ describe('videos router', () => {
 
       mockedGetVideoByFilePath.mockResolvedValue(mockVideo);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
-      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
 
       expect(response.status).toBe(200);
       expect(mockedGetVideoByFilePath).toHaveBeenCalledWith(filename);
       expect(mockedGetVideoFilePath).toHaveBeenCalledWith(filename, '/test/videos');
-      expect(mockedFs.access).toHaveBeenCalledWith(mockFilePath);
+      expect(mockedFs.realpath).toHaveBeenCalledWith(mockFilePath);
     });
 
     it('should serve thumbnail file (.webp)', async () => {
@@ -552,7 +555,7 @@ describe('videos router', () => {
 
       mockedGetVideoByFilePath.mockResolvedValue(mockVideo);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
-      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
 
@@ -571,7 +574,7 @@ describe('videos router', () => {
 
       mockedGetVideoByFilePath.mockResolvedValue(videoWithMatchingPath);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
-      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
 
       await request(app).get(`/api/videos/file/${filename}`);
 
@@ -589,7 +592,7 @@ describe('videos router', () => {
 
       mockedGetVideoByFilePath.mockResolvedValue(videoWithMatchingThumbnail);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
-      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
 
       await request(app).get(`/api/videos/file/${filename}`);
 
@@ -614,7 +617,7 @@ describe('videos router', () => {
 
       mockedGetVideoByFilePath.mockResolvedValue(mockVideo);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
-      mockedFs.access.mockRejectedValue(new Error('Permission denied'));
+      mockedFs.realpath.mockRejectedValue(new Error('Permission denied'));
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
 
@@ -628,7 +631,7 @@ describe('videos router', () => {
 
       mockedGetVideoByFilePath.mockResolvedValue(mockVideo);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
-      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
 
@@ -643,7 +646,7 @@ describe('videos router', () => {
 
       mockedGetVideoByFilePath.mockResolvedValue(mockVideo);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
-      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
       mockedFs.readFile.mockResolvedValue('WEBVTT\n\n00:00:03.360 --> 00:00:05.200 align:start position:0%\ntext\n');
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
@@ -661,7 +664,7 @@ describe('videos router', () => {
 
       mockedGetVideoByFilePath.mockResolvedValue(mockVideo);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
-      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
 
@@ -676,7 +679,7 @@ describe('videos router', () => {
 
       mockedGetVideoByFilePath.mockResolvedValue(mockVideo);
       mockedGetVideoFilePath.mockReturnValue(mockFilePath);
-      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
 
       const response = await request(app).get(`/api/videos/file/${filename}`);
 
@@ -704,7 +707,7 @@ describe('videos router', () => {
     it('uses the folder query param without hitting Elasticsearch', async () => {
       const filename = '20231201_TestVideo.mp4';
       mockedGetVideoFilePath.mockReturnValue('/test/other/20231201_TestVideo.mp4');
-      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
 
       const response = await request(app).get(`/api/videos/file/${filename}`).query({ folder: '/test/other' });
 
@@ -877,7 +880,6 @@ describe('videos router', () => {
       const infoJsonPath = path.join(mockVideo.folderPath, `${baseName}.info.json`);
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
       mockedBuildCommentTree.mockReturnValue([]);
 
@@ -909,7 +911,6 @@ describe('videos router', () => {
       const infoJsonPath = path.join(mockVideo.folderPath, `${mockVideo.baseName}.info.json`);
 
       mockedGetVideoByVideoId.mockResolvedValue(mockVideo);
-      mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
       mockedBuildCommentTree.mockReturnValue([]);
 
@@ -944,7 +945,6 @@ describe('videos router', () => {
       })) as CommentWithReplies[];
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
       mockedLoadCommentTree.mockResolvedValue(many);
 
@@ -986,7 +986,6 @@ describe('videos router', () => {
       const baseName = '20231201_TestVideo';
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
       mockedFs.readdir.mockResolvedValue([
         '20231201_TestVideo.pl.vtt',
@@ -1013,7 +1012,6 @@ describe('videos router', () => {
       };
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithoutTitle));
       mockedBuildCommentTree.mockReturnValue([]);
 
@@ -1032,7 +1030,6 @@ describe('videos router', () => {
       };
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithoutChannel));
       mockedBuildCommentTree.mockReturnValue([]);
 
@@ -1050,7 +1047,6 @@ describe('videos router', () => {
       };
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithNumericDuration));
       mockedBuildCommentTree.mockReturnValue([]);
 
@@ -1076,7 +1072,6 @@ describe('videos router', () => {
       };
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithComments));
       mockedLoadCommentTree.mockResolvedValue(mockTree);
 
@@ -1116,7 +1111,6 @@ describe('videos router', () => {
       const baseName = '20231201_TestVideo';
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue('invalid json content');
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
@@ -1133,7 +1127,6 @@ describe('videos router', () => {
       const error = new Error('Permission denied');
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockRejectedValue(error);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
@@ -1169,7 +1162,6 @@ describe('videos router', () => {
       };
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithoutCommentCount));
       mockedLoadCommentTree.mockResolvedValue(mockTree);
 
@@ -1186,7 +1178,6 @@ describe('videos router', () => {
       };
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.access.mockResolvedValue(undefined);
       mockedFs.readFile.mockResolvedValue(JSON.stringify(minimalInfoJson));
       mockedBuildCommentTree.mockReturnValue([]);
 

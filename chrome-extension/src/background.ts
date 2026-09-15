@@ -27,10 +27,16 @@ type BackgroundEvent =
 const activeDownloads = new Map<number, ActiveDownload>();
 let downloadIdCounter = 0;
 
-chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
+  // Only messages from this extension's own contexts (content script, popup,
+  // options) are trusted: any other installed extension could otherwise
+  // drive downloads or read the active-download list.
+  if (sender.id !== undefined && sender.id !== chrome.runtime.id) {
+    return false;
+  }
   if (message.action === 'downloadVideo') {
     const downloadId = ++downloadIdCounter;
-    const videoTitle = message.videoTitle || 'Wideo';
+    const videoTitle = message.videoTitle || chrome.i18n.getMessage('videoTitleFallback');
 
     activeDownloads.set(downloadId, {
       videoUrl: message.videoUrl,
@@ -172,7 +178,7 @@ function handleSseEvent(downloadId: number, event: DownloadVideoEvent): boolean 
     case 'start':
       notifyDownloadUpdate(downloadId, 'downloadProgress', {
         progress: 0,
-        message: event.message || 'Rozpoczynanie pobierania...',
+        message: event.message || chrome.i18n.getMessage('startingDownload'),
       });
       return false;
     case 'output': {

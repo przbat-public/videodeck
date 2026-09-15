@@ -18,6 +18,10 @@ const EnvSchema = z.object({
   VIDEOS_FOLDER_PATH: z.string().min(1, 'VIDEOS_FOLDER_PATH must not be empty'),
   ELASTICSEARCH_URL: z.string().url().default('http://localhost:9200'),
   API_TOKEN: z.string().optional(),
+  REQUIRE_API_TOKEN: z
+    .enum(['true', 'false'])
+    .optional()
+    .describe('Set to true to refuse all requests when API_TOKEN is not configured'),
   CORS_ORIGINS: z.string().optional(),
   ALLOWED_HOSTS: z.string().optional(),
   EXTENSION_ORIGINS: z.string().optional(),

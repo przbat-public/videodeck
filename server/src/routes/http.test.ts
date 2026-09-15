@@ -179,10 +179,17 @@ describe('createApp auth wiring', () => {
 });
 
 describe('isAllowedCorsOrigin', () => {
-  it('allows the local dev client on any port', () => {
+  it('allows the local dev client on the known dev ports only', () => {
     expect(isAllowedCorsOrigin('http://localhost:3000')).toBe(true);
     expect(isAllowedCorsOrigin('http://127.0.0.1:4173')).toBe(true);
-    expect(isAllowedCorsOrigin('https://localhost:8443')).toBe(true);
+    expect(isAllowedCorsOrigin('http://localhost:5173')).toBe(true);
+    // Any other localhost port is NOT trusted by default (a page served from
+    // an arbitrary local server would be same-site and could drive the API);
+    // extra origins go through CORS_ORIGINS.
+    expect(isAllowedCorsOrigin('https://localhost:8443')).toBe(false);
+    expect(isAllowedCorsOrigin('http://localhost:9999')).toBe(false);
+    expect(isAllowedCorsOrigin('http://localhost:3000', ['https://localhost:8443'])).toBe(true);
+    expect(isAllowedCorsOrigin('https://localhost:8443', ['https://localhost:8443'])).toBe(true);
   });
 
   it('allows Chrome extensions', () => {

@@ -73,6 +73,17 @@ function parseNonNegativeInt(value: string | undefined, fallback: number): numbe
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+/**
+ * Hard cap for `?offset=`: beyond this Elasticsearch dies on
+ * `max_result_window` (from+size > 10000) and every request becomes a 500.
+ */
+const MAX_OFFSET = 10_000;
+
+/** `?offset=` for search/comments: clamped so a huge offset cannot 500 ES */
+function parseOffset(value: string | undefined): number {
+  return Math.min(parseNonNegativeInt(value, 0), MAX_OFFSET);
+}
+
 const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
 
 /**
@@ -175,10 +186,13 @@ const getRefreshStatus: RouteHandler<NoParams, ReindexStatus> = (_req, res) => {
   res.json(getReindexStatus());
 };
 
-// GET /api/videos/refreshCache - Refresh/reindex videos cache.
+// POST /api/videos/refreshCache - Refresh/reindex videos cache.
 // ?onlyMissing=1 reindexes only the folders whose cache does not exist in
 // Elasticsearch yet, so a swapped-in disk with a cache from a previous
 // session is searched immediately and only new folders are scanned.
+// POST (not GET) because starting a reindex is a side effect: a GET could be
+// triggered by a cross-site navigation in browsers that do not send
+// Sec-Fetch-Site.
 const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictResponse> = (req, res) => {
   if (isReindexRunning()) {
     res.status(409).json({
@@ -228,7 +242,7 @@ const search: RouteHandler<NoParams, SearchResponse> = async (req, res) => {
   const query = readString(req.query.q);
   const sort = parseSortOption(req.query.sort);
   const category = readString(req.query.category)?.trim();
-  const offset = parseNonNegativeInt(readString(req.query.offset), 0);
+  const offset = parseOffset(readString(req.query.offset));
   const limit = parseNonNegativeInt(readString(req.query.limit), SEARCH_DEFAULT_LIMIT);
   const channel = readString(req.query.channel)?.trim() || undefined;
   const dateFrom = parseDateFilter(readString(req.query.dateFrom));
@@ -274,8 +288,9 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
   // Final allowlist assertion next to the file sinks: the guard must live on
   // the same code path as the reads so authorization cannot drift from use
   // (the Elasticsearch-lookup branch is re-checked here too).
+  const normalizedFolder = normalizeFolderPath(folderPath);
   const allowedFolders = getVideosFolderPaths().map(normalizeFolderPath);
-  if (!allowedFolders.includes(normalizeFolderPath(folderPath))) {
+  if (!allowedFolders.includes(normalizedFolder)) {
     res.status(403).json({ error: `Folder path is not in the allowed list: ${folderPath}` });
     return;
   }
@@ -286,15 +301,24 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
   // traversal. getVideoFilePath already rejects `..` segments — this is the
   // defense-in-depth layer the reads below depend on.
   const filePath = path.resolve(getVideoFilePath(filename, folderPath));
-  const folderRoot = `${normalizeFolderPath(folderPath)}${path.sep}`;
+  const folderRoot = `${normalizedFolder}${path.sep}`;
   if (!filePath.startsWith(folderRoot)) {
     res.status(403).json({ error: 'File is outside the video folder' });
     return;
   }
 
-  // Check if file exists
+  // Resolve symlinks and re-check containment: a symlink planted inside the
+  // folder must not make the server read or serve files outside it. The
+  // resolved path is used for every read below (no access→sendFile TOCTOU).
+  let realPath: string;
   try {
-    await fs.access(filePath);
+    const [realFile, realFolder] = await Promise.all([fs.realpath(filePath), fs.realpath(normalizedFolder)]);
+    const realRoot = realFolder.endsWith(path.sep) ? realFolder : `${realFolder}${path.sep}`;
+    if (!realFile.startsWith(realRoot)) {
+      res.status(403).json({ error: 'File is outside the video folder' });
+      return;
+    }
+    realPath = realFile;
   } catch {
     res.status(404).json({ error: 'File not found' });
     return;
@@ -309,7 +333,7 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
     // re-downloaded in place on metadata updates — always revalidate, never
     // serve a stale cue file.
     try {
-      const vtt = await fs.readFile(filePath, 'utf-8');
+      const vtt = await fs.readFile(realPath, 'utf-8');
       res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
       res.setHeader('Cache-Control', 'no-cache');
       res.end(stripVttCueSettings(vtt));
@@ -327,7 +351,7 @@ const serveFile: RouteHandler<{ filename: string }, never> = async (req, res) =>
     // bytes.
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   }
-  res.sendFile(filePath);
+  res.sendFile(realPath);
 };
 
 // GET /api/videos/:identifier/summary - supports both baseName and videoId
@@ -450,7 +474,7 @@ const getComments: RouteHandler<{ identifier: string }, CommentsResponse> = asyn
     return;
   }
 
-  const offset = parseNonNegativeInt(readString(req.query.offset), 0);
+  const offset = parseOffset(readString(req.query.offset));
   const limit = Math.min(500, Math.max(1, parseNonNegativeInt(readString(req.query.limit), COMMENTS_PAGE_SIZE)));
 
   res.json({ comments: tree.slice(offset, offset + limit), totalCount: tree.length, offset });
@@ -463,7 +487,7 @@ const getComments: RouteHandler<{ identifier: string }, CommentsResponse> = asyn
 const router = express.Router();
 
 router.get('/refreshCache/status', getRefreshStatus);
-router.get('/refreshCache', startRefresh);
+router.post('/refreshCache', startRefresh);
 router.post('/recreateIndices', recreateIndices);
 router.get('/search', search);
 router.get('/categories', getCategories);

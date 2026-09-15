@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { listVisibleFiles as sharedListVisibleFiles } from '../utils/fsUtils';
+import { listVisibleFiles as sharedListVisibleFiles, writeJsonAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { runPool } from '../utils/runPool';
 
@@ -103,12 +103,6 @@ async function statOrNull(filePath: string): Promise<import('node:fs').Stats | n
   }
 }
 
-async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
-  const tmp = `${filePath}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8');
-  await fs.rename(tmp, filePath);
-}
-
 async function readIndexFile(folderPath: string): Promise<FolderIndex | null> {
   try {
     const raw = await fs.readFile(path.join(folderPath, INDEX_FILE), 'utf-8');
@@ -131,7 +125,7 @@ async function readIndexFile(folderPath: string): Promise<FolderIndex | null> {
 }
 
 async function saveIndex(folderPath: string, index: FolderIndex): Promise<void> {
-  await writeJsonAtomic(path.join(folderPath, INDEX_FILE), index);
+  await writeJsonAtomic(folderPath, INDEX_FILE, index);
 }
 
 /**

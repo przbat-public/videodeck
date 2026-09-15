@@ -60,6 +60,7 @@ describe('videoScanner', () => {
       /* silence expected error logs */
     });
 
+    mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
     mockedEs.checkElasticsearchConnection.mockResolvedValue(true);
     mockedEs.createIndexVersion.mockResolvedValue(NEW_INDEX);
     mockedEs.bulkIndexDocuments.mockResolvedValue(undefined);
