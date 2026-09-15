@@ -239,8 +239,7 @@ export class FakeElasticsearch {
       }
       return true;
     }
-    if (url.pathname === '/_bulk' || suffix === '_bulk') {
-      this.bulk(res, body);
+    if (this.handleDataRoutes(req, res, url, suffix, body)) {
       return true;
     }
     if (suffix === '_search') {
@@ -264,6 +263,62 @@ export class FakeElasticsearch {
       return true;
     }
     return false;
+  }
+
+  /** Bulk, alias and single-document routes. True when one handled the request. */
+  private handleDataRoutes(
+    req: IncomingMessage,
+    res: ServerResponse,
+    url: URL,
+    suffix: string | undefined,
+    body: unknown,
+  ): boolean {
+    if (this.handleAliasRoutes(req, res, url)) {
+      return true;
+    }
+    if (url.pathname === '/_bulk' || suffix === '_bulk') {
+      this.bulk(res, body);
+      return true;
+    }
+    return this.handleDocRoutes(res, url, body);
+  }
+
+  /**
+   * HEAD/GET /_alias/<name> — the official client probes existsAlias and
+   * reads getAlias here. Without it every existsAlias answers "missing",
+   * so createIndex would rebuild and re-promote the folder index on every
+   * incremental write, wiping the documents it just stored. Returns true
+   * when the path is an alias probe.
+   */
+  private handleAliasRoutes(req: IncomingMessage, res: ServerResponse, url: URL): boolean {
+    if (!url.pathname.startsWith('/_alias/')) {
+      return false;
+    }
+    const alias = decodeURIComponent(url.pathname.slice('/_alias/'.length));
+    const index = this.aliases.get(alias);
+    if (index === undefined) {
+      this.json(res, 404, notFound(alias));
+    } else if (req.method === 'HEAD') {
+      res.writeHead(200, { 'x-elastic-product': 'Elasticsearch' });
+      res.end();
+    } else {
+      this.json(res, 200, { [index]: { aliases: { [alias]: {} } } });
+    }
+    return true;
+  }
+
+  /**
+   * PUT /:index/_doc/:id — the single-document index API the post-job
+   * incremental indexing uses (indexVideo). The document goes into the
+   * physical index behind the alias, exactly like bulk does. Returns true
+   * when the path is a document index write.
+   */
+  private handleDocRoutes(res: ServerResponse, url: URL, body: unknown): boolean {
+    if (url.pathname.split('/')[2] !== '_doc') {
+      return false;
+    }
+    this.indexDocument(res, url.pathname, body);
+    return true;
   }
 
   /** GET /:index/_mapping and /:index/_settings (legacy-mapping checks) */
@@ -388,6 +443,22 @@ export class FakeElasticsearch {
 
   private count(res: ServerResponse, target: string): void {
     this.json(res, 200, { count: this.resolveTargets(target).reduce((sum, entry) => sum + entry.documents.size, 0) });
+  }
+
+  /** PUT /:index/_doc/:id — index one document through an index or alias */
+  private indexDocument(res: ServerResponse, pathname: string, body: unknown): void {
+    const parts = pathname.slice(1).split('/');
+    const index = decodeURIComponent(parts[0] ?? '');
+    const id = parts[2] ? decodeURIComponent(parts[2]) : undefined;
+    const entry = this.resolve(index);
+    if (!entry) {
+      this.json(res, 404, notFound(index));
+      return;
+    }
+    const docId = id ?? `doc-${entry.documents.size + 1}`;
+    const source = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+    entry.documents.set(docId, { id: docId, source });
+    this.json(res, 201, { _index: index, _id: docId, result: 'created', _shards: { successful: 1, failed: 0 } });
   }
 
   private deleteByQuery(res: ServerResponse, target: string): void {

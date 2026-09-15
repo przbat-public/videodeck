@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { QueueJob } from '@shared/api';
 import { at } from '../test-utils';
-import { removePartialDownloads } from '../utils/fsUtils';
+import { removePartialDownloads, writeTextAtomic } from '../utils/fsUtils';
 import type { EnqueueRequest, SpawnedProcess } from './downloadQueue';
 import {
   clearIndexRetries,
@@ -27,11 +27,15 @@ jest.mock('./videoScanner', () => ({
 jest.mock('../utils/fsUtils', () => ({
   ...jest.requireActual('../utils/fsUtils'),
   removePartialDownloads: jest.fn(),
+  writeTextAtomic: jest.fn(),
 }));
+
+const realWriteTextAtomic = jest.requireActual<typeof import('../utils/fsUtils')>('../utils/fsUtils').writeTextAtomic;
 
 const mockedRefreshIndex = refreshIndex as jest.MockedFunction<typeof refreshIndex>;
 const mockedIndexVideosFromDisk = indexVideosFromDisk as jest.MockedFunction<typeof indexVideosFromDisk>;
 const mockedRemovePartialDownloads = removePartialDownloads as jest.MockedFunction<typeof removePartialDownloads>;
+const mockedWriteTextAtomic = writeTextAtomic as jest.MockedFunction<typeof writeTextAtomic>;
 
 class FakeProcess extends EventEmitter implements SpawnedProcess {
   stdout = new EventEmitter();
@@ -1013,6 +1017,8 @@ describe('queue state persistence', () => {
   beforeEach(async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-state-'));
     stateFile = path.join(dir, 'state.json');
+    jest.clearAllMocks();
+    mockedWriteTextAtomic.mockImplementation(realWriteTextAtomic);
   });
 
   afterEach(async () => {
@@ -1064,6 +1070,45 @@ describe('queue state persistence', () => {
     });
     queue.setPaused(true);
     await waitForState((state) => state.paused === true);
+  });
+
+  it('serializes state writes so an older snapshot cannot land after a newer one', async () => {
+    // Every persistState call returns a promise we resolve by hand, so the
+    // test controls exactly when each write completes.
+    const writes: Array<{ text: string; release: () => void }> = [];
+    mockedWriteTextAtomic.mockImplementation(
+      (_file, text) =>
+        new Promise<void>((resolve) => {
+          writes.push({ text, release: resolve });
+        }),
+    );
+
+    const queue = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    queue.setPaused(true);
+    queue.enqueue([request('a')]);
+    await flush();
+
+    // The pause snapshot is still in flight, so the enqueue snapshot must
+    // wait. Writing both at once would let the older, job-less snapshot
+    // rename over the newer one and resurrect stale state after a reboot.
+    expect(mockedWriteTextAtomic).toHaveBeenCalledTimes(1);
+    expect((JSON.parse(writes[0]?.text ?? '{}') as { jobs?: QueueJob[] }).jobs).toHaveLength(0);
+
+    // Only once the pause write is done may the enqueue snapshot go out.
+    writes[0]?.release();
+    await flush();
+    expect(mockedWriteTextAtomic).toHaveBeenCalledTimes(2);
+    const enqueueState = JSON.parse(writes[1]?.text ?? '{}') as { paused?: boolean; jobs?: QueueJob[] };
+    expect(enqueueState.paused).toBe(true);
+    expect(enqueueState.jobs).toHaveLength(1);
+    expect(enqueueState.jobs?.[0]?.videoId).toBe('a');
+    writes[1]?.release();
+    await flush();
   });
 
   it('restores jobs as queued, honors the paused flag and skips corrupt entries', async () => {

@@ -222,18 +222,27 @@ export class DownloadQueue extends EventEmitter {
   /**
    * Persist the active jobs and the paused flag, so a reboot can re-enqueue
    * them (archive.txt dedups downloads; updates are idempotent re-scans).
-   * Fire-and-forget: a failed write must never break the queue.
+   * Writes are chained: atomic renames race when they run in parallel, and
+   * an older snapshot landing last would resurrect stale jobs or a stale
+   * paused flag. A failed write must never break the queue or the chain.
    */
+  private persistChain: Promise<void> = Promise.resolve();
+
   private persistState(): void {
-    if (!this.stateFile) {
+    const stateFile = this.stateFile;
+    if (!stateFile) {
       return;
     }
     const jobs = Array.from(this.jobs.values())
       .filter(isActive)
       .map((job) => ({ ...job, log: [], logLineCount: 0 }));
-    writeTextAtomic(this.stateFile, JSON.stringify({ paused: this.paused, jobs })).catch((error: unknown) => {
-      logger.warn(`Cannot persist queue state: ${error instanceof Error ? error.message : String(error)}`);
-    });
+    const text = JSON.stringify({ paused: this.paused, jobs });
+    this.persistChain = this.persistChain
+      .catch(() => undefined)
+      .then(() => writeTextAtomic(stateFile, text))
+      .catch((error: unknown) => {
+        logger.warn(`Cannot persist queue state: ${error instanceof Error ? error.message : String(error)}`);
+      });
   }
 
   /** Resolve once every process is gone (or the timeout passes) */
