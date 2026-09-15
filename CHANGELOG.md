@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   development, code review, debugging and security hardening, shared testing
   and security checklists in `.agents/references/`, and a repo-invariant
   script that validates skill frontmatter and the no-em-dash rule
+- **Engineering skill pack, part two**: skills for spec-driven development,
+  task breakdown, incremental slices, requirement interviews, and the
+  git/CI/shipping/deprecation workflow adapted to the branch, PR and
+  squash-merge flow and our CI checks
 
 ### Fixed
 

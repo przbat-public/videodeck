@@ -91,6 +91,14 @@ live in `.agents/references/`.
 - `code-review-and-quality` — five-axis PR review with severity labels
 - `debugging-and-error-recovery` — reproduce, localize, reduce, fix, guard
 - `security-and-hardening` — the security invariants as an audit workflow
+- `spec-driven-development` — PRD before code for larger features (docs/plans/)
+- `planning-and-task-breakdown` — specs into small, verifiable tasks
+- `incremental-implementation` — vertical slices with safe defaults
+- `interview-me` — one question at a time to pin down the ask
+- `git-workflow-and-versioning` — branch → PR → squash discipline
+- `ci-cd-and-automation` — the CI checks and the shift-left gate
+- `shipping-and-launch` — release and rollback checklists
+- `deprecation-and-migration` — code as liability, holds and zombie removal
 
 ## Definition of done
 
