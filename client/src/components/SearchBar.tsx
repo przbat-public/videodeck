@@ -1,4 +1,5 @@
 import type { SortOption } from '@shared/api';
+import type { KeyboardEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
@@ -141,6 +142,20 @@ export default function SearchBar({
     commitWith({ query: '' });
   };
 
+  /** Enter commits right away instead of waiting out the debounce */
+  const handlePhraseKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+    const trimmed = text.trim();
+    if (!isSearchable(trimmed) || trimmed === query) {
+      return;
+    }
+    // Stop the pending debounce from re-committing the same phrase
+    committedTextRef.current = trimmed;
+    onChange({ query: trimmed, sort, category, channel, dateFrom, dateTo });
+  };
+
   const categoryOptions =
     category.length > 0 && !categories.includes(category)
       ? [...categories, category] // a URL may name a category the list does not (yet) know
@@ -152,6 +167,7 @@ export default function SearchBar({
         type="text"
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onKeyDown={handlePhraseKeyDown}
         placeholder={t('search.placeholder')}
         aria-label={t('search.queryLabel')}
         className="search-input"

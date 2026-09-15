@@ -516,5 +516,30 @@ describe('SearchBar', () => {
       type('drone');
       expect(screen.queryByText('Wpisz co najmniej 3 znaki, aby wyszukać')).toBeNull();
     });
+
+    it('Enter commits the typed phrase immediately without waiting for the debounce', () => {
+      const { onChange } = renderBar();
+
+      type('motor');
+      fireEvent.keyDown(input(), { key: 'Enter' });
+
+      expect(onChange).toHaveBeenCalledWith({
+        query: 'motor',
+        sort: 'date-desc',
+        category: '',
+        channel: '',
+        dateFrom: '',
+        dateTo: '',
+      });
+    });
+
+    it('Enter does not commit a phrase that is still too short', () => {
+      const { onChange } = renderBar();
+
+      type('mo');
+      fireEvent.keyDown(input(), { key: 'Enter' });
+
+      expect(onChange).not.toHaveBeenCalled();
+    });
   });
 });
