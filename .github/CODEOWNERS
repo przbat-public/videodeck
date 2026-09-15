@@ -1,0 +1,10 @@
+# Security-sensitive paths: these files decide what reaches yt-dlp and the
+# filesystem — require a review from the repository owners for any change.
+server/src/routes/folder.ts
+server/src/routes/http.ts
+server/src/services/folderConfig.ts
+server/src/services/ytdlp.ts
+server/src/services/ytdlpFailures.ts
+shared/schemas.ts
+
+* @przbat
