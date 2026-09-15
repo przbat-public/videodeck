@@ -35,7 +35,7 @@ points at `http://<host>:3001`.
    - Web UI: `http://<host>:3000`
    - API: `http://<host>:3001` (`/health`, `/api/...`)
    - First searchable content appears after `POST /api/videos/refreshCache`
-     (or the "Odśwież indeks" button on the status page).
+     (or the "Refresh index" — pl: "Odśwież indeks" — button on the status page).
 
 ## Upgrades
 

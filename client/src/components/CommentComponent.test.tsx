@@ -84,14 +84,14 @@ describe('CommentComponent', () => {
       expect(commentText).toBeInTheDocument();
     });
 
-    it('should show "Czytaj więcej" button for long comments', () => {
+    it('shows the "Read more" (pl: "Czytaj więcej") button for long comments', () => {
       const comment = createLongComment(300);
       render(<CommentComponent comment={comment} />);
 
       expect(screen.getByRole('button', { name: /czytaj więcej/i })).toBeInTheDocument();
     });
 
-    it('should expand long comment when "Czytaj więcej" is clicked', async () => {
+    it('expands the long comment when "Read more" is clicked', async () => {
       const user = userEvent.setup();
       const comment = createLongComment(300);
       render(<CommentComponent comment={comment} />);
@@ -107,7 +107,7 @@ describe('CommentComponent', () => {
       expect(await screen.findByRole('button', { name: /zwiń/i })).toBeInTheDocument();
     });
 
-    it('should collapse long comment when "Zwiń" is clicked', async () => {
+    it('collapses the long comment when "Collapse" (pl: "Zwiń") is clicked', async () => {
       const user = userEvent.setup();
       const comment = createLongComment(300);
       render(<CommentComponent comment={comment} />);
@@ -219,7 +219,7 @@ describe('CommentComponent', () => {
       expect(screen.getByText('2 tygodnie temu')).toBeInTheDocument();
     });
 
-    it('should show "X miesięcy temu" for comments from last year', () => {
+    it('shows the Polish "X months ago" (pl: "X miesięcy temu") label for comments from last year', () => {
       const now = new Date('2024-01-15T12:00:00Z');
       vi.setSystemTime(now);
 
@@ -334,7 +334,7 @@ describe('CommentComponent', () => {
       expect(screen.getByText('(2 odpowiedzi)')).toBeInTheDocument();
     });
 
-    it('should show singularną "odpowiedź" dla jednej odpowiedzi', () => {
+    it('shows the singular Polish "reply" (pl: "odpowiedź") label for one reply', () => {
       const comment: CommentWithReplies = {
         id: '1',
         author: 'Test User',

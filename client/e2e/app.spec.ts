@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { json, mockApi, video } from './helpers';
 
-test.describe('wyszukiwarka', () => {
-  test('adres URL steruje formularzem i wynikami', async ({ page }) => {
+test.describe('search page', () => {
+  test('the URL drives the form and the results', async ({ page }) => {
     await mockApi(page, {
       search: (params) => {
         expect(params.get('q')).toBe('motor');
@@ -31,7 +31,7 @@ test.describe('wyszukiwarka', () => {
     expect(new URL(page.url()).search).toContain('q=motor');
   });
 
-  test('przełącznik języka zmienia interfejs na angielski i z powrotem', async ({ page }) => {
+  test('the language switcher flips the UI to English and back', async ({ page }) => {
     await mockApi(page);
 
     await page.goto('/videos');
@@ -46,7 +46,7 @@ test.describe('wyszukiwarka', () => {
     await expect(page.getByRole('button', { name: 'Odśwież indeks' })).toBeVisible();
   });
 
-  test('przełącznik motywu ustawia data-theme i pamięta wybór po przeładowaniu', async ({ page }) => {
+  test('the theme switcher sets data-theme and survives a reload', async ({ page }) => {
     await mockApi(page);
 
     await page.goto('/videos');
@@ -60,7 +60,7 @@ test.describe('wyszukiwarka', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   });
 
-  test('select sortowania otwiera listę i zmienia sortowanie', async ({ page }) => {
+  test('the sort select opens the list and changes the sort', async ({ page }) => {
     const sorts: (string | null)[] = [];
     await mockApi(page, {
       search: (params) => {
@@ -77,7 +77,7 @@ test.describe('wyszukiwarka', () => {
     await expect.poll(() => sorts).toContain('date-desc');
   });
 
-  test('„Pokaż więcej" dokłada kolejną stronę', async ({ page }) => {
+  test('"Show more" appends the next page', async ({ page }) => {
     await mockApi(page, {
       search: (params) =>
         params.get('offset') === '1'
@@ -96,7 +96,7 @@ test.describe('wyszukiwarka', () => {
     await expect(page.getByText('2 filmy / 2 łącznie')).toBeVisible();
   });
 
-  test('pusta fraza pokazuje komunikat braku wyników', async ({ page }) => {
+  test('an empty phrase shows the no-results message', async ({ page }) => {
     await mockApi(page, { search: () => ({ videos: [], totalCount: 0 }) });
 
     await page.goto('/videos');
@@ -104,7 +104,7 @@ test.describe('wyszukiwarka', () => {
     await expect(page.getByText('Brak filmów. Spróbuj innego zapytania.')).toBeVisible();
   });
 
-  test('Enter zatwierdza wpisaną frazę z klawiatury', async ({ page }) => {
+  test('Enter commits the typed phrase from the keyboard', async ({ page }) => {
     const queries: (string | null)[] = [];
     await mockApi(page, {
       search: (params) => {
@@ -125,7 +125,7 @@ test.describe('wyszukiwarka', () => {
     await expect.poll(() => queries).toContain('dron');
   });
 
-  test('błąd wyszukiwania pokazuje toast z komunikatem', async ({ page }) => {
+  test('a search failure shows the error toast', async ({ page }) => {
     await mockApi(page);
     // Registered after mockApi, so this route wins for the search endpoint
     await page.route('**/api/videos/search**', (route) => route.fulfill(json({ error: 'Elasticsearch is down' }, 500)));
@@ -136,8 +136,8 @@ test.describe('wyszukiwarka', () => {
   });
 });
 
-test.describe('szczegóły filmu', () => {
-  test('odtwarzacz, napisy i link powrotu', async ({ page }) => {
+test.describe('video details', () => {
+  test('player, subtitles and the back link', async ({ page }) => {
     await mockApi(page, {
       search: () => ({
         videos: [video('v1', 'Film z napisami', { videoId: 'e2eid12345' })],
@@ -195,7 +195,7 @@ test.describe('szczegóły filmu', () => {
     await expect(detailPage).toHaveURL(/\/videos/);
   });
 
-  test('błąd pobierania szczegółów pokazuje komunikat i link powrotu', async ({ page }) => {
+  test('a details failure shows the message and the back link', async ({ page }) => {
     await mockApi(page, {
       search: () => ({ videos: [video('v1', 'Film bez szczegółów', { videoId: 'e2eid12345' })], totalCount: 1 }),
     });
@@ -217,8 +217,8 @@ test.describe('szczegóły filmu', () => {
   });
 });
 
-test.describe('strona statusu', () => {
-  test('pokazuje foldery i konfigurację', async ({ page }) => {
+test.describe('status page', () => {
+  test('shows the folders and their configuration', async ({ page }) => {
     await mockApi(page);
 
     await page.goto('/');
@@ -229,7 +229,7 @@ test.describe('strona statusu', () => {
     await expect(page.getByRole('link', { name: 'Przejdź do listy filmów' })).toBeVisible();
   });
 
-  test('kontrolki kolejki: pauza i wznów', async ({ page }) => {
+  test('queue controls: pause and resume', async ({ page }) => {
     await mockApi(page);
 
     await page.goto('/');

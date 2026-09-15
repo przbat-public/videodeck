@@ -149,7 +149,8 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   // /api/status, /api/folder/* (config, list.json, download queue)
   app.use('/api', createFolderRouter(options.downloadQueue));
 
-  // Readiness probe: also tells the extension's "Test połączenia" whether
+  // Readiness probe: also tells the extension's "Test connection" (pl:
+  // "Test połączenia") whether
   // the whole stack (Elasticsearch included) is healthy. The ES check is
   // cached for a few seconds so a polling dashboard does not ping ES per hit.
   let healthCache: { checkedAt: number; esUp: boolean } | null = null;
