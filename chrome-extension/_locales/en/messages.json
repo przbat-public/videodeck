@@ -145,8 +145,12 @@
   "serverUrlHelp": {
     "message": "The video-search-app server URL (e.g. http://localhost:3001)"
   },
-  "invalidServerUrl": "Enter a valid http(s) server URL",
-  "httpTokenWarning": "Refusing to send the API token over plain http — use https:// or leave the token empty",
+  "invalidServerUrl": {
+    "message": "Enter a valid http(s) server URL"
+  },
+  "httpTokenWarning": {
+    "message": "Refusing to send the API token over plain http — use https:// or leave the token empty"
+  },
   "hostPermissionDenied": {
     "message": "Permission to access the server was denied — downloads will not work"
   },

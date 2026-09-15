@@ -145,8 +145,12 @@
   "serverUrlHelp": {
     "message": "URL serwera video-search-app (np. http://localhost:3001)"
   },
-  "invalidServerUrl": "Podaj poprawny adres http(s) serwera",
-  "httpTokenWarning": "Odmowa wysyłania tokena API po zwykłym http — użyj https:// albo zostaw token pusty",
+  "invalidServerUrl": {
+    "message": "Podaj poprawny adres http(s) serwera"
+  },
+  "httpTokenWarning": {
+    "message": "Odmowa wysyłania tokena API po zwykłym http — użyj https:// albo zostaw token pusty"
+  },
   "hostPermissionDenied": {
     "message": "Odmówiono zgody na dostęp do serwera — pobieranie nie zadziała"
   },

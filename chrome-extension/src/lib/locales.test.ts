@@ -32,4 +32,17 @@ describe('_locales parity', () => {
       expect(pl[key]?.placeholders).toEqual(en[key]?.placeholders);
     }
   });
+
+  it('keeps every entry in the { message } object shape Chrome requires', () => {
+    // Chrome refuses to load the extension when a _locales entry is a bare
+    // string ("Not a valid tree for key ...") — every entry must be an
+    // object with a string `message`.
+    for (const locale of ['en', 'pl'] as const) {
+      const messages = locale === 'en' ? en : pl;
+      for (const [key, entry] of Object.entries(messages)) {
+        expect(entry, `${locale}/${key} must be an object with a message`).toBeTypeOf('object');
+        expect(entry.message, `${locale}/${key}.message must be a string`).toBeTypeOf('string');
+      }
+    }
+  });
 });
