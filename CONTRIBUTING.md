@@ -11,7 +11,7 @@ Prerequisites:
 - Node.js 22 (`.nvmrc` pins it; `nvm use` picks it up)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) in `PATH` (downloads; the
   **nightly** channel is recommended — YouTube breaks old releases regularly)
-- Elasticsearch (Docker: `docker run -p 127.0.0.1:9200:9200 -e "discovery.type=single-node" -e "xpack.security.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.0`)
+- Elasticsearch (Docker: `docker run -p 127.0.0.1:9200:9200 -e "discovery.type=single-node" -e "xpack.security.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.8`)
 - ffmpeg in `PATH` (format merging, SponsorBlock cutting)
 - Chrome only if you work on the browser extension
 
@@ -75,6 +75,20 @@ files automatically.
 - **Tests**: every behavior change ships with tests. The server integration
   suites (real Elasticsearch/yt-dlp) are env-gated
   (`RUN_ES_INTEGRATION`, `RUN_YTDLP_INTEGRATION`) and skipped by default.
+
+## Dependency version holds
+
+Dependabot deliberately ignores some updates (`.github/dependabot.yml`) —
+upgrade these together, manually, when the time comes:
+
+- **`typescript` (semver-major)** — TS 7 breaks the test toolchain first
+  (ts-jest peer range, vitest plugins). Upgrade TS + ts-jest + eslint
+  toolchain in one PR. Same history for **zod** (4.x API migration done
+  manually) and **react-window** (v2 API migration done manually).
+- **`@types/node` (semver-major)** — the runtime is pinned to **Node 22**
+  (`.nvmrc`, Docker images); type majors must follow a Node upgrade, not
+  lead it. Node 24 is a candidate for the next runtime bump (Node 22 EOL is
+  April 2027) — then bump `@types/node` to match in the same change.
 
 ## Pull requests
 
