@@ -19,13 +19,31 @@ import { MockOpenai } from './mockOpenai';
  * the module-level env reads (config.ts) see the test values.
  */
 
-const REPO_ROOT = path.resolve(__dirname, '../../..');
+// test-infra/src → repo root. __dirname is defined under jest (CJS) and is
+// shimmed by vite-node alike, so one form serves both runners.
+const REPO_ROOT = path.resolve(__dirname, '../..');
 export const FAKE_YTDLP = path.join(REPO_ROOT, 'scripts/fake-bin/yt-dlp');
+
+type AppModule = typeof import('../../server/src/app.js');
+
+// Local declaration so both typechecking programs are happy: the server
+// program sees the real @types/jest shape, the client program gets a stub.
+declare const jest: { requireActual: <T>(path: string) => T } | undefined;
+
+async function loadAppModule(): Promise<AppModule> {
+  // typeof probe: jest is undefined under vite-node — a bare reference would throw.
+  if (typeof jest !== 'undefined') {
+    return jest.requireActual<AppModule>('../../server/src/app');
+  }
+  return import('../../server/src/app.js');
+}
 
 export interface DeepServerTestEnv {
   /** supertest agent bound to the real app */
   agent: ReturnType<typeof request>;
   app: Express;
+  /** Base URL of the real HTTP listener (set when options.listen is true) */
+  baseUrl?: string;
   /** Root of the temp environment (videos/ + queue state live here) */
   root: string;
   /** Parent directory the per-test folders live under */
@@ -41,7 +59,16 @@ export interface DeepServerTestEnv {
   dispose(): Promise<void>;
 }
 
-export async function createDeepServerTestEnv(mockOpenaiOptions: MockOpenaiOptions = {}): Promise<DeepServerTestEnv> {
+export interface DeepServerTestEnvOptions extends MockOpenaiOptions {
+  /** Boot a real HTTP listener on an ephemeral port (client integration) */
+  listen?: boolean;
+}
+
+export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions = {}): Promise<DeepServerTestEnv> {
+  const mockOpenaiOptions: MockOpenaiOptions = {
+    ...(options.content === undefined ? {} : { content: options.content }),
+    ...(options.rateLimitedModels === undefined ? {} : { rateLimitedModels: options.rateLimitedModels }),
+  };
   // realpath: macOS tmpdir lives under /private via a symlink — canonical
   // paths keep every consumer (config, queue, routes) comparing equal paths.
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'videodeck-deep-')));
@@ -59,10 +86,22 @@ export async function createDeepServerTestEnv(mockOpenaiOptions: MockOpenaiOptio
   process.env.QUEUE_STATE_FILE = path.join(root, '.queue-state.json');
 
   // Import after the environment is set (config.ts pins env values at load).
-  // jest.requireActual keeps the CommonJS resolution the rest of the server
-  // uses (a dynamic ESM import would need the .js extension under NodeNext).
-  const { createApp } = jest.requireActual('../app') as typeof import('../app');
+  // jest (CJS) cannot run a native dynamic import without ESM flags, while
+  // vite-node cannot require() — probe the runtime and use its loader.
+  const { createApp } = await loadAppModule();
   const app = createApp();
+
+  // Optional real HTTP listener: the client integration suite points its
+  // fetch proxy at it instead of driving the app through supertest.
+  const httpServer = options.listen === true ? app.listen(0, '127.0.0.1') : null;
+  const baseUrl = httpServer
+    ? await new Promise<string>((resolve) => {
+        httpServer.once('listening', () => {
+          const { port } = httpServer.address() as { port: number };
+          resolve(`http://127.0.0.1:${port}`);
+        });
+      })
+    : undefined;
 
   const folder = (name: string): string => path.join(videosDir, name);
   const seedFolder = async (name: string, files: Record<string, string>): Promise<string> => {
@@ -80,6 +119,7 @@ export async function createDeepServerTestEnv(mockOpenaiOptions: MockOpenaiOptio
   return {
     agent: request(app),
     app,
+    ...(baseUrl === undefined ? {} : { baseUrl }),
     root,
     videosDir,
     fakeEs,
@@ -88,6 +128,9 @@ export async function createDeepServerTestEnv(mockOpenaiOptions: MockOpenaiOptio
     seedFolder,
     setFolders,
     async dispose() {
+      if (httpServer) {
+        await new Promise<void>((resolve, reject) => httpServer.close((error) => (error ? reject(error) : resolve())));
+      }
       await Promise.all([fakeEs.stop(), mockOpenai.stop()]);
       await fs.rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
     },

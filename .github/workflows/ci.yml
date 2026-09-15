@@ -28,29 +28,23 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            server/package-lock.json
-            client/package-lock.json
-            chrome-extension/package-lock.json
-      # Root install matters: shared/*.ts resolves zod from the repo root.
-      # knip also needs each package's node_modules to verify dependency
-      # ownership, so install all four packages.
-      - run: npm run install:ci
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
       - name: Biome + repository invariants
-        run: npm run lint
+        run: pnpm run lint
       - name: ESLint (type-aware, React hooks, Playwright)
-        run: npm run lint:types
+        run: pnpm run lint:types
       - name: Script typecheck + tests
-        run: npm run lint:scripts && npm run test:scripts
+        run: pnpm run lint:scripts && pnpm run test:scripts
       - name: Dead code and unused dependencies
-        run: npm run knip
+        run: pnpm run knip
       - name: Architecture boundaries
-        run: npm run lint:deps
+        run: pnpm run lint:deps
 
   format:
     name: Format check
@@ -58,32 +52,27 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            server/package-lock.json
-            client/package-lock.json
-            chrome-extension/package-lock.json
-      - run: npm ci
-      - run: npm run format:check
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run format:check
 
   audit:
-    name: npm audit (moderate+)
+    name: pnpm audit (moderate+)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      # audit reads the committed lockfiles; no install needed
-      - run: npm audit --audit-level=moderate
-      - run: npm audit --prefix server --audit-level=moderate
-      - run: npm audit --prefix client --audit-level=moderate
-      - run: npm audit --prefix chrome-extension --audit-level=moderate
+      # audit reads the committed lockfile; no install needed
+      - run: pnpm audit --audit-level=moderate
 
   typecheck:
     name: Typecheck (server + client + extension)
@@ -91,18 +80,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            server/package-lock.json
-            client/package-lock.json
-            chrome-extension/package-lock.json
-      # Root install matters: shared/*.ts resolves zod from the repo root
-      - run: npm run install:ci
-      - run: npm run typecheck
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
 
   unit-tests:
     name: Unit tests (${{ matrix.package }})
@@ -114,28 +99,44 @@ jobs:
         include:
           - package: server
             dir: server
-            run: npm test
+            run: pnpm run test
           - package: client
             dir: client
-            run: npm run test:run
+            run: pnpm run test:run
           - package: chrome-extension
             dir: chrome-extension
-            run: npm test
+            run: pnpm run test
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            server/package-lock.json
-            client/package-lock.json
-            chrome-extension/package-lock.json
-      - run: npm ci && npm ci --prefix ${{ matrix.dir }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
       - name: Run tests
         working-directory: ${{ matrix.dir }}
         run: ${{ matrix.run }}
+
+  client-integration:
+    name: Client integration (real backend in-process)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # The real <App /> against the real backend booted in-process via
+      # @videodeck/test-infra (fake ES + mock OpenAI + fake yt-dlp).
+      - name: Run client integration suite
+        working-directory: client
+        run: pnpm run test:integration
 
   coverage:
     name: Coverage ratchet
@@ -143,20 +144,18 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            server/package-lock.json
-            client/package-lock.json
-      - run: npm run install:ci
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
       # Coverage thresholds are the ratchet: the run fails when coverage drops
-      # below the committed numbers. Locally, `npm run test:coverage` raises
+      # below the committed numbers. Locally, `pnpm run test:coverage` raises
       # them in place whenever coverage grows — commit the change.
       - name: Enforce coverage thresholds (server + client)
-        run: npm run test:coverage
+        run: pnpm run test:coverage
 
   integration:
     name: Server integration (fake yt-dlp + Elasticsearch)
@@ -178,14 +177,13 @@ jobs:
           --health-retries 24
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            server/package-lock.json
-      - run: npm ci && npm ci --prefix server
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
       # The fake binary validates the yt-dlp argument templates offline; the
       # Elasticsearch suite runs against the service container above. Nothing
       # is skipped on CI.
@@ -206,17 +204,14 @@ jobs:
     needs: [lint, format, typecheck, unit-tests]
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            server/package-lock.json
-            client/package-lock.json
-            chrome-extension/package-lock.json
-      - run: npm run install:ci
-      - run: npm run build:server && npm run build:client && npm run build:extension
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build:server && pnpm run build:client && pnpm run build:extension
       - uses: actions/upload-artifact@v7
         with:
           name: client-dist
@@ -239,19 +234,19 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: client/package-lock.json
-      - name: Install dependencies
-        run: npm ci && npm ci --prefix client
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
       - name: Install Playwright browsers + OS deps
         working-directory: client
-        run: npx playwright install --with-deps
+        run: pnpm exec playwright install --with-deps
       - name: Run Playwright tests
         working-directory: client
-        run: npm run test:e2e
+        run: pnpm run test:e2e
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v7

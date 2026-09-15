@@ -1,7 +1,7 @@
 {
   "name": "video-search-server",
   "version": "1.0.0",
-  "description": "Backend (Express + Elasticsearch) aplikacji video-search-app: wyszukiwanie filmów, kolejka pobierania yt-dlp, podsumowania AI",
+  "description": "Backend (Express + Elasticsearch) aplikacji video-search-app: wyszukiwanie film\u00f3w, kolejka pobierania yt-dlp, podsumowania AI",
   "main": "dist/server/src/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -37,7 +37,8 @@
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.12",
     "tsx": "^4.23.13",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "@videodeck/test-infra": "workspace:*"
   },
   "private": true,
   "engines": {

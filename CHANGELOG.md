@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **pnpm workspaces** (like vita-tracker): one `pnpm-lock.yaml`, corepack-pinned
+  pnpm, a `@videodeck/shared` workspace package and a new **`test-infra`**
+  package shared by the server and client test suites
+- **Client integration suite** in the vita-tracker style: the real `<App />`
+  renders against the REAL backend booted in-process (fake Elasticsearch,
+  mock OpenAI server, fake yt-dlp writing real files, seeded temp folders) —
+  no spawned processes, no Playwright for this layer; Playwright remains the
+  thin mocked-API browser suite
 - Download queue persists active jobs across server restarts (jobs resume as
   queued after reboot; paused state is kept) and graceful shutdown now waits
   for yt-dlp children to stop and closes open SSE streams before exiting

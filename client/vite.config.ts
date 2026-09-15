@@ -53,8 +53,10 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     css: true,
-    // Unit tests only: the Playwright specs in e2e/ have their own runner
+    // Unit tests only: the Playwright specs in e2e/ and the in-process
+    // integration suite in src/__tests__/ have their own runners/configs.
     include: ['src/**/*.test.{ts,tsx}'],
+    exclude: ['src/__tests__/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

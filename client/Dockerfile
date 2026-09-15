@@ -1,14 +1,19 @@
 # Client image: static build served by nginx with /api proxied to the server.
 FROM node:22-slim AS build
 
+RUN corepack enable
+
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
-COPY client/package.json client/package-lock.json ./client/
-RUN cd client && npm ci
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY client/package.json ./client/
+COPY shared/package.json ./shared/
+COPY server/package.json ./server/
+COPY chrome-extension/package.json ./chrome-extension/
+COPY test-infra/package.json ./test-infra/
+RUN pnpm install --frozen-lockfile
 COPY shared ./shared
 COPY client ./client
-RUN cd client && npm run build
+RUN cd client && pnpm run build
 
 FROM nginx:alpine
 COPY --from=build /app/client/dist /usr/share/nginx/html

@@ -19,8 +19,7 @@ A self-hosted web app for searching and browsing YouTube videos downloaded with 
 
 ## Requirements
 
-- Node.js 22.x
-- npm
+- Node.js 22.x (with corepack — pnpm 10.30.1 is pinned in `packageManager`)
 - Elasticsearch 8.x or 9.x (local or remote)
 - Chrome 88+ (only for the Chrome extension; see [chrome-extension/README.md](chrome-extension/README.md))
 
@@ -54,18 +53,11 @@ A self-hosted web app for searching and browsing YouTube videos downloaded with 
 
 ## Installation
 
-1. Install dependencies for the backend, frontend, and Chrome extension:
+1. Install dependencies for the whole pnpm workspace (backend, frontend,
+   Chrome extension, shared contract and test infrastructure):
 
 ```bash
-npm run install:all
-```
-
-Or separately:
-
-```bash
-cd server && npm install
-cd ../client && npm install
-cd ../chrome-extension && npm install
+pnpm install          # or: pnpm run install:ci for a frozen CI-style install
 ```
 
 2. Start Elasticsearch:

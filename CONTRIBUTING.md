@@ -8,17 +8,17 @@ tool for searching, browsing and managing YouTube videos downloaded with
 
 Prerequisites:
 
-- Node.js 22 (`.nvmrc` pins it; `nvm use` picks it up)
+- Node.js 22 (`.nvmrc` pins it) + corepack/pnpm 10.30.1 (`packageManager`)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) in `PATH` (downloads; the
   **nightly** channel is recommended — YouTube breaks old releases regularly)
 - Elasticsearch (Docker: `docker run -p 127.0.0.1:9200:9200 -e "discovery.type=single-node" -e "xpack.security.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.8`)
 - ffmpeg in `PATH` (format merging, SponsorBlock cutting)
 - Chrome only if you work on the browser extension
 
-Install dependencies (four separate npm packages, no workspaces):
+Install the pnpm workspace:
 
 ```bash
-npm run install:all   # or: npm install && npm install --prefix server && npm install --prefix client && npm install --prefix chrome-extension
+pnpm install          # frozen CI-style reset: pnpm run install:ci
 ```
 
 Configure `server/.env` (copy from `server/.env.example`).
@@ -26,7 +26,7 @@ Configure `server/.env` (copy from `server/.env.example`).
 Run the stack:
 
 ```bash
-npm run dev          # server on :3001 + Vite client on :3000 (proxies /api)
+pnpm run dev         # server on :3001 + Vite client on :3000 (proxies /api)
 ```
 
 ## Quality gates
@@ -34,10 +34,10 @@ npm run dev          # server on :3001 + Vite client on :3000 (proxies /api)
 Every change must pass, from the repo root:
 
 ```bash
-npm run format:check   # biome format check
-npm run lint           # biome check + hardcoded-Polish scan + tsconfig strictness check
-npm run lint:types     # eslint --max-warnings 0 (type-aware, React hooks, Playwright)
-npm run lint:scripts   # tsc --noEmit over scripts/ (checkJs)
+pnpm run format:check  # biome format check
+pnpm run lint          # biome check + hardcoded-Polish scan + tsconfig strictness check
+pnpm run lint:types    # eslint --max-warnings 0 (type-aware, React hooks, Playwright)
+pnpm run lint:scripts  # tsc --noEmit over scripts/ (checkJs)
 npm run test:scripts   # node --test for the repository-invariant scripts
 npm run knip           # unused files, exports and dependencies
 npm run lint:deps      # dependency-cruiser: no cycles, no cross-app imports

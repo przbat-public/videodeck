@@ -13,7 +13,7 @@ module.exports = {
       severity: 'error',
       comment: 'shared/ is a leaf module: it may not import from any application package.',
       from: { path: '^shared/' },
-      to: { path: '^(server|client|chrome-extension)/', pathNot: '^shared/' },
+      to: { path: '^(server|client|chrome-extension|test-infra)/', pathNot: '^shared/' },
     },
     {
       name: 'no-cross-app-imports-server',
@@ -35,6 +35,20 @@ module.exports = {
       comment: 'chrome-extension/ may only import from itself and shared/.',
       from: { path: '^chrome-extension/' },
       to: { path: '^(server|client)/' },
+    },
+    {
+      name: 'test-infra-is-not-an-app',
+      severity: 'error',
+      comment: 'test-infra/ knows the server it tests, but never the UIs.',
+      from: { path: '^test-infra/' },
+      to: { path: '^(client|chrome-extension)/' },
+    },
+    {
+      name: 'apps-do-not-import-test-infra-in-production',
+      severity: 'error',
+      comment: 'Only test files may pull in the shared test infrastructure.',
+      from: { path: '^(server|client)/', pathNot: '(__tests__|\\.test\\.|\\.spec\\.)' },
+      to: { path: '^test-infra/' },
     },
   ],
   options: {

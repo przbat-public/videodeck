@@ -3,31 +3,32 @@
   "version": "1.0.0",
   "description": "YouTube video search application with yt-dlp support",
   "scripts": {
-    "install:all": "cd server && npm install && cd ../client && npm install && cd ../chrome-extension && npm install",
-    "dev": "concurrently --names \"SERVER,CLIENT\" --prefix-colors \"blue,green\" --kill-others-on-fail \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "cd server && npm run dev",
-    "dev:client": "cd client && npm run dev",
-    "build:server": "cd server && npm run build",
-    "build:client": "cd client && npm run build",
-    "build:extension": "cd chrome-extension && npm run build",
+    "install:all": "pnpm install",
+    "dev": "concurrently --names \"SERVER,CLIENT\" --prefix-colors \"blue,green\" --kill-others-on-fail \"pnpm run dev:server\" \"pnpm run dev:client\"",
+    "dev:server": "cd server && pnpm run dev",
+    "dev:client": "cd client && pnpm run dev",
+    "build:server": "cd server && pnpm run build",
+    "build:client": "cd client && pnpm run build",
+    "build:extension": "cd chrome-extension && pnpm run build",
     "lint": "biome check . && node scripts/check-hardcoded-polish.mjs && node scripts/check-tsconfig-strict.mjs",
     "lint:types": "eslint . --max-warnings 0",
     "lint:fix": "biome check --write .",
     "lint:scripts": "tsc -p scripts/tsconfig.json",
     "test:scripts": "node --test scripts/*.test.mjs",
     "knip": "knip",
-    "lint:deps": "depcruise --config .dependency-cruiser.cjs server client chrome-extension shared",
+    "lint:deps": "depcruise --config .dependency-cruiser.cjs server client chrome-extension shared test-infra",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "typecheck": "cd server && npm run typecheck && cd ../client && npm run typecheck && cd ../chrome-extension && npm run typecheck",
-    "test": "cd server && npm run test && cd ../client && npm run test:run && cd ../chrome-extension && npm test",
-    "test:watch": "cd server && npm run test:watch",
-    "test:coverage": "cd server && npm run test:coverage && cd ../client && npm run test:coverage",
-    "test:e2e": "cd client && npm run test:e2e",
+    "typecheck": "cd server && pnpm run typecheck && cd ../client && pnpm run typecheck && cd ../chrome-extension && pnpm run typecheck",
+    "test": "cd server && pnpm run test && cd ../client && pnpm run test:run && cd ../chrome-extension && pnpm run test",
+    "test:watch": "cd server && pnpm run test:watch",
+    "test:coverage": "cd server && pnpm run test:coverage && cd ../client && pnpm run test:coverage",
+    "test:e2e": "cd client && pnpm run test:e2e",
+    "test:integration": "cd client && pnpm run test:integration",
     "prepare": "husky",
-    "install:ci": "npm ci && npm ci --prefix server && npm ci --prefix client && npm ci --prefix chrome-extension"
+    "install:ci": "pnpm install --frozen-lockfile"
   },
-  "packageManager": "npm@10.9.3",
+  "packageManager": "pnpm@10.30.1",
   "lint-staged": {
     "*.{ts,tsx,js,mjs,cjs,json}": [
       "biome check --write --no-errors-on-unmatched"
@@ -58,5 +59,12 @@
     "typescript-eslint": "^8.70.0",
     "zod": "^4.6.5"
   },
-  "private": true
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@parcel/watcher",
+      "unrs-resolver"
+    ]
+  }
 }

@@ -469,6 +469,7 @@ This is a test subtitle`;
       apiKey: 'test-api-key',
       timeout: 60000,
       maxRetries: 0,
+      dangerouslyAllowBrowser: false,
     });
   });
 
