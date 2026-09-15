@@ -83,6 +83,31 @@ Rank findings by user impact, not by file order. Skip false positives:
 semantic button colors and the player background are deliberate (see
 DESIGN.md section 2).
 
+## Audit scorecard
+
+Then score five dimensions 0-4 (0 broken, 4 meets the contract fully) and
+total them out of 20:
+
+| Dimension | What a 4 means |
+| --- | --- |
+| Tokens & themes | every color is a token, both themes hold, DESIGN.md updated |
+| Hierarchy & spacing | one clear main path per screen, rhythm on the 0.25/0.5/1/2rem scale |
+| Primitives & structure | ui/ primitives only, state placed where the rules say |
+| Accessibility | the WCAG 2.1 AA checklist items pass for the touched surface |
+| Copy & i18n | keys in both catalogs, imperative labels, no exclamation marks |
+
+Judge the dimensions through two lenses: Nielsen's heuristics (status
+visibility, error prevention, consistency and standards) and the classic
+design laws (Fitts: targets easy to reach; Hick: short option lists;
+proximity: related controls together). Then walk one persona through the
+change: a self-hosted user searching at night in dark mode, plus one
+keyboard-only pass.
+
+Tag every finding with its business impact: **High** (blocks the flow or
+misleads), **Medium** (friction), **Low** (polish). A total below 16, or
+any High finding, means the failing dimensions get fixed before the PR
+merges.
+
 ## See also
 
 - `DESIGN.md`: the contract this checklist enforces

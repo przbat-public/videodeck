@@ -42,15 +42,15 @@ Aplikacja webowa do wyszukiwania i przeglądania filmów pobranych przez yt-dlp.
 1. Zainstaluj zależności dla backendu, frontendu i rozszerzenia Chrome:
 
 ```bash
-npm run install:all
+pnpm run install:all
 ```
 
 Lub osobno:
 
 ```bash
-cd server && npm install
-cd ../client && npm install
-cd ../chrome-extension && npm install
+cd server && pnpm install
+cd ../client && pnpm install
+cd ../chrome-extension && pnpm install
 ```
 
 2. Uruchom Elasticsearch:
@@ -213,7 +213,7 @@ W dwóch osobnych terminalach:
 **Terminal 1 - Backend:**
 
 ```bash
-npm run dev:server
+pnpm run dev:server
 ```
 
 Serwer backend będzie dostępny na `http://localhost:3001`
@@ -221,7 +221,7 @@ Serwer backend będzie dostępny na `http://localhost:3001`
 **Terminal 2 - Frontend:**
 
 ```bash
-npm run dev:client
+pnpm run dev:client
 ```
 
 Aplikacja frontendowa będzie dostępna na `http://localhost:3000`
@@ -231,8 +231,8 @@ Aplikacja frontendowa będzie dostępna na `http://localhost:3000`
 **Backend:**
 
 ```bash
-npm run build:server
-cd server && npm run start:prod
+pnpm run build:server
+cd server && pnpm run start:prod
 ```
 
 Build używa `server/tsconfig.build.json` (bez testów i `test-utils.ts`). Ponieważ serwer kompiluje też wspólne typy z `shared/`, `rootDir` wskazuje na katalog główny repo i wynik ląduje w `server/dist/server/src/index.js` — `start:prod` i pole `main` w `package.json` już to uwzględniają.
@@ -240,14 +240,14 @@ Build używa `server/tsconfig.build.json` (bez testów i `test-utils.ts`). Ponie
 **Frontend:**
 
 ```bash
-npm run build:client
-cd client && npm run preview
+pnpm run build:client
+cd client && pnpm run preview
 ```
 
 **Chrome extension:**
 
 ```bash
-npm run build:extension   # esbuild → background/content/popup/options.js
+pnpm run build:extension   # esbuild → background/content/popup/options.js
 ```
 
 Wygenerowane pliki `chrome-extension/*.js` nie są commitowane (gitignore) —
@@ -256,10 +256,10 @@ po klonowaniu repo rozszerzenie trzeba zbudować przed załadowaniem do Chrome.
 ### Sprawdzenie typów (bez emisji)
 
 ```bash
-npm run typecheck                        # wszystkie trzy projekty
-cd server && npm run typecheck           # tsconfig.json (kod + testy)
-cd client && npm run typecheck           # tsconfig.json + tsconfig.node.json (vite.config.ts)
-cd chrome-extension && npm run typecheck # src/ + shared/api.ts (wspólny kontrakt)
+pnpm run typecheck                        # wszystkie trzy projekty
+cd server && pnpm run typecheck           # tsconfig.json (kod + testy)
+cd client && pnpm run typecheck           # tsconfig.json + tsconfig.node.json (vite.config.ts)
+cd chrome-extension && pnpm run typecheck # src/ + shared/api.ts (wspólny kontrakt)
 ```
 
 ## Linting i Formatowanie
@@ -282,8 +282,8 @@ projekt celuje w React 19 (`settings['react-x']`) — komponenty przyjmują
 ### Sprawdzenie kodu (lint)
 
 ```bash
-npm run lint          # biome check + skrypty niezmienników repozytorium
-npm run lint:types    # eslint --max-warnings 0 (type-aware, React, Playwright)
+pnpm run lint          # biome check + skrypty niezmienników repozytorium
+pnpm run lint:types    # eslint --max-warnings 0 (type-aware, React, Playwright)
 ```
 
 Lint działa z zerową tolerancją: każdy warning psuje przebieg, więc lista
@@ -294,19 +294,19 @@ stosowany jest celowy `eslint-disable` z uzasadnieniem.
 ### Automatyczne naprawianie błędów
 
 ```bash
-npm run lint:fix
+pnpm run lint:fix
 ```
 
 ### Formatowanie kodu
 
 ```bash
-npm run format
+pnpm run format
 ```
 
 ### Sprawdzenie formatowania (bez zmiany plików)
 
 ```bash
-npm run format:check
+pnpm run format:check
 ```
 
 ## Testy
@@ -318,47 +318,47 @@ Projekt używa **Jest** dla backendu oraz **Vitest** dla frontendu i rozszerzeni
 **Wszystkie projekty:**
 
 ```bash
-npm test
+pnpm test
 ```
 
 **Tylko backend:**
 
 ```bash
-cd server && npm test
-cd server && npm run test:watch  # Tryb watch
-cd server && npm run test:coverage  # Z raportem pokrycia
+cd server && pnpm test
+cd server && pnpm run test:watch  # Tryb watch
+cd server && pnpm run test:coverage  # Z raportem pokrycia
 ```
 
 **Tylko frontend:**
 
 ```bash
-cd client && npm test  # Tryb watch
-cd client && npm run test:run  # Jednorazowe uruchomienie
-cd client && npm run test:ui  # Interfejs graficzny
-cd client && npm run test:coverage  # Z raportem pokrycia
+cd client && pnpm test  # Tryb watch
+cd client && pnpm run test:run  # Jednorazowe uruchomienie
+cd client && pnpm run test:ui  # Interfejs graficzny
+cd client && pnpm run test:coverage  # Z raportem pokrycia
 ```
 
 **Tylko rozszerzenie Chrome:**
 
 ```bash
-cd chrome-extension && npm test  # Jednorazowe uruchomienie
-cd chrome-extension && npm run test:watch  # Tryb watch
+cd chrome-extension && pnpm test  # Jednorazowe uruchomienie
+cd chrome-extension && pnpm run test:watch  # Tryb watch
 ```
 
 **Testy integracyjne z prawdziwym Elasticsearchem** (przepływ reindeksu z
 przełączaniem aliasów, składanie diakrytyków, wyszukiwanie po transkryptach —
-pomijane w zwykłym `npm test`):
+pomijane w zwykłym `pnpm test`):
 
 ```bash
-cd server && npm run test:integration  # wymaga działającego ES (ELASTICSEARCH_URL)
+cd server && pnpm run test:integration  # wymaga działającego ES (ELASTICSEARCH_URL)
 ```
 
 **Testy integracyjne z prawdziwym yt-dlp** — szablony argumentów kolejki
 pobierania sprawdzane przeciw zainstalowanemu binarium (`--simulate`, bez
-pobierania; pomijane w zwykłym `npm test`):
+pobierania; pomijane w zwykłym `pnpm test`):
 
 ```bash
-cd server && npm run test:ytdlp-integration  # wymaga yt-dlp w PATH
+cd server && pnpm run test:ytdlp-integration  # wymaga yt-dlp w PATH
 ```
 
 **Testy property-based (fast-check)** — inwarianty parserów (VTT, SSE,
@@ -371,7 +371,7 @@ wyszukiwanie sterowane URL, paginacja „Pokaż więcej", strona szczegółów z
 odtwarzaczem i napisami, strona statusu:
 
 ```bash
-npm run test:e2e  # pierwszy raz: cd client && npx playwright install chromium
+pnpm run test:e2e  # pierwszy raz: cd client && npx playwright install chromium
 ```
 
 Testy tras serwera sprawdzają odpowiedzi schematami kontraktu (`shared/schemas.ts`),
@@ -381,10 +381,10 @@ a parser VTT jest przypięty fixture'ami z prawdziwych plików yt-dlp.
 
 ```bash
 # Backend
-cd server && npm run test:coverage
+cd server && pnpm run test:coverage
 
 # Frontend
-cd client && npm run test:coverage
+cd client && pnpm run test:coverage
 ```
 
 Raporty pokrycia są generowane w folderze `coverage/`.
@@ -477,7 +477,7 @@ video-search-app/
 │   │   ├── types.ts     # Typy wewnętrzne serwera (np. VideoInfoJson z yt-dlp)
 │   │   └── test-utils.ts    # at()/entry() - pomocniki do testów bez `undefined`
 │   ├── tsconfig.json        # Kod + testy (typecheck, IDE)
-│   ├── tsconfig.build.json  # Tylko kod produkcyjny (npm run build)
+│   ├── tsconfig.build.json  # Tylko kod produkcyjny (pnpm run build)
 │   └── package.json
 ├── client/              # Frontend (React + Vite)
 │   ├── src/
@@ -504,7 +504,7 @@ video-search-app/
 ├── chrome-extension/     # Rozszerzenie Chrome (TypeScript + Vitest)
 │   ├── src/              # Kod źródłowy (background, content, popup, options)
 │   │   └── lib/          # Czysta logika z testami (SSE, postęp, id YouTube)
-│   ├── package.json      # npm run build (esbuild) / test (vitest) / typecheck
+│   ├── package.json      # pnpm run build (esbuild) / test (vitest) / typecheck
 │   ├── manifest.json     # MV3; wskazuje wygenerowane *.js w katalogu głównym
 │   └── *.js              # Build output (nie commitowane)
 └── .env                 # Zmienne środowiskowe (nie commituj!)
@@ -521,9 +521,9 @@ Vitest. Kontrakt zdarzeń SSE jest współdzielony z serwerem przez
 `shared/api.ts` (import `import type`). Komendy:
 
 ```bash
-npm run build:extension   # esbuild → background/content/popup/options.js
-cd chrome-extension && npm test   # testy jednostkowe
-cd chrome-extension && npm run typecheck
+pnpm run build:extension   # esbuild → background/content/popup/options.js
+cd chrome-extension && pnpm test   # testy jednostkowe
+cd chrome-extension && pnpm run typecheck
 ```
 
 ## Funkcjonalności

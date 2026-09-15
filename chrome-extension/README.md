@@ -9,8 +9,8 @@ video-search-app server's download queue.
    `src/`; Chrome loads the generated `*.js` files from this directory):
 
    ```bash
-   npm install
-   npm run build
+   pnpm install            # from the repo root (the whole workspace)
+   pnpm run build:extension
    ```
 
 2. Open Chrome and go to `chrome://extensions/`
@@ -18,8 +18,8 @@ video-search-app server's download queue.
 4. Click "Load unpacked"
 5. Select the `chrome-extension` folder of this project
 
-After changing code in `src/`, re-run `npm run build` and click the refresh
-icon next to the extension in `chrome://extensions/`.
+After changing code in `src/`, re-run `pnpm run build:extension` and click
+the refresh icon next to the extension in `chrome://extensions/`.
 
 ## Configuration
 
@@ -61,14 +61,15 @@ icon next to the extension in `chrome://extensions/`.
 
 - Source code: `src/*.ts` (TypeScript, strict, the same strict flags as the
   rest of the repo). Pure logic (SSE framing, progress extraction, YouTube id
-  detection) lives in `src/lib/` with unit tests (Vitest): `npm test`.
+  detection) lives in `src/lib/` with unit tests (Vitest):
+  `cd chrome-extension && pnpm run test`.
 - The SSE event contract (`DownloadVideoEvent`) and the yt-dlp progress parser
   come from `shared/` (`api.ts`, types via `import type`; `progress.ts`, real
   logic, bundled by esbuild).
-- `npm run typecheck` checks the types, `npm run build` generates
-  `background.js`, `content.js`, `popup.js` and `options.js` (generated files
-  are not committed). From the repo root, `npm run build:extension`,
-  `npm run typecheck` and `npm test` also work (they cover all packages).
+- `cd chrome-extension && pnpm run typecheck` checks the types, `pnpm run
+  build:extension` generates `background.js`, `content.js`, `popup.js` and
+  `options.js` (generated files are not committed). From the repo root,
+  `pnpm run typecheck` and `pnpm test` also work (they cover all packages).
 
 ## Icons
 

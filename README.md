@@ -236,7 +236,7 @@ In two separate terminals:
 **Terminal 1 - Backend:**
 
 ```bash
-npm run dev:server
+pnpm run dev:server
 ```
 
 The backend server will be available at `http://localhost:3001`
@@ -244,7 +244,7 @@ The backend server will be available at `http://localhost:3001`
 **Terminal 2 - Frontend:**
 
 ```bash
-npm run dev:client
+pnpm run dev:client
 ```
 
 The frontend app will be available at `http://localhost:3000`
@@ -254,8 +254,8 @@ The frontend app will be available at `http://localhost:3000`
 **Backend:**
 
 ```bash
-npm run build:server
-cd server && npm run start:prod
+pnpm run build:server
+cd server && pnpm run start:prod
 ```
 
 The build uses `server/tsconfig.build.json` (without tests and `test-utils.ts`). Because the server also compiles the shared types from `shared/`, `rootDir` points at the repo root and the output lands in `server/dist/server/src/index.js`. `start:prod` and the `main` field in `package.json` already account for this.
@@ -263,14 +263,14 @@ The build uses `server/tsconfig.build.json` (without tests and `test-utils.ts`).
 **Frontend:**
 
 ```bash
-npm run build:client
-cd client && npm run preview
+pnpm run build:client
+cd client && pnpm run preview
 ```
 
 **Chrome extension:**
 
 ```bash
-npm run build:extension   # esbuild → background/content/popup/options.js
+pnpm run build:extension   # esbuild → background/content/popup/options.js
 ```
 
 The generated `chrome-extension/*.js` files are not committed (gitignore) ,
@@ -280,10 +280,10 @@ Chrome.
 ### Type checking (no emit)
 
 ```bash
-npm run typecheck                        # all three projects
-cd server && npm run typecheck           # tsconfig.json (code + tests)
-cd client && npm run typecheck           # tsconfig.json + tsconfig.node.json (vite.config.ts)
-cd chrome-extension && npm run typecheck # src/ + shared/api.ts (shared contract)
+pnpm run typecheck                        # all three projects
+cd server && pnpm run typecheck           # tsconfig.json (code + tests)
+cd client && pnpm run typecheck           # tsconfig.json + tsconfig.node.json (vite.config.ts)
+cd chrome-extension && pnpm run typecheck # src/ + shared/api.ts (shared contract)
 ```
 
 ## Linting and Formatting
@@ -307,8 +307,8 @@ configuration tells the React plugin that the project targets React 19
 ### Checking the code (lint)
 
 ```bash
-npm run lint          # biome check + repository-invariant scripts
-npm run lint:types    # eslint --max-warnings 0 (type-aware, React, Playwright)
+pnpm run lint          # biome check + repository-invariant scripts
+pnpm run lint:types    # eslint --max-warnings 0 (type-aware, React, Playwright)
 ```
 
 Lint runs with zero tolerance: every warning fails the run, so the list of
@@ -319,19 +319,19 @@ justification is used.
 ### Auto-fixing errors
 
 ```bash
-npm run lint:fix
+pnpm run lint:fix
 ```
 
 ### Code formatting
 
 ```bash
-npm run format
+pnpm run format
 ```
 
 ### Checking formatting (without changing files)
 
 ```bash
-npm run format:check
+pnpm run format:check
 ```
 
 ## Tests
@@ -343,47 +343,47 @@ The project uses **Jest** for the backend and **Vitest** for the frontend and th
 **All projects:**
 
 ```bash
-npm test
+pnpm test
 ```
 
 **Backend only:**
 
 ```bash
-cd server && npm test
-cd server && npm run test:watch  # Watch mode
-cd server && npm run test:coverage  # With coverage report
+cd server && pnpm test
+cd server && pnpm run test:watch  # Watch mode
+cd server && pnpm run test:coverage  # With coverage report
 ```
 
 **Frontend only:**
 
 ```bash
-cd client && npm test  # Watch mode
-cd client && npm run test:run  # One-off run
-cd client && npm run test:ui  # Graphical interface
-cd client && npm run test:coverage  # With coverage report
+cd client && pnpm test  # Watch mode
+cd client && pnpm run test:run  # One-off run
+cd client && pnpm run test:ui  # Graphical interface
+cd client && pnpm run test:coverage  # With coverage report
 ```
 
 **Chrome extension only:**
 
 ```bash
-cd chrome-extension && npm test  # One-off run
-cd chrome-extension && npm run test:watch  # Watch mode
+cd chrome-extension && pnpm test  # One-off run
+cd chrome-extension && pnpm run test:watch  # Watch mode
 ```
 
 **Integration tests with a real Elasticsearch** (reindex flow with
 alias switching, diacritic folding, searching transcripts ,
-skipped in the regular `npm test`):
+skipped in the regular `pnpm test`):
 
 ```bash
-cd server && npm run test:integration  # requires a running ES (ELASTICSEARCH_URL)
+cd server && pnpm run test:integration  # requires a running ES (ELASTICSEARCH_URL)
 ```
 
 **Integration tests with a real yt-dlp**: download-queue argument templates
 checked against the installed binary (`--simulate`, without
-downloading; skipped in the regular `npm test`):
+downloading; skipped in the regular `pnpm test`):
 
 ```bash
-cd server && npm run test:ytdlp-integration  # requires yt-dlp on PATH
+cd server && pnpm run test:ytdlp-integration  # requires yt-dlp on PATH
 ```
 
 **Property-based tests (fast-check)**: parser invariants (VTT, SSE,
@@ -396,7 +396,7 @@ URL-driven search, "Show more" (pl: „Pokaż więcej") pagination, the details 
 with the player and subtitles, the status page:
 
 ```bash
-npm run test:e2e  # first time: cd client && npx playwright install chromium
+pnpm run test:e2e  # first time: cd client && npx playwright install chromium
 ```
 
 Server route tests check responses against contract schemas (`shared/schemas.ts`),
@@ -406,10 +406,10 @@ and the VTT parser is pinned by fixtures from real yt-dlp files.
 
 ```bash
 # Backend
-cd server && npm run test:coverage
+cd server && pnpm run test:coverage
 
 # Frontend
-cd client && npm run test:coverage
+cd client && pnpm run test:coverage
 ```
 
 Coverage reports are generated in the `coverage/` folder.
@@ -502,7 +502,7 @@ video-search-app/
 │   │   ├── types.ts     # Server-internal types (e.g. VideoInfoJson from yt-dlp)
 │   │   └── test-utils.ts    # at()/entry() - test helpers without undefined
 │   ├── tsconfig.json        # Code + tests (typecheck, IDE)
-│   ├── tsconfig.build.json  # Production code only (npm run build)
+│   ├── tsconfig.build.json  # Production code only (pnpm run build)
 │   └── package.json
 ├── client/              # Frontend (React + Vite)
 │   ├── src/
@@ -529,7 +529,7 @@ video-search-app/
 ├── chrome-extension/     # Chrome extension (TypeScript + Vitest)
 │   ├── src/              # Source code (background, content, popup, options)
 │   │   └── lib/          # Pure logic with tests (SSE, progress, YouTube id)
-│   ├── package.json      # npm run build (esbuild) / test (vitest) / typecheck
+│   ├── package.json      # pnpm run build (esbuild) / test (vitest) / typecheck
 │   ├── manifest.json     # MV3; points at the generated *.js in the root directory
 │   └── *.js              # Build output (not committed)
 └── .env                 # Environment variables (do not commit!)
@@ -546,9 +546,9 @@ Vitest tests. The SSE event contract is shared with the server via
 `shared/api.ts` (imported with `import type`). Commands:
 
 ```bash
-npm run build:extension   # esbuild → background/content/popup/options.js
-cd chrome-extension && npm test   # unit tests
-cd chrome-extension && npm run typecheck
+pnpm run build:extension   # esbuild → background/content/popup/options.js
+cd chrome-extension && pnpm test   # unit tests
+cd chrome-extension && pnpm run typecheck
 ```
 
 ## Features

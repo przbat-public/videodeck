@@ -81,9 +81,13 @@ any UI change.
 Repo-scoped skills live in `.agents/skills/` and load into the session
 skill catalog automatically. They are workflows, not reference prose: each
 one has steps, checkpoints, an anti-rationalization table and verification
-gates. `scripts/check-skills.test.mjs` validates the frontmatter of every
-skill and the no-em-dash prose rule across `.agents/`. Shared checklists
-live in `.agents/references/`.
+gates. This file stays short on purpose; the detail lives in the skills,
+loaded on demand. Two repo-invariant scripts keep it honest:
+`scripts/check-skills.test.mjs` validates the frontmatter of every skill
+and the no-em-dash prose rule across `.agents/`, and
+`scripts/check-context.test.mjs` pins every command and path this file
+references to the real repo. Shared checklists live in
+`.agents/references/`.
 
 - `humanizer` — prose rules and the AI-tell gate
 - `ui-design` — the DESIGN.md token, component and a11y checklist for UI work
@@ -114,6 +118,17 @@ playbooks for PR reviews and audits.
 - User-visible changes get a `CHANGELOG.md` entry under _Unreleased_.
 - Full verification one-liner above is green.
 - English-only throughout.
+
+Four working principles sit underneath the checklist:
+
+- **Understand what you write.** No pasted block whose behavior you cannot
+  explain line by line.
+- **Keep the diff minimal.** The smallest change that satisfies the tests
+  and the spec; no speculative branches.
+- **Prove before you claim.** Green tests and the gate, never "it works on
+  my machine".
+- **Verify before you report.** Check the actual file, log or output named
+  in the claim before calling a task done.
 
 ## i18n rules
 
