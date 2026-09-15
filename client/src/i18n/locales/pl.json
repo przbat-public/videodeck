@@ -257,5 +257,11 @@
       "bot-wall": "YouTube żąda zalogowania (ściana antybotowa)",
       "age-gate": "Ten film jest dla dorosłych i wymaga zalogowanej sesji"
     }
+  },
+  "theme": {
+    "label": "Motyw",
+    "system": "Systemowy",
+    "light": "Jasny",
+    "dark": "Ciemny"
   }
 }
