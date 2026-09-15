@@ -17,7 +17,7 @@ import {
   indexVideo,
   listCachedFolders,
   promoteIndexVersion,
-  searchVideos,
+  searchVideosWithTotal,
   toDocument,
 } from './elasticsearchService';
 import { extractTextFromVttSubtitles } from './summaryService';
@@ -409,6 +409,6 @@ export const getVideos = async (
   sortOption: SortOption = 'date-desc',
   folderPaths?: string[],
   options?: SearchOptions,
-): Promise<VideoListItem[]> => {
-  return searchVideos(query, sortOption, folderPaths, options);
+): Promise<{ videos: VideoListItem[]; total: number }> => {
+  return searchVideosWithTotal(query, sortOption, folderPaths, options);
 };

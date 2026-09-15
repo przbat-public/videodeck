@@ -14,7 +14,6 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { loadCommentTree } from '../services/commentStore';
 import {
-  getTotalVideoCount,
   getVideoByBaseName,
   getVideoByFilePath,
   getVideoByVideoId,
@@ -56,7 +55,6 @@ const mockedRefreshVideosCache = refreshVideosCache as jest.MockedFunction<typeo
 const mockedGetReindexStatus = getReindexStatus as jest.MockedFunction<typeof getReindexStatus>;
 const mockedIsReindexRunning = isReindexRunning as jest.MockedFunction<typeof isReindexRunning>;
 const mockedRecreateAllIndices = recreateAllIndices as jest.MockedFunction<typeof recreateAllIndices>;
-const mockedGetTotalVideoCount = getTotalVideoCount as jest.MockedFunction<typeof getTotalVideoCount>;
 const mockedGetVideoByBaseName = getVideoByBaseName as jest.MockedFunction<typeof getVideoByBaseName>;
 const mockedGetVideoByVideoId = getVideoByVideoId as jest.MockedFunction<typeof getVideoByVideoId>;
 const mockedGetVideoByFilePath = getVideoByFilePath as jest.MockedFunction<typeof getVideoByFilePath>;
@@ -106,8 +104,7 @@ describe('videos router', () => {
         },
       ];
 
-      mockedGetVideos.mockResolvedValue(mockVideos);
-      mockedGetTotalVideoCount.mockResolvedValue(100);
+      mockedGetVideos.mockResolvedValue({ videos: mockVideos, total: 100 });
 
       const response = await request(app).get('/api/videos/search?q=test');
 
@@ -120,12 +117,10 @@ describe('videos router', () => {
         offset: 0,
         limit: 100,
       });
-      expect(mockedGetTotalVideoCount).toHaveBeenCalled();
     });
 
     it('passes channel and date filters to the search service', async () => {
-      mockedGetVideos.mockResolvedValue([]);
-      mockedGetTotalVideoCount.mockResolvedValue(0);
+      mockedGetVideos.mockResolvedValue({ videos: [], total: 0 });
 
       const response = await request(app).get(
         '/api/videos/search?q=x&channel=Jordan%20B%20Peterson&dateFrom=2024-01-05&dateTo=2025-12-31',
@@ -142,8 +137,7 @@ describe('videos router', () => {
     });
 
     it('ignores malformed date filters', async () => {
-      mockedGetVideos.mockResolvedValue([]);
-      mockedGetTotalVideoCount.mockResolvedValue(0);
+      mockedGetVideos.mockResolvedValue({ videos: [], total: 0 });
 
       await request(app).get('/api/videos/search?dateFrom=2024-1-5&dateTo=bogus');
 
@@ -164,8 +158,7 @@ describe('videos router', () => {
 
     it('should use default sort when sort parameter is not provided', async () => {
       const mockVideos: VideoListItem[] = [];
-      mockedGetVideos.mockResolvedValue(mockVideos);
-      mockedGetTotalVideoCount.mockResolvedValue(0);
+      mockedGetVideos.mockResolvedValue({ videos: mockVideos, total: 0 });
 
       const response = await request(app).get('/api/videos/search?q=test');
 
@@ -174,13 +167,11 @@ describe('videos router', () => {
         offset: 0,
         limit: 100,
       });
-      expect(mockedGetTotalVideoCount).toHaveBeenCalled();
     });
 
     it('should use provided sort parameter', async () => {
       const mockVideos: VideoListItem[] = [];
-      mockedGetVideos.mockResolvedValue(mockVideos);
-      mockedGetTotalVideoCount.mockResolvedValue(0);
+      mockedGetVideos.mockResolvedValue({ videos: mockVideos, total: 0 });
 
       const response = await request(app).get('/api/videos/search?q=test&sort=views-desc');
 
@@ -189,12 +180,10 @@ describe('videos router', () => {
         offset: 0,
         limit: 100,
       });
-      expect(mockedGetTotalVideoCount).toHaveBeenCalled();
     });
 
     it('accepts relevance as a sort option', async () => {
-      mockedGetVideos.mockResolvedValue([]);
-      mockedGetTotalVideoCount.mockResolvedValue(0);
+      mockedGetVideos.mockResolvedValue({ videos: [], total: 0 });
 
       const response = await request(app).get('/api/videos/search?q=test&sort=relevance');
 
@@ -206,8 +195,7 @@ describe('videos router', () => {
     });
 
     it('passes offset and limit through to the search', async () => {
-      mockedGetVideos.mockResolvedValue([]);
-      mockedGetTotalVideoCount.mockResolvedValue(0);
+      mockedGetVideos.mockResolvedValue({ videos: [], total: 0 });
 
       await request(app).get('/api/videos/search?q=test&offset=200&limit=25');
 
@@ -218,8 +206,7 @@ describe('videos router', () => {
     });
 
     it('falls back to defaults for malformed offset and limit', async () => {
-      mockedGetVideos.mockResolvedValue([]);
-      mockedGetTotalVideoCount.mockResolvedValue(0);
+      mockedGetVideos.mockResolvedValue({ videos: [], total: 0 });
 
       await request(app).get('/api/videos/search?q=test&offset=abc&limit=-5');
 
@@ -230,8 +217,7 @@ describe('videos router', () => {
     });
 
     it('falls back to the default sort for unknown or repeated sort values', async () => {
-      mockedGetVideos.mockResolvedValue([]);
-      mockedGetTotalVideoCount.mockResolvedValue(0);
+      mockedGetVideos.mockResolvedValue({ videos: [], total: 0 });
 
       await request(app).get('/api/videos/search?q=test&sort=title-asc');
       expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc', undefined, {
@@ -248,8 +234,7 @@ describe('videos router', () => {
 
     it('should handle empty query', async () => {
       const mockVideos: VideoListItem[] = [];
-      mockedGetVideos.mockResolvedValue(mockVideos);
-      mockedGetTotalVideoCount.mockResolvedValue(0);
+      mockedGetVideos.mockResolvedValue({ videos: mockVideos, total: 0 });
 
       const response = await request(app).get('/api/videos/search');
 
@@ -259,26 +244,11 @@ describe('videos router', () => {
         offset: 0,
         limit: 100,
       });
-      expect(mockedGetTotalVideoCount).toHaveBeenCalled();
     });
 
     it('should handle errors from getVideos', async () => {
       const error = new Error('Failed to load videos');
       mockedGetVideos.mockRejectedValue(error);
-
-      const response = await request(app).get('/api/videos/search?q=test');
-
-      expect(response.status).toBe(500);
-      expect(response.body).toEqual({
-        error: 'Internal server error',
-      });
-      expect(mockedGetTotalVideoCount).not.toHaveBeenCalled();
-    });
-
-    it('should handle errors from getTotalVideoCount', async () => {
-      const mockVideos: VideoListItem[] = [];
-      mockedGetVideos.mockResolvedValue(mockVideos);
-      mockedGetTotalVideoCount.mockRejectedValue(new Error('Failed to get count'));
 
       const response = await request(app).get('/api/videos/search?q=test');
 
@@ -300,8 +270,7 @@ describe('videos router', () => {
     });
 
     it('limits the search to the folders of the requested category', async () => {
-      mockedGetVideos.mockResolvedValue([]);
-      mockedGetTotalVideoCount.mockResolvedValue(12);
+      mockedGetVideos.mockResolvedValue({ videos: [], total: 12 });
       mockedGetFolderPathsForCategory.mockResolvedValue(['/test/videos']);
 
       const response = await request(app).get('/api/videos/search?q=test&category=%20fpv%20');
@@ -312,13 +281,11 @@ describe('videos router', () => {
         offset: 0,
         limit: 100,
       });
-      expect(mockedGetTotalVideoCount).toHaveBeenCalledWith(['/test/videos']);
       expect(response.body.totalCount).toBe(12);
     });
 
     it('returns nothing for a category no folder declares', async () => {
-      mockedGetVideos.mockResolvedValue([]);
-      mockedGetTotalVideoCount.mockResolvedValue(0);
+      mockedGetVideos.mockResolvedValue({ videos: [], total: 0 });
       mockedGetFolderPathsForCategory.mockResolvedValue([]);
 
       const response = await request(app).get('/api/videos/search?category=nope');
@@ -332,8 +299,7 @@ describe('videos router', () => {
     });
 
     it('ignores a blank category instead of matching nothing', async () => {
-      mockedGetVideos.mockResolvedValue([]);
-      mockedGetTotalVideoCount.mockResolvedValue(5);
+      mockedGetVideos.mockResolvedValue({ videos: [], total: 0 });
 
       await request(app).get('/api/videos/search?category=%20%20');
 
@@ -371,7 +337,7 @@ describe('videos router', () => {
 
       const response = await request(app).post('/api/videos/refreshCache');
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(202);
       expect(response.body).toEqual({
         message: 'Cache refresh process started',
         status: 'ok',
@@ -384,7 +350,7 @@ describe('videos router', () => {
 
       const response = await request(app).post('/api/videos/refreshCache?onlyMissing=1');
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(202);
       expect(mockedRefreshVideosCache).toHaveBeenCalledWith({ onlyMissing: true });
     });
 
@@ -395,7 +361,7 @@ describe('videos router', () => {
       const response = await request(app).post('/api/videos/refreshCache');
 
       // Response should still be 200 because errors are handled in background
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(202);
       expect(response.body).toEqual({
         message: 'Cache refresh process started',
         status: 'ok',
@@ -461,7 +427,7 @@ describe('videos router', () => {
 
       const response = await request(app).post('/api/videos/recreateIndices');
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(202);
       expect(response.body).toEqual({
         message: 'Indices recreation process started',
         status: 'ok',
@@ -475,8 +441,8 @@ describe('videos router', () => {
 
       const response = await request(app).post('/api/videos/recreateIndices');
 
-      // Response should still be 200 because errors are handled in background
-      expect(response.status).toBe(200);
+      // Response should still be 202 because errors are handled in background
+      expect(response.status).toBe(202);
       expect(response.body).toEqual({
         message: 'Indices recreation process started',
         status: 'ok',
@@ -1039,7 +1005,7 @@ describe('videos router', () => {
       expect(response.body.details.channelName).toBe('Test Uploader');
     });
 
-    it('should use duration_string or convert duration to string', async () => {
+    it('should use duration_string or format numeric duration as clock time', async () => {
       const baseName = '20231201_TestVideo';
       const infoJsonWithNumericDuration: VideoInfoJson = {
         title: 'Test Video',
@@ -1053,7 +1019,7 @@ describe('videos router', () => {
       const response = await request(app).get(`/api/videos/${baseName}/details`);
 
       expect(response.status).toBe(200);
-      expect(response.body.details.duration).toBe('630');
+      expect(response.body.details.duration).toBe('10:30');
     });
 
     it('should build comment tree from comments', async () => {

@@ -22,7 +22,12 @@ export default function VideoList({ videos, searchQuery }: VideoListProps): JSX.
   return (
     <div className="video-list">
       {videos.map((video, index) => (
-        <VideoCard key={video.baseName} video={video} searchQuery={searchQuery} index={index} />
+        <VideoCard
+          key={video.videoId || `${video.folderPath}/${video.baseName}`}
+          video={video}
+          searchQuery={searchQuery}
+          index={index}
+        />
       ))}
     </div>
   );
