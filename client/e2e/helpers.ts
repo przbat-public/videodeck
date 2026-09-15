@@ -140,7 +140,9 @@ export async function mockApi(
       return route.fulfill(json({ jobs: [], paused: queuePaused }));
     }
     if (request.method() === 'POST' && /queue\/(pause|resume)/.test(url)) {
-      queuePaused = url.includes('pause');
+      // Match the PATH segment: the resume URL carries `?paused=0` in its
+      // query, so `url.includes('pause')` would misread it as a pause.
+      queuePaused = url.includes('/pause');
       return route.fulfill(json({ paused: queuePaused }));
     }
     if (request.method() === 'DELETE' && url.endsWith('/finished')) {
