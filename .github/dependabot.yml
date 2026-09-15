@@ -20,6 +20,10 @@ updates:
       # until they are upgraded together — let that be a manual change.
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
+      # zod 4 changes the API (z.record, error handling) — needs a planned
+      # migration of shared/schemas.ts before we accept it
+      - dependency-name: 'zod'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: npm
     directory: /server
@@ -40,6 +44,10 @@ updates:
       # TypeScript majors break the test toolchain (ts-jest, vitest plugins)
       # until they are upgraded together — let that be a manual change.
       - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
+      # zod 4 changes the API (z.record, error handling) — needs a planned
+      # migration of shared/schemas.ts before we accept it
+      - dependency-name: 'zod'
         update-types: ['version-update:semver-major']
 
   - package-ecosystem: npm
@@ -62,6 +70,10 @@ updates:
       # until they are upgraded together — let that be a manual change.
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
+      # zod 4 changes the API (z.record, error handling) — needs a planned
+      # migration of shared/schemas.ts before we accept it
+      - dependency-name: 'zod'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: npm
     directory: /chrome-extension
@@ -82,6 +94,10 @@ updates:
       # TypeScript majors break the test toolchain (ts-jest, vitest plugins)
       # until they are upgraded together — let that be a manual change.
       - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
+      # zod 4 changes the API (z.record, error handling) — needs a planned
+      # migration of shared/schemas.ts before we accept it
+      - dependency-name: 'zod'
         update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
