@@ -79,7 +79,12 @@ test('every skill carries frontmatter with a matching name and a description', (
 });
 
 test('no markdown file under .agents uses an em dash', () => {
-  const files = markdownFiles(AGENTS);
+  // The vendored archify package (MIT, third-party) ships its own docs
+  // under .agents/skills/archify/; the house prose rule covers files we
+  // write, so only that subtree is exempt. Its SKILL.md is ours and stays
+  // covered by the frontmatter test above.
+  const vendoredRoot = path.join(AGENTS, 'skills', 'archify') + path.sep;
+  const files = markdownFiles(AGENTS).filter((file) => !file.startsWith(vendoredRoot));
   assert.ok(files.length > 0, 'no markdown files found under .agents');
   for (const file of files) {
     const content = readFileSync(file, 'utf-8');

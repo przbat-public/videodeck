@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   component-architecture and WCAG 2.1 AA guidance with an accessibility
   checklist, a using-agent-skills routing skill, and four review personas in
   `.agents/personas/`
+- **Architecture map with archify**: the vendored archify CLI (MIT) renders
+  the runtime architecture from typed JSON in `docs/architecture/`, and
+  `pnpm run test:scripts` validates every diagram and goldens the committed
+  HTML so the map cannot drift from its source
 
 ### Fixed
 

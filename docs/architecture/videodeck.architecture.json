@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "videodeck runtime architecture",
+    "output": "videodeck.architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "search-path",
+        "label": "Search path",
+        "focus": ["browser", "server", "es"],
+        "note": "The primary path: query the Elasticsearch index and render results."
+      },
+      {
+        "id": "download-path",
+        "label": "Download path",
+        "focus": ["extension", "server", "queue", "ytdlp", "videos", "es"],
+        "note": "Enqueue, download with yt-dlp and reindex the new files."
+      },
+      {
+        "id": "summary-path",
+        "label": "Summary path",
+        "focus": ["browser", "server", "openai"],
+        "note": "AI summaries generated on demand and cached."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "React client",
+      "sublabel": "vite :3000",
+      "pos": [40, 300],
+      "size": [120, 60]
+    },
+    {
+      "id": "extension",
+      "type": "external",
+      "label": "Chrome extension",
+      "sublabel": "MV3",
+      "pos": [40, 110],
+      "size": [130, 60],
+      "tag": "enqueue from YouTube"
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Express API",
+      "sublabel": ":3001",
+      "pos": [250, 300],
+      "size": [130, 60],
+      "tag": "trust boundary"
+    },
+    {
+      "id": "es",
+      "type": "database",
+      "label": "Elasticsearch",
+      "sublabel": "search + index",
+      "pos": [460, 300],
+      "size": [140, 60]
+    },
+    {
+      "id": "openai",
+      "type": "cloud",
+      "label": "OpenAI",
+      "sublabel": "summaries",
+      "pos": [460, 110],
+      "size": [120, 60]
+    },
+    {
+      "id": "queue",
+      "type": "backend",
+      "label": "yt-dlp queue",
+      "sublabel": "server-side jobs",
+      "pos": [250, 440],
+      "size": [130, 60],
+      "tag": "pause + persist"
+    },
+    {
+      "id": "ytdlp",
+      "type": "external",
+      "label": "yt-dlp",
+      "sublabel": "downloads",
+      "pos": [460, 440],
+      "size": [120, 60]
+    },
+    {
+      "id": "videos",
+      "type": "database",
+      "label": "Videos folder",
+      "sublabel": "mp4 + sidecars",
+      "pos": [670, 440],
+      "size": [140, 60]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "trust boundary: API token + Host allowlist",
+      "wraps": ["server"]
+    }
+  ],
+  "connections": [
+    { "id": "browser-to-server", "from": "browser", "to": "server", "label": "REST /api", "variant": "emphasis" },
+    { "id": "server-to-es", "from": "server", "to": "es", "label": "search / index", "variant": "emphasis" },
+    {
+      "id": "extension-to-server",
+      "from": "extension",
+      "to": "server",
+      "label": "enqueue + SSE",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [[105, 240], [315, 240]]
+    },
+    { "id": "server-to-queue", "from": "server", "to": "queue", "label": "jobs", "labelDy": 54 },
+    { "id": "queue-to-ytdlp", "from": "queue", "to": "ytdlp", "label": "run" },
+    { "id": "ytdlp-to-videos", "from": "ytdlp", "to": "videos", "label": "write files" },
+    {
+      "id": "videos-to-es",
+      "from": "videos",
+      "to": "es",
+      "label": "reindex",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [[740, 390], [530, 390]]
+    },
+    {
+      "id": "server-to-openai",
+      "from": "server",
+      "to": "openai",
+      "label": "summary",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [[315, 230], [520, 230]]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Search",
+      "items": [
+        "Elasticsearch full-text index over titles, descriptions, comments and subtitles",
+        "Polish queries work without diacritics; sort by date, views or likes",
+        "The server streams the downloaded files back to the in-browser player"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Download",
+      "items": [
+        "Server-side yt-dlp queue with pause, resume and persistence across restarts",
+        "Fast-fail for members-only and private videos; subtitles land beside the mp4"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Security",
+      "items": [
+        "Loopback host by default; API token and Host allowlist guard remote access",
+        "SSE events validated against the shared zod contract before they hit the wire"
+      ]
+    }
+  ]
+}

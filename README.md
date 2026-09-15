@@ -21,6 +21,16 @@ The UI follows the design contract in [DESIGN.md](DESIGN.md); a static
 landing page built from the same tokens lives at
 [docs/landing/index.html](docs/landing/index.html).
 
+## Architecture
+
+The runtime architecture is authored as typed JSON in
+[docs/architecture/](docs/architecture/) and compiled by the vendored
+archify CLI (MIT) into a self-contained interactive map:
+[docs/architecture/videodeck.architecture.html](docs/architecture/videodeck.architecture.html).
+`pnpm run test:scripts` validates every diagram and checks that the
+committed HTML matches a fresh render, so the map cannot drift from its
+source.
+
 ## Requirements
 
 - Node.js 22.x (corepack provides pnpm 10.30.1, pinned in `packageManager`)
