@@ -5,7 +5,9 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import RouteError from './components/RouteError';
+import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { Loading } from './components/ui/Loading';
+import { useTheme } from './hooks/useTheme';
 import './App.css';
 
 // Lazy routes: the status page does not need the search page's bundle and
@@ -28,6 +30,7 @@ const router = createBrowserRouter([
 ]);
 
 function App() {
+  const { theme, setTheme } = useTheme();
   const toastOptions: DefaultToastOptions = {
     duration: 10000,
     style: {
@@ -54,6 +57,7 @@ function App() {
     <div className="app">
       <Toaster position="bottom-right" toastOptions={toastOptions} />
       <LanguageSwitcher />
+      <ThemeSwitcher theme={theme} onThemeChange={setTheme} />
       <ErrorBoundary>
         <Suspense fallback={<Loading />}>
           <RouterProvider router={router} />

@@ -233,5 +233,11 @@
       "bot-wall": "YouTube is asking for a sign-in (bot wall)",
       "age-gate": "This video is age-restricted and requires a logged-in session"
     }
+  },
+  "theme": {
+    "label": "Theme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
   }
 }

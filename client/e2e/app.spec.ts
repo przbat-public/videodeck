@@ -46,6 +46,20 @@ test.describe('wyszukiwarka', () => {
     await expect(page.getByRole('button', { name: 'Odśwież indeks' })).toBeVisible();
   });
 
+  test('przełącznik motywu ustawia data-theme i pamięta wybór po przeładowaniu', async ({ page }) => {
+    await mockApi(page);
+
+    await page.goto('/videos');
+
+    const themeSelect = page.getByRole('combobox', { name: 'Motyw' });
+    await themeSelect.click();
+    await page.getByRole('option', { name: 'Ciemny' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  });
+
   test('select sortowania otwiera listę i zmienia sortowanie', async ({ page }) => {
     const sorts: (string | null)[] = [];
     await mockApi(page, {

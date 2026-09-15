@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   script observes only the watch-page subtree instead of the whole body
 - Enter commits the search phrase immediately instead of waiting out the
   debounce
+- Dark theme: a system/light/dark picker (persisted, follows the OS until a
+  choice is made) re-tunes the design tokens; all hardcoded surface/text
+  colors moved onto the token layer
 - CI now enforces the coverage ratchet (server + client) and runs the
   server integration suites on every PR: yt-dlp argument templates against
   an offline fake binary and the Elasticsearch suite against a real
