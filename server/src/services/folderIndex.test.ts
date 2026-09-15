@@ -208,6 +208,35 @@ describe('folderIndex', () => {
       expect(result.changed).toEqual(['id-first']);
     });
 
+    it('drops entries whose files were deleted from disk', async () => {
+      await writeVideo(dir, '20240101_Keep', 'id-keep');
+      await writeVideo(dir, '20240102_Gone', 'id-gone');
+      await rebuildIndex(dir);
+      // delete the video + info.json of one entry, then run an incremental refresh
+      await fs.rm(path.join(dir, '20240102_Gone.info.json'));
+      await fs.rm(path.join(dir, '20240102_Gone.mp4'));
+
+      const result = await refreshIndex(dir, Date.now() - 1000);
+
+      expect(result.removed).toEqual(['id-gone']);
+      expect(result.index.entries['id-gone']).toBeUndefined();
+      expect(result.index.entries['id-keep']).toBeDefined();
+    });
+
+    it('never mass-wipes the index when the folder looks empty (unmounted drive)', async () => {
+      await writeVideo(dir, '20240101_Keep', 'id-keep');
+      await rebuildIndex(dir);
+      // delete the video files but keep the index file — the folder looks
+      // empty to the scan (dotfiles are skipped), like an unmounted drive
+      await fs.rm(path.join(dir, '20240101_Keep.info.json'));
+      await fs.rm(path.join(dir, '20240101_Keep.mp4'));
+
+      const result = await refreshIndex(dir, Date.now() - 1000);
+
+      expect(result.removed).toEqual([]);
+      expect(result.index.entries['id-keep']).toBeDefined();
+    });
+
     it('appends to an existing archive.txt without duplicating ids', async () => {
       await writeVideo(dir, '20240101_Old', 'id-old');
       await rebuildIndex(dir);

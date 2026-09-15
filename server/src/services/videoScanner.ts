@@ -252,8 +252,9 @@ async function scanFolder(folderPath: string): Promise<void> {
         return flushing;
       }
       const run = flushing.then(async () => {
-        await bulkIndexDocuments(indexName, toSend, false);
-        reindexStatus.indexed += toSend.length;
+        const { indexed, skipped } = await bulkIndexDocuments(indexName, toSend, false);
+        reindexStatus.indexed += indexed;
+        reindexStatus.skipped += skipped;
       });
       flushing = run;
       return run;

@@ -240,35 +240,62 @@ export interface RefreshResult {
   index: FolderIndex;
   /** ids whose entries were added or updated */
   changed: string[];
+  /** ids whose files vanished from disk (dropped from the index) */
+  removed: string[];
 }
 
 /**
  * Incremental refresh after a yt-dlp run: only `.info.json` files modified at
  * or after `sinceMs` are inspected. Falls back to a full rebuild when the
  * index does not exist yet.
+ *
+ * Videos deleted from disk are dropped from the index, so they stop showing
+ * as "downloaded". The sweep only runs when at least one info.json is
+ * visible: an unmounted removable drive makes the folder look empty, and a
+ * mass-wipe of the index would be worse than stale entries.
  */
 export async function refreshIndex(folderPath: string, sinceMs: number): Promise<RefreshResult> {
   const existing = await readIndexFile(folderPath);
   if (!existing) {
     const index = await rebuildIndex(folderPath);
-    return { index, changed: Object.keys(index.entries) };
+    return { index, changed: Object.keys(index.entries), removed: [] };
   }
 
   const files = await listVisibleFiles(folderPath);
-  const changed: string[] = [];
-  // small tolerance for filesystems with coarse mtime resolution (exFAT: 2s)
-  const threshold = sinceMs - 2000;
+  const changed = await collectChangedEntries(folderPath, files, sinceMs, existing);
 
+  const removed = sweepDeletedEntries(existing, files);
+  if (removed.length > 0) {
+    logger.info(`folderIndex: dropped ${removed.length} videos deleted from disk in ${folderPath}`);
+  }
+
+  if (changed.length > 0 || removed.length > 0) {
+    await saveIndex(folderPath, existing);
+    await ensureArchiveHas(folderPath, changed);
+  }
+  return { index: existing, changed, removed };
+}
+
+/**
+ * Inspect the info.json files modified at or after `sinceMs` and update the
+ * index in place. A small tolerance covers filesystems with coarse mtime
+ * resolution (exFAT: 2 s).
+ */
+async function collectChangedEntries(
+  folderPath: string,
+  files: Set<string>,
+  sinceMs: number,
+  existing: FolderIndex,
+): Promise<string[]> {
+  const changed: string[] = [];
+  const threshold = sinceMs - 2000;
   for (const file of files) {
     if (!file.endsWith(INFO_SUFFIX)) {
       continue;
     }
     const infoPath = path.join(folderPath, file);
     const stats = await statOrNull(infoPath);
-    if (!stats) {
-      continue;
-    }
-    if (stats.mtimeMs < threshold) {
+    if (!stats || stats.mtimeMs < threshold) {
       continue;
     }
     const baseName = file.slice(0, -INFO_SUFFIX.length);
@@ -287,12 +314,28 @@ export async function refreshIndex(folderPath: string, sinceMs: number): Promise
       logger.error(`folderIndex: skipping ${infoPath}:`, error);
     }
   }
+  return changed;
+}
 
-  if (changed.length > 0) {
-    await saveIndex(folderPath, existing);
-    await ensureArchiveHas(folderPath, changed);
+/** Drop index entries whose info.json is gone (kept safe against unmounted drives) */
+function sweepDeletedEntries(index: FolderIndex, files: Set<string>): string[] {
+  let infoCount = 0;
+  for (const file of files) {
+    if (file.endsWith(INFO_SUFFIX)) {
+      infoCount += 1;
+    }
   }
-  return { index: existing, changed };
+  if (infoCount === 0) {
+    return []; // empty folder: probably an unmounted drive — never mass-wipe
+  }
+  const removed: string[] = [];
+  for (const [id, entry] of Object.entries(index.entries)) {
+    if (!files.has(`${entry.baseName}${INFO_SUFFIX}`)) {
+      delete index.entries[id];
+      removed.push(id);
+    }
+  }
+  return removed;
 }
 
 /**

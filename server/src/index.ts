@@ -3,6 +3,7 @@ import { createApp } from './app';
 import { getApiToken, getHost } from './config';
 import { validateEnv } from './env';
 import { downloadQueue } from './services/downloadQueue';
+import { sweepOrphanIndexVersions, warnOnLegacyMappings } from './services/elasticsearchService';
 import { getYtDlpVersion } from './services/ytdlp';
 import { installShutdownHandlers } from './shutdown';
 import { logger } from './utils/logger';
@@ -41,6 +42,16 @@ async function startServer() {
           'API_TOKEN is not set — the API is unauthenticated and reachable by every local process and browser tab. Set it in .env and in the Chrome extension options.',
         );
       }
+    });
+
+    // Housekeeping against Elasticsearch: sweep index versions orphaned by a
+    // crashed reindex and warn about indices still on the legacy mapping.
+    // Fire-and-forget — ES may be down at boot and both checks are optional.
+    void sweepOrphanIndexVersions().catch(() => {
+      /* logged inside */
+    });
+    void warnOnLegacyMappings().catch(() => {
+      /* logged inside */
     });
 
     // Ctrl+C / docker stop: cancel yt-dlp jobs and close cleanly

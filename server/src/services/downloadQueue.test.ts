@@ -3,7 +3,7 @@ import type { QueueJob } from '@shared/api';
 import { at } from '../test-utils';
 import { removePartialDownloads } from '../utils/fsUtils';
 import type { EnqueueRequest, SpawnedProcess } from './downloadQueue';
-import { DownloadQueue, indexChangedVideos, readConcurrency } from './downloadQueue';
+import { clearIndexRetries, DownloadQueue, indexChangedVideos, readConcurrency } from './downloadQueue';
 import { refreshIndex } from './folderIndex';
 import { indexVideosFromDisk } from './videoScanner';
 import { buildFormatSelector, buildYtDlpArgs, escapeOutputTemplate, PROGRESS_TEMPLATE } from './ytdlp';
@@ -106,6 +106,7 @@ describe('indexChangedVideos', () => {
         },
       },
       changed: ['abc', 'ghost'],
+      removed: [],
     });
     mockedIndexVideosFromDisk.mockResolvedValue(1);
 
@@ -118,10 +119,38 @@ describe('indexChangedVideos', () => {
     expect(mockedIndexVideosFromDisk).toHaveBeenCalledWith('/videos/channel-a', ['20250101_New']);
   });
 
+  it('retries changed-video indexing in the background when Elasticsearch is down', async () => {
+    jest.useFakeTimers();
+    try {
+      mockedRefreshIndex.mockResolvedValue({
+        index: {
+          version: 1,
+          builtAt: 'x',
+          entries: { abc: { baseName: '20250101_New', videoFile: '20250101_New.mp4', infoMtime: 'x' } },
+        },
+        changed: ['abc'],
+        removed: [],
+      });
+      mockedIndexVideosFromDisk.mockRejectedValue(new Error('ES down'));
+
+      await expect(indexChangedVideos(job)).resolves.toBeUndefined();
+
+      mockedIndexVideosFromDisk.mockResolvedValue(1);
+      await jest.advanceTimersByTimeAsync(30_000);
+      await Promise.resolve();
+
+      expect(mockedIndexVideosFromDisk).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+      clearIndexRetries();
+    }
+  });
+
   it('falls back to createdAt and skips Elasticsearch when nothing changed', async () => {
     mockedRefreshIndex.mockResolvedValue({
       index: { version: 1, builtAt: 'x', entries: {} },
       changed: [],
+      removed: [],
     });
 
     await indexChangedVideos(jobWithoutStart);
