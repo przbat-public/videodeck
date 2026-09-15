@@ -73,7 +73,8 @@ jobs:
             server/package-lock.json
             client/package-lock.json
             chrome-extension/package-lock.json
-      - run: npm ci --prefix server && npm ci --prefix client && npm ci --prefix chrome-extension
+      # Root install matters: shared/*.ts resolves zod from the repo root
+      - run: npm run install:ci
       - run: npm run typecheck
 
   unit-tests:
@@ -104,7 +105,7 @@ jobs:
             server/package-lock.json
             client/package-lock.json
             chrome-extension/package-lock.json
-      - run: npm ci --prefix ${{ matrix.dir }}
+      - run: npm ci && npm ci --prefix ${{ matrix.dir }}
       - name: Run tests
         working-directory: ${{ matrix.dir }}
         run: ${{ matrix.run }}
@@ -125,7 +126,7 @@ jobs:
             server/package-lock.json
             client/package-lock.json
             chrome-extension/package-lock.json
-      - run: npm ci && npm ci --prefix server && npm ci --prefix client && npm ci --prefix chrome-extension
+      - run: npm run install:ci
       - run: npm run build:server && npm run build:client && npm run build:extension
       - uses: actions/upload-artifact@v4
         with:
@@ -154,9 +155,8 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: client/package-lock.json
-      - name: Install client dependencies
-        working-directory: client
-        run: npm ci
+      - name: Install dependencies
+        run: npm ci && npm ci --prefix client
       - name: Install Playwright browsers + OS deps
         working-directory: client
         run: npx playwright install --with-deps

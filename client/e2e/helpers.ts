@@ -121,18 +121,28 @@ export async function mockApi(
       })
     )
   );
+  // Video/thumbnail/subtitle files: serve a tiny placeholder instead of
+  // leaking the request to the vite proxy (ECONNREFUSED noise on CI)
+  await context.route('**/api/videos/file/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.alloc(1) })
+  );
   // the download queue hook polls while it thinks jobs may exist; the mock
   // keeps the pause state like the real server, so a late GET cannot race
-  // a pause click
+  // a pause click. The route is a REGEX on purpose: the glob `queue*` does
+  // not match `/queue/pause`, `/queue/resume` or `/queue/finished` (a single
+  // `*` stops at `/`), which leaked those requests to the vite proxy and
+  // made the pause test depend on a live backend.
   let queuePaused = false;
-  await context.route('**/api/folder/queue*', (route) => {
+  await context.route(/\/api\/folder\/queue/, (route) => {
     const request = route.request();
     const url = request.url();
     if (request.method() === 'GET') {
       return route.fulfill(json({ jobs: [], paused: queuePaused }));
     }
     if (request.method() === 'POST' && /queue\/(pause|resume)/.test(url)) {
-      queuePaused = url.includes('pause');
+      // Match the PATH segment: the resume URL carries `?paused=0` in its
+      // query, so `url.includes('pause')` would misread it as a pause.
+      queuePaused = url.includes('/pause');
       return route.fulfill(json({ paused: queuePaused }));
     }
     if (request.method() === 'DELETE' && url.endsWith('/finished')) {
