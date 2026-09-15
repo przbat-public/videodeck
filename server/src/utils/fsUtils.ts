@@ -68,6 +68,22 @@ export async function writeJsonAtomic(folderPath: string, fileName: string, data
 }
 
 /**
+ * Atomic plain-text write: temp file + fsync + rename (the JSON sibling
+ * writeJsonAtomic stringifies; this one writes raw text).
+ */
+export async function writeTextAtomic(filePath: string, text: string): Promise<void> {
+  const tmp = `${filePath}.tmp`;
+  const handle = await fs.open(tmp, 'w');
+  try {
+    await handle.writeFile(text, 'utf-8');
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await fs.rename(tmp, filePath);
+}
+
+/**
  * Remove the temporary files yt-dlp leaves in a folder when a download is
  * cancelled (`.mp4.part`, fragment files, `.ytdl`). Safe to run any time: at
  * most one `download` job runs per folder, and updates never write partials.

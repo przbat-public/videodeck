@@ -9,7 +9,7 @@ interface VideoSummaryProps {
 
 export default function VideoSummary({ baseName, subtitlePath }: VideoSummaryProps): JSX.Element | null {
   const { t } = useTranslation();
-  const { state: summaryState } = useVideoSummary(baseName, subtitlePath);
+  const { state: summaryState, truncated } = useVideoSummary(baseName, subtitlePath);
 
   if (!subtitlePath || !summaryState.summary) {
     return null;
@@ -20,6 +20,7 @@ export default function VideoSummary({ baseName, subtitlePath }: VideoSummaryPro
       <h2>{t('video.summaryTitle')}</h2>
       <div className="summary-content">
         <p>{summaryState.summary}</p>
+        {truncated && <p className="summary-truncated-notice">{t('video.summaryTruncated')}</p>}
       </div>
     </div>
   );

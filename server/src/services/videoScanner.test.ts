@@ -128,6 +128,20 @@ describe('videoScanner', () => {
       expect(found.subtitleFile).toBe('20231201_X.en.vtt');
       expect(found.subtitleFiles).toEqual(['20231201_X.en.vtt', '20231201_X.pl.vtt', '20231201_X.de.vtt']);
     });
+
+    it('falls back to any subtitle language when there is no english one', () => {
+      const found = findVideoFiles('20231201_X', [
+        '20231201_X.info.json',
+        '20231201_X.mp4',
+        '20231201_X.webp',
+        '20231201_X.pl.vtt',
+      ]);
+
+      // Polish-only videos are summarizable too — the primary slot falls
+      // back instead of staying empty (which used to 404 on every visit).
+      expect(found.subtitleFile).toBe('20231201_X.pl.vtt');
+      expect(found.subtitleFiles).toEqual(['20231201_X.pl.vtt']);
+    });
   });
 
   describe('buildVideoItem', () => {
