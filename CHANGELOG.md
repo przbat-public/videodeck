@@ -33,5 +33,5 @@ First public release.
   video URLs, restricted yt-dlp flags, Helmet, rate limiting, env validation
 - Prometheus metrics (`/metrics`), `/health` and `/health/live` probes
 
-[Unreleased]: https://github.com/OWNER/REPO/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/OWNER/REPO/releases/tag/v1.0.0
+[Unreleased]: https://github.com/przbat-public/videodeck/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/przbat-public/videodeck/releases/tag/v1.0.0
