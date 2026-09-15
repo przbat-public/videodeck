@@ -107,7 +107,11 @@ export function findVideoFiles(baseName: string, visibleFiles: string[]): Folder
   const isSubtitle = (f: string) =>
     f.endsWith('.vtt') && (getBaseName(f) === baseName || getBaseName(f).startsWith(`${baseName}.`));
   const subtitleFiles = visibleFiles.filter(isSubtitle);
-  const subtitleFile = visibleFiles.find((f) => f.endsWith('.en.vtt') && getBaseName(f) === `${baseName}.en`);
+  // Prefer English for summaries; fall back to ANY subtitle language so a
+  // Polish-only video is still summarizable (the old behavior 404'd on
+  // every visit).
+  const subtitleFile =
+    visibleFiles.find((f) => f.endsWith('.en.vtt') && getBaseName(f) === `${baseName}.en`) ?? subtitleFiles[0];
   return { videoFile, thumbnailFile, subtitleFile, subtitleFiles };
 }
 

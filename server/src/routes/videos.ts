@@ -32,7 +32,7 @@ import {
   SEARCH_DEFAULT_LIMIT,
 } from '../services/elasticsearchService';
 import { getFolderPathsForCategory, listCategories } from '../services/folderConfig';
-import { generateSummary } from '../services/summaryService';
+import { generateSummary, SummaryUnavailableError } from '../services/summaryService';
 import { getReindexStatus, getVideos, isReindexRunning, refreshVideosCache } from '../services/videoScanner';
 import type { VideoInfoJson } from '../types';
 import { logger } from '../utils/logger';
@@ -388,12 +388,23 @@ const getSummary: RouteHandler<{ identifier: string }, VideoSummaryResponse> = a
   }
 
   // Cached summaries, VTT cleaning, OpenAI fallback and disk caching live in
-  // the service; failures bubble up to the error handler middleware.
-  const { summary, truncated } = await generateSummary({
-    folderPath: video.folderPath,
-    baseName: video.baseName,
-    subtitlePath: video.subtitlePath,
-  });
+  // the service; failures bubble up to the error handler middleware — except
+  // the "no key configured" case, which gets a distinct, actionable 503.
+  let summary: string;
+  let truncated: boolean;
+  try {
+    ({ summary, truncated } = await generateSummary({
+      folderPath: video.folderPath,
+      baseName: video.baseName,
+      subtitlePath: video.subtitlePath,
+    }));
+  } catch (error) {
+    if (error instanceof SummaryUnavailableError) {
+      res.status(503).json({ error: 'Summaries are disabled — set OPENAI_API_KEY on the server' });
+      return;
+    }
+    throw error;
+  }
 
   // `truncated` is only present when true
   res.json(stripUndefined<VideoSummaryResponse>({ summary, truncated: truncated ? true : undefined }));

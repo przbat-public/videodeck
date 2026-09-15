@@ -128,7 +128,8 @@
     "updatedTitle": "{{title}} (updated: {{date}})",
     "summaryTitle": "Summary",
     "invalidId": "Invalid video identifier",
-    "summaryFailed": "Failed to generate a summary"
+    "summaryFailed": "Failed to generate a summary",
+    "summaryTruncated": "This summary was generated from truncated subtitles — the source text was too long for the model."
   },
   "config": {
     "create": "Create config.json",
@@ -204,7 +205,8 @@
     "recreateStarting": "Starting index rebuild...",
     "recreateDone": "Index rebuild finished",
     "summaryStarting": "Generating summary...",
-    "summaryDone": "Summary ready"
+    "summaryDone": "Summary ready",
+    "summaryUnavailable": "Summaries are disabled — set OPENAI_API_KEY on the server"
   },
   "errors": {
     "fetchStatus": "Failed to fetch status",

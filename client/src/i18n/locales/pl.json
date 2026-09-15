@@ -148,7 +148,8 @@
     "updatedTitle": "{{title}} (aktualizacja: {{date}})",
     "summaryTitle": "Streszczenie",
     "invalidId": "Nieprawidłowy identyfikator filmu",
-    "summaryFailed": "Nie udało się wygenerować streszczenia"
+    "summaryFailed": "Nie udało się wygenerować streszczenia",
+    "summaryTruncated": "To streszczenie powstało na podstawie skróconych napisów — tekst źródłowy był zbyt długi dla modelu."
   },
   "config": {
     "create": "Utwórz config.json",
@@ -228,7 +229,8 @@
     "recreateStarting": "Rozpoczynanie odbudowy indeksów...",
     "recreateDone": "Odbudowa indeksów zakończona",
     "summaryStarting": "Generowanie streszczenia...",
-    "summaryDone": "Streszczenie gotowe"
+    "summaryDone": "Streszczenie gotowe",
+    "summaryUnavailable": "Streszczenia są wyłączone — ustaw OPENAI_API_KEY na serwerze"
   },
   "errors": {
     "fetchStatus": "Nie udało się pobrać statusu",

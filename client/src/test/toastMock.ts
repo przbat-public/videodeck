@@ -11,10 +11,12 @@ export interface ToastMock {
   success: Mock;
   error: Mock;
   loading: Mock;
+  dismiss: Mock;
 }
 
 export const toast: ToastMock = {
   success: vi.fn(),
   error: vi.fn(),
   loading: vi.fn(() => 'toast-id'),
+  dismiss: vi.fn(),
 };
