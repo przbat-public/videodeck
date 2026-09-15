@@ -76,6 +76,22 @@ baseline: `pnpm run humanizer:gate`.
 `.agents/skills/ui-design` skill turns that contract into a checklist for
 any UI change.
 
+## Skills
+
+Repo-scoped skills live in `.agents/skills/` and load into the session
+skill catalog automatically. They are workflows, not reference prose: each
+one has steps, checkpoints, an anti-rationalization table and verification
+gates. `scripts/check-skills.test.mjs` validates the frontmatter of every
+skill and the no-em-dash prose rule across `.agents/`. Shared checklists
+live in `.agents/references/`.
+
+- `humanizer` — prose rules and the AI-tell gate
+- `ui-design` — the DESIGN.md token, component and a11y checklist for UI work
+- `test-driven-development` — RED → GREEN → REFACTOR on this repo's test commands
+- `code-review-and-quality` — five-axis PR review with severity labels
+- `debugging-and-error-recovery` — reproduce, localize, reduce, fix, guard
+- `security-and-hardening` — the security invariants as an audit workflow
+
 ## Definition of done
 
 - Tests cover the change; the failing test was written first (RED → GREEN).
