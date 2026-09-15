@@ -3,6 +3,8 @@
 /* and shadows. Components must not hardcode colors anymore.          */
 /* ------------------------------------------------------------------ */
 :root {
+  /* Native form controls (the date picker, the calendar icon) follow the theme */
+  color-scheme: light;
   --color-bg: #f5f5f5;
   --color-bg-soft: #f0f0f0;
   --color-surface: #fff;
@@ -39,6 +41,7 @@
 /* Dark theme: the same tokens, re-tuned. The resolved value of the
    system/light/dark picker lands on <html data-theme=…> (hooks/useTheme). */
 :root[data-theme='dark'] {
+  color-scheme: dark;
   --color-bg: #16181c;
   --color-bg-soft: #23262d;
   --color-surface: #1d1f24;
