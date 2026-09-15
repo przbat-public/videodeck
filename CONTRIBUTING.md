@@ -10,7 +10,7 @@ Prerequisites:
 
 - Node.js 22 (`.nvmrc` pins it) + corepack/pnpm 10.30.1 (`packageManager`)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) in `PATH` (downloads; the
-  **nightly** channel is recommended — YouTube breaks old releases regularly)
+  **nightly** channel is recommended: YouTube breaks old releases regularly)
 - Elasticsearch (Docker: `docker run -p 127.0.0.1:9200:9200 -e "discovery.type=single-node" -e "xpack.security.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.8`)
 - ffmpeg in `PATH` (format merging, SponsorBlock cutting)
 - Chrome only if you work on the browser extension
@@ -55,13 +55,13 @@ files automatically.
 ## Conventions
 
 - **Commits**: [Conventional Commits](https://www.conventionalcommits.org/)
-  (`feat:`, `fix:`, `chore(tooling):`…) — enforced by commitlint.
+  (`feat:`, `fix:`, `chore(tooling):`…), enforced by commitlint.
   **All commit messages, PR titles/descriptions and code comments are written
   in English.** Polish is reserved for user-facing UI strings only (via the
   i18n catalogs).
 - **Formatting & linting**: Biome (`biome.json`) is the single formatter and
   primary linter. Its rules are strict (`noExplicitAny`, `noNonNullAssertion`,
-  cognitive complexity ≤ 15, `noConsole`, …) — fix violations in code, never
+  cognitive complexity ≤ 15, `noConsole`, …). Fix violations in code, never
   disable a rule; a false positive gets a per-line `biome-ignore` with a
   rationale. ESLint covers only what Biome cannot (type-aware TS, React
   hooks, Playwright).
@@ -70,7 +70,7 @@ files automatically.
   key parity between languages.
 - **API contract** lives in `shared/schemas.ts` (zod): types are derived from
   schemas, so runtime validation and static types cannot drift.
-- **Server-side data from the network**: parse, don't trust — narrow request
+- **Server-side data from the network**: parse, don't trust. Narrow request
   inputs (see `server/src/routes/http.ts`, `validation.ts`).
 - **Tests**: every behavior change ships with tests. The server integration
   suites (real Elasticsearch/yt-dlp) are env-gated
@@ -78,26 +78,26 @@ files automatically.
 
 ## Dependency version holds
 
-Dependabot deliberately ignores some updates (`.github/dependabot.yml`) —
+Dependabot deliberately ignores some updates (`.github/dependabot.yml`) ,
 upgrade these together, manually, when the time comes:
 
-- **`typescript` (semver-major)** — TS 7 breaks the test toolchain first
+- **`typescript` (semver-major)**: TS 7 breaks the test toolchain first
   (ts-jest peer range, vitest plugins). Upgrade TS + ts-jest + eslint
   toolchain in one PR. Same history for **zod** (4.x API migration done
   manually) and **react-window** (v2 API migration done manually).
-- **`@types/node` (semver-major)** — the runtime is pinned to **Node 22**
+- **`@types/node` (semver-major)**: the runtime is pinned to **Node 22**
   (`.nvmrc`, Docker images); type majors must follow a Node upgrade, not
   lead it. Node 24 is a candidate for the next runtime bump (Node 22 EOL is
-  April 2027) — then bump `@types/node` to match in the same change.
+  April 2027). Then bump `@types/node` to match in the same change.
 
 ## Pull requests
 
 1. Open an issue first (or comment on an existing one) for anything larger
-   than a trivial fix — discuss before building.
+   than a trivial fix. Discuss before building.
 2. Branch off `main`, keep commits focused.
 3. Run the full gate list above locally.
 4. PRs are linted/typechecked/tested in CI; the e2e suite runs on every PR.
-   Reviewers are humans — small, well-described PRs land fastest.
+   Reviewers are humans. Small, well-described PRs land fastest.
 
 ## Project layout
 

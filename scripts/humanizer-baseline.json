@@ -1,0 +1,14 @@
+{
+  "README.md": 4,
+  "AGENTS.md": 1,
+  "CONTRIBUTING.md": 2,
+  "SECURITY.md": 2,
+  "CODE_OF_CONDUCT.md": 8,
+  "RELEASING.md": 0,
+  "docs/DEPLOYMENT.md": 1,
+  "CHANGELOG.md": 1,
+  "chrome-extension/README.md": 2,
+  "chrome-extension/INSTALL.md": 8,
+  "chrome-extension/icons/README.md": 1,
+  ".github/pull_request_template.md": 0
+}

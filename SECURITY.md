@@ -3,7 +3,7 @@
 ## Supported versions
 
 Only the latest release (and the `main` branch) receive security fixes. This
-is a self-hosted application — please keep your installation up to date.
+is a self-hosted application. Keep your installation up to date.
 
 ## Reporting a vulnerability
 
@@ -31,9 +31,9 @@ Chrome extension).
 Out of scope:
 
 - Vulnerabilities in third-party software the app orchestrates (yt-dlp,
-  ffmpeg, Elasticsearch, Node.js) — report those upstream.
+  ffmpeg, Elasticsearch, Node.js), report those upstream.
 - A misconfigured personal deployment (e.g. the server bound to a public
-  interface with `HOST=0.0.0.0` and no `API_TOKEN`) — see the README's
+  interface with `HOST=0.0.0.0` and no `API_TOKEN`), see the README's
   "Security" section.
 - Issues requiring physical access to the machine.
 

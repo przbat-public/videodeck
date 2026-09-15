@@ -16,12 +16,12 @@ npm run build
 The repo already ships icons in `icons/` (`icon16.png`, `icon48.png`,
 `icon128.png`). To rebrand:
 
-- Option A: open `create-icons.html` in Chrome — the icons are generated and
+- Option A: open `create-icons.html` in Chrome. The icons are generated and
   downloaded to your Downloads folder; move them to `chrome-extension/icons/`.
 - Option B: create your own 16x16, 48x48 and 128x128 PNGs in any graphics
   editor and save them to `chrome-extension/icons/`.
 
-If you remove the icons, Chrome falls back to a default icon — the extension
+If you remove the icons, Chrome falls back to a default icon. The extension
 keeps working.
 
 ## Step 2: Install the extension
@@ -73,7 +73,7 @@ keeps working.
        `VIDEOS_FOLDER_PATH` environment variable!
 
    - **API token (optional):** fill in only when the server has `API_TOKEN`
-     set — provide the same value (sent as `Authorization: Bearer`).
+     set, provide the same value (sent as `Authorization: Bearer`).
 
 3. **Test the connection:**
    - Click **"Test connection"**

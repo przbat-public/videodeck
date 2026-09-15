@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/przbat-public/videodeck)](https://github.com/przbat-public/videodeck/releases)
 
-A self-hosted web app for searching and browsing YouTube videos downloaded with yt-dlp: an Elasticsearch full-text index over titles, descriptions, comments, and transcripts, an in-browser player with multi-language subtitles, per-channel download configuration, and a server-side yt-dlp queue — plus a companion Chrome extension for enqueueing videos straight from YouTube.
+A self-hosted web app for searching and browsing YouTube videos downloaded with yt-dlp: an Elasticsearch full-text index over titles, descriptions, comments, and transcripts, an in-browser player with multi-language subtitles, per-channel download configuration, and a server-side yt-dlp queue. A companion Chrome extension enqueues videos straight from YouTube. for enqueueing videos straight from YouTube.
 
 ## Screenshots
 
@@ -19,7 +19,7 @@ A self-hosted web app for searching and browsing YouTube videos downloaded with 
 
 ## Requirements
 
-- Node.js 22.x (with corepack — pnpm 10.30.1 is pinned in `packageManager`)
+- Node.js 22.x (corepack provides pnpm 10.30.1, pinned in `packageManager`)
 - Elasticsearch 8.x or 9.x (local or remote)
 - Chrome 88+ (only for the Chrome extension; see [chrome-extension/README.md](chrome-extension/README.md))
 
@@ -69,7 +69,7 @@ First make sure Docker Desktop is running:
 - On macOS: open the "Docker Desktop" app from the Applications folder or use Spotlight (Cmd+Space → "Docker")
 - Check that Docker works: `docker ps` (should run without errors)
 
-Then start Elasticsearch (ports bound to loopback — without a password, ES must not be reachable from the network):
+Then start Elasticsearch (ports bound to loopback; there is no password, so ES must not be reachable from the network):
 
 ```bash
 docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.0
@@ -98,7 +98,7 @@ You should see a JSON response with information about Elasticsearch.
 
 3. Configure environment variables:
 
-Create a `server/.env` file (the server loads it from its own directory —
+Create a `server/.env` file (the server loads it from its own directory ,
 `dotenv.config()` runs with cwd=`server/`; a root-level `.env` is ignored):
 
 ```bash
@@ -120,13 +120,13 @@ VIDEOS_FOLDER_PATH=/Volumes/MEDIA/folder1;/Volumes/MEDIA/folder2;/Volumes/MEDIA/
 ELASTICSEARCH_URL=http://localhost:9200
 ```
 
-**Folders on removable drives** — instead of swapping lines each time you swap the drive, use a glob pattern. `*` matches one path segment, and a directory containing `config.json` or `*.info.json` is treated as a channel folder:
+**Folders on removable drives**: instead of swapping lines each time you swap the drive, use a glob pattern. `*` matches one path segment, and a directory containing `config.json` or `*.info.json` is treated as a channel folder:
 
 ```
 VIDEOS_FOLDER_PATH=/Volumes/*/*
 ```
 
-This single line finds all channels on every currently mounted volume on its own — a drive that is absent simply contributes no folders (the server starts with a warning and picks the folders up when the drive comes back; the list is refreshed every few seconds). You can mix patterns with literals (`~/` expands to the home directory):
+This single line finds all channels on every currently mounted volume. A drive that is absent simply contributes no folders (the server starts with a warning and picks the folders up when the drive comes back; the list is refreshed every few seconds). You can mix patterns with literals (`~/` expands to the home directory):
 
 ```
 VIDEOS_FOLDER_PATH=/Volumes/MEDIA/example-*;/Volumes/MEDIA/*;/Users/<user>/Downloads/youtube/youtube-chrome
@@ -154,7 +154,7 @@ RATE_LIMIT_WINDOW_MS=600000 # rate-limit window length in ms (default 10 minutes
 - If Elasticsearch runs on a different host or port, update `ELASTICSEARCH_URL` accordingly.
 - If you use Docker and get a "Cannot connect to the Docker daemon" error, make sure Docker Desktop is running.
 - After starting the server for the first time, you must manually call the `/api/videos/refreshCache` endpoint to index videos into Elasticsearch (this may take a while depending on the number of videos). The same applies after an upgrade that changes the search analyzer (see below).
-- **Keep yt-dlp up to date** — YouTube regularly breaks older versions. yt-dlp recommends the `nightly` channel (stable tends to be "stale and prone to external breakage"); the version is shown in the server startup log (`yt-dlp version: ...`), and when downloads start failing with "Sign in to confirm you're not a bot"/429 errors, the first thing to try is `yt-dlp -U` or the `nightly` channel. In a channel's `config.json` you can also enable `impersonate: true` (browser impersonation, without cookies).
+- **Keep yt-dlp up to date**: YouTube regularly breaks older versions. yt-dlp recommends the `nightly` channel (stable tends to be "stale and prone to external breakage"); the version is shown in the server startup log (`yt-dlp version: ...`), and when downloads start failing with "Sign in to confirm you're not a bot"/429 errors, the first thing to try is `yt-dlp -U` or the `nightly` channel. In a channel's `config.json` you can also enable `impersonate: true` (browser impersonation, without cookies).
 
 ## Security
 
@@ -166,21 +166,21 @@ malicious website cannot trigger a reindex or enqueue jobs.
 
 Additional protections:
 
-- **Host allowlist (DNS rebinding)** — the server only accepts a `Host`
+- **Host allowlist (DNS rebinding)**: the server only accepts a `Host`
   header from loopback (`localhost`, `127.0.0.1`, `[::1]`) or from
   `ALLOWED_HOSTS`. An attacker's domain that resolves to 127.0.0.1 sends
   its own `Host` and gets a 403 before it reaches the API.
-- **SSRF via video URL** — `POST /api/folder/queue` and `/api/folder/download-video`
+- **SSRF via video URL**: `POST /api/folder/queue` and `/api/folder/download-video`
   accept only YouTube URLs (recognized by `shared/youtube.ts`);
   any other URL (including `file://` or IP addresses) is rejected, and yt-dlp
   always receives the canonical `https://www.youtube.com/watch?v=<id>`.
-- **Forbidden yt-dlp flags** — `extraArgs` in `config.json` will not pass
+- **Forbidden yt-dlp flags**: `extraArgs` in `config.json` will not pass
   through `--exec`, `--config-locations`, `--cookies`/`--load-cookies`/
   `--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`,
   or `--video-password` (RCE, cookie theft, credential leaks).
   `PUT /api/folder/config` rejects these flags, and in a hand-edited file
   they are ignored (together with their value).
-- **Exact extension id in CORS** — by default (dev mode), CORS allows
+- **Exact extension id in CORS**: by default (dev mode), CORS allows
   any `chrome-extension://…` because developer extensions get a new id
   each time they are loaded. Set `EXTENSION_ORIGINS` with the exact id
   (visible on `chrome://extensions`) so that the API is only called by
@@ -195,13 +195,13 @@ tests.
 ## Internationalization (Polish / English)
 
 - **Client** (`client/src/i18n/`): react-i18next with `locales/pl.json`
-  and `en.json` catalogs — all UI strings (pages, components, toasts, reindex
+  and `en.json` catalogs. All UI strings (pages, components, toasts, reindex
   progress, job statuses) go through `t()` with typed keys (a typo in a key
   is a TypeScript error). Polish is the default and fallback language;
   the PL/EN switcher in the top-right corner saves the choice to localStorage.
   Pluralization uses i18next rules (the Polish catalog has 1 film / 2 filmy / 5 filmów forms).
 - **Chrome extension** (`chrome-extension/_locales/{pl,en}/messages.json`):
-  native `chrome.i18n` — `default_locale: "pl"` in the manifest,
+  native `chrome.i18n`: `default_locale: "pl"` in the manifest,
   `chrome.i18n.getMessage` in the code, and the static HTML is translated via
   `[data-i18n]` (`src/lib/i18n.ts`). The extension follows the browser
   language (fallback: Polish).
@@ -244,7 +244,7 @@ npm run build:server
 cd server && npm run start:prod
 ```
 
-The build uses `server/tsconfig.build.json` (without tests and `test-utils.ts`). Because the server also compiles the shared types from `shared/`, `rootDir` points at the repo root and the output lands in `server/dist/server/src/index.js` — `start:prod` and the `main` field in `package.json` already account for this.
+The build uses `server/tsconfig.build.json` (without tests and `test-utils.ts`). Because the server also compiles the shared types from `shared/`, `rootDir` points at the repo root and the output lands in `server/dist/server/src/index.js`. `start:prod` and the `main` field in `package.json` already account for this.
 
 **Frontend:**
 
@@ -259,7 +259,7 @@ cd client && npm run preview
 npm run build:extension   # esbuild → background/content/popup/options.js
 ```
 
-The generated `chrome-extension/*.js` files are not committed (gitignore) —
+The generated `chrome-extension/*.js` files are not committed (gitignore) ,
 after cloning the repo, the extension must be built before loading it into
 Chrome.
 
@@ -282,12 +282,12 @@ formatting (single quotes, line width 120) and for the strict lint rules
 (`noExplicitAny`, `noNonNullAssertion`, cognitive complexity ≤ 15,
 `noConsole`, …). ESLint's flat config (`eslint.config.mjs`) covers `server/`,
 `client/`, `shared/`, and `chrome-extension/src/` (the generated `*.js` files
-of the extension are ignored) and carries only the rules Biome cannot —
+of the extension are ignored) and carries only the rules Biome cannot ,
 type-aware TypeScript checks, React hooks and Playwright. Flat config only
 lints files below its own directory, and `shared/` sits outside both
 workspaces, which is why lint and formatting are run from the root. The
 configuration tells the React plugin that the project targets React 19
-(`settings['react-x']`) — components accept `ref` as a regular prop (without
+(`settings['react-x']`). Components accept `ref` as a regular prop (without
 `forwardRef`).
 
 ### Checking the code (lint)
@@ -357,14 +357,14 @@ cd chrome-extension && npm run test:watch  # Watch mode
 ```
 
 **Integration tests with a real Elasticsearch** (reindex flow with
-alias switching, diacritic folding, searching transcripts —
+alias switching, diacritic folding, searching transcripts ,
 skipped in the regular `npm test`):
 
 ```bash
 cd server && npm run test:integration  # requires a running ES (ELASTICSEARCH_URL)
 ```
 
-**Integration tests with a real yt-dlp** — download-queue argument templates
+**Integration tests with a real yt-dlp**: download-queue argument templates
 checked against the installed binary (`--simulate`, without
 downloading; skipped in the regular `npm test`):
 
@@ -372,11 +372,11 @@ downloading; skipped in the regular `npm test`):
 cd server && npm run test:ytdlp-integration  # requires yt-dlp on PATH
 ```
 
-**Property-based tests (fast-check)** — parser invariants (VTT, SSE,
+**Property-based tests (fast-check)**: parser invariants (VTT, SSE,
 yt-dlp progress, YouTube id, runPool) for arbitrary inputs, with automatic
 minimization of counterexamples; on the server and extension side.
 
-**End-to-end tests (Playwright)** — the real app (Vite) with the API mocked
+**End-to-end tests (Playwright)**: the real app (Vite) with the API mocked
 at the browser level; no backend and no Elasticsearch. Scenarios:
 URL-driven search, "Show more" (pl: „Pokaż więcej") pagination, the details page
 with the player and subtitles, the status page:
@@ -402,9 +402,9 @@ Coverage reports are generated in the `coverage/` folder.
 
 The backend and frontend have coverage thresholds configured (`coverageThreshold` in
 `server/jest.config.js`, `test.coverage.thresholds` in `client/vite.config.ts`).
-The thresholds sit just below the current level — they are meant to catch
+The thresholds sit just below the current level. They are meant to catch
 regressions, not to be a goal in themselves. When coverage grows, it is worth
-raising them. The Chrome extension has unit tests without thresholds — it is
+raising them. The Chrome extension has unit tests without thresholds. It is
 small, pure logic in `chrome-extension/src/lib/`.
 
 ## Development best practices
@@ -418,9 +418,9 @@ small, pure logic in `chrome-extension/src/lib/`.
 - **Recursive structures** - nested comment tree
 - **Toast notifications** - unobtrusive success/error messages (react-hot-toast)
 - **Structured logger** - `server/src/utils/logger.ts` is the only place that touches `console`; the rest of the code logs through it (level + timestamp, `LOG_LEVEL`), and the middleware logs every request (method, path, status, time) with a correlating `X-Request-Id` in the header and logs
-- **Central error handling** - Express 5 forwards rejected handlers to a single middleware (`server/src/app.ts`), so every unhandled error is a consistent JSON 500 and a full log with the route — no try/catch in every handler
+- **Central error handling** - Express 5 forwards rejected handlers to a single middleware (`server/src/app.ts`), so every unhandled error is a consistent JSON 500 and a full log with the route, no try/catch in every handler
 - **Contract validation** - the bodies of `POST /api/folder/queue` and `PUT /api/folder/config` are parsed with zod schemas (`server/src/routes/validation.ts`); a validation error is a 400 with the first problem described directly
-- **Dependency injection** - `createApp` takes the token and the download queue (`createFolderRouter(queue)`), and the ES client has an injection point — tests do not reach for module singletons
+- **Dependency injection** - `createApp` takes the token and the download queue (`createFolderRouter(queue)`), and the ES client has an injection point. Tests do not reach for module singletons
 - **Graceful shutdown** - `SIGINT`/`SIGTERM` cancels queue jobs (kills yt-dlp), shuts down the server, and forces exit after 10 s (`server/src/shutdown.ts`)
 
 ### Code quality
@@ -450,7 +450,7 @@ All three projects are compiled with TypeScript 6.0 (the same version Cursor use
 | `noUnusedLocals`, `noUnusedParameters`                                  | unused variables are a compile error (deliberately ignored parameters start with `_`)                                                                                          |
 | `verbatimModuleSyntax` (client, extension)                              | types are imported via `import type`; on the server, ESLint enforces the same (`consistent-type-imports`)                                                                      |
 
-**The shared API contract** lives in `shared/`: the zod schemas (`schemas.ts`) are the single source of truth for response shapes, and `api.ts` re-exports the types derived with `z.infer` (plus request types and SSE event types). The server, client, and extension import the types as `@shared/api`; the client **parses** every response against a schema (parse, don't trust), and the server route tests check responses against the same schemas — types and validation cannot drift apart. `api.ts` stays types-only (`import type` enforced by ESLint), while `schemas.ts` and `progress.ts` are deliberate runtime modules shared by the server and the extension.
+**The shared API contract** lives in `shared/`: the zod schemas (`schemas.ts`) are the single source of truth for response shapes, and `api.ts` re-exports the types derived with `z.infer` (plus request types and SSE event types). The server, client, and extension import the types as `@shared/api`; the client **parses** every response against a schema (parse, don't trust), and the server route tests check responses against the same schemas, so types and validation cannot drift apart. `api.ts` stays types-only (`import type` enforced by ESLint), while `schemas.ts` and `progress.ts` are deliberate runtime modules shared by the server and the extension.
 
 Express routers use `RouteHandler<Params, Response>` from `server/src/routes/http.ts`: path params are derived from the route pattern, `req.body` is typed `unknown` and narrowed with the `readBody`/`readString` helpers, and `res.json()` only accepts the contract type (or `ApiError`). `any` is banned by lint (`no-explicit-any: error`) in code and tests.
 
@@ -525,9 +525,9 @@ video-search-app/
 
 The extension is written in TypeScript (strict, the same strict flags as the
 rest of the repo) and built with esbuild into classic scripts in the root
-directory (`chrome-extension/*.js` — not committed, gitignore). Pure logic —
+directory (`chrome-extension/*.js`, not committed, gitignore). Pure logic,
 SSE framing (`feedSseBuffer`/`parseSseEvent`), extracting yt-dlp progress,
-recognizing YouTube ids — lives in `chrome-extension/src/lib/` and has
+recognizing YouTube ids, lives in `chrome-extension/src/lib/` and has
 Vitest tests. The SSE event contract is shared with the server via
 `shared/api.ts` (imported with `import type`). Commands:
 
@@ -567,21 +567,21 @@ cd chrome-extension && npm run typecheck
 
 A short overview of the client's architectural decisions and what was consciously **not** implemented:
 
-- **StrictMode** — enabled; dev double-renders to catch impure renders.
-- **Reducers on `as const`** — action types are `as const` + a union type
+- **StrictMode**: enabled; dev double-renders to catch impure renders.
+- **Reducers on `as const`**: action types are `as const` + a union type
   instead of enums (less runtime code, full literal inference in `switch`).
-- **`useDebouncedValue`** — a single debounce hook (search phrase and channel filter).
-- **Virtualization** — the channel's video list (Status) uses react-window
+- **`useDebouncedValue`**: a single debounce hook (search phrase and channel filter).
+- **Virtualization**: the channel's video list (Status) uses react-window
   (`VariableSizeList`, thousands of rows); the search result grid is a
   responsive grid of variable-height cards, so instead of react-window
   it uses `content-visibility: auto` (the browser skips rendering cards
   off-screen).
-- **TanStack Query** — a recommendation, not an implementation. Around 400
+- **TanStack Query**: a recommendation, not an implementation. Around 400
   lines of hand-written fetch hooks (useVideoSearch, useVideoDetail, useStatus,
   useDownloadQueue) cover the caching, retries, and synchronization that
   TanStack Query provides out of the box; the migration is worth doing at the
   next larger data refactor, not during small changes.
-- **React Compiler** — a recommendation, not an implementation.
+- **React Compiler**: a recommendation, not an implementation.
   Auto-memoization would remove the manual `memo`/`useCallback`
   (VideoItem, VideoCard, CommentComponent), but it needs verification
   against react-window and react-i18next; enable it as a separate,
@@ -589,21 +589,21 @@ A short overview of the client's architectural decisions and what was consciousl
 
 ## Developer tooling
 
-- **Shared TypeScript** — `tsconfig.base.json` at the root holds the common
+- **Shared TypeScript**: `tsconfig.base.json` at the root holds the common
   strictness rules (strict, exactOptionalPropertyTypes, noUncheckedIndexedAccess, …);
   client/server/extension inherit them and add only their own options. The
   server has `isolatedModules` (per-file typecheck), and the extension
   typechecks the whole `../shared` directory, not selected files.
-- **Husky + commitlint + lint-staged** — `pre-commit` formats and lints
+- **Husky + commitlint + lint-staged**: `pre-commit` formats and lints
   changed files (biome check --write), `commit-msg` enforces
-  the conventional commits convention (`feat:`, `fix:`, `chore(tooling):`, …) —
+  the conventional commits convention (`feat:`, `fix:`, `chore(tooling):`, …) ,
   the end of mixed styles in the history.
 
 ## API Endpoints
 
 ### GET /health (public)
 
-Readiness probe: pings Elasticsearch and returns `200 { status: 'ok', elasticsearch: 'ok' }`, and when ES does not respond — `503 { status: 'degraded', elasticsearch: 'down' }`. The Chrome extension uses it in its "Test connection" (pl: „Test połączenia") button. The ping result is cached for 5 s, so frequent polling does not burden ES.
+Readiness probe: pings Elasticsearch and returns `200 { status: 'ok', elasticsearch: 'ok' }`, and when ES does not respond: `503 { status: 'degraded', elasticsearch: 'down' }`. The Chrome extension uses it in its "Test connection" (pl: „Test połączenia") button. The ping result is cached for 5 s, so frequent polling does not burden ES.
 
 ### GET /health/live (public)
 
@@ -626,13 +626,13 @@ Refreshes and reindexes all videos from the configured folders into Elasticsearc
 }
 ```
 
-**Cache on removable drives.** Each folder's index lives in Elasticsearch under an alias computed from the folder path and **survives unplugging the drive** — after swapping drives, search immediately uses the aliases of the currently attached folders (the previous drive is simply not searched), and the status page shows only the missing index per folder (`indeks ES: brak` — "ES index: missing"). Instead of a full reindex, it is then enough to call:
+**Cache on removable drives.** Each folder's index lives in Elasticsearch under an alias computed from the folder path and **survives unplugging the drive**. After swapping drives, search immediately uses the aliases of the currently attached folders (the previous drive is simply not searched), and the status page shows only the missing index per folder (`indeks ES: brak`, "ES index: missing"). Instead of a full reindex, it is then enough to call:
 
 ```
 GET /api/videos/refreshCache?onlyMissing=1
 ```
 
-— only folders without an existing index are reindexed (e.g. a drive attached for the first time); folders with a cache are skipped and keep serving search. In the web UI this is the **"only missing (use existing index)"** checkbox (pl: „tylko brakujące (użyj istniejącego indeksu)") next to the "Refresh index" button (pl: „Odśwież indeks"). A full reindex (without the parameter) remains for situations where the drive contents changed and the existing index must be rebuilt.
+, only folders without an existing index are reindexed (e.g. a drive attached for the first time); folders with a cache are skipped and keep serving search. In the web UI this is the **"only missing (use existing index)"** checkbox (pl: „tylko brakujące (użyj istniejącego indeksu)") next to the "Refresh index" button (pl: „Odśwież indeks"). A full reindex (without the parameter) remains for situations where the drive contents changed and the existing index must be rebuilt.
 
 **Note:** This endpoint starts the indexing process in the background and returns immediately. If a reindex is already running, it returns `409` with the current status. Progress can be followed via `GET /api/videos/refreshCache/status` (the client does this itself and shows it in a toast).
 
@@ -655,30 +655,30 @@ State of the ongoing (or last) reindex.
 }
 ```
 
-`filesDone/filesTotal` refer to the current folder, `indexed/skipped` to the whole run. `errors` is the list of folders that failed to index (max. 20 entries), `lastError` — the last error message, and `finishedAt` appears once finished.
+`filesDone/filesTotal` refer to the current folder, `indexed/skipped` to the whole run. `errors` is the list of folders that failed to index (max. 20 entries), `lastError` the last error message, and `finishedAt` appears once finished.
 
 #### How the reindex works
 
 Every folder has an **alias** `videos_<sha256(folderPath)[:16]>` in Elasticsearch, pointing at exactly one physical index `videos_<hash>_<timestamp>`. The reindex:
 
 1. creates a new, empty physical index,
-2. reads `info.json` from disk and writes documents in batches (`_bulk`) — at most 50 documents or ~16 MB per request, because channels with tens of thousands of comments have `info.json` files of 50 MB and Elasticsearch rejects requests above 100 MB,
+2. reads `info.json` from disk and writes documents in batches (`_bulk`): at most 50 documents or ~16 MB per request, because channels with tens of thousands of comments have `info.json` files of 50 MB and Elasticsearch rejects requests above 100 MB,
 3. once the whole folder is written, atomically switches the alias to the new index (`_aliases`) and deletes the previous one.
 
-Thanks to this, search works the whole time on the old index version, and an interrupted reindex (error, server restart) does not leave an empty index — at most an orphaned `videos_<hash>_<timestamp>` index, which is removed at the next successful reindex of that folder. Videos with the same `videoId` (duplicates on disk) go into a single document.
+Thanks to this, search works the whole time on the old index version, and an interrupted reindex (error, server restart) does not leave an empty index. At most an orphaned `videos_<hash>_<timestamp>` index remains, which is removed at the next successful reindex of that folder. Videos with the same `videoId` (duplicates on disk) go into a single document.
 
-Comments are **not** stored in ES as objects — only as one text field `commentsText`, which search runs over. The `GET /api/videos/:id/details` endpoint reads the full comment tree from `info.json`. The `commentsText` field is not returned in search results.
+Comments are **not** stored in ES as objects. Only one text field, `commentsText`, which search runs over. The `GET /api/videos/:id/details` endpoint reads the full comment tree from `info.json`. The `commentsText` field is not returned in search results.
 
 After every download-queue job (`download`/`update`), the changed videos are indexed incrementally, so a new video is visible in search without a full reindex.
 
 **Changing the analyzer requires a reindex:** existing indexes keep the
 mappings from their creation time, so after an upgrade that changes text
-analysis (e.g. introducing `polish_folded`), call `GET /api/videos/refreshCache` — new
+analysis (e.g. introducing `polish_folded`), call `GET /api/videos/refreshCache`. New
 indexes get the new analyzer, and the aliases switch atomically.
 
 ### GET /api/videos/search
 
-Searches videos by phrase in the file name (`baseName.text^4`), title (`^3`), description (`^2`), subtitle transcript (`transcriptText^2`), and comments (`commentsText`). Text is analyzed with **diacritic folding** (custom `polish_folded` analyzer: `standard` + `lowercase` + `asciifolding`), so `srodek` finds `środek` without typing Polish characters. Polish stemming/stop words would require the `analysis-stempel` plugin (absent from the default Docker image), so the analyzer uses only built-in components. Transcripts and comments are search-only fields — they are never returned in responses.
+Searches videos by phrase in the file name (`baseName.text^4`), title (`^3`), description (`^2`), subtitle transcript (`transcriptText^2`), and comments (`commentsText`). Text is analyzed with **diacritic folding** (custom `polish_folded` analyzer: `standard` + `lowercase` + `asciifolding`), so `srodek` finds `środek` without typing Polish characters. Polish stemming/stop words would require the `analysis-stempel` plugin (absent from the default Docker image), so the analyzer uses only built-in components. Transcripts and comments are search-only fields; they are never returned in responses.
 
 **Query parameters:**
 
@@ -797,7 +797,7 @@ Endpoints for managing a channel folder (all require a `folderPath` from the `VI
 | `DELETE /api/folder/queue?folderPath=`                  | Cancels all jobs of a folder                                                                                                                           |
 | `POST /api/folder/download-video`                       | Single download with an SSE stream (used by the Chrome extension); the job goes to the queue anyway, closing the connection does not stop the download |
 
-**The download queue** runs server-side (`server/src/services/downloadQueue.ts`): jobs are not tied to the HTTP request, so closing the tab does not stop `yt-dlp`. Downloads and updates have separate limits. At most `DOWNLOAD_CONCURRENCY` downloads run in parallel (default 2) and only one per folder, because each appends to that folder's `archive.txt`. Metadata updates — at most `UPDATE_CONCURRENCY` (default 2), and also one at a time per folder: each writes only under its own file stem, and the folder index refresh after a job is queued per folder, so parallel jobs do not overwrite each other's `.videos-index.json`. When raising this limit, remember that every `yt-dlp` process (especially with `--write-comments`) means many requests to YouTube from a single IP address; 429 errors or a sign-in prompt are a signal to go back to a smaller value. The client polls `GET /api/folder/queue` every 1.5 s, only when there is something in the queue. The queue is kept in memory — a server restart clears it.
+**The download queue** runs server-side (`server/src/services/downloadQueue.ts`): jobs are not tied to the HTTP request, so closing the tab does not stop `yt-dlp`. Downloads and updates have separate limits. At most `DOWNLOAD_CONCURRENCY` downloads run in parallel (default 2) and only one per folder, because each appends to that folder's `archive.txt`. Metadata updates run at most `UPDATE_CONCURRENCY` (default 2), and also one at a time per folder: each writes only under its own file stem, and the folder index refresh after a job is queued per folder, so parallel jobs do not overwrite each other's `.videos-index.json`. When raising this limit, remember that every `yt-dlp` process (especially with `--write-comments`) means many requests to YouTube from a single IP address; 429 errors or a sign-in prompt are a signal to go back to a smaller value. The client polls `GET /api/folder/queue` every 1.5 s, only when there is something in the queue. The queue is kept in memory. A server restart clears it.
 
 **Two kinds of jobs:**
 
@@ -844,10 +844,10 @@ The app automatically scans all configured folders and indexes files meeting the
 | `maxHeight`           | `2160`   | Maximum video height (144-4320). Prefers h264/aac in mp4, then any codec                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `subLangs`            | `["en"]` | Subtitle languages for `--sub-lang` (`pl`, `en`, `en.*`, `all`). An empty array disables subtitles                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `writeComments`       | `true`   | Whether to download comments (`--write-comments`) - they are indexed for search                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `extraArgs`           | `[]`     | Extra yt-dlp flags appended after the built-in ones, e.g. `["--no-playlist"]` (separate entries as in argv, no quotes). Reserved are the flags the pipeline relies on: `-f/--format`, `-o/--output`, `-P/--paths`, `--download-archive`, `--no-download-archive`, `--merge-output-format`, and forbidden (security): `--exec`, `--config-locations`, `--cookies`/`--load-cookies`/`--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`, `--video-password` — `PUT /api/folder/config` rejects them, and in a hand-edited file they are ignored (together with their value) |
-| `impersonate`         | `false`  | Adds `--impersonate chrome` — impersonating a browser without cookies (a safe alternative to the forbidden `--cookies*`); helps when YouTube responds with 429 or treats the server as a bot                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `extraArgs`           | `[]`     | Extra yt-dlp flags appended after the built-in ones, e.g. `["--no-playlist"]` (separate entries as in argv, no quotes). Reserved are the flags the pipeline relies on: `-f/--format`, `-o/--output`, `-P/--paths`, `--download-archive`, `--no-download-archive`, `--merge-output-format`, and forbidden (security): `--exec`, `--config-locations`, `--cookies`/`--load-cookies`/`--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`, `--video-password`. `PUT /api/folder/config` rejects them, and in a hand-edited file they are ignored (together with their value) |
+| `impersonate`         | `false`  | Adds `--impersonate chrome`, impersonating a browser without cookies (a safe alternative to the forbidden `--cookies*`); helps when YouTube responds with 429 or treats the server as a bot                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `concurrentFragments` | `1`      | Number of parallel download fragments (`-N`, 1-16); higher values speed up downloads because YouTube throttles a single connection                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `sponsorblockRemove`  | `false`  | Adds `--sponsorblock-remove sponsor,selfpromo,interaction` — cuts sponsor segments at download time (ffmpeg, cuts at keyframes without re-encoding)                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `sponsorblockRemove`  | `false`  | Adds `--sponsorblock-remove sponsor,selfpromo,interaction`, cuts sponsor segments at download time (ffmpeg, cuts at keyframes without re-encoding)                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 Missing keys fall back to their defaults (`GET /api/status` returns them in `downloadDefaults`). Invalid values in a hand-edited file are ignored, and `PUT /api/folder/config` rejects them. Options are read at the moment a job is added to the queue. The UI editor (status page) lets you set them without editing the file by hand.
 
@@ -857,11 +857,11 @@ To pull in, say, Polish subtitles next to the English ones for an already downlo
 
 1. In the channel's `config.json` set `subLangs: ["en", "pl"]` and add to `extraArgs`:
    `["--no-write-comments", "--no-write-info-json", "--no-write-thumbnail", "--no-write-description"]`
-   — updates will then download **only subtitles**: no comments (the slowest part)
+   Updates will then download **only subtitles**: no comments (the slowest part)
    and no overwriting of `info.json` (existing comments and metadata stay untouched).
 2. In the channel's section on the status page, click **"Update all"** (pl: „Aktualizuj wszystkie") or **"Update old"** (pl: „Aktualizuj stare")
-   for videos older than a month) — the queue will download the new `.pl.vtt` files under the existing
+   for videos older than a month), the queue downloads the new `.pl.vtt` files under the existing
    file names.
 3. The new subtitles are visible in the player immediately (the details endpoint reads the `.vtt` files from disk)
-   — no reindex needed. You can raise the pace with the `UPDATE_CONCURRENCY` variable (default: 2 parallel).
+   No reindex needed. You can raise the pace with the `UPDATE_CONCURRENCY` variable (default: 2 parallel).
    Once done, clear `extraArgs` if you want to go back to full updates.
