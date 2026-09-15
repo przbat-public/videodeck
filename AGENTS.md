@@ -77,7 +77,7 @@ enforces Conventional Commits with lowercase subjects.
 
 - Assert by **key** (`t('playlist.add')`), never by Polish literals.
 - No hardcoded Polish strings in `client/src` or `chrome-extension/src` —
-  `scripts/check-hardcoded-polish.mjs` (part of `npm run lint`) fails the
+  `scripts/check-hardcoded-polish.mjs` (part of `pnpm run lint`) fails the
   build on them. The `polish-ok` file marker is the deliberate escape hatch.
 
 ## Security invariants (server)
