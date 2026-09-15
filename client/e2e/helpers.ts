@@ -44,6 +44,7 @@ export async function mockApi(
     categories?: string[];
     details?: unknown;
     status?: unknown;
+    list?: unknown;
   } = {},
 ): Promise<void> {
   const context = page.context();
@@ -104,11 +105,13 @@ export async function mockApi(
   await context.route('**/api/folder/list-exists**', (route) => route.fulfill(json({ exists: false })));
   await context.route('**/api/folder/list**', (route) =>
     route.fulfill(
-      json({
-        videos: [],
-        downloadStatuses: {},
-        lastUpdatedDates: {},
-      }),
+      json(
+        handlers.list ?? {
+          videos: [],
+          downloadStatuses: {},
+          lastUpdatedDates: {},
+        },
+      ),
     ),
   );
   // Video/thumbnail/subtitle files: serve a tiny placeholder instead of
