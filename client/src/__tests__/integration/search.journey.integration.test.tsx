@@ -75,19 +75,14 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
     await pickOption(page.user, await channelSelect(), 'Deep test channel');
     await waitFor(() => expect(JSON.stringify(lastSearch().body)).toContain('Deep test channel'));
 
-    // 4. The card opens the detail in a new tab (the app renders cards
-    //    with target=_blank); jsdom cannot open tabs, so the journey
-    //    renders the same route the new tab would load.
+    // 4. The card opens the detail in place (no new tab).
     await page.user.click(screen.getByRole('link', { name: /Historia kosmosu/ }));
-    page.unmount();
-    const detail = await renderApp('/video/deepE2e0002');
     await screen.findByRole('heading', { name: 'Historia kosmosu' });
     expect(await screen.findByText('Deep test description.', undefined, { timeout: 10_000 })).toBeInTheDocument();
     expect(await screen.findByText('Fake summary.', undefined, { timeout: 10_000 })).toBeInTheDocument();
 
-    // 5. The back link opens a fresh search page (a new tab has no history
-    //    to return to), so the library shows again with an empty phrase.
-    await detail.user.click(screen.getByRole('link', { name: /Wróć do wyszukiwania/ }));
+    // 5. The top bar back link returns to the bare list.
+    await page.user.click(screen.getByRole('link', { name: /Wróć do listy/ }));
     await findCardByTitle('Głęboka integracja');
     expect(await findSearchInput()).toHaveValue('');
   });

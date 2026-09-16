@@ -89,7 +89,7 @@ function VideoCardInner({ video, searchQuery, index }: VideoCardProps): JSX.Elem
   const serverSnippet = video.highlights?.description?.[0] ?? video.highlights?.snippet?.[0];
 
   return (
-    <Link to={`/video/${encodeURIComponent(videoIdentifier)}`} target="_blank" className="video-card-link">
+    <Link to={`/video/${encodeURIComponent(videoIdentifier)}`} className="video-card-link">
       <div className="video-card">
         <div className="video-thumbnail">
           <img

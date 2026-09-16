@@ -38,10 +38,10 @@ function renderLayout(url: string): ReturnType<typeof render> {
 describe('AppLayout', () => {
   it('shows the back link only on the detail page', () => {
     renderLayout('/');
-    expect(screen.queryByRole('link', { name: /Lista filmów/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Wróć do listy/ })).not.toBeInTheDocument();
 
     renderLayout('/video/v1');
-    expect(screen.getByRole('link', { name: /Lista filmów/ })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: /Wróć do listy/ })).toHaveAttribute('href', '/');
   });
 
   it('keeps the registered sections stable when a page re-renders the same content', async () => {

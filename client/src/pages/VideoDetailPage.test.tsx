@@ -186,11 +186,10 @@ describe('VideoDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Pokaż więcej komentarzy (1/3)' })).toBeInTheDocument();
   });
 
-  it('shows an error with a way back when the request fails', async () => {
+  it('shows an error when the request fails', async () => {
     installFetch({ details: () => json({ error: 'nope' }, 500) });
     renderPage();
 
     expect(await screen.findByText(/^Błąd:/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '← Wróć do wyszukiwania' })).toHaveAttribute('href', '/');
   });
 });

@@ -221,19 +221,6 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.back-link {
-  display: inline-block;
-  color: var(--color-primary-text);
-  text-decoration: none;
-  font-weight: 500;
-  transition: color 0.3s;
-}
-
-.back-link:hover {
-  color: var(--color-primary-text);
-  text-decoration: underline;
-}
-
 .video-detail-container {
   max-width: 1400px;
   margin: 0 auto;

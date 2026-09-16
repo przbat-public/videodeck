@@ -61,7 +61,7 @@ describe('VideoCard', () => {
     renderWithRouter(<VideoCard video={mockVideo} />);
     const link = screen.getByRole('link');
     expect(link).toHaveAttribute('href', '/video/20231201_TestVideo');
-    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).not.toHaveAttribute('target', '_blank');
   });
 
   it('should not render date if uploadDate is missing', () => {
