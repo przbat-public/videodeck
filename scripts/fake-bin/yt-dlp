@@ -56,10 +56,21 @@ function failOnKnownError(id) {
   }
 }
 
-/** Emit machine-readable progress lines the queue parses (shared/progress.ts) */
-function emitProgress(steps) {
+/**
+ * Emit machine-readable progress lines the queue parses (shared/progress.ts).
+ * The deep tests pace the lines through FAKE_YTDLP_PROGRESS_DELAY_MS so the
+ * client's 1.5s queue poll can observe the running state mid-job; every other
+ * run keeps the default 0 (no delay).
+ */
+const PROGRESS_DELAY_MS = Number(process.env.FAKE_YTDLP_PROGRESS_DELAY_MS ?? 0);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function emitProgress(steps) {
   for (const percent of steps) {
     console.log(`download  ${percent}% (~12.34MiB @ 5.00MiB/s, ETA 00:02)`);
+    if (PROGRESS_DELAY_MS > 0) {
+      await sleep(PROGRESS_DELAY_MS);
+    }
   }
 }
 
@@ -125,7 +136,7 @@ if (archiveIndex >= 0) {
   }
 }
 
-emitProgress(skipDownload ? [50, 100] : [25, 75, 100]);
+await emitProgress(skipDownload ? [50, 100] : [25, 75, 100]);
 
 const writeInfoJson = args.includes('--write-info-json');
 const writeThumbnail = args.includes('--write-thumbnail');

@@ -1,4 +1,5 @@
 import type { ChannelVideo, JobType, QueueJob } from '@videodeck/shared/api';
+import { isYtDlpProgressLine } from '@videodeck/shared/progress';
 import { FolderListResponseSchema } from '@videodeck/shared/schemas';
 import type { JSX, Ref } from 'react';
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
@@ -14,6 +15,8 @@ import { VideoListHeader } from './VideoListHeader';
 
 const ITEM_HEIGHT = 58;
 const ITEM_HEIGHT_WITH_LOG = 220;
+/** Header plus the progress bar that replaces the masked log while running */
+const ITEM_HEIGHT_WITH_PROGRESS = 84;
 
 interface VideoListSectionProps {
   folderPath: string;
@@ -197,7 +200,10 @@ export function VideoListSection({
     (index: number): number => {
       const row = rows[index];
       const job = row?.id ? jobsByVideoId[row.id] : undefined;
-      const showLog = job && (job.status === 'running' || job.status === 'error') && job.log.length > 0;
+      if (job?.status === 'running') {
+        return ITEM_HEIGHT_WITH_PROGRESS;
+      }
+      const showLog = job?.status === 'error' && job.log.some((line) => !isYtDlpProgressLine(line));
       return showLog ? ITEM_HEIGHT_WITH_LOG : ITEM_HEIGHT;
     },
     [rows, jobsByVideoId],

@@ -87,14 +87,17 @@ describe('VideoItem', () => {
     expect(onCancel).toHaveBeenCalledWith('job-1');
   });
 
-  it('shows progress and the log tail while running', () => {
+  it('shows a progress bar and masks the raw log while running', () => {
     renderItem({
       job: job({ status: 'running', progress: 42.4, log: ['[download] 42.4% of 10MiB', 'line 2'] }),
     });
 
     expect(screen.getByText('Pobieranie: 42%')).toBeInTheDocument();
-    expect(screen.getByText('[download] 42.4% of 10MiB')).toBeInTheDocument();
-    expect(screen.getByText('line 2')).toBeInTheDocument();
+    const bar = screen.getByRole('progressbar');
+    expect(bar).toHaveAttribute('aria-valuenow', '42');
+    expect(bar).toHaveAttribute('aria-valuemax', '100');
+    expect(screen.queryByText('[download] 42.4% of 10MiB')).toBeNull();
+    expect(screen.queryByText('line 2')).toBeNull();
   });
 
   it('shows a plain "Aktualizacja..." status for running update jobs', () => {
@@ -106,13 +109,13 @@ describe('VideoItem', () => {
     expect(screen.getByText('Aktualizacja...')).toBeInTheDocument();
   });
 
-  it('shows the error and log after a failed job and allows retrying', async () => {
+  it('shows the error and the log without progress lines after a failed job', async () => {
     const user = userEvent.setup();
     const { onEnqueue } = renderItem({
       job: job({
         status: 'error',
         error: 'yt-dlp exited with code 1',
-        log: ['ERROR: unavailable'],
+        log: ['download  99.9% (~12.34MiB @ 5.00MiB/s, ETA 00:00)', 'ERROR: unavailable'],
       }),
     });
 
@@ -120,6 +123,8 @@ describe('VideoItem', () => {
     expect(status).not.toHaveAttribute('title');
     expect(screen.getByText('Błąd: yt-dlp exited with code 1')).toBeInTheDocument();
     expect(screen.getByText('ERROR: unavailable')).toBeInTheDocument();
+    expect(screen.queryByText(/^download\s+99/)).toBeNull();
+    expect(screen.queryByRole('progressbar')).toBeNull();
 
     await user.hover(status);
     expect(await screen.findByRole('tooltip', { name: 'yt-dlp exited with code 1' })).toBeInTheDocument();

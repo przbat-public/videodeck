@@ -30,6 +30,24 @@ describe('VideoCard', () => {
     expect(screen.getByText('2023-12-01')).toBeInTheDocument();
   });
 
+  it.each([
+    [1_500_000, '1.5M'],
+    [12_345, '12.3K'],
+    [999, '999'],
+    [0, ''],
+  ])('formats the view count %s as %s', (viewCount, expected) => {
+    renderWithRouter(<VideoCard video={{ ...mockVideo, viewCount }} />);
+
+    const views = document.querySelector('.video-card-views');
+    expect(views?.textContent).toBe(expected);
+  });
+
+  it('renders no views element without a view count', () => {
+    renderWithRouter(<VideoCard video={mockVideo} />);
+
+    expect(document.querySelector('.video-card-views')).toBeNull();
+  });
+
   it('should render thumbnail image with correct src', () => {
     renderWithRouter(<VideoCard video={mockVideo} />);
     const img = screen.getByAltText('Test Video Title');

@@ -84,6 +84,10 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
   process.env.OPENAI_API_KEY = 'test-key';
   process.env.YTDLP_PATH = FAKE_YTDLP;
   process.env.QUEUE_STATE_FILE = path.join(root, '.queue-state.json');
+  // Pace the fake yt-dlp's progress lines: the download journey observes the
+  // running state through the client's 1.5s queue poll, so a job must stay
+  // visible for longer than one poll (3 lines x 600ms = 1.8s).
+  process.env.FAKE_YTDLP_PROGRESS_DELAY_MS = '600';
 
   // Import after the environment is set (config.ts pins env values at load).
   // jest (CJS) cannot run a native dynamic import without ESM flags, while

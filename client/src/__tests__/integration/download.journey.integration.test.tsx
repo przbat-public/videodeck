@@ -82,6 +82,11 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
 
     // 5. Resume: both jobs run through the fake yt-dlp and land on disk.
     await page.user.click(screen.getByRole('button', { name: 'Wznów kolejkę' }));
+    // The paced fake keeps a job alive for ~1.8s, longer than the client's
+    // 1.5s queue poll: while it runs, the row shows the progress bar and
+    // masks the raw `download …%` progress lines.
+    await within(section).findByRole('progressbar', undefined, { timeout: 15_000 });
+    expect(within(section).queryByText(/^download\s+\d/)).toBeNull();
     await waitFor(() => expect(within(section).queryAllByText('Pobrano')).toHaveLength(2), { timeout: 30_000 });
     expect(existsSync(`${folderPath}/20260101_Fake video aaaaaaaaaaa.mp4`)).toBe(true);
     expect(existsSync(`${folderPath}/20260101_Fake video bbbbbbbbbbb.info.json`)).toBe(true);

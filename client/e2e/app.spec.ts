@@ -233,4 +233,58 @@ test.describe('status page', () => {
     await page.getByRole('button', { name: 'Wznów kolejkę' }).click();
     await expect(page.getByRole('button', { name: 'Pauza kolejki' })).toBeVisible();
   });
+
+  test('a running job shows the progress bar, not the raw progress lines', async ({ page }) => {
+    await mockApi(page, {
+      status: {
+        videosFolderPath: ['/videos/e2e'],
+        folderConfigs: { '/videos/e2e': { channelUrl: 'https://yt/@e2e' } },
+        downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
+        indexedFolders: ['/videos/e2e'],
+        listExists: { '/videos/e2e': true },
+        status: 'ok',
+      },
+      list: {
+        videos: [{ id: 'e2e-v1', title: 'Film E2E', url: 'https://yt/v1' }],
+        downloadStatuses: {},
+        lastUpdatedDates: {},
+      },
+    });
+    // Registered after mockApi, so this route wins for the plain queue GET.
+    // The anchored path keeps /queue/pause and /queue/finished on mockApi.
+    await page.route(/\/api\/folder\/queue(?:\?.*)?$/, (route) => {
+      if (route.request().method() === 'GET') {
+        return route.fulfill(
+          json({
+            jobs: [
+              {
+                id: 'job-1',
+                folderPath: '/videos/e2e',
+                videoId: 'e2e-v1',
+                videoUrl: 'https://yt/v1',
+                type: 'download',
+                status: 'running',
+                progress: 42.4,
+                log: ['download  42.4% (~12.34MiB @ 5.00MiB/s, ETA 00:02)', '[download] Destination: Film E2E.mp4'],
+                logLineCount: 2,
+                createdAt: '2026-01-01T00:00:00.000Z',
+              },
+            ],
+            paused: false,
+          }),
+        );
+      }
+      return route.fallback();
+    });
+
+    await page.goto('/download');
+    await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
+    await expect(page.getByText('Film E2E')).toBeVisible();
+
+    const bar = page.getByRole('progressbar');
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveAttribute('aria-valuenow', '42');
+    await expect(page.getByText(/^download\s+\d/)).toHaveCount(0);
+    await expect(page.getByText('Pobieranie: 42%')).toBeVisible();
+  });
 });

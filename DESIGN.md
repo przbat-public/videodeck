@@ -76,7 +76,8 @@ uppercase beyond the PL/EN language buttons.
 - Gaps are 0.25/0.5/1/2rem. 1rem is the default rhythm between controls.
 - Controls are compact: 0.75rem vertical padding on inputs and buttons,
   0.3-0.55rem on small buttons.
-- Lists use 58px rows; the queue log expands a row to 220px.
+- Lists use 58px rows; a running queue job grows to 84px for the progress
+  bar, and an error log expands a row to 220px.
 
 ## 6. Components
 
@@ -110,9 +111,10 @@ Seven shared primitives in `client/src/components/ui/`:
 
 Composite patterns: top bar (brand icon, back link on the detail page,
 gear menu), search bar (input + selects), video card
-(thumbnail, title, muted metadata), queue item (status line + log tail),
-detail player (70% width, poster, subtitle tracks). All live in
-`client/src/components/` and reuse the tokens.
+(thumbnail, title, muted metadata), queue item (status line, progress bar
+while running, filtered log on errors), detail player (70% width, poster,
+subtitle tracks). All live in `client/src/components/` and reuse the
+tokens.
 
 Icons come from **lucide-react** (stroke icons on the 24px grid,
 `currentColor`); no hand-drawn paths and no icon fonts.

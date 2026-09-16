@@ -90,6 +90,8 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
     await within(section).findByText('Ten film został usunięty lub jest niedostępny');
     expect(await within(section).findAllByText('Błąd')).toHaveLength(3);
     await within(section).findByText(/ERROR: \[youtube\] member99999/);
+    // Errors keep the log, but never the running-state progress bar.
+    expect(within(section).queryByRole('progressbar')).toBeNull();
 
     // Nothing landed on disk — the failures skipped the retry backoff. The
     // folder index build may create an empty archive.txt, but the failed ids

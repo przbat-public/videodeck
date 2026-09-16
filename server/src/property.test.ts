@@ -1,4 +1,4 @@
-import { extractYtDlpProgress } from '@videodeck/shared/progress';
+import { extractYtDlpProgress, isYtDlpProgressLine } from '@videodeck/shared/progress';
 import { extractYoutubeVideoId, toWatchUrl } from '@videodeck/shared/youtube';
 import fc from 'fast-check';
 import { extractTextFromVttSubtitles } from './services/summaryService';
@@ -53,6 +53,31 @@ describe('extractYtDlpProgress', () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 100 }), (percent) => {
         expect(extractYtDlpProgress(`[download] ${percent}% of 10MiB`)).toBe(percent);
+      }),
+    );
+  });
+});
+
+describe('isYtDlpProgressLine', () => {
+  it('flags only the two exact progress formats', () => {
+    expect(isYtDlpProgressLine('download  12.3% (1.10GiB @ 69.50MiB/s, ETA 00:14)')).toBe(true);
+    expect(isYtDlpProgressLine('[download]  45.2% of 123.45MiB at 1.23MiB/s ETA 00:45')).toBe(true);
+    expect(isYtDlpProgressLine('download  100% (10MiB @ 1MiB/s, ETA 00:00)')).toBe(true);
+  });
+
+  it('never flags routine or error lines, whatever percent they mention', () => {
+    expect(isYtDlpProgressLine('[download] Destination: video.mp4')).toBe(false);
+    expect(isYtDlpProgressLine('[Merger] Merging formats into "video.mp4"')).toBe(false);
+    expect(isYtDlpProgressLine('[download] video has already been recorded in the archive')).toBe(false);
+    expect(isYtDlpProgressLine('ERROR: something failed at 42%')).toBe(false);
+    expect(isYtDlpProgressLine('download failed at 99%')).toBe(false);
+    expect(isYtDlpProgressLine('')).toBe(false);
+  });
+
+  it('is a property of the string itself, for any line', () => {
+    fc.assert(
+      fc.property(fc.string(), (line) => {
+        expect(typeof isYtDlpProgressLine(line)).toBe('boolean');
       }),
     );
   });
