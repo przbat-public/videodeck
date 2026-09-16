@@ -4,3 +4,14 @@ packages:
   - chrome-extension
   - shared
   - test-infra
+
+# pnpm 11+ settings: which packages may run their install scripts
+allowBuilds:
+  esbuild: true
+  '@parcel/watcher': true
+  unrs-resolver: true
+
+# pnpm 12 delays freshly published packages by 24h by default; the repo
+# updates often (Dependabot) and every PR already runs pnpm audit,
+# dependency-review and CodeQL, so the age gate is disabled here
+minimumReleaseAge: 0
