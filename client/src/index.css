@@ -32,6 +32,8 @@
   --color-warning-text: #856404;
   --color-warning-border: #ffeeba;
   --color-focus: #5a5fd8;
+  /* Soft halo around focused controls (checkbox, select trigger) */
+  --color-focus-ring: rgba(102, 126, 234, 0.2);
   --radius-card: 8px;
 }
 
@@ -59,6 +61,8 @@
   --color-warning-bg: #4a3d1d;
   --color-warning-text: #e6c66a;
   --color-warning-border: #6b5a26;
+  /* Soft halo around focused controls: a lighter indigo reads on dark */
+  --color-focus-ring: rgba(165, 173, 255, 0.3);
 }
 
 * {

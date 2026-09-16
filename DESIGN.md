@@ -33,13 +33,14 @@ set. There are two themes, both defined on the same tokens.
 | `--color-primary-text` | `#4449b3` | `#a5adff` | accent used as text: links, checked options |
 | `--color-primary-soft` | `#eef0ff` | `#2e3352` | accent-tinted fills |
 | `--color-focus` | `#5a5fd8` | `#5a5fd8` | focus ring |
+| `--color-focus-ring` | `rgba(102, 126, 234, 0.2)` | `rgba(165, 173, 255, 0.3)` | soft halo on focused controls (checkbox, select trigger) |
 
 Semantic colors keep white-on-color text and do not change with the theme:
 success `#28a745`/`#218838`, danger `#dc3545`/`#c82333`, info `#17a2b8`/`#138496`,
 warning `#ffc107`/`#e0a800` (update button), secondary `#5a6268`/`#495057`
-(cancel button). Their soft backgrounds do change (`--color-success-bg`,
-`--color-danger-bg`, `--color-info-bg`, `--color-warning-*`), as do the
-danger and warning text tokens.
+(cancel button). Their soft backgrounds do change (`--color-danger-bg`,
+`--color-info-bg`, `--color-warning-*`), as do the danger and warning text
+tokens.
 
 Rules:
 

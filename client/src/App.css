@@ -988,7 +988,7 @@
 }
 
 .ui-checkbox-box:focus-visible {
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
   border-color: var(--color-primary);
 }
 
@@ -1050,7 +1050,7 @@
 .ui-select-native:focus-visible {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
 .ui-select-native:disabled {
@@ -1061,7 +1061,7 @@
 
 .ui-select-native[data-state='open'] {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
 .ui-select-icon {
@@ -1112,21 +1112,27 @@
   user-select: none;
 }
 
-/* Radix moves focus to the hovered option, so the global :focus-visible
-   ring (index.css) would paint over a plain hover, and the portal's
-   overflow clips the offset outline into stray top/bottom segments. Items
-   keep a ring only for genuine keyboard navigation, drawn inside the box
-   where nothing clips it. */
-.ui-select-item:focus-visible {
+/* Radix moves focus to the hovered option (Select items and menu items
+   alike), so the global :focus-visible ring (index.css) would paint over
+   a plain hover, and the portal's overflow clips the offset outline into
+   stray top/bottom segments. Items keep a ring only for genuine keyboard
+   navigation, drawn inside the box where nothing clips it. */
+.ui-select-item:focus-visible,
+.ui-menu-item:focus-visible {
   outline: none;
 }
 
-.ui-select-item:focus-visible:not(:hover) {
+.ui-select-item:focus-visible:not(:hover),
+.ui-menu-item:focus-visible:not(:hover) {
   box-shadow: inset 0 0 0 2px var(--color-primary);
 }
 
-.ui-select-item[data-highlighted] {
+.ui-select-item[data-highlighted],
+.ui-menu-item[data-highlighted] {
   background: var(--color-primary-soft);
+}
+
+.ui-select-item[data-highlighted] {
   color: var(--color-text);
 }
 
@@ -1383,21 +1389,8 @@
   user-select: none;
 }
 
-/* Same leak guard as the Select items: Radix moves focus to the hovered
-   option, so the global :focus-visible ring would paint over a plain
-   hover. Keyboard navigation keeps an inset ring instead. */
-.ui-menu-item:focus-visible {
-  outline: none;
-}
-
-.ui-menu-item:focus-visible:not(:hover) {
-  box-shadow: inset 0 0 0 2px var(--color-primary);
-}
-
-.ui-menu-item[data-highlighted] {
-  background: var(--color-primary-soft);
-}
-
+/* Focus leak guard and highlighted background shared with the Select
+   items (see the combined rules in the Select section). */
 .ui-menu-item[data-disabled] {
   color: var(--color-text-muted);
   cursor: default;
