@@ -11,26 +11,14 @@ import {
   videoSearchReducer,
 } from '../reducers/videoSearchReducer';
 import type { SearchState } from '../utils/searchUrlState';
+import { DEFAULT_SEARCH_STATE, toSearchParams } from '../utils/searchUrlState';
 
 /** How many videos one request pulls; matches the server's default page size */
 const PAGE_SIZE = SEARCH_DEFAULT_PAGE_SIZE;
 
-/** Transforms the search state into the query params the server understands */
+/** The search state as query params plus paging; the URL layer owns the serialization */
 function buildSearchParams(searchState: SearchState, offset: number): URLSearchParams {
-  const params = new URLSearchParams();
-  const trimmedQuery = searchState.query.trim();
-  if (trimmedQuery) {
-    params.set('q', trimmedQuery);
-  }
-  params.set('sort', searchState.sort);
-  const trimmedCategory = searchState.category.trim();
-  if (trimmedCategory) {
-    params.set('category', trimmedCategory);
-  }
-  const channel = searchState.channel.trim();
-  if (channel) {
-    params.set('channel', channel);
-  }
+  const params = toSearchParams(searchState);
   params.set('offset', String(offset));
   params.set('limit', String(PAGE_SIZE));
   return params;
@@ -78,12 +66,7 @@ export function useVideoSearch(): UseVideoSearchResult {
   // overwrite the answer to the question the URL is actually asking.
   const latestRequestRef = useRef(0);
   // The search the next loadMore call continues (offset = videos.length)
-  const searchStateRef = useRef<SearchState>({
-    query: '',
-    sort: 'date-desc',
-    category: '',
-    channel: '',
-  });
+  const searchStateRef = useRef<SearchState>(DEFAULT_SEARCH_STATE);
   // The request in flight; a new one aborts it so typing fast does not leave
   // a trail of doomed fetches behind
   const abortRef = useRef<AbortController | null>(null);

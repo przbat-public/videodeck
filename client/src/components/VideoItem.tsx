@@ -5,6 +5,7 @@ import type { JSX } from 'react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
+import { keyedByOccurrence } from '../utils/keyedByOccurrence';
 import { Tooltip } from './ui/Tooltip';
 
 /** A list.json entry plus the local "last updated" date from the folder index */
@@ -83,20 +84,6 @@ function describeJob(job: QueueJob, t: TFunction): string {
       return '';
   }
 }
-
-/**
- * The append-only log has no line ids and lines can repeat verbatim, so the
- * key is the content plus its occurrence count — stable while the tail only
- * grows, and unique among siblings.
- */
-const keyedLines = (lines: string[]): Array<{ line: string; key: string }> => {
-  const occurrences = new Map<string, number>();
-  return lines.map((line) => {
-    const occurrence = occurrences.get(line) ?? 0;
-    occurrences.set(line, occurrence + 1);
-    return { line, key: occurrence === 0 ? line : `${line}-${occurrence}` };
-  });
-};
 
 interface VideoTitleProps {
   video: ChannelVideoRow;
@@ -227,7 +214,7 @@ export function VideoItemInner({ video, isDownloaded, job, onEnqueue, onCancel }
             <p>{failureMessage(job?.error, t)}</p>
           </div>
           <div className="download-output-content">
-            {keyedLines(errorLog).map(({ line, key }) => (
+            {keyedByOccurrence(errorLog).map(({ value: line, key }) => (
               <div key={key} className="output-line">
                 {line}
               </div>

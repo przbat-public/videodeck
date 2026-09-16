@@ -3,6 +3,7 @@ import { RecreateIndicesStatusSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import i18n from '../i18n';
+import { sleep } from '../utils/sleep';
 
 interface UseRecreateIndicesResult {
   /** True from the click until the server reports the rebuild finished */
@@ -13,8 +14,6 @@ interface UseRecreateIndicesResult {
 }
 
 export const RECREATE_POLL_INTERVAL_MS = 1500;
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function fetchStatus(signal: AbortSignal): Promise<RecreateIndicesStatus> {
   const response = await fetch('/api/videos/recreateIndices/status', { signal });

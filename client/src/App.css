@@ -210,12 +210,6 @@
   background: var(--color-bg);
 }
 
-.video-detail-header {
-  padding: 1rem 2rem;
-  background: var(--color-surface);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
 .video-detail-container {
   max-width: 1400px;
   margin: 0 auto;
@@ -888,22 +882,6 @@
     flex-direction: column;
   }
 
-  .toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .toolbar-left {
-    flex-direction: column;
-    align-items: stretch;
-    width: 100%;
-  }
-
-  .toolbar-right {
-    justify-content: center;
-    margin-top: 0.5rem;
-  }
-
   .sort-select,
   .category-select {
     min-width: auto;
@@ -954,12 +932,6 @@
 
   .ui-checkbox {
     min-height: 44px;
-  }
-
-  .language-switcher-option {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0.5rem 0.75rem;
   }
 
   .video-player-full {

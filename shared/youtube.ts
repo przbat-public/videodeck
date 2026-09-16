@@ -24,11 +24,6 @@ const YOUTUBE_HOSTS = new Set([
   'youtu.be',
 ]);
 
-/** Whether the host belongs to YouTube (exact match — subdomains are not) */
-export function isYoutubeHost(host: string): boolean {
-  return YOUTUBE_HOSTS.has(host);
-}
-
 /** Whether a string is a well-formed 11-character YouTube video id */
 export function isYoutubeVideoId(id: string): boolean {
   return YOUTUBE_ID_RE.test(id);

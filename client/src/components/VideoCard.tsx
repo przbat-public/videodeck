@@ -2,6 +2,8 @@ import type { VideoListItem } from '@videodeck/shared/api';
 import type { JSX } from 'react';
 import React, { memo } from 'react';
 import { Link } from 'react-router-dom';
+import { keyedByOccurrence } from '../utils/keyedByOccurrence';
+import { formatUploadDate } from '../utils/videoDates';
 
 interface VideoCardProps {
   video: VideoListItem;
@@ -9,11 +11,6 @@ interface VideoCardProps {
   /** Position in the result list: the first rows are the LCP, keep them eager */
   index?: number | undefined;
 }
-
-const formatVideoDate = (dateStr?: string): string => {
-  if (dateStr?.length !== 8) return '';
-  return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-};
 
 const formatViewCount = (viewCount?: number): string => {
   if (!viewCount) return '';
@@ -26,21 +23,6 @@ const formatViewCount = (viewCount?: number): string => {
   return viewCount.toString();
 };
 
-/**
- * Stable keys for fragments of a split string: the content plus its
- * occurrence count (a phrase can match twice, and plain parts can repeat).
- * The split produces the same array on every render, so these keys stay
- * stable across re-renders and are unique among siblings.
- */
-const keyedParts = (parts: string[]): Array<{ part: string; key: string }> => {
-  const occurrences = new Map<string, number>();
-  return parts.map((part) => {
-    const occurrence = occurrences.get(part) ?? 0;
-    occurrences.set(part, occurrence + 1);
-    return { part, key: occurrence === 0 ? part : `${part}-${occurrence}` };
-  });
-};
-
 const highlightText = (text: string, query?: string): React.ReactNode => {
   if (!query?.trim()) {
     return text;
@@ -51,13 +33,13 @@ const highlightText = (text: string, query?: string): React.ReactNode => {
   const regex = new RegExp(`(${escapedTerm})`, 'gi');
   const parts = text.split(regex);
 
-  return keyedParts(parts).map(({ part, key }) =>
-    part.toLowerCase() === searchTerm.toLowerCase() ? (
+  return keyedByOccurrence(parts).map(({ value, key }) =>
+    value.toLowerCase() === searchTerm.toLowerCase() ? (
       <mark key={key} className="search-highlight">
-        {part}
+        {value}
       </mark>
     ) : (
-      <React.Fragment key={key}>{part}</React.Fragment>
+      <React.Fragment key={key}>{value}</React.Fragment>
     ),
   );
 };
@@ -70,13 +52,13 @@ const HIGHLIGHT_MARK_RE = new RegExp(`[${String.fromCharCode(1)}${String.fromCha
 
 const renderMarkedFragment = (fragment: string): React.ReactNode => {
   const parts = fragment.split(HIGHLIGHT_MARK_RE);
-  return keyedParts(parts).map(({ part, key }, index) =>
+  return keyedByOccurrence(parts).map(({ value, key }, index) =>
     index % 2 === 1 ? (
       <mark key={key} className="search-highlight">
-        {part}
+        {value}
       </mark>
     ) : (
-      <React.Fragment key={key}>{part}</React.Fragment>
+      <React.Fragment key={key}>{value}</React.Fragment>
     ),
   );
 };
@@ -115,7 +97,7 @@ function VideoCardInner({ video, searchQuery, index }: VideoCardProps): JSX.Elem
         <div className="video-info">
           {video.channelName && <div className="video-card-channel">{video.channelName}</div>}
           <div className="video-card-meta">
-            {video.uploadDate && <div className="video-card-date">{formatVideoDate(video.uploadDate)}</div>}
+            {video.uploadDate && <div className="video-card-date">{formatUploadDate(video.uploadDate)}</div>}
             {video.viewCount !== undefined && (
               <div className="video-card-views">{formatViewCount(video.viewCount)}</div>
             )}

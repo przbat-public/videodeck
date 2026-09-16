@@ -53,4 +53,43 @@ describe('useQueueControls', () => {
 
     expect(result.current.paused).toBe(true); // must not flip back
   });
+
+  it('surfaces a failed pause and stops the loading flag', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/api/folder/queue') {
+        return Promise.resolve(json({ jobs: [], paused: false }));
+      }
+      if (url.startsWith('/api/folder/queue/pause')) {
+        return Promise.resolve(json({ error: 'boom' }, 500));
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    const { result } = renderHook(() => useQueueControls());
+    await act(async () => {
+      await expect(result.current.setPaused(true)).rejects.toThrow('Failed to pause queue (HTTP 500)');
+    });
+
+    expect(result.current.paused).toBe(false);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('surfaces a failed clear and stops the loading flag', async () => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/folder/queue') {
+        return Promise.resolve(json({ jobs: [], paused: false }));
+      }
+      if (url === '/api/folder/queue/finished' && init?.method === 'DELETE') {
+        return Promise.resolve(json({ error: 'boom' }, 500));
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    const { result } = renderHook(() => useQueueControls());
+    await act(async () => {
+      await expect(result.current.clearFinished()).rejects.toThrow('Failed to clear finished jobs (HTTP 500)');
+    });
+
+    expect(result.current.loading).toBe(false);
+  });
 });

@@ -34,8 +34,6 @@ function englishTwin(key: string): string {
 // Values that may legitimately be identical in both languages: language
 // names shown in their own language and technical placeholders.
 const IDENTICAL_ALLOWLIST = new Set([
-  'languages.pl',
-  'languages.en',
   'config.channelUrlPlaceholder',
   // "Sort" is the same word in Polish and English
   'search.sort',

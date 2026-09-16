@@ -57,10 +57,10 @@ describe('useVideoSearch', () => {
 
   describe('request URL', () => {
     it.each<[string, SearchState, string]>([
-      ['the defaults', state(), '/api/videos/search?sort=date-desc&offset=0&limit=100'],
-      ['a query', state({ query: 'drone' }), '/api/videos/search?q=drone&sort=date-desc&offset=0&limit=100'],
+      ['the defaults', state(), '/api/videos/search?offset=0&limit=100'],
+      ['a query', state({ query: 'drone' }), '/api/videos/search?q=drone&offset=0&limit=100'],
       ['a sort', state({ sort: 'views-desc' }), '/api/videos/search?sort=views-desc&offset=0&limit=100'],
-      ['a category', state({ category: 'fpv' }), '/api/videos/search?sort=date-desc&category=fpv&offset=0&limit=100'],
+      ['a category', state({ category: 'fpv' }), '/api/videos/search?category=fpv&offset=0&limit=100'],
       [
         'everything at once',
         state({ query: 'drone motor', sort: 'likes-asc', category: 'fpv' }),
@@ -69,12 +69,12 @@ describe('useVideoSearch', () => {
       [
         'whitespace-padded values (trimmed)',
         state({ query: '  drone ', category: ' fpv ' }),
-        '/api/videos/search?q=drone&sort=date-desc&category=fpv&offset=0&limit=100',
+        '/api/videos/search?q=drone&category=fpv&offset=0&limit=100',
       ],
       [
         'whitespace-only values (dropped)',
         state({ query: '   ', category: '  ' }),
-        '/api/videos/search?sort=date-desc&offset=0&limit=100',
+        '/api/videos/search?offset=0&limit=100',
       ],
     ])('encodes %s', async (_label, input, expectedUrl) => {
       fetchMock.mockResolvedValueOnce(jsonResponse({ videos: [], totalCount: 0 }));
@@ -132,7 +132,7 @@ describe('useVideoSearch', () => {
 
       expect(result.current.videos).toEqual([video('a'), video('b')]);
       expect(result.current.hasMore).toBe(true);
-      expect(fetchMock).toHaveBeenLastCalledWith('/api/videos/search?sort=date-desc&offset=1&limit=100', {
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/videos/search?offset=1&limit=100', {
         signal: expect.any(AbortSignal),
       });
     });
@@ -156,10 +156,9 @@ describe('useVideoSearch', () => {
       await act(() => result.current.search(state({ query: 'drone', category: 'fpv' })));
       await act(() => result.current.loadMore());
 
-      expect(fetchMock).toHaveBeenLastCalledWith(
-        '/api/videos/search?q=drone&sort=date-desc&category=fpv&offset=1&limit=100',
-        { signal: expect.any(AbortSignal) },
-      );
+      expect(fetchMock).toHaveBeenLastCalledWith('/api/videos/search?q=drone&category=fpv&offset=1&limit=100', {
+        signal: expect.any(AbortSignal),
+      });
     });
 
     it('ignores a second loadMore while one is in flight', async () => {

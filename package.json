@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "YouTube video search application with yt-dlp support",
   "scripts": {
-    "install:all": "pnpm install",
     "dev": "concurrently --names \"SERVER,CLIENT\" --prefix-colors \"blue,green\" --kill-others-on-fail \"pnpm run dev:server\" \"pnpm run dev:client\"",
     "dev:server": "cd server && pnpm run dev",
     "dev:client": "cd client && pnpm run dev",
@@ -22,13 +21,11 @@
     "format:check": "biome format .",
     "typecheck": "cd server && pnpm run typecheck && cd ../client && pnpm run typecheck && cd ../chrome-extension && pnpm run typecheck",
     "test": "cd server && pnpm run test && cd ../client && pnpm run test:run && cd ../chrome-extension && pnpm run test",
-    "test:watch": "cd server && pnpm run test:watch",
     "test:coverage": "cd server && pnpm run test:coverage && cd ../client && pnpm run test:coverage",
     "test:e2e": "cd client && pnpm run test:e2e",
     "test:integration": "cd client && pnpm run test:integration",
     "prepare": "husky",
     "install:ci": "pnpm install --frozen-lockfile",
-    "humanizer:score": "node scripts/humanizer/index.js scan README.md AGENTS.md DESIGN.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md RELEASING.md docs/DEPLOYMENT.md CHANGELOG.md chrome-extension/README.md chrome-extension/INSTALL.md chrome-extension/icons/README.md .github/pull_request_template.md --ignore-code --ignore-quotes",
     "humanizer:gate": "node scripts/humanizer/index.js scan README.md AGENTS.md DESIGN.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md RELEASING.md docs/DEPLOYMENT.md CHANGELOG.md chrome-extension/README.md chrome-extension/INSTALL.md chrome-extension/icons/README.md .github/pull_request_template.md --baseline scripts/humanizer-baseline.json --fail-on-regression --ignore-code --ignore-quotes"
   },
   "packageManager": "pnpm@12.4.2",
