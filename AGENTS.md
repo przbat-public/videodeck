@@ -14,7 +14,7 @@ Monorepo with **pnpm workspaces** (`pnpm-workspace.yaml`), like vita-tracker:
 | `shared/`           | zod API contract + helpers (the `@videodeck/shared` package)     |                                  |
 | `test-infra/`       | shared test infrastructure (fake ES, mock OpenAI, backend env)   | imported by both test suites      |
 
-Node 22 (`.nvmrc`), pnpm 10.30.1 (pinned in `packageManager`; corepack picks it up).
+Node 22 (`.nvmrc`), pnpm 12.4.2 (pinned in `packageManager`).
 
 ## Commands
 
@@ -54,7 +54,7 @@ pnpm run format:check && pnpm run lint && pnpm run lint:types && pnpm run lint:s
 - **ESLint** stays only for what Biome cannot do: `@typescript-eslint`,
   react-hooks, react-refresh and Playwright rules (`lint:types`), with
   `eslint-config-biome` last so the two linters never fight.
-- **pnpm** (workspaces) manages dependencies; `pnpm.onlyBuiltDependencies`
+- **pnpm** (workspaces) manages dependencies; `allowBuilds` in `pnpm-workspace.yaml`
   whitelists the packages allowed to run postinstall scripts.
 
 ## Language
@@ -71,7 +71,7 @@ vocabulary words, varied sentence length. The vendored metrics CLI
 baseline: `pnpm run humanizer:gate`.
 
 **UI follows the design contract** (`DESIGN.md`): tokens from
-`client/src/index.css` only, the five shared primitives
+`client/src/index.css` only, the shared primitives
 (`client/src/components/ui/`), dark-mode parity, a11y and i18n rules. The
 `.agents/skills/ui-design` skill turns that contract into a checklist for
 any UI change.

@@ -58,7 +58,7 @@ videos straight from YouTube.
 2. Start Elasticsearch (bound to loopback; no password):
 
    ```bash
-   docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.0
+   docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.5.1
    ```
 
    Homebrew or a manual install work too: see the
@@ -89,7 +89,7 @@ videos straight from YouTube.
 
 ## Requirements
 
-- Node.js 22.x (corepack provides pnpm 10.30.1, pinned in `packageManager`)
+- Node.js 22.x (corepack provides pnpm 12.4.2, pinned in `packageManager`)
 - Elasticsearch 8.x or 9.x (local or remote)
 - Chrome 88+ (only for the Chrome extension)
 
@@ -129,7 +129,7 @@ Security implications are in the Security section below.
 ```bash
 pnpm run dev          # server :3001 + client :3000
 pnpm run test         # unit tests: server (jest), client and extension (vitest)
-pnpm run test:e2e     # Playwright against the mocked API (once: cd client && npx playwright install chromium)
+pnpm run test:e2e     # Playwright against the mocked API (once: cd client && pnpm exec playwright install chromium)
 ```
 
 Lint rules, the test matrix, the coverage ratchet and the strict TypeScript

@@ -56,14 +56,14 @@ docs breaks operator upgrades.
 
 ## Red Flags
 
-- Version bump in fewer than four package.json files
+- Version bump in fewer than six package.json files
 - A release with no CHANGELOG entry
 - An SSE or ES mapping change without upgrade notes
 - Tags edited or moved after push
 
 ## Verification
 
-- [ ] All four package.json versions match
+- [ ] All six package.json versions match
 - [ ] CHANGELOG has the dated entry
 - [ ] Upgrade notes cover ES mapping and SSE contract changes
 - [ ] `gh release` published from a green main

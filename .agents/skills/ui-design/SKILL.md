@@ -1,6 +1,6 @@
 ---
 name: ui-design
-description: videodeck UI design conventions. Reads DESIGN.md and enforces the token palette, the five shared primitives, dark-mode parity, WCAG 2.1 AA accessibility and i18n rules whenever UI changes. Use when editing React components, CSS, or adding user-visible text in this repository, or when asked to restyle, polish, audit, or redesign the client.
+description: videodeck UI design conventions. Reads DESIGN.md and enforces the token palette, the shared primitives, dark-mode parity, WCAG 2.1 AA accessibility and i18n rules whenever UI changes. Use when editing React components, CSS, or adding user-visible text in this repository, or when asked to restyle, polish, audit, or redesign the client.
 user-invocable: true
 argument-hint: '"the change I plan" [--mode audit|guide|review]'
 ---
@@ -8,7 +8,7 @@ argument-hint: '"the change I plan" [--mode audit|guide|review]'
 # videodeck UI design conventions
 
 Before touching any UI code, read `DESIGN.md` at the repo root. It is the
-contract: it lists the real tokens, the five shared primitives, the layout
+contract: it lists the real tokens, the shared primitives, the layout
 rules and the copy rules. This skill turns that contract into a checklist.
 
 ## Modes

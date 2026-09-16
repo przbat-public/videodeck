@@ -1,6 +1,6 @@
 ---
 name: debugging-and-error-recovery
-description: Five-step triage for videodeck failures (reproduce, localize, reduce, fix, guard) with stop-the-line discipline and safe fallbacks. Use when tests fail, builds break or behavior misbehaves in server, client or extension code.
+description: Six-step triage for videodeck failures (reproduce, localize, reduce, fix, guard, verify) with stop-the-line discipline and safe fallbacks. Use when tests fail, builds break or behavior misbehaves in server, client or extension code.
 user-invocable: true
 ---
 
@@ -10,7 +10,7 @@ user-invocable: true
 
 ## Overview
 
-Debugging follows five steps, always in order: reproduce, localize,
+Debugging follows six steps, always in order: reproduce, localize,
 reduce, fix the root cause, guard against recurrence. Guessing and
 patch-hunting produce regressions; this loop produces fixes with proof.
 
@@ -20,7 +20,7 @@ A red build or failing suite stops new work. Fix it first, before stacking
 more changes on a broken base. If the fix needs a decision you cannot make
 alone, report the concrete failure and stop; do not paper over it.
 
-## The five steps
+## The six steps
 
 ### 1. Reproduce
 

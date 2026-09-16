@@ -165,7 +165,7 @@ jobs:
     timeout-minutes: 20
     services:
       elasticsearch:
-        image: docker.elastic.co/elasticsearch/elasticsearch:9.2.8
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.5.1
         env:
           discovery.type: single-node
           xpack.security.enabled: 'false'

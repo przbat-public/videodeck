@@ -119,7 +119,10 @@ test('the Skills list in AGENTS.md matches the skill directories', () => {
 });
 
 test('none of our docs still use npm or npx commands', () => {
-  const banned = /\b(?:npm|npx)\s+(?:run|test|install|ci|exec|publish|link|start)\b/g;
+  // `npx <tool> <verb>` (like `npx playwright install`) is as banned as a
+  // bare `npx run`: the repo uses pnpm for every tool invocation.
+  const banned =
+    /\b(?:npm|npx)\s+(?:(?:run|test|install|ci|exec|publish|link|start)\b|\S+\s+(?:install|run|exec|audit|update|outdated|publish)\b)/g;
   for (const file of ourDocs()) {
     const content = readFileSync(file, 'utf-8');
     const match = banned.exec(content);
@@ -128,5 +131,21 @@ test('none of our docs still use npm or npx commands', () => {
       null,
       `${path.relative(ROOT, file)} still uses ${match === null ? '' : match[0]}; the repo uses pnpm`,
     );
+  }
+});
+
+test('every pnpm version our docs mention matches packageManager', () => {
+  const packageJson = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf-8'));
+  const version = String(packageJson.packageManager).split('@')[1];
+  assert.ok(/^\d+\.\d+\.\d+$/.test(version ?? ''), 'packageManager is not a pinned pnpm version');
+  for (const file of ourDocs()) {
+    const content = readFileSync(file, 'utf-8');
+    for (const match of content.matchAll(/pnpm (\d+\.\d+\.\d+)/g)) {
+      assert.equal(
+        match[1],
+        version,
+        `${path.relative(ROOT, file)} mentions pnpm ${match[1]}, but packageManager pins ${version}`,
+      );
+    }
   }
 });
