@@ -1,10 +1,9 @@
 # Development reference
 
-Contributor depth that no longer belongs on the front page: linting and
-formatting rules, the test matrix, the strict TypeScript flags, frontend
-architecture decisions and the full project layout. The day-to-day
-commands live in the README; AGENTS.md and CONTRIBUTING.md hold the working
-agreements.
+Contributor reference: linting and formatting rules, the test matrix, the
+strict TypeScript flags, frontend architecture decisions and the full
+project layout. The day-to-day commands live in the README; AGENTS.md and
+CONTRIBUTING.md hold the working agreements.
 
 ## Linting and Formatting
 

@@ -1,8 +1,7 @@
 # API and file format reference
 
-Everything below moved out of the README: the HTTP endpoints, the
-Elasticsearch indexing model behind search, the on-disk yt-dlp file layout
-and the per-channel `config.json` options.
+The HTTP endpoints, the Elasticsearch indexing model behind search, the
+on-disk yt-dlp file layout and the per-channel `config.json` options.
 
 ## API Endpoints
 
