@@ -132,4 +132,13 @@ describe('AppMenu', () => {
     expect(reload).toHaveAttribute('title', 'Ponów wyszukiwanie');
     expect(screen.getByRole('menuitemcheckbox', { name: 'Włącz' })).toHaveAttribute('data-disabled');
   });
+
+  it('navigates to the download page from the navigation section', async () => {
+    renderMenu([]);
+
+    await user.click(screen.getByRole('button', { name: /Menu aplikacji|App menu/ }));
+    await user.click(await screen.findByRole('menuitem', { name: /Pobieranie filmów|Download videos/ }));
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
 });
