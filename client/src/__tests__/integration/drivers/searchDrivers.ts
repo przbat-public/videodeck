@@ -15,8 +15,6 @@ export const findSearchInput = () => screen.findByLabelText('Fraza wyszukiwania'
 export const sortSelect = () => screen.getByLabelText('Sort');
 export const categorySelect = () => screen.getByLabelText('Kategoria');
 export const channelSelect = () => screen.findByRole('combobox', { name: 'Kanał' });
-export const fromDateInput = () => screen.getByLabelText('Od daty');
-export const toDateInput = () => screen.getByLabelText('Do daty');
 
 /** Type a phrase and commit it with Enter (the debounce does not wait) */
 export async function typeAndCommitPhrase(

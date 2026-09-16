@@ -27,8 +27,6 @@ describe('parseSearchState', () => {
       sort: 'date-desc',
       category: '',
       channel: '',
-      dateFrom: '',
-      dateTo: '',
     });
   });
 
@@ -36,14 +34,12 @@ describe('parseSearchState', () => {
     expect(parse('q=drone+motor&sort=views-desc&category=fpv')).toEqual(
       state({ query: 'drone motor', sort: 'views-desc', category: 'fpv' }),
     );
-    expect(parse('channel=Jordan+B+Peterson&dateFrom=2024-01-05&dateTo=2025-12-31')).toEqual(
-      state({ channel: 'Jordan B Peterson', dateFrom: '20240105', dateTo: '20251231' }),
-    );
+    expect(parse('channel=Jordan+B+Peterson')).toEqual(state({ channel: 'Jordan B Peterson' }));
   });
 
-  it('ignores malformed dates and keeps well-formed ones', () => {
-    expect(parse('dateFrom=2024-1-5&dateTo=abc')).toEqual(state({ dateFrom: '', dateTo: '' }));
-    expect(parse('dateFrom=20240105')).toEqual(state({ dateFrom: '20240105' }));
+  it('ignores the legacy date parameters, like any unknown parameter', () => {
+    expect(parse('dateFrom=2024-01-05&dateTo=2025-12-31')).toEqual(state({}));
+    expect(parse('dateFrom=20240105&dateTo=abc')).toEqual(state({}));
   });
 
   it('decodes percent-encoded and unicode values', () => {
@@ -59,7 +55,7 @@ describe('parseSearchState', () => {
   });
 
   it('treats a present-but-empty parameter like a missing one', () => {
-    expect(parse('q=&sort=&category=&channel=&dateFrom=&dateTo=')).toEqual(DEFAULT_SEARCH_STATE);
+    expect(parse('q=&sort=&category=&channel=')).toEqual(DEFAULT_SEARCH_STATE);
     expect(parse('q=%20%20')).toEqual(DEFAULT_SEARCH_STATE);
   });
 
@@ -99,9 +95,6 @@ describe('toSearchParams', () => {
     expect(serialize(state({ sort: 'likes-desc' }))).toBe('sort=likes-desc');
     expect(serialize(state({ category: 'lego' }))).toBe('category=lego');
     expect(serialize(state({ channel: 'Jordan B Peterson' }))).toBe('channel=Jordan+B+Peterson');
-    expect(serialize(state({ dateFrom: '20240105', dateTo: '20251231' }))).toBe(
-      'dateFrom=2024-01-05&dateTo=2025-12-31',
-    );
   });
 
   it('keeps a stable key order so equal states give equal URLs', () => {
@@ -131,7 +124,7 @@ describe('round trip', () => {
     state({ sort: 'likes-desc', category: 'rc-planes' }),
     state({ query: 'śmigło & rama', sort: 'date-asc', category: 'modele+samoloty' }),
     state({ query: 'a=b&c', sort: 'likes-asc', category: 'x/y?z' }),
-    state({ channel: 'Jordan B Peterson', dateFrom: '20240105', dateTo: '20251231' }),
+    state({ channel: 'Jordan B Peterson' }),
   ];
 
   it.each(states)('parse(serialize(%j)) gives the state back', (item) => {

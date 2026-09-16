@@ -181,8 +181,6 @@ describe('SearchBar', () => {
         sort: 'views-desc',
         category: 'fpv',
         channel: '',
-        dateFrom: '',
-        dateTo: '',
       });
     });
 
@@ -241,8 +239,6 @@ describe('SearchBar', () => {
         sort: 'date-desc',
         category: 'lego',
         channel: '',
-        dateFrom: '',
-        dateTo: '',
       });
     });
 
@@ -314,8 +310,6 @@ describe('SearchBar', () => {
         sort: 'views-desc',
         category: 'lego',
         channel: '',
-        dateFrom: '',
-        dateTo: '',
       });
     });
 
@@ -328,8 +322,6 @@ describe('SearchBar', () => {
         sort: 'date-desc',
         category: 'psychology',
         channel: '',
-        dateFrom: '',
-        dateTo: '',
       });
 
       pick(categorySelect(), 'Wszystkie kategorie');
@@ -338,8 +330,6 @@ describe('SearchBar', () => {
         sort: 'date-desc',
         category: '',
         channel: '',
-        dateFrom: '',
-        dateTo: '',
       });
       expect(onChange).toHaveBeenCalledTimes(2);
     });
@@ -356,8 +346,6 @@ describe('SearchBar', () => {
         sort: 'likes-desc',
         category: '',
         channel: '',
-        dateFrom: '',
-        dateTo: '',
       });
 
       await flushTimers();
@@ -377,8 +365,6 @@ describe('SearchBar', () => {
         sort: 'date-desc',
         category: 'fpv',
         channel: '',
-        dateFrom: '',
-        dateTo: '',
       });
       expect(input()).toHaveValue('ro');
 
@@ -397,8 +383,6 @@ describe('SearchBar', () => {
         sort: 'views-asc',
         category: 'fpv',
         channel: '',
-        dateFrom: '',
-        dateTo: '',
       });
       expect(screen.queryByRole('button', { name: 'Wyczyść' })).not.toBeInTheDocument();
 
@@ -431,8 +415,6 @@ describe('SearchBar', () => {
         sort: 'date-desc',
         category: '',
         channel: 'Jordan B Peterson',
-        dateFrom: '',
-        dateTo: '',
       });
     });
 
@@ -444,45 +426,12 @@ describe('SearchBar', () => {
       expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SEARCH_STATE, channel: '' });
     });
 
-    it('commits well-formed dates and ignores incomplete ones', () => {
-      const { onChange } = renderWithParent({ query: 'robot' });
+    it('renders no date filter inputs', () => {
+      renderBar();
 
-      fireEvent.change(screen.getByLabelText('Od daty'), { target: { value: '2024-01-05' } });
-      expect(onChange).toHaveBeenLastCalledWith({
-        query: 'robot',
-        sort: 'date-desc',
-        category: '',
-        channel: '',
-        dateFrom: '20240105',
-        dateTo: '',
-      });
-
-      fireEvent.change(screen.getByLabelText('Do daty'), { target: { value: '2025-12-31' } });
-      expect(onChange).toHaveBeenLastCalledWith({
-        query: 'robot',
-        sort: 'date-desc',
-        category: '',
-        channel: '',
-        dateFrom: '20240105',
-        dateTo: '20251231',
-      });
-
-      fireEvent.change(screen.getByLabelText('Od daty'), { target: { value: '2024-1-5' } });
-      expect(onChange).toHaveBeenLastCalledWith({
-        query: 'robot',
-        sort: 'date-desc',
-        category: '',
-        channel: '',
-        dateFrom: '',
-        dateTo: '20251231',
-      });
-    });
-
-    it('displays dates already committed in the URL', () => {
-      renderBar({ dateFrom: '20240105', dateTo: '20251231' });
-
-      expect(screen.getByLabelText('Od daty')).toHaveValue('2024-01-05');
-      expect(screen.getByLabelText('Do daty')).toHaveValue('2025-12-31');
+      expect(screen.queryByLabelText('Od daty')).toBeNull();
+      expect(screen.queryByLabelText('Do daty')).toBeNull();
+      expect(document.querySelector('.date-filter')).toBeNull();
     });
   });
 
@@ -516,8 +465,6 @@ describe('SearchBar', () => {
         sort: 'date-desc',
         category: '',
         channel: '',
-        dateFrom: '',
-        dateTo: '',
       });
     });
 
@@ -538,8 +485,6 @@ describe('SearchBar', () => {
         sort: 'date-desc',
         category: '',
         channel: '',
-        dateFrom: '',
-        dateTo: '',
       });
     });
 

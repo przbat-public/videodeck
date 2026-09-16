@@ -927,7 +927,6 @@
     min-height: 44px;
   }
 
-  .date-filter,
   .channel-select,
   .sort-select,
   .category-select,
@@ -1172,23 +1171,6 @@
   font-weight: 600;
   color: var(--color-text);
   font-size: 0.95rem;
-}
-
-/* Search bar filters: channel + date range */
-.date-filter {
-  flex: 1 1 10rem;
-  padding: 0.62rem 0.75rem;
-  font-size: 1rem;
-  border: 2px solid var(--color-border);
-  border-radius: 6px;
-  color: var(--color-text);
-  background: var(--color-surface);
-  transition: border-color 0.2s ease;
-}
-
-.date-filter:focus {
-  outline: none;
-  border-color: var(--color-primary);
 }
 
 .video-card-snippet {

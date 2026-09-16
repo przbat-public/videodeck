@@ -14,8 +14,6 @@ interface SearchBarProps {
   sort: SortOption;
   category: string;
   channel: string;
-  dateFrom: string;
-  dateTo: string;
   /** Categories offered by the server; the filter hides when there is nothing to pick */
   categories?: string[];
   /** Channel names offered by the server; the filter hides when there is nothing to pick */
@@ -29,26 +27,11 @@ const DEBOUNCE_DELAY = 300;
 /** A phrase worth searching for: nothing at all, or enough to be selective */
 const isSearchable = (trimmed: string): boolean => trimmed.length === 0 || trimmed.length >= MIN_SEARCH_LENGTH;
 
-/** `20240105` ↔ `2024-01-05` (what a date input displays) */
-const toDisplayDate = (digits: string): string =>
-  digits.length === 8 ? `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}` : '';
-const toDateDigits = (value: string): string => {
-  const match = /^(\d{4})(\d{2})(\d{2})$/.exec(value.replace(/\D/g, ''));
-  if (!match) {
-    return '';
-  }
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  return month >= 1 && month <= 12 && day >= 1 && day <= 31 ? match[0] : '';
-};
-
 export default function SearchBar({
   query,
   sort,
   category,
   channel,
-  dateFrom,
-  dateTo,
   categories = [],
   channels = [],
   onChange,
@@ -93,8 +76,8 @@ export default function SearchBar({
     if (trimmed === query || !isSearchable(trimmed)) {
       return;
     }
-    onChange({ query: trimmed, sort, category, channel, dateFrom, dateTo });
-  }, [debouncedText, text, query, sort, category, channel, dateFrom, dateTo, onChange]);
+    onChange({ query: trimmed, sort, category, channel });
+  }, [debouncedText, text, query, sort, category, channel, onChange]);
 
   /**
    * Selects commit right away. A phrase still too short to search stays in
@@ -107,8 +90,6 @@ export default function SearchBar({
       sort,
       category,
       channel,
-      dateFrom,
-      dateTo,
       ...patch,
     });
   };
@@ -129,7 +110,7 @@ export default function SearchBar({
     }
     // Stop the pending debounce from re-committing the same phrase
     committedTextRef.current = trimmed;
-    onChange({ query: trimmed, sort, category, channel, dateFrom, dateTo });
+    onChange({ query: trimmed, sort, category, channel });
   };
 
   const categoryOptions =
@@ -193,20 +174,6 @@ export default function SearchBar({
           ]}
         />
       )}
-      <input
-        type="date"
-        value={toDisplayDate(dateFrom)}
-        onChange={(e) => commitWith({ dateFrom: toDateDigits(e.target.value) })}
-        className="date-filter"
-        aria-label={t('search.fromDate')}
-      />
-      <input
-        type="date"
-        value={toDisplayDate(dateTo)}
-        onChange={(e) => commitWith({ dateTo: toDateDigits(e.target.value) })}
-        className="date-filter"
-        aria-label={t('search.toDate')}
-      />
       {text && (
         <Button onClick={handleClear} size="small">
           {t('search.clear')}

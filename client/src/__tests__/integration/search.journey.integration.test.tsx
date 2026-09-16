@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { videoFiles } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -7,11 +7,9 @@ import {
   channelSelect,
   findCardByTitle,
   findSearchInput,
-  fromDateInput,
   pickOption,
   queryCardByTitle,
   sortSelect,
-  toDateInput,
   typeAndCommitPhrase,
 } from './drivers/searchDrivers';
 import { refreshCacheAndWait, renderApp } from './render-app';
@@ -85,26 +83,6 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
     await page.user.click(screen.getByRole('link', { name: /Wróć do listy/ }));
     await findCardByTitle('Głęboka integracja');
     expect(await findSearchInput()).toHaveValue('');
-  });
-
-  it('narrows by upload date with the two date filters', async () => {
-    await renderApp('/');
-
-    // Empty query shows the whole library (four seeded videos).
-    await findCardByTitle('Głęboka integracja');
-    expect(queryCardByTitle('Drugi kanał wideo')).toBeInTheDocument();
-
-    // From 2026-02-01: the two January videos drop out.
-    fireEvent.change(fromDateInput(), { target: { value: '2026-02-01' } });
-    await waitFor(() => expect(queryCardByTitle('Głęboka integracja')).not.toBeInTheDocument());
-    expect(queryCardByTitle('Drugi kanał wideo')).not.toBeInTheDocument();
-    expect(queryCardByTitle('Historia kosmosu')).toBeInTheDocument();
-    expect(queryCardByTitle('Nowoczesne kino')).toBeInTheDocument();
-
-    // To 2026-02-28: the March video drops out too.
-    fireEvent.change(toDateInput(), { target: { value: '2026-02-28' } });
-    await waitFor(() => expect(queryCardByTitle('Nowoczesne kino')).not.toBeInTheDocument());
-    expect(queryCardByTitle('Historia kosmosu')).toBeInTheDocument();
   });
 
   it('scopes the search to one category folder', async () => {
