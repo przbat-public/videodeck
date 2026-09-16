@@ -1,4 +1,4 @@
-import { Registry } from 'prom-client';
+import { Registry } from '@prometheus-io/client';
 
 /**
  * The Prometheus registry, in its own module: services can register metrics
