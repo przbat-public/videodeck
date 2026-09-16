@@ -64,6 +64,9 @@ export function AppMenu({ theme, onThemeChange }: AppMenuProps): JSX.Element {
       </MenuTrigger>
       <MenuContent>
         <MenuLabel>{t('menu.navigation')}</MenuLabel>
+        <MenuItem active={pathname === '/'} onSelect={() => navigate('/')}>
+          {t('menu.videoList')}
+        </MenuItem>
         <MenuItem active={pathname === '/download'} onSelect={() => navigate('/download')}>
           {t('menu.download')}
         </MenuItem>

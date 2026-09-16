@@ -266,11 +266,12 @@
     "download": "Pobieranie filmów",
     "results": "Wyniki",
     "reloadResults": "Odśwież wyniki",
-    "indexes": "Indeksy",
+    "indexes": "Indeksy (Elasticsearch)",
     "theme": "Motyw",
     "language": "Język",
     "polish": "Polski",
-    "english": "English"
+    "english": "English",
+    "videoList": "Lista filmów"
   },
   "nav": {
     "backToList": "Wróć do listy",

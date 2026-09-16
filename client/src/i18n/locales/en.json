@@ -242,11 +242,12 @@
     "download": "Download videos",
     "results": "Results",
     "reloadResults": "Reload results",
-    "indexes": "Indexes",
+    "indexes": "Indexes (Elasticsearch)",
     "theme": "Theme",
     "language": "Language",
     "polish": "Polski",
-    "english": "English"
+    "english": "English",
+    "videoList": "Video list"
   },
   "nav": {
     "backToList": "Back to list",

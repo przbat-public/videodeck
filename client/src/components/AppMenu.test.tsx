@@ -63,6 +63,7 @@ describe('AppMenu', () => {
     await user.click(screen.getByRole('button', { name: /Menu aplikacji|App menu/ }));
 
     expect(screen.getByText('Nawigacja')).toBeInTheDocument();
+    expect(screen.getByText('Lista filmów')).toBeInTheDocument();
     expect(screen.getByText('Pobieranie filmów')).toBeInTheDocument();
     expect(screen.getByText('Indeksy')).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Odśwież indeks' })).toBeInTheDocument();
@@ -133,8 +134,13 @@ describe('AppMenu', () => {
     expect(screen.getByRole('menuitemcheckbox', { name: 'Włącz' })).toHaveAttribute('data-disabled');
   });
 
-  it('navigates to the download page from the navigation section', async () => {
+  it('navigates through the navigation section', async () => {
     renderMenu([]);
+
+    await user.click(screen.getByRole('button', { name: /Menu aplikacji|App menu/ }));
+    await user.click(await screen.findByRole('menuitem', { name: /Lista filmów|Video list/ }));
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Menu aplikacji|App menu/ }));
     await user.click(await screen.findByRole('menuitem', { name: /Pobieranie filmów|Download videos/ }));
