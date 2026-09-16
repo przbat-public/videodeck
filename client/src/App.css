@@ -1328,9 +1328,9 @@
 .app-brand {
   display: inline-flex;
   align-items: center;
-  font-weight: 700;
-  font-size: 1.05rem;
-  color: var(--color-text);
+  justify-content: center;
+  min-width: 44px;
+  color: var(--color-primary-text);
   text-decoration: none;
   padding: 0.4rem 0.5rem;
   transition: color 0.2s;
@@ -1338,6 +1338,11 @@
 
 .app-brand:hover {
   color: var(--color-primary);
+}
+
+.app-brand-icon {
+  width: 22px;
+  height: 22px;
 }
 
 .app-back {

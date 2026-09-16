@@ -250,6 +250,7 @@
     "english": "English"
   },
   "nav": {
-    "backToList": "Back to the video list"
+    "backToList": "Back to the video list",
+    "home": "Home"
   }
 }
