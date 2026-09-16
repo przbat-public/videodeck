@@ -114,7 +114,7 @@ URL-driven search, "Show more" (pl: „Pokaż więcej") pagination, the details 
 with the player and subtitles, the status page:
 
 ```bash
-pnpm run test:e2e  # first time: cd client && npx playwright install chromium
+pnpm run test:e2e  # first time: cd client && pnpm exec playwright install chromium
 ```
 
 Server route tests check responses against contract schemas (`shared/schemas.ts`),
@@ -185,72 +185,6 @@ All three projects are compiled with TypeScript 6.0 (the same version Cursor use
 **The shared API contract** lives in the `@videodeck/shared` workspace package: the zod schemas (`schemas.ts`) are the single source of truth for response shapes, and `api.ts` re-exports the types derived with `z.infer` (plus request types and SSE event types). The server, client, and extension import the types as `@videodeck/shared/api`; the client **parses** every response against a schema (parse, don't trust), and the server route tests check responses against the same schemas, so types and validation cannot drift apart. `api.ts` stays types-only (`import type` enforced by ESLint), while `schemas.ts` and `progress.ts` are deliberate runtime modules shared by the server and the extension.
 
 Express routers use `RouteHandler<Params, Response>` from `server/src/routes/http.ts`: path params are derived from the route pattern, `req.body` is typed `unknown` and narrowed with the `readBody`/`readString` helpers, and `res.json()` only accepts the contract type (or `ApiError`). `any` is banned by lint (`no-explicit-any: error`) in code and tests.
-## Project structure
-
-```
-video-search-app/
-├── shared/
-│   ├── api.ts           # Contract types (from schemas) + request/event types — types-only
-│   ├── schemas.ts       # zod schemas for API responses (types via z.infer) — client and test validation
-│   ├── progress.ts      # Shared yt-dlp progress parser (server + extension)
-│   └── youtube.ts       # Shared YouTube id extraction from URLs (server + extension)
-├── server/              # Backend (Node.js/Express)
-│   ├── src/
-│   │   ├── index.ts     # Server startup
-│   │   ├── app.ts       # Express setup (middleware, routers)
-│   │   ├── routes/      # HTTP layer — request parsing, statuses, no yt-dlp logic
-│   │   │   ├── videos.ts    # Search, details, summaries, reindex
-│   │   │   ├── folder.ts    # Folder configuration, list.json, download queue
-│   │   │   └── http.ts      # RouteHandler, readBody/sendError (narrowing helpers in utils/objectUtils)
-│   │   ├── services/    # Business logic (does not depend on routes/)
-│   │   │   ├── videoScanner.ts
-│   │   │   ├── elasticsearchService.ts
-│   │   │   ├── downloadQueue.ts  # Job queue — uses buildYtDlpArgs from ytdlp.ts
-│   │   │   ├── ytdlp.ts         # ALL interaction with yt-dlp: argument templates + spawn
-│   │   │   ├── channelList.ts   # Reads a channel's list.json
-│   │   │   ├── folderConfig.ts
-│   │   │   └── folderIndex.ts
-│   │   ├── utils/       # Helpers
-│   │   │   ├── commentTreeUtils.ts
-│   │   │   ├── logger.ts        # The only module touching console (level + timestamp)
-│   │   │   ├── objectUtils.ts   # stripUndefined(), narrowing helpers (isRecord/readString/errnoCode)
-│   │   │   └── videoPathUtils.ts
-│   │   ├── config.ts    # Configuration (env, video folder glob)
-│   │   ├── types.ts     # Server-internal types (e.g. VideoInfoJson from yt-dlp)
-│   │   └── test-utils.ts    # at()/entry() - test helpers without undefined
-│   ├── tsconfig.json        # Code + tests (typecheck, IDE)
-│   ├── tsconfig.build.json  # Production code only (pnpm run build)
-│   └── package.json
-├── client/              # Frontend (React + Vite)
-│   ├── src/
-│   │   ├── components/  # React components
-│   │   │   ├── SearchBar.tsx, VideoCard.tsx, VideoList.tsx
-│   │   │   ├── VideoItem.tsx, VideoListSection.tsx
-│   │   │   ├── CommentComponent.tsx, VideoComments.tsx, VideoSummary.tsx
-│   │   │   └── FolderSection.tsx, FolderConfigEditor.tsx, PlaylistDownloadSection.tsx
-│   │   ├── pages/       # App pages
-│   │   │   ├── StatusPage.tsx        # / - folders, configuration, and queue
-│   │   │   ├── VideoListPage.tsx     # /videos - search
-│   │   │   └── VideoDetailPage.tsx   # /video/:id - details + player
-│   │   ├── hooks/       # Custom hooks
-│   │   │   ├── useVideoSearch.ts, useVideoDetail.ts, useVideoSummary.ts
-│   │   │   ├── useDownloadQueue.ts, useCacheRefresh.ts, useRecreateIndices.ts
-│   │   │   ├── useCategories.ts, useSearchUrlState.ts
-│   │   ├── reducers/    # State management
-│   │   │   ├── videoSearchReducer.ts, videoDetailReducer.ts, videoSummaryReducer.ts
-│   │   │   ├── cacheRefreshReducer.ts, statusReducer.ts, recreateIndicesReducer.ts
-│   │   ├── utils/       # searchUrlState.ts, folderConfigForm.ts, videoDates.ts
-│   │   ├── test/        # Vitest setup and typed fetch mock (fetchMock.ts)
-│   │   └── App.tsx      # Root component
-│   └── package.json
-├── chrome-extension/     # Chrome extension (TypeScript + Vitest)
-│   ├── src/              # Source code (background, content, popup, options)
-│   │   └── lib/          # Pure logic with tests (SSE, progress, YouTube id)
-│   ├── package.json      # pnpm run build (esbuild) / test (vitest) / typecheck
-│   ├── manifest.json     # MV3; points at the generated *.js in the root directory
-│   └── *.js              # Build output (not committed)
-└── .env                 # Environment variables (do not commit!)
-```
 ## Frontend architecture
 
 A short overview of the client's architectural decisions and what was consciously **not** implemented:

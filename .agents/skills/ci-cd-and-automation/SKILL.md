@@ -23,7 +23,7 @@ the supply-chain and security jobs.
 | Lint | biome check, hardcoded-Polish scan, tsconfig strictness pin |
 | Typecheck | strict TS in server, client and extension (integration config included) |
 | Unit tests (server) | jest, deep server integration included |
-| Unit tests (client) | vitest, 356 tests |
+| Unit tests (client) | vitest, the full client unit suite |
 | Unit tests (chrome-extension) | vitest |
 | Client integration | real `<App />` against the real backend in-process |
 | Server integration | fake yt-dlp + fake Elasticsearch |

@@ -26,7 +26,7 @@ First make sure Docker Desktop is running:
 Then start Elasticsearch (ports bound to loopback; there is no password, so ES must not be reachable from the network):
 
 ```bash
-docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.0
+docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.5.1
 ```
 
 **Option B: Homebrew (macOS)**

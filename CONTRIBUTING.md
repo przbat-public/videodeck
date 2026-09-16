@@ -8,10 +8,10 @@ tool for searching, browsing and managing YouTube videos downloaded with
 
 Prerequisites:
 
-- Node.js 22 (`.nvmrc` pins it) + corepack/pnpm 10.30.1 (`packageManager`)
+- Node.js 22 (`.nvmrc` pins it) + corepack/pnpm 12.4.2 (`packageManager`)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) in `PATH` (downloads; the
   **nightly** channel is recommended: YouTube breaks old releases regularly)
-- Elasticsearch (Docker: `docker run -p 127.0.0.1:9200:9200 -e "discovery.type=single-node" -e "xpack.security.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.8`)
+- Elasticsearch (Docker: `docker run -p 127.0.0.1:9200:9200 -e "discovery.type=single-node" -e "xpack.security.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.5.1`)
 - ffmpeg in `PATH` (format merging, SponsorBlock cutting)
 - Chrome only if you work on the browser extension
 

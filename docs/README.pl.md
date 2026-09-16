@@ -53,7 +53,7 @@ dodaje filmy do kolejki wprost z YouTube.
 2. Uruchom Elasticsearch (tylko loopback; bez hasła):
 
    ```bash
-   docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.2.0
+   docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.5.1
    ```
 
    Homebrew albo instalacja ręczna też działają: [docs/INSTALL.md](INSTALL.md).
@@ -83,7 +83,7 @@ dodaje filmy do kolejki wprost z YouTube.
 
 ## Wymagania
 
-- Node.js 22.x (corepack dostarcza pnpm 10.30.1, przypięty w `packageManager`)
+- Node.js 22.x (corepack dostarcza pnpm 12.4.2, przypięty w `packageManager`)
 - Elasticsearch 8.x lub 9.x (lokalnie lub zdalnie)
 - Chrome 88+ (tylko dla rozszerzenia Chrome, zob. [chrome-extension/README.md](../chrome-extension/README.md))
 
@@ -126,7 +126,7 @@ prowadzona po angielsku.
 ```bash
 pnpm run dev          # serwer :3001 + klient :3000
 pnpm run test         # testy jednostkowe: serwer (jest), klient i rozszerzenie (vitest)
-pnpm run test:e2e     # Playwright z zamokowanym API (raz: cd client && npx playwright install chromium)
+pnpm run test:e2e     # Playwright z zamokowanym API (raz: cd client && pnpm exec playwright install chromium)
 ```
 
 Reguły lintu, macierz testów, ratchet pokrycia i ścisłe flagi TypeScript:
