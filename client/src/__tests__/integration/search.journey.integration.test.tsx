@@ -56,7 +56,7 @@ const lastSearch = () => {
 
 describe('search journey — real user, real backend, fake Elasticsearch', () => {
   it('types, sorts, filters by channel, opens a result and returns with the state intact', async () => {
-    const page = await renderApp('/videos');
+    const page = await renderApp('/');
 
     // 1. Phrase with a debounce commit (Enter), no diacritics on purpose.
     //    Wait for the initial results first: typing over a loading list
@@ -93,7 +93,7 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
   });
 
   it('narrows by upload date with the two date filters', async () => {
-    await renderApp('/videos');
+    await renderApp('/');
 
     // Empty query shows the whole library (four seeded videos).
     await findCardByTitle('Głęboka integracja');
@@ -113,7 +113,7 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
   });
 
   it('scopes the search to one category folder', async () => {
-    const page = await renderApp('/videos');
+    const page = await renderApp('/');
     await findCardByTitle('Drugi kanał wideo');
 
     await pickOption(page.user, categorySelect(), 'other');
@@ -143,13 +143,14 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
     // new folder gets a fresh physical index with an alias switch.
     expect(env.fakeEs.indexNames().length).toBeGreaterThanOrEqual(indicesBefore + 1);
 
-    const page = await renderApp('/videos');
-    await waitFor(() => expect(screen.getByText(/109 łącznie/)).toBeInTheDocument());
+    const page = await renderApp('/');
+    // The Show more button only renders when a next page exists, so it also
+    // proves the first search landed.
+    await screen.findByRole('button', { name: 'Pokaż więcej' });
     expect(lastSearch().body.from ?? 0).toBe(0);
 
     await page.user.click(screen.getByRole('button', { name: 'Pokaż więcej' }));
     await waitFor(() => expect(screen.getByText('Film pokazowy 105')).toBeInTheDocument());
     expect(lastSearch().body.from).toBe(100);
-    await waitFor(() => expect(screen.getByText(/109 łącznie/)).toBeInTheDocument());
   });
 });

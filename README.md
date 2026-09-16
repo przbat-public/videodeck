@@ -82,9 +82,10 @@ videos straight from YouTube.
 
    Server on `http://localhost:3001`, UI on `http://localhost:3000`.
 
-5. Index the videos once. Open the status page and click **"Refresh index"**
-   (pl: „Odśwież indeks"), or call `GET /api/videos/refreshCache`. Large
-   libraries take a while; progress shows in a toast.
+5. Index the videos once. On the film list, open the gear menu in the top
+   bar and pick **"Refresh index"** (pl: „Odśwież indeks"), or call
+   `GET /api/videos/refreshCache`. Large libraries take a while; progress
+   shows in a toast.
 
 ## Requirements
 

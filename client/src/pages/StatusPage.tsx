@@ -1,6 +1,5 @@
 import type { JSX } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
 import { FolderSection } from '../components/FolderSection';
 import { QueueControls } from '../components/QueueControls';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
@@ -46,12 +45,6 @@ export default function StatusPage(): JSX.Element {
                       <p>{t('status.noFolders')}</p>
                     )}
                   </div>
-                </div>
-
-                <div className="status-actions">
-                  <Link to="/videos" className="status-link">
-                    {t('status.goToVideos')}
-                  </Link>
                 </div>
               </div>
             );

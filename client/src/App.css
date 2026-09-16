@@ -27,39 +27,6 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-/* Toolbar */
-.toolbar {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 2rem;
-  background: var(--color-surface);
-  padding: 1rem;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  align-items: center;
-  justify-content: space-between;
-}
-
-.toolbar-left {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-}
-
-.toolbar-right {
-  display: flex;
-  align-items: center;
-}
-
-.video-count {
-  color: var(--color-text-muted);
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
-
-
-
 .search-input {
   flex: 1 1 14rem;
   padding: 0.75rem 1rem;
@@ -512,29 +479,6 @@
 
 
 
-
-.status-actions {
-  margin-top: 2rem;
-  padding-top: 2rem;
-  border-top: 1px solid var(--color-border);
-}
-
-.status-link {
-  display: inline-block;
-  padding: 0.75rem 1.5rem;
-  background: var(--color-primary);
-  color: white;
-  text-decoration: none;
-  border-radius: 6px;
-  font-weight: 500;
-  transition: all 0.3s;
-}
-
-.status-link:hover {
-  background: var(--color-primary-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-}
 
 /* Folder Sections */
 .folder-sections {
@@ -989,7 +933,9 @@
   .download-video-button,
   .update-video-button,
   .cancel-job-button,
-  .status-link {
+  .ui-menu-trigger,
+  .app-back,
+  .app-brand {
     min-height: 44px;
   }
 
@@ -997,8 +943,7 @@
   .channel-select,
   .sort-select,
   .category-select,
-  .config-input,
-  .theme-select {
+  .config-input {
     min-height: 44px;
   }
 
@@ -1358,13 +1303,13 @@
   font-size: 0.9rem;
 }
 
-/* Top bar: language and theme live in the page flow, never on top of
-   content. On a phone they simply sit above the page instead of floating
-   over the toolbar. */
+/* Top bar: the brand and the back link on the left, the gear menu on
+   the right. Everything lives in the page flow, never on top of content;
+   on a phone the bar wraps instead of floating over the page. */
 .app-topbar {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
   max-width: 1400px;
@@ -1373,39 +1318,145 @@
   padding: 0.5rem 2rem;
 }
 
-/* Language switcher */
-.language-switcher {
+.topbar-left {
   display: flex;
-  gap: 0.25rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 0.25rem;
-  margin: 0;
+  align-items: center;
+  gap: 0.75rem;
   min-width: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.language-switcher-option {
-  border: none;
-  background: transparent;
-  border-radius: 5px;
-  padding: 0.3rem 0.55rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--color-text);
+  text-decoration: none;
+  padding: 0.4rem 0.5rem;
+  transition: color 0.2s;
+}
+
+.app-brand:hover {
+  color: var(--color-primary);
+}
+
+.app-back {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 500;
   color: var(--color-text-muted);
-  transition:
-    background 0.15s ease,
-    color 0.15s ease;
+  text-decoration: none;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  transition: border-color 0.2s ease;
 }
 
-.language-switcher-option:hover {
-  background: var(--color-primary-soft);
+.app-back:hover {
+  border-color: var(--color-focus);
   color: var(--color-text);
 }
 
-.language-switcher-option.active {
-  background: var(--color-primary);
-  color: white;
+/* The gear trigger: an icon button styled like the other inputs */
+.ui-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 0.6rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.ui-menu-trigger:hover {
+  border-color: var(--color-focus);
+}
+
+.ui-menu-trigger[data-state='open'] {
+  border-color: var(--color-primary);
+}
+
+.ui-menu-gear {
+  width: 18px;
+  height: 18px;
+}
+
+/* Radix DropdownMenu panel: the same family as the Select dropdown */
+.ui-menu-content {
+  z-index: 50;
+  min-width: 230px;
+  max-height: 420px;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(30, 30, 60, 0.16);
+  padding: 4px;
+}
+
+.ui-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  color: var(--color-text);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+/* Same leak guard as the Select items: Radix moves focus to the hovered
+   option, so the global :focus-visible ring would paint over a plain
+   hover. Keyboard navigation keeps an inset ring instead. */
+.ui-menu-item:focus-visible {
+  outline: none;
+}
+
+.ui-menu-item:focus-visible:not(:hover) {
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+.ui-menu-item[data-highlighted] {
+  background: var(--color-primary-soft);
+}
+
+.ui-menu-item[data-disabled] {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+.ui-menu-item-indicator {
+  margin-left: auto;
+  color: var(--color-primary-text);
+  font-size: 0.85rem;
+}
+
+.ui-menu-checkbox-indicator {
+  width: 1rem;
+  flex-shrink: 0;
+  color: var(--color-primary-text);
+  font-size: 0.85rem;
+}
+
+.ui-menu-label {
+  padding: 0.45rem 0.75rem 0.15rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.ui-menu-separator {
+  height: 1px;
+  margin: 4px 0.5rem;
+  background: var(--color-border);
 }

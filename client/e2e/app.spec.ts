@@ -17,7 +17,7 @@ test.describe('search page', () => {
     });
 
     await page.goto(
-      '/videos?q=motor&sort=views-desc&category=fpv&channel=Kana%C5%82+E2E&dateFrom=2024-01-05&dateTo=2025-12-31',
+      '/?q=motor&sort=views-desc&category=fpv&channel=Kana%C5%82+E2E&dateFrom=2024-01-05&dateTo=2025-12-31',
     );
 
     await expect(page.getByPlaceholder('Szukaj filmów po opisie...')).toHaveValue('motor');
@@ -34,26 +34,30 @@ test.describe('search page', () => {
   test('the language switcher flips the UI to English and back', async ({ page }) => {
     await mockApi(page);
 
-    await page.goto('/videos');
+    await page.goto('/');
     await expect(page.getByPlaceholder('Szukaj filmów po opisie...')).toBeVisible();
 
-    await page.getByRole('button', { name: 'EN' }).click();
+    await page.getByRole('button', { name: 'Menu aplikacji' }).click();
+    await page.getByRole('menuitem', { name: 'English' }).click();
     await expect(page.getByPlaceholder('Search videos by description...')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Refresh index' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'PL' }).click();
+    // The menu now speaks English, including the list-page index actions.
+    await page.getByRole('button', { name: 'App menu' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Refresh index' })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await page.getByRole('button', { name: 'App menu' }).click();
+    await page.getByRole('menuitem', { name: 'Polski' }).click();
     await expect(page.getByPlaceholder('Szukaj filmów po opisie...')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Odśwież indeks' })).toBeVisible();
   });
 
   test('the theme switcher sets data-theme and survives a reload', async ({ page }) => {
     await mockApi(page);
 
-    await page.goto('/videos');
+    await page.goto('/');
 
-    const themeSelect = page.getByRole('combobox', { name: 'Motyw' });
-    await themeSelect.click();
-    await page.getByRole('option', { name: 'Ciemny' }).click();
+    await page.getByRole('button', { name: 'Menu aplikacji' }).click();
+    await page.getByRole('menuitem', { name: 'Ciemny' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
     await page.reload();
@@ -69,7 +73,7 @@ test.describe('search page', () => {
       },
     });
 
-    await page.goto('/videos');
+    await page.goto('/');
     await page.getByRole('combobox', { name: 'Sort' }).click();
     await page.getByRole('option', { name: 'Najnowsze' }).click();
 
@@ -85,7 +89,7 @@ test.describe('search page', () => {
           : { videos: [video('v1', 'Pierwszy film')], totalCount: 2 },
     });
 
-    await page.goto('/videos');
+    await page.goto('/');
     await expect(page.getByText('Pierwszy film')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Pokaż więcej' })).toBeVisible();
 
@@ -93,13 +97,12 @@ test.describe('search page', () => {
 
     await expect(page.getByText('Drugi film')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Pokaż więcej' })).toBeHidden();
-    await expect(page.getByText('2 filmy / 2 łącznie')).toBeVisible();
   });
 
   test('an empty phrase shows the no-results message', async ({ page }) => {
     await mockApi(page, { search: () => ({ videos: [], totalCount: 0 }) });
 
-    await page.goto('/videos');
+    await page.goto('/');
 
     await expect(page.getByText('Brak filmów. Spróbuj innego zapytania.')).toBeVisible();
   });
@@ -113,7 +116,7 @@ test.describe('search page', () => {
       },
     });
 
-    await page.goto('/videos');
+    await page.goto('/');
 
     const input = page.getByLabel('Fraza wyszukiwania');
     await input.fill('dron');
@@ -130,7 +133,7 @@ test.describe('search page', () => {
     // Registered after mockApi, so this route wins for the search endpoint
     await page.route('**/api/videos/search**', (route) => route.fulfill(json({ error: 'Elasticsearch is down' }, 500)));
 
-    await page.goto('/videos');
+    await page.goto('/');
 
     await expect(page.getByText(/Nie udało się wyszukać filmów/)).toBeVisible();
   });
@@ -163,7 +166,7 @@ test.describe('video details', () => {
       },
     });
 
-    await page.goto('/videos');
+    await page.goto('/');
 
     // The card opens the detail page in a new tab (target=_blank) — the
     // context-wide route mocks apply to the popup as well
@@ -192,7 +195,7 @@ test.describe('video details', () => {
     await expect(detailPage.getByText('Komentarz drugi')).toBeVisible();
 
     await detailPage.getByRole('link', { name: '← Wróć do wyszukiwania' }).click();
-    await expect(detailPage).toHaveURL(/\/videos/);
+    await expect(detailPage).toHaveURL(/\/$/);
   });
 
   test('a details failure shows the message and the back link', async ({ page }) => {
@@ -204,7 +207,7 @@ test.describe('video details', () => {
     // page (target=_blank) and page-level routes do not apply there.
     await page.context().route('**/api/videos/**/details', (route) => route.fulfill(json({ error: 'nope' }, 500)));
 
-    await page.goto('/videos');
+    await page.goto('/');
 
     const [detailPage] = await Promise.all([
       page.context().waitForEvent('page'),
@@ -221,18 +224,21 @@ test.describe('status page', () => {
   test('shows the folders and their configuration', async ({ page }) => {
     await mockApi(page);
 
-    await page.goto('/');
+    await page.goto('/download');
 
     await expect(page.getByText('Konfiguracja folderów wideo')).toBeVisible();
     await expect(page.getByText('/videos/e2e')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Edytuj konfigurację' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Przejdź do listy filmów' })).toBeVisible();
+    // The download page is reachable through the gear menu; the brand link
+    // leads back to the list.
+    await page.getByRole('button', { name: 'Menu aplikacji' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Pobieranie filmów' })).toBeVisible();
   });
 
   test('queue controls: pause and resume', async ({ page }) => {
     await mockApi(page);
 
-    await page.goto('/');
+    await page.goto('/download');
 
     await expect(page.getByRole('button', { name: 'Pauza kolejki' })).toBeVisible();
     await page.getByRole('button', { name: 'Pauza kolejki' }).click();

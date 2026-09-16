@@ -77,15 +77,20 @@ uppercase beyond the PL/EN language buttons.
 
 ## 6. Components
 
-Five shared primitives in `client/src/components/ui/`:
+Six shared primitives in `client/src/components/ui/`:
 
 - **Button** — variants: default (border, surface), `primary` (accent,
   white text), `danger`. Sizes: default and `small`. Disabled state at 60%
   opacity. Always a real `<button>`.
 - **Select** — Radix-based combobox styled like the inputs; used for sort,
-  category, channel and theme. Options in a portal, checked option marked.
+  category and channel. Options in a portal, checked option marked.
   Keyboard focus draws an inset ring inside the list; mouse hover stays a
   plain highlight.
+- **Menu** — Radix DropdownMenu behind thin wrappers: trigger, content,
+  items, checkbox items, section labels and separators, all styled like the
+  Select dropdown. The top bar gear menu (navigation, index actions,
+  theme, language) composes it. Checkbox items keep the menu open on
+  toggle; the same inset-ring focus rule as Select applies.
 - **Checkbox** — custom 18px box with `--color-primary` check state and a
   visible focus ring.
 - **ErrorMessage** — page-level banner or `compact` inline form; role
@@ -93,15 +98,16 @@ Five shared primitives in `client/src/components/ui/`:
 - **Loading** — centered spinner plus an optional label; the only loading
   pattern, no skeletons.
 
-Composite patterns: toolbar (buttons + count), search bar (input + selects
-+ date filters), video card (thumbnail, title, muted metadata), queue item
-(status line + log tail), detail player (70% width, poster, subtitle
-tracks). All live in `client/src/components/` and reuse the tokens.
+Composite patterns: top bar (brand, back link on the detail page, gear
+menu), search bar (input + selects + date filters), video card (thumbnail,
+title, muted metadata), queue item (status line + log tail), detail player
+(70% width, poster, subtitle tracks). All live in
+`client/src/components/` and reuse the tokens.
 
 Deliberate exceptions to "primitives first", kept for density and purpose:
-the PL/EN segmented control (LanguageSwitcher), the inline text buttons in
-comment threads, and the per-row action buttons in the video list (update,
-cancel, download), which use the semantic warning/secondary/info tokens.
+the inline text buttons in comment threads, and the per-row action buttons
+in the video list (update, cancel, download), which use the semantic
+warning/secondary/info tokens.
 
 ## 7. Motion
 
@@ -116,7 +122,8 @@ entrance animations, no parallax.
 - Contrast: text at least 4.5:1, primary button text included. Muted text
   stays readable in dark mode (`#9aa0a6` on `#1d1f24`).
 - Every input has an accessible name: `aria-label` or a linked `<label>`.
-  Radix selects carry `aria-label`.
+  Radix selects carry `aria-label`; the menu trigger carries the app menu
+  label and the menu itself follows the APG menu button pattern.
 - Error banners use `role="alert"`; toasts are additional, not the only
   signal.
 - Media: the player includes subtitle tracks; `useMediaCaption` is the one

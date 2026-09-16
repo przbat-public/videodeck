@@ -6,7 +6,6 @@
     "refreshPage": "Odśwież stronę",
     "routeErrorText": "Nie udało się załadować tej strony.",
     "backToStart": "Wróć do strony startowej",
-    "language": "Język",
     "download": "Pobierz",
     "update": "Aktualizuj",
     "cancel": "Anuluj"
@@ -57,7 +56,6 @@
     "loading": "Ładowanie statusu...",
     "foldersTitle": "Konfiguracja folderów wideo",
     "noFolders": "Brak skonfigurowanych ścieżek",
-    "goToVideos": "Przejdź do listy filmów",
     "indexMissing": "indeks ES: brak",
     "indexMissingTitle": "Brak indeksu w Elasticsearch — uruchom „Odśwież indeks” z opcją „tylko brakujące”"
   },
@@ -259,9 +257,23 @@
     }
   },
   "theme": {
-    "label": "Motyw",
     "system": "Systemowy",
     "light": "Jasny",
     "dark": "Ciemny"
+  },
+  "menu": {
+    "label": "Menu aplikacji",
+    "navigation": "Nawigacja",
+    "download": "Pobieranie filmów",
+    "results": "Wyniki",
+    "reloadResults": "Odśwież wyniki",
+    "indexes": "Indeksy",
+    "theme": "Motyw",
+    "language": "Język",
+    "polish": "Polski",
+    "english": "English"
+  },
+  "nav": {
+    "backToList": "Lista filmów"
   }
 }

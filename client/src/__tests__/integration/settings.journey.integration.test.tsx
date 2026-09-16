@@ -1,6 +1,7 @@
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { pickOption, tabTo, typeAndCommitPhrase } from './drivers/searchDrivers';
+import { tabTo, typeAndCommitPhrase } from './drivers/searchDrivers';
+import type { RenderedApp } from './render-app';
 import { refreshCacheAndWait, renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
 
@@ -22,14 +23,22 @@ afterEach(() => {
   cleanup();
 });
 
+/** Opens the gear menu and picks one item by its visible label */
+async function pickMenuItem(user: RenderedApp['user'], label: string): Promise<void> {
+  // The top bar sits inside the lazy router tree, so the trigger appears
+  // once the first chunk resolves; findByRole waits for it.
+  await user.click(await screen.findByRole('button', { name: /Menu aplikacji|App menu/ }));
+  await user.click(await screen.findByRole('menuitem', { name: label }));
+}
+
 describe('settings journey — theme and language survive navigation', () => {
   it('keeps English and dark mode across a detail visit and back', async () => {
-    const page = await renderApp('/videos');
+    const page = await renderApp('/');
 
-    // Switch the UI to English, then the theme to dark.
-    await page.user.click(screen.getByRole('button', { name: 'EN' }));
+    // Switch the UI to English, then the theme to dark, both in the menu.
+    await pickMenuItem(page.user, 'English');
     await screen.findByLabelText('Search phrase');
-    await pickOption(page.user, screen.getByLabelText('Theme'), 'Dark');
+    await pickMenuItem(page.user, 'Dark');
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
 
     // Search, open a video and come back through the back link. Cards open
@@ -45,23 +54,23 @@ describe('settings journey — theme and language survive navigation', () => {
 
     // Both choices persisted into the new tab.
     expect(document.documentElement.dataset.theme).toBe('dark');
-    expect(screen.getByRole('button', { name: 'EN' })).toHaveAttribute('aria-pressed', 'true');
+    expect(document.documentElement.lang).toBe('en');
 
     await detail.user.click(screen.getByRole('link', { name: /Back to search/ }));
     await screen.findByLabelText('Search phrase');
     expect(document.documentElement.dataset.theme).toBe('dark');
 
     // And back to Polish.
-    await detail.user.click(screen.getByRole('button', { name: 'PL' }));
+    await pickMenuItem(detail.user, 'Polski');
     await screen.findByLabelText('Fraza wyszukiwania');
   });
 
   it('runs a full search by keyboard alone', async () => {
-    const page = await renderApp('/videos');
-    await page.user.click(screen.getByRole('button', { name: 'PL' }));
+    const page = await renderApp('/');
+    await pickMenuItem(page.user, 'Polski');
     await screen.findByLabelText('Fraza wyszukiwania');
 
-    // Tab from the toolbar to the query input. jsdom implements no text
+    // Tab from the top bar to the query input. jsdom implements no text
     // insertion for raw keyboard events, so the phrase goes through
     // user.type (the same events a real browser synthesizes); navigation,
     // Enter and the arrows below stay real keyboard events.

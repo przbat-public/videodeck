@@ -91,6 +91,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outline into stray top/bottom segments); keyboard navigation keeps a
   visible ring, and native form controls like the date picker now follow
   the dark theme
+- A global top bar now leads the app: the film list is the home route, the
+  download page moved to /download, and a gear menu holds navigation, the
+  index actions (list page only), the theme and the language. The old
+  toolbar and its video counter are gone
 
 
 ## [1.0.0] - 2026-09-14

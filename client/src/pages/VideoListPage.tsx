@@ -1,9 +1,9 @@
 import type { JSX } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useRegisterMenuSections } from '../components/appMenuRegistry';
 import SearchBar from '../components/SearchBar';
 import { Button } from '../components/ui/Button';
-import { Checkbox } from '../components/ui/Checkbox';
 import { Loading } from '../components/ui/Loading';
 import VideoList from '../components/VideoList';
 import { useCacheRefresh } from '../hooks/useCacheRefresh';
@@ -16,7 +16,7 @@ import { useVideoSearch } from '../hooks/useVideoSearch';
 export default function VideoListPage(): JSX.Element {
   const { searchState, setSearchState } = useSearchUrlState();
   const { query, sort, category, channel, dateFrom, dateTo } = searchState;
-  const { videos, totalCount, loading: videoLoading, hasMore, search, loadMore } = useVideoSearch();
+  const { videos, loading: videoLoading, hasMore, search, loadMore } = useVideoSearch();
   const { loading: refreshLoading, refreshCache } = useCacheRefresh();
   const { categories } = useCategories();
   const { channels } = useChannelNames();
@@ -48,35 +48,52 @@ export default function VideoListPage(): JSX.Element {
     void loadMore();
   }, [loadMore]);
 
+  // The list page owns these actions, the top bar menu shows them: reload,
+  // the two reindex actions and the only-missing switch.
+  useRegisterMenuSections([
+    {
+      key: 'results',
+      label: t('menu.results'),
+      items: [
+        {
+          key: 'reload',
+          label: t('menu.reloadResults'),
+          disabled: videoLoading,
+          title: t('reindex.reloadTitle'),
+          onSelect: () => void handleReload(),
+        },
+      ],
+    },
+    {
+      key: 'indexes',
+      label: t('menu.indexes'),
+      items: [
+        {
+          key: 'refresh',
+          label: refreshLoading ? t('reindex.refreshing') : t('reindex.start'),
+          disabled: refreshLoading,
+          title: t('reindex.startTitle'),
+          onSelect: () => void handleRefreshCache(),
+        },
+        {
+          key: 'onlyMissing',
+          label: t('reindex.onlyMissing'),
+          title: t('reindex.onlyMissingTitle'),
+          checkbox: { checked: onlyMissing, onCheckedChange: setOnlyMissing },
+        },
+        {
+          key: 'recreate',
+          label: recreateIndicesLoading ? t('reindex.recreating') : t('reindex.recreate'),
+          disabled: recreateIndicesLoading,
+          title: t('reindex.recreateTitle'),
+          onSelect: () => void handleRecreateIndices(),
+        },
+      ],
+    },
+  ]);
+
   return (
     <main className="app-main">
-      <div className="toolbar">
-        <div className="toolbar-left">
-          <Button onClick={handleRecreateIndices} disabled={recreateIndicesLoading} title={t('reindex.recreateTitle')}>
-            {recreateIndicesLoading ? t('reindex.recreating') : t('reindex.recreate')}
-          </Button>
-          <Button onClick={handleRefreshCache} disabled={refreshLoading} title={t('reindex.startTitle')}>
-            {refreshLoading ? t('reindex.refreshing') : t('reindex.start')}
-          </Button>
-          <Checkbox
-            checked={onlyMissing}
-            onChange={setOnlyMissing}
-            label={t('reindex.onlyMissing')}
-            title={t('reindex.onlyMissingTitle')}
-          />
-          <Button onClick={handleReload} disabled={videoLoading} title={t('reindex.reloadTitle')}>
-            {videoLoading ? t('app.loading') : t('reindex.reload')}
-          </Button>
-        </div>
-        <div className="toolbar-right">
-          <span className="video-count">
-            {videoLoading
-              ? t('app.loading')
-              : `${t('videoCount', { count: videos.length })}${totalCount > 0 ? ` / ${t('search.total', { count: totalCount })}` : ''}`}
-          </span>
-        </div>
-      </div>
-
       <SearchBar
         query={query}
         sort={sort}

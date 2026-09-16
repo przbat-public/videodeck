@@ -25,7 +25,7 @@ export default function VideoDetailPage(): JSX.Element {
     return (
       <div className="video-detail-page">
         <ErrorMessage>{t('app.error', { message: state.error || t('video.notFound') })}</ErrorMessage>
-        <Link to="/videos" className="back-link">
+        <Link to="/" className="back-link">
           {t('video.back')}
         </Link>
       </div>
@@ -40,7 +40,7 @@ export default function VideoDetailPage(): JSX.Element {
   return (
     <div className="video-detail-page">
       <div className="video-detail-header">
-        <Link to="/videos" className="back-link">
+        <Link to="/" className="back-link">
           {t('video.back')}
         </Link>
       </div>
