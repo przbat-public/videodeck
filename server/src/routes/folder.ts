@@ -657,6 +657,7 @@ function streamJobProgress(
     clearInterval(heartbeat);
     unregister();
     queue.off('job', onJob);
+    queue.off('progress', onProgress);
     sendEvent(
       snapshot.status === 'done'
         ? { type: 'downloadComplete', message: 'Download completed successfully' }
@@ -682,7 +683,21 @@ function streamJobProgress(
     }
   };
 
+  // Progress lines are parsed and dropped from the log, so a separate tick
+  // carries the percentage the extension's progress bar animates on.
+  const onProgress = (snapshot: QueueJob) => {
+    if (snapshot.id !== job.id || finished) {
+      return;
+    }
+    sendEvent({
+      type: 'downloadProgress',
+      progress: snapshot.progress,
+      message: `Progress: ${Math.round(snapshot.progress ?? 0)}%`,
+    });
+  };
+
   queue.on('job', onJob);
+  queue.on('progress', onProgress);
 
   // Job may already be finished (deduped against a completed one is not
   // possible, but a very fast failure is) — replay current state.
@@ -696,5 +711,6 @@ function streamJobProgress(
     clearInterval(heartbeat);
     unregister();
     queue.off('job', onJob);
+    queue.off('progress', onProgress);
   });
 }

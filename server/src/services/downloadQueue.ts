@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import type { DownloadOptions, JobStatus, JobType, QueueJob } from '@videodeck/shared/api';
-import { extractYtDlpProgress } from '@videodeck/shared/progress';
+import { extractYtDlpProgress, isYtDlpProgressLine } from '@videodeck/shared/progress';
 import { removePartialDownloads, writeTextAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/objectUtils';
@@ -659,18 +659,28 @@ export class DownloadQueue extends EventEmitter {
     if (lines.length === 0) {
       return;
     }
+    let progressChanged = false;
     for (const line of lines) {
       const progress = extractYtDlpProgress(line);
       if (progress !== undefined) {
         job.progress = progress;
+        progressChanged = true;
       }
     }
-    job.log.push(...lines);
-    job.logLineCount += lines.length;
+    // Progress lines exist only for the parser; storing them would flood
+    // the log tail, the queue payload and the SSE stream with noise the
+    // client has to mask again.
+    const visible = lines.filter((line) => !isYtDlpProgressLine(line));
+    job.log.push(...visible);
+    job.logLineCount += visible.length;
     if (job.log.length > this.logTail) {
       job.log.splice(0, job.log.length - this.logTail);
     }
     this.emitJob(job);
+    if (progressChanged) {
+      // SSE consumers need the tick even though the line was not stored.
+      this.emit('progress', this.snapshot(job));
+    }
   }
 
   private emitJob(job: QueueJob): void {

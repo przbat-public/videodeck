@@ -1,6 +1,5 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { extractProgress } from './progress';
 import { feedSseBuffer, parseSseEvent } from './sse';
 import { getYouTubeVideoId } from './youtube';
 
@@ -71,20 +70,6 @@ describe('parseSseEvent (property)', () => {
         const event = parseSseEvent(raw);
         if (event !== null) {
           expect(['downloadStart', 'downloadProgress', 'downloadComplete', 'downloadError']).toContain(event.type);
-        }
-      }),
-    );
-  });
-});
-
-describe('extractProgress (property)', () => {
-  it('returns undefined or a percentage within 0..100', () => {
-    fc.assert(
-      fc.property(fc.string(), (line) => {
-        const progress = extractProgress(line);
-        if (progress !== undefined) {
-          expect(progress).toBeGreaterThanOrEqual(0);
-          expect(progress).toBeLessThanOrEqual(100);
         }
       }),
     );

@@ -1,5 +1,4 @@
 import type { ChannelVideo, JobType, QueueJob } from '@videodeck/shared/api';
-import { isYtDlpProgressLine } from '@videodeck/shared/progress';
 import { FolderListResponseSchema } from '@videodeck/shared/schemas';
 import type { JSX, Ref } from 'react';
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
@@ -203,7 +202,7 @@ export function VideoListSection({
       if (job?.status === 'running') {
         return ITEM_HEIGHT_WITH_PROGRESS;
       }
-      const showLog = job?.status === 'error' && job.log.some((line) => !isYtDlpProgressLine(line));
+      const showLog = job?.status === 'error' && job.log.length > 0;
       return showLog ? ITEM_HEIGHT_WITH_LOG : ITEM_HEIGHT;
     },
     [rows, jobsByVideoId],
