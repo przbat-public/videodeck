@@ -1,7 +1,8 @@
 import type { ApiError, EnqueueJobsResponse, JobType, QueueJob, QueueVideoInput } from '@videodeck/shared/api';
-import { EnqueueJobsResponseSchema, QueueListResponseSchema } from '@videodeck/shared/schemas';
+import { EnqueueJobsResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import i18n from '../i18n';
+import { fetchQueue } from './fetchQueue';
 
 export interface UseDownloadQueueOptions {
   /** Poll interval while jobs are active (ms) */
@@ -47,13 +48,7 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
     abortRef.current = controller;
 
     try {
-      const response = await fetch(`/api/folder/queue?folderPath=${encodeURIComponent(folderPath)}`, {
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw new Error(i18n.t('errors.loadQueue'));
-      }
-      const data = QueueListResponseSchema.parse(await response.json());
+      const data = await fetchQueue(controller.signal, folderPath);
       setJobs(Array.isArray(data.jobs) ? data.jobs : []);
       setError(null);
     } catch (err) {

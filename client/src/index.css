@@ -17,7 +17,6 @@
   --color-primary-soft: #eef0ff;
   --color-success: #28a745;
   --color-success-hover: #218838;
-  --color-success-bg: #d4edda;
   --color-danger: #dc3545;
   --color-danger-hover: #c82333;
   --color-danger-bg: #f8d7da;
@@ -50,7 +49,6 @@
   --color-primary-hover: #4b56c9;
   --color-primary-text: #a5adff; /* accent as text: ≈8:1 on dark surfaces */
   --color-primary-soft: #2e3352;
-  --color-success-bg: #24402c;
   --color-danger-bg: #4a262b;
   --color-danger-text: #f2b8bd;
   --color-info-bg: #203a40;

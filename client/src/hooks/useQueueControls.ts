@@ -1,9 +1,6 @@
-import {
-  ClearFinishedResponseSchema,
-  QueueListResponseSchema,
-  QueuePauseResponseSchema,
-} from '@videodeck/shared/schemas';
+import { ClearFinishedResponseSchema, QueuePauseResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { fetchQueue } from './fetchQueue';
 
 interface UseQueueControlsResult {
   /** True while a control request is in flight */
@@ -32,11 +29,7 @@ export function useQueueControls(): UseQueueControlsResult {
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const versionAtStart = mutationVersionRef.current;
-    const response = await fetch('/api/folder/queue', signal ? { signal } : {});
-    if (!response.ok) {
-      throw new Error(`Failed to fetch queue (HTTP ${response.status})`);
-    }
-    const data = QueueListResponseSchema.parse(await response.json());
+    const data = await fetchQueue(signal);
     if (mutationVersionRef.current !== versionAtStart) {
       return; // stale — a mutation has reported fresher state since
     }

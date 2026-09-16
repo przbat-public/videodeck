@@ -4,6 +4,9 @@
  * imported for real — the ESLint restricted-import rule only protects api.ts.
  */
 
+/** Our `--progress-template` line starts with a literal `download ` marker */
+const TEMPLATE_PROGRESS_RE = /^download\s+(\d+(?:\.\d+)?)%/;
+
 /**
  * Extract the download progress percentage from a yt-dlp output line.
  * Understands two formats:
@@ -12,8 +15,7 @@
  * Returns undefined when the line carries no percentage.
  */
 export function extractYtDlpProgress(message: string): number | undefined {
-  // The template line we configure starts with a literal `download ` marker
-  const templateMatch = message.match(/^download\s+(\d+(?:\.\d+)?)%/);
+  const templateMatch = message.match(TEMPLATE_PROGRESS_RE);
   if (templateMatch?.[1] !== undefined) {
     return Math.min(100, Math.max(0, parseFloat(templateMatch[1])));
   }
@@ -45,7 +47,7 @@ export function extractYtDlpProgress(message: string): number | undefined {
  * percentage must never be masked.
  */
 export function isYtDlpProgressLine(message: string): boolean {
-  if (/^download\s+\d+(?:\.\d+)?%/.test(message)) {
+  if (TEMPLATE_PROGRESS_RE.test(message)) {
     return true;
   }
   return /^\[download\]\s+-?\d+(?:\.\d+)?%\s+of\s+/.test(message);

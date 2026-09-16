@@ -70,11 +70,15 @@ test.describe('search page', () => {
     });
 
     await page.goto('/');
-    await page.getByRole('combobox', { name: 'Sort' }).click();
-    await page.getByRole('option', { name: 'Najnowsze' }).click();
+    await expect.poll(() => sorts.length).toBeGreaterThan(0);
+    // The default sort is the server's default too, so the URL omits it.
+    expect(sorts.at(0)).toBeNull();
 
-    await expect(page.getByRole('combobox', { name: 'Sort' })).toContainText('Najnowsze');
-    await expect.poll(() => sorts).toContain('date-desc');
+    await page.getByRole('combobox', { name: 'Sort' }).click();
+    await page.getByRole('option', { name: 'Najstarsze' }).click();
+
+    await expect(page.getByRole('combobox', { name: 'Sort' })).toContainText('Najstarsze');
+    await expect.poll(() => sorts).toContain('date-asc');
   });
 
   test('"Show more" appends the next page', async ({ page }) => {

@@ -64,7 +64,7 @@ function isSortOption(value: string): value is SortOption {
 }
 
 /** `?sort=` value; unknown or missing values fall back to the default */
-export function parseSortOption(value: unknown): SortOption {
+function parseSortOption(value: unknown): SortOption {
   return typeof value === 'string' && isSortOption(value) ? value : 'date-desc';
 }
 

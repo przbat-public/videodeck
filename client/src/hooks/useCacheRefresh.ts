@@ -4,6 +4,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import i18n from '../i18n';
 import { CacheRefreshActionType, cacheRefreshReducer, initialState } from '../reducers/cacheRefreshReducer';
+import { sleep } from '../utils/sleep';
 
 interface UseCacheRefreshResult {
   /** True from the click until the server reports the reindex finished */
@@ -69,8 +70,6 @@ export function formatReindexResult(status: ReindexStatus): string {
   const errors = status.errors.length > 0 ? `, ${i18n.t('reindex.folderError', { count: status.errors.length })}` : '';
   return `${base}${errors}`;
 }
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function fetchStatus(signal: AbortSignal): Promise<ReindexStatus> {
   const response = await fetch('/api/videos/refreshCache/status', { signal });

@@ -10,10 +10,6 @@
     "update": "Update",
     "cancel": "Cancel"
   },
-  "languages": {
-    "pl": "Polski",
-    "en": "English"
-  },
   "subtitleLanguages": {
     "pl": "Polish",
     "en": "English",
@@ -34,11 +30,8 @@
     "clear": "Clear",
     "loadMore": "Show more",
     "loading": "Loading videos...",
-    "noResults": "No videos. Try a different query.",
-    "total": "{{count}} in total"
+    "noResults": "No videos. Try a different query."
   },
-  "videoCount_one": "{{count}} video",
-  "videoCount_other": "{{count}} videos",
   "sortOption": {
     "relevance": "Relevance",
     "dateDesc": "Newest",
@@ -125,7 +118,6 @@
     "updatedTitle": "{{title}} (updated: {{date}})",
     "summaryTitle": "Summary",
     "invalidId": "Invalid video identifier",
-    "summaryFailed": "Failed to generate a summary",
     "summaryTruncated": "This summary was generated from truncated subtitles — the source text was too long for the model."
   },
   "config": {
@@ -171,13 +163,11 @@
     "recreate": "Rebuild indices",
     "recreating": "Rebuilding...",
     "recreateTitle": "Rebuild all Elasticsearch indices",
-    "reload": "Refresh",
     "reloadTitle": "Refresh the video list",
     "onlyMissing": "missing only (use existing index)",
     "onlyMissingTitle": "Skip folders that already have an index in Elasticsearch (e.g. a previously plugged disk's cache)",
     "starting": "Starting index refresh...",
     "alreadyRunning": "Indexing already running — tracking progress...",
-    "progress": "Indexing · folder {{folder}}/{{total}} · {{name}} · {{filesDone}}/{{filesTotal}} files · {{indexed}} indexed",
     "finished": "Indexing finished: {{indexed}} videos indexed",
     "finishedWithSkipped": "Indexing finished: {{indexed}} videos indexed, {{skipped}} skipped",
     "folderError_one": "{{count}} folder error",
@@ -217,8 +207,6 @@
     "occurred": "An error occurred",
     "recreateStart": "Failed to start index rebuild",
     "recreateStatus": "Failed to read index rebuild status (HTTP {{status}})",
-    "summary": "Failed to generate a summary",
-    "unknown": "unknown error",
     "job": {
       "members-only": "This video is for channel members only (members-only)",
       "private": "This video is private",

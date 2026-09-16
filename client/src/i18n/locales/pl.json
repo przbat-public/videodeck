@@ -10,10 +10,6 @@
     "update": "Aktualizuj",
     "cancel": "Anuluj"
   },
-  "languages": {
-    "pl": "Polski",
-    "en": "English"
-  },
   "subtitleLanguages": {
     "pl": "Polski",
     "en": "Angielski",
@@ -34,13 +30,8 @@
     "clear": "Wyczyść",
     "loadMore": "Pokaż więcej",
     "loading": "Ładowanie filmów...",
-    "noResults": "Brak filmów. Spróbuj innego zapytania.",
-    "total": "{{count}} łącznie"
+    "noResults": "Brak filmów. Spróbuj innego zapytania."
   },
-  "videoCount_one": "{{count}} film",
-  "videoCount_few": "{{count}} filmy",
-  "videoCount_many": "{{count}} filmów",
-  "videoCount_other": "{{count}} filmów",
   "sortOption": {
     "relevance": "Trafność",
     "dateDesc": "Najnowsze",
@@ -145,7 +136,6 @@
     "updatedTitle": "{{title}} (aktualizacja: {{date}})",
     "summaryTitle": "Streszczenie",
     "invalidId": "Nieprawidłowy identyfikator filmu",
-    "summaryFailed": "Nie udało się wygenerować streszczenia",
     "summaryTruncated": "To streszczenie powstało na podstawie skróconych napisów — tekst źródłowy był zbyt długi dla modelu."
   },
   "config": {
@@ -191,13 +181,11 @@
     "recreate": "Odbuduj indeksy",
     "recreating": "Odbudowywanie...",
     "recreateTitle": "Odbuduj wszystkie indeksy Elasticsearch",
-    "reload": "Odśwież",
     "reloadTitle": "Odśwież listę filmów",
     "onlyMissing": "tylko brakujące (użyj istniejącego indeksu)",
     "onlyMissingTitle": "Pomiń foldery, które mają już indeks w Elasticsearch (np. cache poprzednio podpiętego dysku)",
     "starting": "Rozpoczynanie odświeżania indeksu...",
     "alreadyRunning": "Indeksowanie już trwa — śledzę postęp...",
-    "progress": "Indeksowanie · folder {{folder}}/{{total}} · {{name}} · {{filesDone}}/{{filesTotal}} plików · {{indexed}} zindeksowanych",
     "finished": "Indeksowanie zakończone: {{indexed}} filmów zindeksowanych",
     "finishedWithSkipped": "Indeksowanie zakończone: {{indexed}} filmów zindeksowanych, {{skipped}} pominiętych",
     "folderError_one": "{{count}} błąd folderu",
@@ -241,8 +229,6 @@
     "occurred": "Wystąpił błąd",
     "recreateStart": "Nie udało się rozpocząć odbudowy indeksów",
     "recreateStatus": "Nie udało się odczytać statusu odbudowy indeksów (HTTP {{status}})",
-    "summary": "Nie udało się wygenerować streszczenia",
-    "unknown": "nieznany błąd",
     "job": {
       "members-only": "Ten film jest dostępny tylko dla członków kanału (members-only)",
       "private": "Ten film jest prywatny",
