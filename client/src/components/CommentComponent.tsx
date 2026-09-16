@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next';
 import type { JSX } from 'react';
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Tooltip } from './ui/Tooltip';
 
 const MAX_COMMENT_LENGTH = 250;
 
@@ -54,9 +55,12 @@ interface CommentTimestampProps {
 function CommentTimestamp({ comment, formattedDate }: CommentTimestampProps): JSX.Element | null {
   if (formattedDate !== null) {
     return (
-      <span className="comment-time" title={formattedDate}>
-        {formattedDate}
-      </span>
+      <Tooltip label={formattedDate}>
+        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: the span is the Radix tooltip trigger; focus is the keyboard path to the info */}
+        <span className="comment-time" tabIndex={0}>
+          {formattedDate}
+        </span>
+      </Tooltip>
     );
   }
   if (comment.time_parsed) {
@@ -92,15 +96,12 @@ function CommentFooter({
     <div className="comment-footer">
       <CommentTimestamp comment={comment} formattedDate={formattedDate} />
       {hasReplies && (
-        <button
-          type="button"
-          className="comment-replies-toggle"
-          onClick={onToggleReplies}
-          title={isRepliesExpanded ? t('video.collapseReplies') : t('video.showReplies')}
-        >
-          {isRepliesExpanded ? '▼' : '▶'}
-          <span className="comment-replies-count">({t('video.replyCount', { count: totalRepliesCount })})</span>
-        </button>
+        <Tooltip label={isRepliesExpanded ? t('video.collapseReplies') : t('video.showReplies')}>
+          <button type="button" className="comment-replies-toggle" onClick={onToggleReplies}>
+            {isRepliesExpanded ? '▼' : '▶'}
+            <span className="comment-replies-count">({t('video.replyCount', { count: totalRepliesCount })})</span>
+          </button>
+        </Tooltip>
       )}
     </div>
   );

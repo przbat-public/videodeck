@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FolderConfigEditor } from './FolderConfigEditor';
 import { PlaylistDownloadSection } from './PlaylistDownloadSection';
+import { Tooltip } from './ui/Tooltip';
 import type { VideoListSectionHandle } from './VideoListSection';
 import { VideoListSection } from './VideoListSection';
 
@@ -73,9 +74,12 @@ export function FolderSection({
         {/* Only the actionable state is shown: a missing ES index needs the
             "refresh index (missing only)" run; "ready" adds nothing. */}
         {!indexed && (
-          <span className="folder-index-badge" title={t('status.indexMissingTitle')}>
-            {t('status.indexMissing')}
-          </span>
+          <Tooltip label={t('status.indexMissingTitle')}>
+            {/* biome-ignore lint/a11y/noNoninteractiveTabindex: the span is the Radix tooltip trigger; focus is the keyboard path to the detail */}
+            <span className="folder-index-badge" tabIndex={0}>
+              {t('status.indexMissing')}
+            </span>
+          </Tooltip>
         )}
       </div>
 

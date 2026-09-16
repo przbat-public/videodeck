@@ -4,6 +4,7 @@ import type { JSX } from 'react';
 import { memo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
+import { Tooltip } from './ui/Tooltip';
 
 /** A list.json entry plus the local "last updated" date from the folder index */
 export interface ChannelVideoRow extends ChannelVideo {
@@ -150,27 +151,33 @@ function VideoItemActions({
 }: VideoItemActionsProps): JSX.Element {
   const { t } = useTranslation();
   const actionLabel = isDownloaded ? t('app.update') : t('app.download');
+  const actionClassName = isDownloaded ? 'update-video-button' : 'download-video-button';
   return (
     <div className="video-item-actions">
       {job && (
-        <span className={`job-status job-status--${job.status}`} title={job.error}>
-          {describeJob(job, t)}
-        </span>
+        <Tooltip label={job.error}>
+          <span className={`job-status job-status--${job.status}`} tabIndex={job.error ? 0 : undefined}>
+            {describeJob(job, t)}
+          </span>
+        </Tooltip>
       )}
       {isActive ? (
         <button className="cancel-job-button" onClick={() => job && onCancel(job.id)} type="button">
           {t('app.cancel')}
         </button>
-      ) : (
-        <button
-          className={isDownloaded ? 'update-video-button' : 'download-video-button'}
-          onClick={() => onEnqueue(video, actionType)}
-          disabled={!video.url}
-          title={video.url ? undefined : t('video.noUrl')}
-          type="button"
-        >
+      ) : video.url ? (
+        <button className={actionClassName} onClick={() => onEnqueue(video, actionType)} type="button">
           {actionLabel}
         </button>
+      ) : (
+        <Tooltip label={t('video.noUrl')}>
+          {/* biome-ignore lint/a11y/noNoninteractiveTabindex: the span is the Radix tooltip trigger around the disabled button; focus is the keyboard path to the hint */}
+          <span className="video-item-tooltip-anchor" tabIndex={0}>
+            <button className={actionClassName} disabled type="button" style={{ pointerEvents: 'none' }}>
+              {actionLabel}
+            </button>
+          </span>
+        </Tooltip>
       )}
     </div>
   );

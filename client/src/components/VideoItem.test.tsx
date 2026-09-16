@@ -63,11 +63,17 @@ describe('VideoItem', () => {
     expect(onEnqueue).toHaveBeenCalledWith(expect.objectContaining({ id: 'abc123' }), 'update');
   });
 
-  it('disables the action when the video has no url', () => {
+  it('disables the action when the video has no url and explains why in a tooltip', async () => {
+    const user = userEvent.setup();
     renderItem({ video: { ...video, url: '' } });
 
-    expect(screen.getByRole('button', { name: 'Pobierz' })).toBeDisabled();
+    const button = screen.getByRole('button', { name: 'Pobierz' });
+    expect(button).toBeDisabled();
+    expect(button).not.toHaveAttribute('title');
     expect(screen.queryByRole('link')).toBeNull();
+
+    await user.hover(button.closest('span') ?? button);
+    expect(await screen.findByRole('tooltip', { name: 'Brak URL filmu' })).toBeInTheDocument();
   });
 
   it('shows queue position and a cancel button for a queued job', async () => {
@@ -110,9 +116,13 @@ describe('VideoItem', () => {
       }),
     });
 
-    expect(screen.getByText('Błąd')).toHaveAttribute('title', 'yt-dlp exited with code 1');
+    const status = screen.getByText('Błąd');
+    expect(status).not.toHaveAttribute('title');
     expect(screen.getByText('Błąd: yt-dlp exited with code 1')).toBeInTheDocument();
     expect(screen.getByText('ERROR: unavailable')).toBeInTheDocument();
+
+    await user.hover(status);
+    expect(await screen.findByRole('tooltip', { name: 'yt-dlp exited with code 1' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Pobierz' }));
     expect(onEnqueue).toHaveBeenCalledWith(video, 'download');

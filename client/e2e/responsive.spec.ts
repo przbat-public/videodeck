@@ -16,8 +16,7 @@ const VIEWPORTS = [
 ];
 
 /** Interactive elements whose hit area must reach 44x44px on touch */
-const TOUCH_SELECTOR =
-  'button, select, a, input:not(.ui-checkbox-input), [role="button"], [role="combobox"], label.ui-checkbox';
+const TOUCH_SELECTOR = 'button, select, a, input, [role="button"], [role="combobox"], label.ui-checkbox';
 
 async function searchPage(page: Page): Promise<void> {
   await mockApi(page, {

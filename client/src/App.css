@@ -968,26 +968,21 @@
   user-select: none;
 }
 
-.ui-checkbox-input {
-  /* Hidden but focusable: the box below is what the user sees */
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-  opacity: 0;
-}
-
+/* The Radix root: a real button with the checkbox role, drawn as the box */
 .ui-checkbox-box {
+  appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
+  padding: 0;
   border: 2px solid var(--color-border);
   border-radius: 4px;
   background: var(--color-surface);
   color: white;
+  cursor: pointer;
   transition:
     background 0.15s ease,
     border-color 0.15s ease,
@@ -995,33 +990,26 @@
 }
 
 .ui-checkbox-mark {
+  display: inline-flex;
+}
+
+.ui-checkbox-mark svg {
   width: 12px;
   height: 10px;
-  opacity: 0;
-  transform: scale(0.6);
-  transition:
-    opacity 0.15s ease,
-    transform 0.15s ease;
 }
 
 .ui-checkbox:hover .ui-checkbox-box {
   border-color: var(--color-primary);
 }
 
-.ui-checkbox-input:focus-visible + .ui-checkbox-box {
+.ui-checkbox-box:focus-visible {
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
   border-color: var(--color-primary);
 }
 
-.ui-checkbox-input:checked + .ui-checkbox-box,
-.ui-checkbox-input:indeterminate + .ui-checkbox-box {
+.ui-checkbox-box[data-state='checked'] {
   background: var(--color-primary);
   border-color: var(--color-primary);
-}
-
-.ui-checkbox-input:checked + .ui-checkbox-box .ui-checkbox-mark {
-  opacity: 1;
-  transform: scale(1);
 }
 
 .ui-checkbox--disabled {
@@ -1032,6 +1020,20 @@
 .ui-checkbox--disabled .ui-checkbox-box {
   background: var(--color-bg-soft);
   border-color: var(--color-border);
+  cursor: not-allowed;
+}
+
+/* Radix Tooltip: inverted surface/text tokens, so it stays readable in
+   both themes. Rendered in a portal; never intercepts pointer events. */
+.ui-tooltip-content {
+  z-index: 100;
+  max-width: 360px;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-size: 0.85rem;
+  line-height: 1.4;
 }
 
 /* Radix Select trigger — a button styled like the app's inputs */

@@ -78,11 +78,12 @@ uppercase beyond the PL/EN language buttons.
 
 ## 6. Components
 
-Six shared primitives in `client/src/components/ui/`:
+Seven shared primitives in `client/src/components/ui/`:
 
 - **Button** — variants: default (border, surface), `primary` (accent,
   white text), `danger`. Sizes: default and `small`. Disabled state at 60%
-  opacity. Always a real `<button>`.
+  opacity. Always a real `<button>`. Forwards a `ref`, so Radix `asChild`
+  triggers (like the tooltip) can wrap it.
 - **Select** — Radix-based combobox styled like the inputs; used for sort,
   category and channel. Options in a portal, checked option marked.
   Keyboard focus draws an inset ring inside the list; mouse hover stays a
@@ -92,8 +93,14 @@ Six shared primitives in `client/src/components/ui/`:
   Select dropdown. The top bar gear menu (navigation, index actions,
   theme, language) composes it. Checkbox items keep the menu open on
   toggle; the same inset-ring focus rule as Select applies.
-- **Checkbox** — custom 18px box with `--color-primary` check state and a
-  visible focus ring.
+- **Checkbox** — Radix checkbox: a real button with the checkbox role, an
+  18px box with `--color-primary` check state and a visible focus ring.
+  The row is a `<label>`, so the text toggles too.
+- **Tooltip** — Radix tooltip (trigger + content, self-contained, 300ms
+  delay) replacing native `title` attributes. Inverted
+  `--color-text`/`--color-surface` tokens, readable in both themes.
+  Non-interactive triggers carry `tabIndex={0}` so keyboard users reach
+  the info; new code never adds a native `title`.
 - **ErrorMessage** — page-level banner or `compact` inline form; role
   `alert`, danger-soft background, danger text.
 - **Loading** — centered spinner plus an optional label; the only loading
@@ -150,7 +157,7 @@ English, key parity enforced by `locales.test.ts`. Rules:
 - `client/src/index.css` — tokens, themes, resets, focus, motion.
 - `client/src/App.css` — layout and component styles; colors only through
   tokens.
-- `client/src/components/ui/` — the five primitives.
+- `client/src/components/ui/` — the seven primitives.
 - `client/src/components/` — composite components and pages.
 
 Changing the design means changing tokens or components, never
