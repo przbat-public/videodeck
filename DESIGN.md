@@ -67,7 +67,9 @@ uppercase beyond the PL/EN language buttons.
 
 ## 5. Layout and spacing
 
-- Max content width 1400px, centered, 2rem page padding.
+- Max content width 1400px, centered, 2rem page padding. The top bar
+  shares that rhythm: 2rem above it (1rem on a phone, half the rhythm),
+  so the space over the bar reads the same as the space under it.
 - Cards: 8px radius (`--radius-card`), 1rem padding, no shadow. Titles and
   snippets clamp to two lines, and the grid rows share one height, so
   every card in a result page is the same size.
