@@ -100,7 +100,6 @@
   "video": {
     "loading": "Ładowanie filmu...",
     "notFound": "Nie znaleziono filmu",
-    "back": "← Wróć do wyszukiwania",
     "views": "{{count}} wyświetleń",
     "views_one": "{{count}} wyświetlenie",
     "views_few": "{{count}} wyświetlenia",
@@ -274,7 +273,7 @@
     "english": "English"
   },
   "nav": {
-    "backToList": "Lista filmów",
+    "backToList": "Wróć do listy",
     "home": "Strona główna"
   }
 }

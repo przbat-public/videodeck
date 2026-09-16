@@ -1,6 +1,6 @@
 import type { JSX } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { Loading } from '../components/ui/Loading';
 import VideoComments from '../components/VideoComments';
@@ -25,9 +25,6 @@ export default function VideoDetailPage(): JSX.Element {
     return (
       <div className="video-detail-page">
         <ErrorMessage>{t('app.error', { message: state.error || t('video.notFound') })}</ErrorMessage>
-        <Link to="/" className="back-link">
-          {t('video.back')}
-        </Link>
       </div>
     );
   }
@@ -39,12 +36,6 @@ export default function VideoDetailPage(): JSX.Element {
 
   return (
     <div className="video-detail-page">
-      <div className="video-detail-header">
-        <Link to="/" className="back-link">
-          {t('video.back')}
-        </Link>
-      </div>
-
       <div className="video-detail-container">
         <div className="video-detail-main">
           <div className="video-player-section">

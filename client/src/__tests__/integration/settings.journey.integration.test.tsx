@@ -41,27 +41,23 @@ describe('settings journey — theme and language survive navigation', () => {
     await pickMenuItem(page.user, 'Dark');
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
 
-    // Search, open a video and come back through the back link. Cards open
-    // in a new tab (target=_blank), so the journey renders the route that
-    // new tab would load.
+    // Search, open a video and come back through the top bar back link.
     await typeAndCommitPhrase(page.user, 'kosmos', 'Search phrase');
     await screen.findByText((_content, element) => element?.textContent === 'Historia kosmosu');
     await page.user.click(screen.getByRole('link', { name: /Historia kosmosu/ }));
-    page.unmount();
-    const detail = await renderApp('/video/deepE2e0002');
     await screen.findByRole('heading', { name: 'Historia kosmosu' });
     await screen.findByText('Original description');
 
-    // Both choices persisted into the new tab.
+    // Both choices persisted across the in-place navigation.
     expect(document.documentElement.dataset.theme).toBe('dark');
     expect(document.documentElement.lang).toBe('en');
 
-    await detail.user.click(screen.getByRole('link', { name: /Back to search/ }));
+    await page.user.click(screen.getByRole('link', { name: /Back to list/ }));
     await screen.findByLabelText('Search phrase');
     expect(document.documentElement.dataset.theme).toBe('dark');
 
     // And back to Polish.
-    await pickMenuItem(detail.user, 'Polski');
+    await pickMenuItem(page.user, 'Polski');
     await screen.findByLabelText('Fraza wyszukiwania');
   });
 
