@@ -31,7 +31,7 @@
     "humanizer:score": "node scripts/humanizer/index.js scan README.md AGENTS.md DESIGN.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md RELEASING.md docs/DEPLOYMENT.md CHANGELOG.md chrome-extension/README.md chrome-extension/INSTALL.md chrome-extension/icons/README.md .github/pull_request_template.md --ignore-code --ignore-quotes",
     "humanizer:gate": "node scripts/humanizer/index.js scan README.md AGENTS.md DESIGN.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md RELEASING.md docs/DEPLOYMENT.md CHANGELOG.md chrome-extension/README.md chrome-extension/INSTALL.md chrome-extension/icons/README.md .github/pull_request_template.md --baseline scripts/humanizer-baseline.json --fail-on-regression --ignore-code --ignore-quotes"
   },
-  "packageManager": "pnpm@10.34.5",
+  "packageManager": "pnpm@12.4.2",
   "lint-staged": {
     "*.{ts,tsx,js,mjs,cjs,json}": [
       "biome check --write --no-errors-on-unmatched"
@@ -62,12 +62,5 @@
     "typescript-eslint": "^8.70.0",
     "zod": "^4.6.5"
   },
-  "private": true,
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "@parcel/watcher",
-      "unrs-resolver"
-    ]
-  }
+  "private": true
 }
