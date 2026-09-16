@@ -52,4 +52,29 @@ describe('Checkbox', () => {
 
     expect(container.querySelector('.ui-checkbox.toolbar-checkbox')).not.toBeNull();
   });
+
+  it('renders the styled box itself as the checkbox role (Radix root)', () => {
+    const { rerender } = render(<Checkbox checked={false} onChange={vi.fn()} label="x" />);
+
+    const box = screen.getByRole('checkbox', { name: 'x' });
+    expect(box.tagName).toBe('BUTTON');
+    expect(box).toHaveClass('ui-checkbox-box');
+    expect(box).toHaveAttribute('data-state', 'unchecked');
+
+    rerender(<Checkbox checked onChange={vi.fn()} label="x" />);
+    expect(box).toHaveAttribute('data-state', 'checked');
+  });
+
+  it('toggles with the space key when the box is focused', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<Checkbox checked={false} onChange={onChange} label="Pobieraj napisy" />);
+
+    const box = screen.getByRole('checkbox', { name: 'Pobieraj napisy' });
+    box.focus();
+    await user.keyboard(' ');
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
 });

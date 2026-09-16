@@ -1,16 +1,17 @@
-import type { JSX, ReactNode } from 'react';
+import type { JSX, ReactNode, Ref } from 'react';
 
 type ButtonVariant = 'neutral' | 'primary' | 'success' | 'danger';
 
 interface ButtonProps {
   onClick?: () => void;
   disabled?: boolean;
-  title?: string;
   type?: 'button' | 'submit';
   variant?: ButtonVariant;
   size?: 'default' | 'small';
   /** Extra classes for layout (the variant covers the look) */
   className?: string;
+  /** Forwarded to the DOM button, so Radix `asChild` triggers can wrap it */
+  ref?: Ref<HTMLButtonElement>;
   children: ReactNode;
 }
 
@@ -22,11 +23,11 @@ interface ButtonProps {
 export function Button({
   onClick,
   disabled = false,
-  title,
   type = 'button',
   variant = 'neutral',
   size = 'default',
   className = '',
+  ref,
   children,
 }: ButtonProps): JSX.Element {
   const classes = [
@@ -40,7 +41,7 @@ export function Button({
     .join(' ');
 
   return (
-    <button type={type} onClick={onClick} disabled={disabled} title={title} className={classes}>
+    <button ref={ref} type={type} onClick={onClick} disabled={disabled} className={classes}>
       {children}
     </button>
   );

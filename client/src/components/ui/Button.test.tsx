@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { createRef } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Button } from './Button';
 
@@ -43,15 +44,23 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'x' })).toHaveClass(expectedClass);
   });
 
-  it('supports the small size, a title and extra classes', () => {
+  it('supports the small size and extra classes', () => {
     render(
-      <Button size="small" title="Podpowiedź" className="extra">
+      <Button size="small" className="extra">
         x
       </Button>,
     );
 
     const button = screen.getByRole('button', { name: 'x' });
     expect(button).toHaveClass('ui-button--small', 'extra');
-    expect(button).toHaveAttribute('title', 'Podpowiedź');
+    expect(button).not.toHaveAttribute('title');
+  });
+
+  it('forwards a ref to the DOM button', () => {
+    const ref = createRef<HTMLButtonElement>();
+    render(<Button ref={ref}>x</Button>);
+
+    expect(ref.current).toBeInstanceOf(HTMLButtonElement);
+    expect(ref.current).toBe(screen.getByRole('button', { name: 'x' }));
   });
 });

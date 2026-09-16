@@ -380,7 +380,7 @@ describe('CommentComponent', () => {
       };
 
       render(<CommentComponent comment={comment} />);
-      const toggleBtn = screen.getByTitle('Pokaż odpowiedzi');
+      const toggleBtn = screen.getByRole('button', { name: /▶/ });
       expect(toggleBtn).toHaveTextContent('▶');
     });
 
@@ -395,7 +395,7 @@ describe('CommentComponent', () => {
 
       render(<CommentComponent comment={comment} />);
 
-      const toggleBtn = screen.getByTitle('Pokaż odpowiedzi');
+      const toggleBtn = screen.getByRole('button', { name: /▶/ });
       await act(async () => {
         await user.click(toggleBtn);
       });
@@ -404,8 +404,13 @@ describe('CommentComponent', () => {
         expect(screen.getByText('Reply text')).toBeInTheDocument();
         expect(screen.getByText('Reply Author')).toBeInTheDocument();
         expect(toggleBtn).toHaveTextContent('▼');
-        expect(toggleBtn).toHaveAttribute('title', 'Ukryj odpowiedzi');
       });
+
+      // The click itself closes the tooltip (Radix dismisses on trigger
+      // click); leave and re-enter to open it with the new label.
+      await user.unhover(toggleBtn);
+      await user.hover(toggleBtn);
+      expect(await screen.findByRole('tooltip', { name: 'Ukryj odpowiedzi' })).toBeInTheDocument();
     });
 
     it('should collapse replies when toggle is clicked again', async () => {
@@ -419,7 +424,7 @@ describe('CommentComponent', () => {
 
       render(<CommentComponent comment={comment} />);
 
-      const toggleBtn = screen.getByTitle('Pokaż odpowiedzi');
+      const toggleBtn = screen.getByRole('button', { name: /▶/ });
       await act(async () => {
         await user.click(toggleBtn);
       });
@@ -435,8 +440,13 @@ describe('CommentComponent', () => {
       await waitFor(() => {
         expect(screen.queryByText('Reply text')).not.toBeInTheDocument();
         expect(toggleBtn).toHaveTextContent('▶');
-        expect(toggleBtn).toHaveAttribute('title', 'Pokaż odpowiedzi');
       });
+
+      // The click itself closes the tooltip (Radix dismisses on trigger
+      // click); leave and re-enter to open it with the new label.
+      await user.unhover(toggleBtn);
+      await user.hover(toggleBtn);
+      expect(await screen.findByRole('tooltip', { name: 'Pokaż odpowiedzi' })).toBeInTheDocument();
     });
 
     it('should count direct replies only', () => {
@@ -523,7 +533,7 @@ describe('CommentComponent', () => {
 
       render(<CommentComponent comment={comment} />);
 
-      const toggleBtn = screen.getByTitle('Pokaż odpowiedzi');
+      const toggleBtn = screen.getByRole('button', { name: /▶/ });
       await act(async () => {
         await user.click(toggleBtn);
       });
