@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { Counter } from '@prometheus-io/client';
 import OpenAI from 'openai';
-import { Counter } from 'prom-client';
 import { getOpenAiApiKey } from '../config';
 import { metricsRegistry } from '../metricsRegistry';
 import { resolveContainedPath, writeTextAtomic } from '../utils/fsUtils';

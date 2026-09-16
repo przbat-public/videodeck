@@ -1,4 +1,4 @@
-import { Counter, Gauge, Histogram } from 'prom-client';
+import { Counter, Gauge, Histogram } from '@prometheus-io/client';
 import { metricsRegistry } from './metricsRegistry';
 import { downloadQueue } from './services/downloadQueue';
 
