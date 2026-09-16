@@ -168,15 +168,10 @@ test.describe('video details', () => {
 
     await page.goto('/');
 
-    // The card opens the detail page in a new tab (target=_blank) — the
-    // context-wide route mocks apply to the popup as well
-    const [detailPage] = await Promise.all([
-      page.context().waitForEvent('page'),
-      page.getByText('Film z napisami').click(),
-    ]);
-    await detailPage.waitForLoadState();
+    // The card opens the detail page in place.
+    await page.getByText('Film z napisami').click();
 
-    const player = detailPage.getByTestId('video-player');
+    const player = page.getByTestId('video-player');
     await expect(player).toBeVisible();
     await expect(player).toHaveAttribute('src', `/api/videos/file/v1.mp4?folder=${encodeURIComponent('/videos/e2e')}`);
     const track = player.locator('track');
@@ -187,15 +182,15 @@ test.describe('video details', () => {
       'src',
       `/api/videos/file/v1.en.vtt?folder=${encodeURIComponent('/videos/e2e')}`,
     );
-    await expect(detailPage.getByText('Streszczenie E2E')).toBeVisible();
+    await expect(page.getByText('Streszczenie E2E')).toBeVisible();
 
     // the first page of comments comes with details; more are paged in
-    await expect(detailPage.getByText('Komentarz pierwszy')).toBeVisible();
-    await detailPage.getByRole('button', { name: 'Pokaż więcej komentarzy (1/2)' }).click();
-    await expect(detailPage.getByText('Komentarz drugi')).toBeVisible();
+    await expect(page.getByText('Komentarz pierwszy')).toBeVisible();
+    await page.getByRole('button', { name: 'Pokaż więcej komentarzy (1/2)' }).click();
+    await expect(page.getByText('Komentarz drugi')).toBeVisible();
 
-    await detailPage.getByRole('link', { name: '← Wróć do wyszukiwania' }).click();
-    await expect(detailPage).toHaveURL(/\/$/);
+    await page.getByRole('link', { name: /Wróć do listy/ }).click();
+    await expect(page).toHaveURL(/\/$/);
   });
 
   test('a details failure shows the message and the back link', async ({ page }) => {
@@ -203,20 +198,15 @@ test.describe('video details', () => {
       search: () => ({ videos: [video('v1', 'Film bez szczegółów', { videoId: 'e2eid12345' })], totalCount: 1 }),
     });
     // Registered after mockApi, so this route wins for the details endpoint.
-    // It must be a CONTEXT route: the card opens the detail page in a new
-    // page (target=_blank) and page-level routes do not apply there.
-    await page.context().route('**/api/videos/**/details', (route) => route.fulfill(json({ error: 'nope' }, 500)));
+    await page.route('**/api/videos/**/details', (route) => route.fulfill(json({ error: 'nope' }, 500)));
 
     await page.goto('/');
 
-    const [detailPage] = await Promise.all([
-      page.context().waitForEvent('page'),
-      page.getByText('Film bez szczegółów').click(),
-    ]);
-    await detailPage.waitForLoadState();
+    await page.getByText('Film bez szczegółów').click();
 
-    await expect(detailPage.getByText(/^Błąd:/)).toBeVisible();
-    await expect(detailPage.getByRole('link', { name: '← Wróć do wyszukiwania' })).toBeVisible();
+    await expect(page.getByText(/^Błąd:/)).toBeVisible();
+    // The detail page has no back bar anymore; the top bar back link leads home.
+    await expect(page.getByRole('link', { name: /Wróć do listy/ })).toBeVisible();
   });
 });
 
