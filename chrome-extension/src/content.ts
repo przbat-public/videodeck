@@ -1,5 +1,5 @@
+import { extractYoutubeVideoId, toWatchUrl } from '@videodeck/shared/youtube';
 import type { RuntimeMessage, VideoInfo } from './lib/messages';
-import { getYouTubeVideoId, toWatchUrl } from './lib/youtube';
 
 /**
  * Content script: detects the video on the current page (YouTube or a direct
@@ -31,7 +31,7 @@ function getVideoInfo(): VideoInfo | null {
 
 /** Builds the YouTube video info from the page DOM and its URL. */
 function getYouTubeVideoInfo(url: string): VideoInfo | null {
-  const videoId = getYouTubeVideoId(url);
+  const videoId = extractYoutubeVideoId(url);
   if (!videoId) {
     return null;
   }
@@ -114,7 +114,7 @@ let lastVideoId: string | null = null;
 
 function checkForVideoChange(): boolean {
   const currentUrl = window.location.href;
-  const currentVideoId = getYouTubeVideoId(currentUrl);
+  const currentVideoId = extractYoutubeVideoId(currentUrl);
 
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;

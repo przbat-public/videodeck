@@ -1,7 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { feedSseBuffer, parseSseEvent } from './sse';
-import { getYouTubeVideoId } from './youtube';
 
 /**
  * Property-based tests for the extension's parsers: invariants that must hold
@@ -70,19 +69,6 @@ describe('parseSseEvent (property)', () => {
         const event = parseSseEvent(raw);
         if (event !== null) {
           expect(['downloadStart', 'downloadProgress', 'downloadComplete', 'downloadError']).toContain(event.type);
-        }
-      }),
-    );
-  });
-});
-
-describe('getYouTubeVideoId (property)', () => {
-  it('returns null or exactly an 11-character id', () => {
-    fc.assert(
-      fc.property(fc.string(), (url) => {
-        const id = getYouTubeVideoId(url);
-        if (id !== null) {
-          expect(id).toMatch(/^[a-zA-Z0-9_-]{11}$/);
         }
       }),
     );

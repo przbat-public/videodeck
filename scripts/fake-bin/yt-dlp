@@ -158,8 +158,8 @@ if (writeInfoJson) {
       duration: 42,
       view_count: 1234,
       like_count: 56,
-      channel: 'Fake channel',
-      description: 'Fake description for deep integration tests.',
+      channel: 'Deep test channel',
+      description: 'Deep test description.',
       webpage_url: url,
     }),
   );
@@ -174,7 +174,7 @@ if (writeSubs) {
   for (const lang of subLangs) {
     writeFileSync(
       path.join(process.cwd(), `${baseName}.${lang}.vtt`),
-      'WEBVTT\n\n00:00.000 --> 00:01.000\nFake subtitle line.\n',
+      'WEBVTT\n\n00:00.000 --> 00:01.000\nDeep test subtitle line.\n',
     );
   }
 }
