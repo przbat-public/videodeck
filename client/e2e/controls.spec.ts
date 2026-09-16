@@ -77,4 +77,17 @@ test.describe('select controls', () => {
     const state = await itemState(highlighted);
     expect(state.outlineStyle).toBe('none');
   });
+
+  test('the select trigger draws the tokenized focus ring', async ({ page }) => {
+    await mockApi(page, { search: () => ({ videos: [], totalCount: 0 }) });
+    await page.goto('/');
+
+    const trigger = page.getByRole('combobox', { name: 'Sort' });
+    await trigger.focus();
+
+    // The box-shadow transition takes 0.2s; poll until it settles.
+    await expect
+      .poll(() => trigger.evaluate((el) => getComputedStyle(el).boxShadow))
+      .toContain('rgba(102, 126, 234, 0.2)');
+  });
 });
