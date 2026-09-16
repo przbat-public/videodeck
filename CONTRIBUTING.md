@@ -108,4 +108,5 @@ chrome-extension/  MV3 extension: enqueue videos from YouTube (SSE progress)
 shared/            zod API contract + helpers shared by server and extension
 ```
 
-See the README for the architecture and API documentation.
+See [docs/API.md](docs/API.md) for the API reference and
+[docs/architecture/](docs/architecture/) for the architecture map.
