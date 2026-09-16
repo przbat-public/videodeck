@@ -668,22 +668,16 @@ describe('elasticsearchService', () => {
       expect(request.size).toBe(25);
     });
 
-    it('filters by channel and upload-date range', async () => {
+    it('filters by channel', async () => {
       await searchVideos('q', 'date-desc', undefined, {
         channel: 'Jordan B Peterson',
-        dateFrom: '20240101',
-        dateTo: '20251231',
       });
 
       const request = mockClient.search.mock.calls[0][0];
       expect(request.query).toEqual({
         bool: {
           must: [expect.objectContaining({ multi_match: expect.objectContaining({ query: 'q' }) })],
-          filter: [
-            { term: { 'channelName.keyword': 'Jordan B Peterson' } },
-            { range: { uploadDate: { gte: '20240101' } } },
-            { range: { uploadDate: { lte: '20251231' } } },
-          ],
+          filter: [{ term: { 'channelName.keyword': 'Jordan B Peterson' } }],
         },
       });
     });

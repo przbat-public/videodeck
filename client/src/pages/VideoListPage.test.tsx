@@ -204,13 +204,13 @@ describe('VideoListPage', () => {
       expect(searchInput()).toHaveValue('drone');
     });
 
-    it('passes channel and date filters from the URL to the search', async () => {
+    it('passes the channel filter from the URL to the search and ignores the legacy date params', async () => {
       fetchMock = installFetch({ search: () => ({ videos: [], totalCount: 0 }) });
       renderAt('/?channel=Kana%C5%82+A&dateFrom=2024-01-05&dateTo=2025-12-31');
 
       expect(await screen.findByText('Brak filmów. Spróbuj innego zapytania.')).toBeInTheDocument();
       expect(searchUrls(fetchMock).at(-1)).toBe(
-        '/api/videos/search?sort=date-desc&channel=Kana%C5%82+A&dateFrom=20240105&dateTo=20251231&offset=0&limit=100',
+        '/api/videos/search?sort=date-desc&channel=Kana%C5%82+A&offset=0&limit=100',
       );
     });
 

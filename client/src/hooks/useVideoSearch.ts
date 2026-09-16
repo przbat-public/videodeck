@@ -31,12 +31,6 @@ function buildSearchParams(searchState: SearchState, offset: number): URLSearchP
   if (channel) {
     params.set('channel', channel);
   }
-  if (/^\d{8}$/.test(searchState.dateFrom)) {
-    params.set('dateFrom', searchState.dateFrom);
-  }
-  if (/^\d{8}$/.test(searchState.dateTo)) {
-    params.set('dateTo', searchState.dateTo);
-  }
   params.set('offset', String(offset));
   params.set('limit', String(PAGE_SIZE));
   return params;
@@ -89,8 +83,6 @@ export function useVideoSearch(): UseVideoSearchResult {
     sort: 'date-desc',
     category: '',
     channel: '',
-    dateFrom: '',
-    dateTo: '',
   });
   // The request in flight; a new one aborts it so typing fast does not leave
   // a trail of doomed fetches behind

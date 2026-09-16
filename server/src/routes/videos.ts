@@ -275,31 +275,14 @@ const search: RouteHandler<NoParams, SearchResponse> = async (req, res) => {
   const offset = parseOffset(readString(req.query.offset));
   const limit = parseNonNegativeInt(readString(req.query.limit), SEARCH_DEFAULT_LIMIT);
   const channel = readString(req.query.channel)?.trim() || undefined;
-  const dateFrom = parseDateFilter(readString(req.query.dateFrom));
-  const dateTo = parseDateFilter(readString(req.query.dateTo));
 
   const folderPaths = category ? await getFolderPathsForCategory(category) : undefined;
 
-  const options = stripUndefined<SearchOptions>({ offset, limit, channel, dateFrom, dateTo });
+  const options = stripUndefined<SearchOptions>({ offset, limit, channel });
   const { videos, total: totalCount } = await getVideos(query, sort, folderPaths, options);
 
   res.json({ videos, totalCount });
 };
-
-/** yyyyMMdd from a user-entered date; impossible dates are ignored */
-function parseDateFilter(value: string | undefined): string | undefined {
-  const match = /^(\d{4})(\d{2})(\d{2})$/.exec((value ?? '').replace(/\D/g, ''));
-  if (!match) {
-    return undefined;
-  }
-  const [, year, month, day] = match;
-  const monthNum = Number(month);
-  const dayNum = Number(day);
-  if (monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
-    return undefined;
-  }
-  return `${year}${month}${day}`;
-}
 
 // GET /api/videos/categories
 const getCategories: RouteHandler<NoParams, CategoriesResponse> = async (_req, res) => {

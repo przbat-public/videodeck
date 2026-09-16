@@ -682,9 +682,6 @@ export interface SearchOptions {
   limit?: number;
   /** Exact channel filter (matches channelName.keyword) */
   channel?: string;
-  /** Upload-date range as yyyyMMdd (inclusive bounds) */
-  dateFrom?: string;
-  dateTo?: string;
 }
 
 /** Control chars wrapping highlight fragments — never occur in user content */
@@ -729,16 +726,10 @@ export async function searchVideosWithTotal(
     };
   }
 
-  // Channel and date filters narrow the result set without touching scoring
+  // The channel filter narrows the result set without touching scoring
   const filters: Record<string, unknown>[] = [];
   if (options.channel) {
     filters.push({ term: { 'channelName.keyword': options.channel } });
-  }
-  if (options.dateFrom) {
-    filters.push({ range: { uploadDate: { gte: options.dateFrom } } });
-  }
-  if (options.dateTo) {
-    filters.push({ range: { uploadDate: { lte: options.dateTo } } });
   }
 
   // commentsText is search-only; it would dominate the payload otherwise

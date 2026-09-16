@@ -15,9 +15,6 @@ export interface SearchState {
   category: string;
   /** Exact channel filter; '' means "all channels" */
   channel: string;
-  /** Upload-date range as yyyyMMdd; '' means unbounded */
-  dateFrom: string;
-  dateTo: string;
 }
 
 export const DEFAULT_SORT: SortOption = 'date-desc';
@@ -27,8 +24,6 @@ export const DEFAULT_SEARCH_STATE: SearchState = {
   sort: DEFAULT_SORT,
   category: '',
   channel: '',
-  dateFrom: '',
-  dateTo: '',
 };
 
 export type SortLabelKey =
@@ -66,20 +61,7 @@ export function parseSearchState(params: URLSearchParams): SearchState {
     sort: isSortOption(sort) ? sort : DEFAULT_SORT,
     category: (params.get('category') ?? '').trim(),
     channel: (params.get('channel') ?? '').trim(),
-    dateFrom: toDateDigits(params.get('dateFrom')),
-    dateTo: toDateDigits(params.get('dateTo')),
   };
-}
-
-/** `2024-01-05` → `20240105`; anything malformed is ignored */
-function toDateDigits(value: string | null): string {
-  const match = /^(\d{4})(\d{2})(\d{2})$/.exec((value ?? '').replace(/\D/g, ''));
-  if (!match) {
-    return '';
-  }
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  return month >= 1 && month <= 12 && day >= 1 && day <= 31 ? match[0] : '';
 }
 
 /**
@@ -103,16 +85,5 @@ export function toSearchParams(state: SearchState): URLSearchParams {
   if (channel.length > 0) {
     params.set('channel', channel);
   }
-  if (/^\d{8}$/.test(state.dateFrom)) {
-    params.set('dateFrom', toDisplayDate(state.dateFrom));
-  }
-  if (/^\d{8}$/.test(state.dateTo)) {
-    params.set('dateTo', toDisplayDate(state.dateTo));
-  }
   return params;
-}
-
-/** `20240105` → `2024-01-05` (the value a date input displays) */
-function toDisplayDate(digits: string): string {
-  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
 }

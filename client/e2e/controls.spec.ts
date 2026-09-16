@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test';
+import type { Locator } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { mockApi } from './helpers';
 
@@ -10,8 +10,8 @@ function itemState(item: Locator): Promise<{ outlineStyle: string; boxShadow: st
   });
 }
 
-test.describe('select and date controls', () => {
-  test('hovering items shows a clean highlight, before and after touching the date input', async ({ page }) => {
+test.describe('select controls', () => {
+  test('hovering items shows a clean highlight, before and after touching another control', async ({ page }) => {
     await mockApi(page, { search: () => ({ videos: [], totalCount: 0 }) });
     await page.goto('/');
 
@@ -26,9 +26,8 @@ test.describe('select and date controls', () => {
     const first = await itemState(item);
     await page.keyboard.press('Escape');
 
-    // Touching the calendar used to change how the list rendered on hover
-    await page.getByLabel('Od daty').click();
-    await page.keyboard.press('Escape');
+    // Touching another control used to change how the list rendered on hover
+    await page.getByPlaceholder('Szukaj filmów po opisie...').click();
     await sort.click();
     await expect(content).toBeVisible();
     await item.hover();
@@ -77,17 +76,5 @@ test.describe('select and date controls', () => {
       .toContain('inset');
     const state = await itemState(highlighted);
     expect(state.outlineStyle).toBe('none');
-  });
-
-  test('native date inputs follow the dark theme', async ({ page }: { page: Page }) => {
-    await mockApi(page, { search: () => ({ videos: [], totalCount: 0 }) });
-    await page.goto('/');
-
-    await page.getByRole('button', { name: 'Menu aplikacji' }).click();
-    await page.getByRole('menuitem', { name: 'Ciemny' }).click();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-
-    const scheme = await page.getByLabel('Od daty').evaluate((el) => getComputedStyle(el).colorScheme);
-    expect(scheme).toBe('dark');
   });
 });

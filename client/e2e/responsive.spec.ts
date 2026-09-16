@@ -161,7 +161,7 @@ test.describe('responsive contract', () => {
     await page.setViewportSize({ width: 360, height: 800 });
     await searchPage(page);
     const fontSizes = await page.evaluate(() =>
-      ['.channel-select', '.date-filter'].map((selector) => {
+      ['.channel-select'].map((selector) => {
         const element = document.querySelector<HTMLElement>(selector);
         return element ? parseFloat(window.getComputedStyle(element).fontSize) : 0;
       }),
@@ -248,28 +248,6 @@ test.describe('reported layout defects', () => {
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
 
-  test('the date filters share their own row and fill the width at 1024px', async ({ page }) => {
-    await page.setViewportSize({ width: 1024, height: 900 });
-    await searchPage(page);
-    const geometry = await page.evaluate(() => {
-      const dates = Array.from(document.querySelectorAll<HTMLElement>('.date-filter'));
-      const search = document.querySelector<HTMLElement>('.search-bar');
-      const searchTop = search ? search.getBoundingClientRect().top : 0;
-      return {
-        dates: dates.map((el) => {
-          const r = el.getBoundingClientRect();
-          return { top: Math.round(r.top), width: Math.round(r.width) };
-        }),
-        searchTop: Math.round(searchTop),
-      };
-    });
-    // Both date inputs sit on their own wrapped row below the first one.
-    expect(geometry.dates.every((d) => d.top > geometry.searchTop + 40)).toBe(true);
-    // And together they span the container instead of leaving a gap.
-    const spanned = geometry.dates.reduce((sum, d) => sum + d.width, 0);
-    expect(spanned).toBeGreaterThan(500);
-  });
-
   test('text inputs use the theme surface in dark mode', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 800 });
     await searchPage(page);
@@ -277,7 +255,7 @@ test.describe('reported layout defects', () => {
       document.documentElement.setAttribute('data-theme', 'dark');
     });
     const backgrounds = await page.evaluate(() =>
-      ['.search-input', '.channel-select', '.date-filter'].map((selector) => {
+      ['.search-input', '.channel-select'].map((selector) => {
         const el = document.querySelector<HTMLElement>(selector);
         return el ? window.getComputedStyle(el).backgroundColor : 'missing';
       }),

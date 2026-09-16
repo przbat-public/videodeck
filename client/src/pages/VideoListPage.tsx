@@ -15,7 +15,7 @@ import { useVideoSearch } from '../hooks/useVideoSearch';
 
 export default function VideoListPage(): JSX.Element {
   const { searchState, setSearchState } = useSearchUrlState();
-  const { query, sort, category, channel, dateFrom, dateTo } = searchState;
+  const { query, sort, category, channel } = searchState;
   const { videos, loading: videoLoading, hasMore, search, loadMore } = useVideoSearch();
   const { loading: refreshLoading, refreshCache } = useCacheRefresh();
   const { categories } = useCategories();
@@ -27,18 +27,18 @@ export default function VideoListPage(): JSX.Element {
   // The URL drives the results: a deep link, a reload and a change made in
   // the search bar all arrive here the same way.
   useEffect(() => {
-    void search({ query, sort, category, channel, dateFrom, dateTo });
-  }, [search, query, sort, category, channel, dateFrom, dateTo]);
+    void search({ query, sort, category, channel });
+  }, [search, query, sort, category, channel]);
 
   const handleRefreshCache = useCallback(async (): Promise<void> => {
     // refreshCache resolves when the server-side reindex is over
     await refreshCache(onlyMissing ? { onlyMissing: true } : undefined);
-    await search({ query, sort, category, channel, dateFrom, dateTo });
-  }, [refreshCache, onlyMissing, search, query, sort, category, channel, dateFrom, dateTo]);
+    await search({ query, sort, category, channel });
+  }, [refreshCache, onlyMissing, search, query, sort, category, channel]);
 
   const handleReload = useCallback(async (): Promise<void> => {
-    await search({ query, sort, category, channel, dateFrom, dateTo });
-  }, [search, query, sort, category, channel, dateFrom, dateTo]);
+    await search({ query, sort, category, channel });
+  }, [search, query, sort, category, channel]);
 
   const handleRecreateIndices = useCallback(async (): Promise<void> => {
     await recreateIndices();
@@ -99,8 +99,6 @@ export default function VideoListPage(): JSX.Element {
         sort={sort}
         category={category}
         channel={channel}
-        dateFrom={dateFrom}
-        dateTo={dateTo}
         categories={categories}
         channels={channels}
         onChange={setSearchState}

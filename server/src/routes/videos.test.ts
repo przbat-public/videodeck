@@ -124,7 +124,7 @@ describe('videos router', () => {
       });
     });
 
-    it('passes channel and date filters to the search service', async () => {
+    it('passes the channel filter to the search service and ignores the legacy date params', async () => {
       mockedGetVideos.mockResolvedValue({ videos: [], total: 0 });
 
       const response = await request(app).get(
@@ -136,19 +136,6 @@ describe('videos router', () => {
         offset: 0,
         limit: 100,
         channel: 'Jordan B Peterson',
-        dateFrom: '20240105',
-        dateTo: '20251231',
-      });
-    });
-
-    it('ignores malformed date filters', async () => {
-      mockedGetVideos.mockResolvedValue({ videos: [], total: 0 });
-
-      await request(app).get('/api/videos/search?dateFrom=2024-1-5&dateTo=bogus');
-
-      expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', undefined, {
-        offset: 0,
-        limit: 100,
       });
     });
 
