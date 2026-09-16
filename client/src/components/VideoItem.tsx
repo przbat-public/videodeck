@@ -1,7 +1,8 @@
 import type { ChannelVideo, JobType, QueueJob } from '@videodeck/shared/api';
+import { isYtDlpProgressLine } from '@videodeck/shared/progress';
 import type { TFunction } from 'i18next';
 import type { JSX } from 'react';
-import { memo, useEffect, useRef } from 'react';
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Tooltip } from './ui/Tooltip';
@@ -97,13 +98,6 @@ const keyedLines = (lines: string[]): Array<{ line: string; key: string }> => {
   });
 };
 
-/** Pins the log to the bottom while a job is running and lines arrive */
-function scrollLogToBottom(output: HTMLDivElement | null, isRunning: boolean, jobLog: string[] | undefined): void {
-  if (isRunning && jobLog && output) {
-    output.scrollTop = output.scrollHeight;
-  }
-}
-
 interface VideoTitleProps {
   video: ChannelVideoRow;
   isDownloaded: boolean;
@@ -185,16 +179,14 @@ function VideoItemActions({
 
 export function VideoItemInner({ video, isDownloaded, job, onEnqueue, onCancel }: VideoItemProps): JSX.Element {
   const { t, i18n } = useTranslation();
-  const outputRef = useRef<HTMLDivElement>(null);
 
   const isActive = job?.status === 'queued' || job?.status === 'running';
   const isRunning = job?.status === 'running';
-  const jobLog = job?.log;
-
-  // Keep the log scrolled to the bottom while new lines arrive
-  useEffect(() => {
-    scrollLogToBottom(outputRef.current, isRunning, jobLog);
-  }, [jobLog, isRunning]);
+  const progress = Math.min(100, Math.max(0, job?.progress ?? 0));
+  // The routine progress lines are masked behind the bar; an error keeps the
+  // rest of the log (Destination, ERROR, ...) visible without the noise.
+  const errorLog = job?.status === 'error' ? job.log.filter((line) => !isYtDlpProgressLine(line)) : [];
+  const showLog = errorLog.length > 0;
 
   const videoTitle = video.title || t('video.noTitle');
   const lastUpdatedFormatted = formatLastUpdated(video.lastUpdated, i18n.language);
@@ -203,7 +195,6 @@ export function VideoItemInner({ video, isDownloaded, job, onEnqueue, onCancel }
     : videoTitle;
 
   const actionType: JobType = isDownloaded ? 'update' : 'download';
-  const showLog = job && (isRunning || job.status === 'error') && job.log.length > 0;
 
   return (
     <div className={`video-item${isActive ? ' video-item--active' : ''}`}>
@@ -219,15 +210,24 @@ export function VideoItemInner({ video, isDownloaded, job, onEnqueue, onCancel }
           onCancel={onCancel}
         />
       </div>
+      {isRunning && (
+        <div
+          className="download-progress"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(progress)}
+        >
+          <div className="download-progress-fill" style={{ width: `${progress}%` }} />
+        </div>
+      )}
       {showLog && (
         <div className="download-output">
-          {job.status === 'error' && (
-            <div className="download-error">
-              <p>{failureMessage(job.error, t)}</p>
-            </div>
-          )}
-          <div className="download-output-content" ref={outputRef}>
-            {keyedLines(job.log).map(({ line, key }) => (
+          <div className="download-error">
+            <p>{failureMessage(job?.error, t)}</p>
+          </div>
+          <div className="download-output-content">
+            {keyedLines(errorLog).map(({ line, key }) => (
               <div key={key} className="output-line">
                 {line}
               </div>

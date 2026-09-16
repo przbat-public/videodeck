@@ -812,6 +812,24 @@
   background-color: var(--color-info-bg);
 }
 
+/* The progress bar that replaces the raw log while a job runs: the queue
+   log's routine progress lines stay masked behind it, errors still show
+   the filtered log below. */
+.download-progress {
+  margin: 0.4rem 0 0.55rem;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.download-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--color-primary);
+  transition: width 0.2s ease;
+}
+
 .download-output {
   margin-top: 0.75rem;
   padding: 0.75rem;

@@ -35,3 +35,18 @@ export function extractYtDlpProgress(message: string): number | undefined {
 
   return undefined;
 }
+
+/**
+ * True only for the two yt-dlp progress line formats the queue log carries:
+ *  1. our `--progress-template` line: `download  45.2% (123MiB @ 1MiB/s, ETA 00:45)`
+ *  2. the default yt-dlp bar: `[download]  45.2% of 123.45MiB at 1.23MiB/s ETA 00:45`
+ * The client masks these lines behind a progress bar. Deliberately narrower
+ * than `extractYtDlpProgress`: an error line that happens to mention a
+ * percentage must never be masked.
+ */
+export function isYtDlpProgressLine(message: string): boolean {
+  if (/^download\s+\d+(?:\.\d+)?%/.test(message)) {
+    return true;
+  }
+  return /^\[download\]\s+-?\d+(?:\.\d+)?%\s+of\s+/.test(message);
+}
