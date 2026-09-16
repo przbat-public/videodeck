@@ -191,6 +191,6 @@ describe('VideoDetailPage', () => {
     renderPage();
 
     expect(await screen.findByText(/^Błąd:/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '← Wróć do wyszukiwania' })).toHaveAttribute('href', '/videos');
+    expect(screen.getByRole('link', { name: '← Wróć do wyszukiwania' })).toHaveAttribute('href', '/');
   });
 });

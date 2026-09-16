@@ -39,6 +39,9 @@ const IDENTICAL_ALLOWLIST = new Set([
   'config.channelUrlPlaceholder',
   // "Sort" is the same word in Polish and English
   'search.sort',
+  // language names shown in their own language
+  'menu.polish',
+  'menu.english',
 ]);
 
 const INTERPOLATION = /\{\{/;

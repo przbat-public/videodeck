@@ -13,7 +13,7 @@ function itemState(item: Locator): Promise<{ outlineStyle: string; boxShadow: st
 test.describe('select and date controls', () => {
   test('hovering items shows a clean highlight, before and after touching the date input', async ({ page }) => {
     await mockApi(page, { search: () => ({ videos: [], totalCount: 0 }) });
-    await page.goto('/videos');
+    await page.goto('/');
 
     const sort = page.getByRole('combobox', { name: 'Sort' });
     const content = page.locator('.ui-select-content');
@@ -43,7 +43,7 @@ test.describe('select and date controls', () => {
 
   test('keyboard navigation keeps a visible focus indicator on the item', async ({ page }) => {
     await mockApi(page, { search: () => ({ videos: [], totalCount: 0 }) });
-    await page.goto('/videos');
+    await page.goto('/');
 
     const sort = page.getByRole('combobox', { name: 'Sort' });
     const content = page.locator('.ui-select-content');
@@ -81,11 +81,10 @@ test.describe('select and date controls', () => {
 
   test('native date inputs follow the dark theme', async ({ page }: { page: Page }) => {
     await mockApi(page, { search: () => ({ videos: [], totalCount: 0 }) });
-    await page.goto('/videos');
+    await page.goto('/');
 
-    const theme = page.getByRole('combobox', { name: 'Motyw' });
-    await theme.click();
-    await page.getByRole('option', { name: 'Ciemny' }).click();
+    await page.getByRole('button', { name: 'Menu aplikacji' }).click();
+    await page.getByRole('menuitem', { name: 'Ciemny' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
     const scheme = await page.getByLabel('Od daty').evaluate((el) => getComputedStyle(el).colorScheme);

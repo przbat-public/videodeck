@@ -76,9 +76,10 @@ dodaje filmy do kolejki wprost z YouTube.
 
    Serwer na `http://localhost:3001`, interfejs na `http://localhost:3000`.
 
-5. Zaindeksuj filmy raz. Otwórz stronę statusu i kliknij **„Odśwież indeks"**
-   (en: "Refresh index") albo wywołaj `GET /api/videos/refreshCache`. Duże
-   biblioteki chwilę trwają; postęp widać w toaście.
+5. Zaindeksuj filmy raz. Na liście filmów otwórz menu zębatki w górnym
+   pasku i wybierz **„Odśwież indeks"** (en: "Refresh index") albo wywołaj
+   `GET /api/videos/refreshCache`. Duże biblioteki chwilę trwają; postęp
+   widać w toaście.
 
 ## Wymagania
 

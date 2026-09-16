@@ -6,7 +6,6 @@
     "refreshPage": "Refresh the page",
     "routeErrorText": "This page could not be loaded.",
     "backToStart": "Back to the start page",
-    "language": "Language",
     "download": "Download",
     "update": "Update",
     "cancel": "Cancel"
@@ -55,7 +54,6 @@
     "loading": "Loading status...",
     "foldersTitle": "Video folder configuration",
     "noFolders": "No configured paths",
-    "goToVideos": "Go to the video list",
     "indexMissing": "ES index: missing",
     "indexMissingTitle": "No index in Elasticsearch — run \"Refresh index\" with \"missing only\""
   },
@@ -235,9 +233,23 @@
     }
   },
   "theme": {
-    "label": "Theme",
     "system": "System",
     "light": "Light",
     "dark": "Dark"
+  },
+  "menu": {
+    "label": "App menu",
+    "navigation": "Navigation",
+    "download": "Download videos",
+    "results": "Results",
+    "reloadResults": "Reload results",
+    "indexes": "Indexes",
+    "theme": "Theme",
+    "language": "Language",
+    "polish": "Polski",
+    "english": "English"
+  },
+  "nav": {
+    "backToList": "Back to the video list"
   }
 }

@@ -50,7 +50,7 @@ const folderAlias = (folderPath: string): string =>
 describe('download journey — pause, enqueue, resume, drain, search', () => {
   it('downloads the whole playlist through the queue and finds the videos in search without a reindex', async () => {
     const folderPath = env.folder('channel-integration');
-    const page = await renderApp('/');
+    const page = await renderApp('/download');
     const section = await folderSection(folderPath);
 
     // 1. Pause the global queue first, so the enqueue below provably waits.
@@ -113,7 +113,7 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
     //    videos of the same folder (its folder index starts empty), but the
     //    second folder was never touched and stays out of search.
     page.unmount();
-    const searchPage = await renderApp('/videos');
+    const searchPage = await renderApp('/');
     await findCardByTitle('Fake video aaaaaaaaaaa');
     expect(queryCardByTitle('Fake video bbbbbbbbbbb')).toBeInTheDocument();
     expect(queryCardByTitle('Głęboka integracja')).toBeInTheDocument();
@@ -134,7 +134,7 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
     });
     env.setFolders('channel-integration', 'channel-two', 'channel-cancel');
 
-    const page = await renderApp('/');
+    const page = await renderApp('/download');
     // The previous test left the queue running — pause it again. Wait for
     // the status page (and its queue bar) to leave the loading state.
     await page.user.click(await screen.findByRole('button', { name: 'Pauza kolejki' }));

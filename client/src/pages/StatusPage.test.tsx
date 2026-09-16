@@ -76,7 +76,6 @@ describe('StatusPage', () => {
 
     expect(await screen.findByText('/videos/a')).toBeInTheDocument();
     expect(screen.getByText('/videos/b')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Przejdź do listy filmów' })).toHaveAttribute('href', '/videos');
   });
 
   it('marks only the folders whose Elasticsearch index is missing', async () => {

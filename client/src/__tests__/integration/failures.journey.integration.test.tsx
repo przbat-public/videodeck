@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { toast } from '../../test/toastMock';
 import { findCardByTitle, queryCardByTitle } from './drivers/searchDrivers';
 import { folderSection } from './drivers/statusDrivers';
+import type { RenderedApp } from './render-app';
 import { refreshCacheAndWait, renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
 
@@ -39,6 +40,14 @@ afterEach(() => {
   cleanup();
 });
 
+/** Opens the gear menu and picks one item by its visible label */
+async function pickMenuItem(user: RenderedApp['user'], label: string): Promise<void> {
+  // The top bar sits inside the lazy router tree, so the trigger appears
+  // once the first chunk resolves; findByRole waits for it.
+  await user.click(await screen.findByRole('button', { name: /Menu aplikacji|App menu/ }));
+  await user.click(await screen.findByRole('menuitem', { name: label }));
+}
+
 describe('failure journeys — permanent errors, rate limits, broken dependencies', () => {
   it('turns members-only, private and removed entries into translated row errors', async () => {
     const folderPath = env.folder('channel-errors');
@@ -64,7 +73,7 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
     });
     env.setFolders('channel-integration', 'channel-two', 'channel-errors');
 
-    const page = await renderApp('/');
+    const page = await renderApp('/download');
     const section = await folderSection(folderPath);
     await page.user.click(within(section).getByRole('button', { name: 'Pobierz listę filmów' }));
     await within(section).findByText('Tylko dla członków');
@@ -110,7 +119,7 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
   it('shows the search failure when Elasticsearch breaks and recovers on reload', async () => {
     env.fakeEs.failRequestsMatching('/_search', 500);
 
-    const page = await renderApp('/videos');
+    const page = await renderApp('/');
     // The user sees the failure toast, not a broken page or stale results.
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
@@ -120,9 +129,9 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
     );
     expect(queryCardByTitle('Głęboka integracja')).not.toBeInTheDocument();
 
-    // The external world comes back; the reload button retries the search.
+    // The external world comes back; the reload item retries the search.
     env.fakeEs.clearFailures();
-    await page.user.click(screen.getByRole('button', { name: 'Odśwież' }));
+    await pickMenuItem(page.user, 'Odśwież wyniki');
     await findCardByTitle('Głęboka integracja');
     expect(queryCardByTitle('Drugi kanał wideo')).toBeInTheDocument();
   });
@@ -134,8 +143,8 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
     const indicesBefore = env.fakeEs.indexNames().length;
 
     env.fakeEs.failRequestsMatching('/_bulk', 500);
-    const page = await renderApp('/videos');
-    await page.user.click(screen.getByRole('button', { name: 'Odśwież indeks' }));
+    const page = await renderApp('/');
+    await pickMenuItem(page.user, 'Odśwież indeks');
 
     // Every folder fails its bulk write: the run reports three folder errors.
     await waitFor(
@@ -145,9 +154,9 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
       },
     );
 
-    // The fake Elasticsearch heals; the same button retries the same run.
+    // The fake Elasticsearch heals; the same item retries the same run.
     env.fakeEs.clearFailures();
-    await page.user.click(screen.getByRole('button', { name: 'Odśwież indeks' }));
+    await pickMenuItem(page.user, 'Odśwież indeks');
     await waitFor(
       () =>
         expect(toast.success).toHaveBeenCalledWith(

@@ -29,7 +29,7 @@ async function searchPage(page: Page): Promise<void> {
       totalCount: 2,
     }),
   });
-  await page.goto('/videos');
+  await page.goto('/');
   await page.locator('.video-card').first().waitFor();
 }
 
@@ -136,7 +136,7 @@ test.describe('responsive contract', () => {
     test(`no horizontal overflow on the status page at ${viewport.name}`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await mockApi(page);
-      await page.goto('/');
+      await page.goto('/download');
       await page.locator('.status-page').waitFor();
       expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     });
@@ -175,7 +175,7 @@ test.describe('responsive contract', () => {
   test('every touch target reaches 44x44px on a phone', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 800 });
     await searchPage(page);
-    for (const url of ['/videos', '/']) {
+    for (const url of ['/', '/download']) {
       await page.goto(url);
       await page.locator('.app-main').waitFor();
       const undersized = await page.evaluate(scanTouchTargets, TOUCH_SELECTOR);
@@ -206,6 +206,23 @@ test.describe('responsive contract', () => {
   });
 });
 
+/** Open one page in the given theme and return the contrast violations */
+async function collectContrastViolations(
+  page: Page,
+  url: string,
+  theme: 'light' | 'dark',
+): Promise<Array<{ text: string; ratio: number }>> {
+  // The theme hook resolves the stored choice at startup, so seed it before
+  // navigation instead of flipping the attribute after load (the hook would
+  // write its own resolved value on mount and clobber the late change).
+  await page.addInitScript((stored) => {
+    window.localStorage.setItem('videodeck-theme', stored);
+  }, theme);
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto(url);
+  return page.evaluate(scanTextContrast);
+}
+
 test.describe('theme contrast', () => {
   for (const theme of ['light', 'dark'] as const) {
     test(`text keeps WCAG AA contrast in the ${theme} theme`, async ({ page }) => {
@@ -215,22 +232,9 @@ test.describe('theme contrast', () => {
           totalCount: 2,
         }),
       });
-      for (const url of ['/videos', '/', '/video/deepE2e0001']) {
-        await page.setViewportSize({ width: 360, height: 800 });
-        await page.goto(url);
-        await page.evaluate((next) => {
-          document.documentElement.setAttribute('data-theme', next);
-        }, theme);
-        // The switcher colors transition over 150ms; scanning mid-transition
-        // would report the in-between color as a contrast miss. Wait for the
-        // settled value of the one element that transitions.
-        const settledMuted: Record<'light' | 'dark', string> = {
-          light: 'rgb(102, 102, 102)',
-          dark: 'rgb(154, 160, 166)',
-        };
-        const settled = settledMuted[theme];
-        await expect(page.locator('.language-switcher-option:not(.active)').first()).toHaveCSS('color', settled);
-        const violations = await page.evaluate(scanTextContrast);
+      for (const url of ['/', '/download', '/video/deepE2e0001']) {
+        const violations = await collectContrastViolations(page, url, theme);
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
         expect(violations, `contrast violations on ${url} in the ${theme} theme`).toEqual([]);
       }
     });
@@ -284,36 +288,29 @@ test.describe('reported layout defects', () => {
     }
   });
 
-  test('the top bar never overlaps the toolbar', async ({ page }) => {
+  test('the top bar never overlaps the search bar', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 800 });
     await searchPage(page);
     const overlap = await page.evaluate(() => {
       const bar = document.querySelector<HTMLElement>('.app-topbar');
-      const toolbar = document.querySelector<HTMLElement>('.toolbar');
-      if (!bar || !toolbar) return true;
+      const search = document.querySelector<HTMLElement>('.search-bar');
+      if (!bar || !search) return true;
       const a = bar.getBoundingClientRect();
-      const b = toolbar.getBoundingClientRect();
+      const b = search.getBoundingClientRect();
       return a.bottom > b.top && a.top < b.bottom && a.right > b.left && a.left < b.right;
     });
     expect(overlap).toBe(false);
   });
 
-  test('the toolbar buttons stretch to full width on a phone', async ({ page }) => {
+  test('the gear menu trigger keeps a 44x44px touch target on a phone', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 800 });
     await searchPage(page);
-    const violations = await page.evaluate(() => {
-      const left = document.querySelector<HTMLElement>('.toolbar-left');
-      if (!left) return [{ reason: 'missing toolbar-left' }];
-      const leftWidth = left.getBoundingClientRect().width;
-      return Array.from(left.querySelectorAll('button'))
-        .filter((button) => Math.abs(button.getBoundingClientRect().width - leftWidth) > 2)
-        .map((button) => ({
-          text: (button.textContent ?? '').trim().slice(0, 24),
-          width: Math.round(button.getBoundingClientRect().width),
-          leftWidth: Math.round(leftWidth),
-        }));
+    const box = await page.locator('.ui-menu-trigger').evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return { width: Math.round(rect.width), height: Math.round(rect.height) };
     });
-    expect(violations, 'toolbar buttons narrower than the toolbar column').toEqual([]);
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
   });
 });
 
@@ -326,7 +323,7 @@ test.describe('long unbroken content', () => {
     });
     for (const width of [360, 1280]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto('/videos');
+      await page.goto('/');
       await page.locator('.video-card').first().waitFor();
       expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     }
@@ -375,7 +372,7 @@ test.describe('long unbroken content', () => {
       },
     });
     await page.setViewportSize({ width: 360, height: 800 });
-    await page.goto('/');
+    await page.goto('/download');
     await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
     await page.getByText(unbroken.slice(0, 40)).waitFor();
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);

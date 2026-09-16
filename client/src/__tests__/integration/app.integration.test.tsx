@@ -25,7 +25,7 @@ describe('client integration — real backend', () => {
   it('reindexes, finds the seeded video and serves details with a mock-LLM summary', async () => {
     await refreshCacheAndWait();
 
-    const searchPage = await renderApp('/videos');
+    const searchPage = await renderApp('/');
 
     // Search without diacritics — the real analyzer folds the seeded title.
     const input = await screen.findByLabelText('Fraza wyszukiwania');
@@ -47,7 +47,7 @@ describe('client integration — real backend', () => {
   });
 
   it('downloads the playlist and runs a queue job through the fake yt-dlp', async () => {
-    const page = await renderApp('/');
+    const page = await renderApp('/download');
 
     // The seeded folder's section offers the playlist download (one button
     // per configured folder); the fake yt-dlp answers with two NDJSON entries.
