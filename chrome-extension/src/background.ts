@@ -1,6 +1,5 @@
 import type { DownloadVideoEvent } from '@videodeck/shared/api';
 import type { ActiveDownloadSummary, RuntimeMessage } from './lib/messages';
-import { extractProgress } from './lib/progress';
 import { feedSseBuffer, parseSseEvent } from './lib/sse';
 
 /**
@@ -232,7 +231,9 @@ function handleSseEvent(downloadId: number, event: DownloadVideoEvent): boolean 
       });
       return false;
     case 'downloadProgress': {
-      const progress = event.message !== undefined ? extractProgress(event.message) : undefined;
+      // The server sends the parsed percentage as a field; the message is
+      // for display only, never for parsing.
+      const progress = event.progress;
       if (progress !== undefined) {
         const download = activeDownloads.get(downloadId);
         if (download) {

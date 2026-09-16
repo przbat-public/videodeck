@@ -1,5 +1,4 @@
 import type { ChannelVideo, JobType, QueueJob } from '@videodeck/shared/api';
-import { isYtDlpProgressLine } from '@videodeck/shared/progress';
 import type { TFunction } from 'i18next';
 import type { JSX } from 'react';
 import { memo } from 'react';
@@ -170,9 +169,9 @@ export function VideoItemInner({ video, isDownloaded, job, onEnqueue, onCancel }
   const isActive = job?.status === 'queued' || job?.status === 'running';
   const isRunning = job?.status === 'running';
   const progress = Math.min(100, Math.max(0, job?.progress ?? 0));
-  // The routine progress lines are masked behind the bar; an error keeps the
-  // rest of the log (Destination, ERROR, ...) visible without the noise.
-  const errorLog = job?.status === 'error' ? job.log.filter((line) => !isYtDlpProgressLine(line)) : [];
+  // The server drops routine progress lines before they reach the log; an
+  // error keeps the meaningful lines (Destination, ERROR, ...) visible.
+  const errorLog = job?.status === 'error' ? job.log : [];
   const showLog = errorLog.length > 0;
 
   const videoTitle = video.title || t('video.noTitle');

@@ -846,6 +846,7 @@ describe('folder router', () => {
       const { args, process } = at(spawnCalls, 0);
       expect(args).toContain('https://www.youtube.com/watch?v=aaaaaaaaaaa');
       process.stdout.emit('data', Buffer.from('[download] 50.0% of 1MiB\n'));
+      process.stdout.emit('data', Buffer.from('[download] Destination: a.mp4\n'));
       process.stdout.emit('data', Buffer.from('[download] 100% of 1MiB\n'));
       process.emit('close', 0);
 
@@ -855,11 +856,14 @@ describe('folder router', () => {
       expect(response.headers['content-type']).toMatch(/text\/event-stream/);
       const events = parseEvents(response.body as string);
       expect(events[0]).toEqual({ type: 'downloadStart' });
+      // The percentage lines never reach the log: a dedicated tick carries
+      // the parsed progress, the Destination line still streams verbatim.
       expect(events.filter((e) => e.type === 'downloadProgress').map((e) => e.message)).toEqual([
-        '[download] 50.0% of 1MiB\n',
-        '[download] 100% of 1MiB\n',
+        'Progress: 50%',
+        '[download] Destination: a.mp4\n',
+        'Progress: 100%',
       ]);
-      expect(events.filter((e) => e.type === 'downloadProgress').map((e) => e.progress)).toEqual([50, 100]);
+      expect(events.filter((e) => e.type === 'downloadProgress').map((e) => e.progress)).toEqual([50, 50, 100]);
       expect(events[events.length - 1]).toEqual({
         type: 'downloadComplete',
         message: 'Download completed successfully',

@@ -821,7 +821,7 @@ describe('DownloadQueue', () => {
     expect(queue.get(job.id)).toMatchObject({ status: 'error', error: 'spawn yt-dlp ENOENT' });
   });
 
-  it('keeps only the log tail and parses progress', () => {
+  it('parses progress but never stores progress lines in the log', () => {
     const job = at(queue.enqueue([request('a')]), 0);
     const process = spawned().process;
 
@@ -830,8 +830,8 @@ describe('DownloadQueue', () => {
     process.output('line3\nline4\nline5\nline6\n');
 
     const snapshot = queue.get(job.id);
-    expect(snapshot?.log).toHaveLength(5);
-    expect(snapshot?.log.at(-1)).toBe('line6');
+    expect(snapshot?.log).toEqual(['[youtube] a: Downloading webpage', 'line3', 'line4', 'line5', 'line6']);
+    expect(snapshot?.logLineCount).toBe(5);
     expect(snapshot?.progress).toBe(45.5);
   });
 

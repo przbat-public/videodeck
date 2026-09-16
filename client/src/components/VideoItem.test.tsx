@@ -87,17 +87,16 @@ describe('VideoItem', () => {
     expect(onCancel).toHaveBeenCalledWith('job-1');
   });
 
-  it('shows a progress bar and masks the raw log while running', () => {
+  it('shows a progress bar and no log while running', () => {
     renderItem({
-      job: job({ status: 'running', progress: 42.4, log: ['[download] 42.4% of 10MiB', 'line 2'] }),
+      job: job({ status: 'running', progress: 42.4, log: ['[download] Destination: video.mp4'] }),
     });
 
     expect(screen.getByText('Pobieranie: 42%')).toBeInTheDocument();
     const bar = screen.getByRole('progressbar');
     expect(bar).toHaveAttribute('aria-valuenow', '42');
     expect(bar).toHaveAttribute('aria-valuemax', '100');
-    expect(screen.queryByText('[download] 42.4% of 10MiB')).toBeNull();
-    expect(screen.queryByText('line 2')).toBeNull();
+    expect(screen.queryByText('[download] Destination: video.mp4')).toBeNull();
   });
 
   it('shows a plain "Aktualizacja..." status for running update jobs', () => {
@@ -109,13 +108,13 @@ describe('VideoItem', () => {
     expect(screen.getByText('Aktualizacja...')).toBeInTheDocument();
   });
 
-  it('shows the error and the log without progress lines after a failed job', async () => {
+  it('shows the error and the log after a failed job', async () => {
     const user = userEvent.setup();
     const { onEnqueue } = renderItem({
       job: job({
         status: 'error',
         error: 'yt-dlp exited with code 1',
-        log: ['download  99.9% (~12.34MiB @ 5.00MiB/s, ETA 00:00)', 'ERROR: unavailable'],
+        log: ['ERROR: unavailable'],
       }),
     });
 
@@ -123,7 +122,6 @@ describe('VideoItem', () => {
     expect(status).not.toHaveAttribute('title');
     expect(screen.getByText('Błąd: yt-dlp exited with code 1')).toBeInTheDocument();
     expect(screen.getByText('ERROR: unavailable')).toBeInTheDocument();
-    expect(screen.queryByText(/^download\s+99/)).toBeNull();
     expect(screen.queryByRole('progressbar')).toBeNull();
 
     await user.hover(status);

@@ -238,7 +238,7 @@ test.describe('status page', () => {
     await expect(page.getByRole('button', { name: 'Pauza kolejki' })).toBeVisible();
   });
 
-  test('a running job shows the progress bar, not the raw progress lines', async ({ page }) => {
+  test('a running job shows the progress bar instead of the log', async ({ page }) => {
     await mockApi(page, {
       status: {
         videosFolderPath: ['/videos/e2e'],
@@ -269,8 +269,8 @@ test.describe('status page', () => {
                 type: 'download',
                 status: 'running',
                 progress: 42.4,
-                log: ['download  42.4% (~12.34MiB @ 5.00MiB/s, ETA 00:02)', '[download] Destination: Film E2E.mp4'],
-                logLineCount: 2,
+                log: ['[download] Destination: Film E2E.mp4'],
+                logLineCount: 1,
                 createdAt: '2026-01-01T00:00:00.000Z',
               },
             ],
@@ -288,7 +288,8 @@ test.describe('status page', () => {
     const bar = page.getByRole('progressbar');
     await expect(bar).toBeVisible();
     await expect(bar).toHaveAttribute('aria-valuenow', '42');
-    await expect(page.getByText(/^download\s+\d/)).toHaveCount(0);
+    // While running, the bar replaces the log entirely.
+    await expect(page.locator('.output-line')).toHaveCount(0);
     await expect(page.getByText('Pobieranie: 42%')).toBeVisible();
   });
 });

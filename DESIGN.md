@@ -112,7 +112,8 @@ Seven shared primitives in `client/src/components/ui/`:
 Composite patterns: top bar (brand icon, back link on the detail page,
 gear menu), search bar (input + selects), video card
 (thumbnail, title, muted metadata), queue item (status line, progress bar
-while running, filtered log on errors), detail player (70% width, poster,
+while running, log on errors — the server drops the routine progress
+lines before they reach the log), detail player (70% width, poster,
 subtitle tracks). All live in `client/src/components/` and reuse the
 tokens.
 

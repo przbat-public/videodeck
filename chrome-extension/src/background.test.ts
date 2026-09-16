@@ -136,6 +136,37 @@ describe('background service worker', () => {
     expect(chromeMock.action.setBadgeText).toHaveBeenCalledWith({ text: '' });
   });
 
+  it('takes progress from the event field, not the message text', async () => {
+    fetchMock.mockResolvedValue(
+      sseResponse([
+        'data: {"type":"downloadStart","videoTitle":"My Video"}\n\n',
+        'data: {"type":"downloadProgress","progress":42}\n\n',
+        'data: {"type":"downloadComplete","message":"done"}\n\n',
+      ]),
+    );
+
+    messageListener(downloadMessage(), { id: 'test-extension-id' }, () => undefined);
+    await vi.waitFor(() =>
+      expect(
+        chromeMock.runtime.sendMessage.mock.calls.some(
+          ([message]) => (message as { action?: string }).action === 'downloadComplete',
+        ),
+      ).toBe(true),
+    );
+
+    const progressMessages = chromeMock.runtime.sendMessage.mock.calls.filter(
+      ([message]) =>
+        typeof message === 'object' &&
+        message !== null &&
+        (message as { action?: string }).action === 'downloadProgress',
+    );
+    // downloadStart also reports a progress update (0), then the event field
+    // carries the real percentage even with no message text at all.
+    expect(progressMessages.length).toBeGreaterThanOrEqual(2);
+    const lastPayload = progressMessages[progressMessages.length - 1]?.[0] as { progress?: number } | undefined;
+    expect(lastPayload?.progress).toBe(42);
+  });
+
   it('reports an error when the stream ends without a downloadComplete event', async () => {
     fetchMock.mockResolvedValue(sseResponse(['data: {"type":"downloadStart"}\n\n']));
 
