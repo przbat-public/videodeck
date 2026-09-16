@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -78,10 +78,26 @@ test('a download writes the video, sidecars, progress lines and archive entry', 
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^download {2}\d+%/m);
-    assert.ok(existsSync(path.join(dir, '20260101_Fake video dQw4w9WgXcQ.mp4')));
-    assert.ok(existsSync(path.join(dir, '20260101_Fake video dQw4w9WgXcQ.info.json')));
-    assert.ok(existsSync(path.join(dir, '20260101_Fake video dQw4w9WgXcQ.en.vtt')));
-    assert.ok(existsSync(path.join(dir, '20260101_Fake video dQw4w9WgXcQ.webp')));
+    // The deep environment's videoFiles() helper (test-infra) promises these
+    // exact names and contents; the fake and that promise stay in lockstep.
+    const base = path.join(dir, '20260101_Fake video dQw4w9WgXcQ');
+    assert.equal(readFileSync(`${base}.mp4`, 'utf-8'), 'fake-mp4-bytes');
+    assert.equal(readFileSync(`${base}.webp`, 'utf-8'), 'fake-webp');
+    assert.equal(
+      readFileSync(`${base}.en.vtt`, 'utf-8'),
+      'WEBVTT\n\n00:00.000 --> 00:01.000\nDeep test subtitle line.\n',
+    );
+    assert.deepEqual(JSON.parse(readFileSync(`${base}.info.json`, 'utf-8')), {
+      id: 'dQw4w9WgXcQ',
+      title: 'Fake video dQw4w9WgXcQ',
+      upload_date: '20260101',
+      duration: 42,
+      view_count: 1234,
+      like_count: 56,
+      channel: 'Deep test channel',
+      description: 'Deep test description.',
+      webpage_url: WATCH_URL,
+    });
     assert.match(readFileSync(path.join(dir, 'archive.txt'), 'utf-8'), /youtube dQw4w9WgXcQ/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
