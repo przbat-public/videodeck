@@ -1,3 +1,4 @@
+import { Settings } from 'lucide-react';
 import type { JSX } from 'react';
 import { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -40,9 +41,6 @@ function RegisteredMenuItem({ item }: { item: AppMenuItemSpec }): JSX.Element {
   );
 }
 
-const GEAR_PATH =
-  'M12 8.2l.9-.7 1.6-.3.7 1-.5 1.5.7 1.2 1.5.5-.3 1.6-.7.9-1.2-.7-1.2.7-.5 1.5-1.6.3-.9-.7-.7-1.2.5-1.5-.7-1.2-1.5-.5.3-1.6.7-.9 1.2.7 1.2-.7.5-1.5 1.6-.3.9.7.7 1.2-.5 1.5.7 1.2 1.5.5-.3 1.6-.7.9-1.2-.7-1.2.7-.5 1.5-1.6.3-.9-.7-.7-1.2.5-1.5-.7-1.2-1.5-.5.3-1.6.7-.9 1.2.7 1.2-.7.5-1.5 1.6-.3.9.7.7 1.2-.5 1.5.7 1.2 1.5.5-.3 1.6-.7.9-1.2-.7-1.2.7-.5 1.5-1.6.3-.9-.7-.7-1.2.5-1.5-.7-1.2-1.5-.5.3-1.6.7-.9zM12 9.5A2.5 2.5 0 1 0 12 14.5 2.5 2.5 0 0 0 12 9.5z';
-
 interface AppMenuProps {
   theme: ThemeChoice;
   onThemeChange: (theme: ThemeChoice) => void;
@@ -62,9 +60,7 @@ export function AppMenu({ theme, onThemeChange }: AppMenuProps): JSX.Element {
   return (
     <Menu>
       <MenuTrigger aria-label={t('menu.label')}>
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className="ui-menu-gear">
-          <path d={GEAR_PATH} fill="currentColor" />
-        </svg>
+        <Settings aria-hidden="true" focusable="false" className="ui-menu-gear" />
       </MenuTrigger>
       <MenuContent>
         <MenuLabel>{t('menu.navigation')}</MenuLabel>

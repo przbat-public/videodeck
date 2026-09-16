@@ -274,6 +274,7 @@
     "english": "English"
   },
   "nav": {
-    "backToList": "Lista filmów"
+    "backToList": "Lista filmów",
+    "home": "Strona główna"
   }
 }

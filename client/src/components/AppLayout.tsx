@@ -1,3 +1,4 @@
+import { Clapperboard } from 'lucide-react';
 import type { JSX, ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -40,8 +41,8 @@ export function AppLayout(): JSX.Element {
     <AppMenuProvider>
       <header className="app-topbar">
         <div className="topbar-left">
-          <Link to="/" className="app-brand">
-            videodeck
+          <Link to="/" className="app-brand" aria-label={t('nav.home')}>
+            <Clapperboard aria-hidden="true" focusable="false" className="app-brand-icon" />
           </Link>
           {onDetailPage && (
             <Link to="/" className="app-back">

@@ -98,11 +98,14 @@ Six shared primitives in `client/src/components/ui/`:
 - **Loading** — centered spinner plus an optional label; the only loading
   pattern, no skeletons.
 
-Composite patterns: top bar (brand, back link on the detail page, gear
-menu), search bar (input + selects + date filters), video card (thumbnail,
-title, muted metadata), queue item (status line + log tail), detail player
-(70% width, poster, subtitle tracks). All live in
+Composite patterns: top bar (brand icon, back link on the detail page,
+gear menu), search bar (input + selects + date filters), video card
+(thumbnail, title, muted metadata), queue item (status line + log tail),
+detail player (70% width, poster, subtitle tracks). All live in
 `client/src/components/` and reuse the tokens.
+
+Icons come from **lucide-react** (stroke icons on the 24px grid,
+`currentColor`); no hand-drawn paths and no icon fonts.
 
 Deliberate exceptions to "primitives first", kept for density and purpose:
 the inline text buttons in comment threads, and the per-row action buttons
