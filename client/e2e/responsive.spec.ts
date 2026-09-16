@@ -317,14 +317,16 @@ test.describe('reported layout defects', () => {
 test.describe('long unbroken content', () => {
   const unbroken = 'z'.repeat(220);
 
-  test('an unbroken card title wraps instead of widening the page', async ({ page }) => {
+  test('an unbroken card title clamps to two lines instead of widening the page', async ({ page }) => {
     await mockApi(page, {
       search: () => ({ videos: [video('v1', unbroken), video('v2', 'Silnik krokowy')], totalCount: 2 }),
     });
     for (const width of [360, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/');
-      await page.locator('.video-card').first().waitFor();
+      const title = page.locator('.video-title').first();
+      await title.waitFor();
+      expect(await title.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe('2');
       expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     }
   });

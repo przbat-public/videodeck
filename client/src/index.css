@@ -34,8 +34,6 @@
   --color-warning-border: #ffeeba;
   --color-focus: #5a5fd8;
   --radius-card: 8px;
-  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.1);
-  --shadow-card-hover: 0 8px 16px rgba(0, 0, 0, 0.15);
 }
 
 /* Dark theme: the same tokens, re-tuned. The resolved value of the
@@ -63,8 +61,6 @@
   --color-warning-bg: #4a3d1d;
   --color-warning-text: #e6c66a;
   --color-warning-border: #6b5a26;
-  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.5);
-  --shadow-card-hover: 0 8px 16px rgba(0, 0, 0, 0.6);
 }
 
 * {

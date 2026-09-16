@@ -68,8 +68,9 @@ uppercase beyond the PL/EN language buttons.
 ## 5. Layout and spacing
 
 - Max content width 1400px, centered, 2rem page padding.
-- Cards: 8px radius (`--radius-card`), 1rem padding, `--shadow-card`
-  shadow, `--shadow-card-hover` on hover.
+- Cards: 8px radius (`--radius-card`), 1rem padding, no shadow. Titles and
+  snippets clamp to two lines, and the grid rows share one height, so
+  every card in a result page is the same size.
 - Gaps are 0.25/0.5/1/2rem. 1rem is the default rhythm between controls.
 - Controls are compact: 0.75rem vertical padding on inputs and buttons,
   0.3-0.55rem on small buttons.
