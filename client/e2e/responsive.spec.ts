@@ -279,6 +279,18 @@ test.describe('reported layout defects', () => {
     expect(overlap).toBe(false);
   });
 
+  test('the top bar shares the 2rem page rhythm above it, halved on a phone', async ({ page }) => {
+    const topPadding = () => page.locator('.app-topbar').evaluate((el) => getComputedStyle(el).paddingTop);
+
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await searchPage(page);
+    expect(await topPadding()).toBe('32px');
+
+    await page.setViewportSize({ width: 360, height: 800 });
+    await searchPage(page);
+    expect(await topPadding()).toBe('16px');
+  });
+
   test('the gear menu trigger keeps a 44x44px touch target on a phone', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 800 });
     await searchPage(page);

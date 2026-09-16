@@ -934,10 +934,6 @@
     min-height: 44px;
   }
 
-  .app-topbar {
-    padding: 0.5rem 1rem;
-  }
-
   .ui-checkbox {
     min-height: 44px;
   }
@@ -1282,7 +1278,9 @@
 
 /* Top bar: the brand and the back link on the left, the gear menu on
    the right. Everything lives in the page flow, never on top of content;
-   on a phone the bar wraps instead of floating over the page. */
+   on a phone the bar wraps instead of floating over the page. The 2rem
+   top padding matches the page rhythm, so the space above the bar reads
+   the same as the space below it. */
 .app-topbar {
   display: flex;
   flex-wrap: wrap;
@@ -1292,7 +1290,7 @@
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
-  padding: 0.5rem 2rem;
+  padding: 2rem 2rem 0.5rem;
 }
 
 .topbar-left {
@@ -1441,4 +1439,13 @@
   height: 1px;
   margin: 4px 0.5rem;
   background: var(--color-border);
+}
+
+/* Phone: half the top bar's desktop rhythm, matching the 1rem page
+   padding. Lives after the base rule so the equal-specificity override
+   actually wins. */
+@media (max-width: 768px) {
+  .app-topbar {
+    padding: 1rem 1rem 0.5rem;
+  }
 }
