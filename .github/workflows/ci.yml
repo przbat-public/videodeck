@@ -28,13 +28,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-setup
       - name: Biome + repository invariants
         run: pnpm run lint
       - name: ESLint (type-aware, React hooks, Playwright)
@@ -54,13 +48,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-setup
       - run: pnpm run format:check
 
   audit:
@@ -82,13 +70,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-setup
       - run: pnpm run typecheck
 
   unit-tests:
@@ -110,13 +92,7 @@ jobs:
             run: pnpm run test
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-setup
       - name: Run tests
         working-directory: ${{ matrix.dir }}
         run: ${{ matrix.run }}
@@ -127,13 +103,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-setup
       # The real <App /> against the real backend booted in-process via
       # @videodeck/test-infra (fake ES + mock OpenAI + fake yt-dlp).
       - name: Run client integration suite
@@ -146,13 +116,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-setup
       # Coverage thresholds are the ratchet: the run fails when coverage drops
       # below the committed numbers. Locally, `pnpm run test:coverage` raises
       # them in place whenever coverage grows — commit the change.
@@ -179,13 +143,7 @@ jobs:
           --health-retries 24
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-setup
       # The fake binary validates the yt-dlp argument templates offline; the
       # Elasticsearch suite runs against the service container above. Nothing
       # is skipped on CI.
@@ -206,13 +164,7 @@ jobs:
     needs: [lint, format, typecheck, unit-tests]
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-setup
       - run: pnpm run build:server && pnpm run build:client && pnpm run build:extension
       - uses: actions/upload-artifact@v7
         with:
@@ -236,13 +188,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-setup
       - name: Install Playwright browsers + OS deps
         working-directory: client
         run: pnpm exec playwright install --with-deps

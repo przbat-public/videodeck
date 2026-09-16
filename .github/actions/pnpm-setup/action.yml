@@ -1,0 +1,13 @@
+name: 'pnpm setup and install'
+description: 'Install pnpm, set up Node 22 with the pnpm cache, and run a frozen install. The job must run actions/checkout before this action, so the local action file exists on disk.'
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v6
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 22
+        cache: pnpm
+        cache-dependency-path: pnpm-lock.yaml
+    - run: pnpm install --frozen-lockfile
+      shell: bash

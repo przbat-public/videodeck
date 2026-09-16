@@ -37,8 +37,12 @@ cd client && pnpm run test:e2e  # Playwright (mocked API — the thin browser la
 Full verification one-liner:
 
 ```bash
-pnpm run format:check && pnpm run lint && pnpm run lint:types && pnpm run lint:scripts && pnpm run test:scripts && pnpm run knip && pnpm run lint:deps && pnpm run typecheck && pnpm run test && pnpm run test:integration && cd client && pnpm run test:e2e
+pnpm run verify
 ```
+
+(`verify` chains format, lint, lint:types, lint:scripts, test:scripts,
+knip, lint:deps, humanizer:gate, typecheck, test, test:integration and
+the client e2e suite, in that order.)
 
 ## Linting (Biome + ESLint)
 

@@ -34,17 +34,13 @@ pnpm run dev         # server on :3001 + Vite client on :3000 (proxies /api)
 Every change must pass, from the repo root:
 
 ```bash
-pnpm run format:check  # biome format check
-pnpm run lint          # biome check + hardcoded-Polish scan + tsconfig strictness check
-pnpm run lint:types    # eslint --max-warnings 0 (type-aware, React hooks, Playwright)
-pnpm run lint:scripts  # tsc --noEmit over scripts/ (checkJs)
-pnpm run test:scripts  # node --test for the repository-invariant scripts
-pnpm run knip          # unused files, exports and dependencies
-pnpm run lint:deps     # dependency-cruiser: no cycles, no cross-app imports
-pnpm run typecheck     # server + client + extension
-pnpm test              # jest (server) + vitest (client, extension)
-cd client && pnpm run test:e2e   # Playwright (mocked API, needs no backend)
+pnpm run verify
 ```
+
+`verify` chains format, lint, lint:types, lint:scripts, test:scripts,
+knip, lint:deps, humanizer:gate, typecheck, test, test:integration and
+the client e2e suite, in that order. Each step also has its own script
+(listed in `AGENTS.md`) for the inner loop.
 
 CI also runs a `pnpm audit` job (moderate and above) and the weekly
 dependency report; releases follow `RELEASING.md`.

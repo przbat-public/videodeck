@@ -40,7 +40,6 @@ const commonRules = {
       ],
     },
   ],
-  'no-console': ['warn', { allow: ['warn', 'error'] }],
 };
 
 export default defineConfig([
@@ -97,12 +96,6 @@ export default defineConfig([
     },
   },
 
-  // The logger is the single module that may talk to the console directly.
-  {
-    files: ['server/src/utils/logger.ts'],
-    rules: { 'no-console': 'off' },
-  },
-
   // Chrome extension: browser + WebExtension globals. The generated *.js at
   // the extension root (build output) is ignored above; only src/*.ts is
   // linted.
@@ -114,11 +107,7 @@ export default defineConfig([
       sourceType: 'module',
       globals: { ...globals.browser, ...globals.webextensions },
     },
-    rules: {
-      ...commonRules,
-      // An extension has nowhere else to log
-      'no-console': 'off',
-    },
+    rules: commonRules,
   },
 
   // The route table is data, not a refreshable component module — react-refresh
