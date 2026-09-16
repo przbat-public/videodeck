@@ -66,37 +66,12 @@
   },
   "overrides": [
     {
-      "includes": ["scripts/**"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noConsole": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["chrome-extension/src/**"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noConsole": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["server/src/utils/logger.ts"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noConsole": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["client/src/utils/logError.ts"],
+      "includes": [
+        "scripts/**",
+        "chrome-extension/src/**",
+        "server/src/utils/logger.ts",
+        "client/src/utils/logError.ts"
+      ],
       "linter": {
         "rules": {
           "suspicious": {

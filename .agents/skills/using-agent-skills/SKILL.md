@@ -39,9 +39,9 @@ Every skill in this repo obeys the same standing rules from `AGENTS.md`:
 
 - English-only commits, PRs, docs and comments; Polish only through the
   i18n catalogs.
-- The full gate one-liner runs green before a PR (format, lint, lint:types,
-  lint:scripts, test:scripts, knip, lint:deps, humanizer:gate, typecheck,
-  test, test:integration, e2e).
+- The full gate (`pnpm run verify`) runs green before a PR: format, lint,
+  lint:types, lint:scripts, test:scripts, knip, lint:deps, humanizer:gate,
+  typecheck, test, test:integration, e2e.
 - branch → PR → squash merge; main is protected.
 - The Definition of done: test written first, i18n parity, schemas
   updated, changelog entry, gate green.
