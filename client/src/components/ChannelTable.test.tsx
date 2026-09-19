@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChannelAction } from '../hooks/useChannelActions';
 import { DEFAULT_CHANNEL_CONSOLE_STATE } from '../utils/channelConsoleState';
@@ -27,16 +28,18 @@ const renderTable = (
   const onAction = vi.fn();
   const onEditConfig = vi.fn();
   render(
-    <ChannelTable
-      rows={rows}
-      state={state}
-      onChange={onChange}
-      countsLoading={countsLoading}
-      pending={options.pending ?? {}}
-      onAction={onAction}
-      onEditConfig={onEditConfig}
-      renderExpanded={(expanded) => <p>filmy kanału {expanded.name}</p>}
-    />,
+    <MemoryRouter>
+      <ChannelTable
+        rows={rows}
+        state={state}
+        onChange={onChange}
+        countsLoading={countsLoading}
+        pending={options.pending ?? {}}
+        onAction={onAction}
+        onEditConfig={onEditConfig}
+        renderExpanded={(expanded) => <p>filmy kanału {expanded.name}</p>}
+      />
+    </MemoryRouter>,
   );
   return { onChange, onAction, onEditConfig };
 };
@@ -97,30 +100,34 @@ describe('ChannelTable', () => {
 
   it('dashes the counts until they arrive', () => {
     const { rerender } = render(
-      <ChannelTable
-        rows={[row()]}
-        state={DEFAULT_CHANNEL_CONSOLE_STATE}
-        onChange={vi.fn()}
-        countsLoading
-        pending={{}}
-        onAction={vi.fn()}
-        onEditConfig={vi.fn()}
-        renderExpanded={() => null}
-      />,
+      <MemoryRouter>
+        <ChannelTable
+          rows={[row()]}
+          state={DEFAULT_CHANNEL_CONSOLE_STATE}
+          onChange={vi.fn()}
+          countsLoading
+          pending={{}}
+          onAction={vi.fn()}
+          onEditConfig={vi.fn()}
+          renderExpanded={() => null}
+        />
+      </MemoryRouter>,
     );
     expect(screen.getByText('liczę...')).toBeInTheDocument();
 
     rerender(
-      <ChannelTable
-        rows={[row()]}
-        state={DEFAULT_CHANNEL_CONSOLE_STATE}
-        onChange={vi.fn()}
-        countsLoading={false}
-        pending={{}}
-        onAction={vi.fn()}
-        onEditConfig={vi.fn()}
-        renderExpanded={() => null}
-      />,
+      <MemoryRouter>
+        <ChannelTable
+          rows={[row()]}
+          state={DEFAULT_CHANNEL_CONSOLE_STATE}
+          onChange={vi.fn()}
+          countsLoading={false}
+          pending={{}}
+          onAction={vi.fn()}
+          onEditConfig={vi.fn()}
+          renderExpanded={() => null}
+        />
+      </MemoryRouter>,
     );
     // The videos column and the empty queue column both show a dash
     expect(screen.getAllByText('—')).toHaveLength(2);
@@ -142,16 +149,26 @@ describe('ChannelTable', () => {
     expect(screen.getByRole('button', { name: 'Ukryj filmy' })).toBeInTheDocument();
   });
 
-  it('links to the search page scoped to the channel', async () => {
+  it('links to the search page with the channel name, not the folder path', async () => {
     const user = userEvent.setup();
-    renderTable([row()]);
+    renderTable([row({ channelName: 'Kanał A' })]);
 
     await openRowMenu(user);
 
     expect(await screen.findByRole('menuitem', { name: 'Szukaj w tym kanale' })).toHaveAttribute(
       'href',
-      '/?channel=%2Fvideos%2Fkanal-a',
+      '/?channel=Kana%C5%82%20A',
     );
+  });
+
+  it('hides the search link for a channel the search index does not know', async () => {
+    const user = userEvent.setup();
+    renderTable([row()]);
+
+    await openRowMenu(user);
+
+    expect(screen.queryByRole('menuitem', { name: 'Szukaj w tym kanale' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Edytuj config.json' })).toBeInTheDocument();
   });
 
   it('marks the channel column as sorted when the name decides the order', () => {

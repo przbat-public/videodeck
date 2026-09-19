@@ -289,9 +289,10 @@ const getCategories: RouteHandler<NoParams, CategoriesResponse> = async (_req, r
   res.json({ categories: await listCategories() });
 };
 
-// GET /api/videos/channels - distinct channel names for the filter UI
+// GET /api/videos/channels - distinct channel names for the filter UI, plus
+// the channel of every folder for the console's search link
 const getChannelNames: RouteHandler<NoParams, ChannelsResponse> = async (_req, res) => {
-  res.json({ channels: await listChannelNames() });
+  res.json(await listChannelNames());
 };
 
 // GET /api/videos/file/:filename?folder=<folderPath>

@@ -10,15 +10,22 @@ describe('useChannelNames', () => {
     fetchMock.mockReset();
   });
 
-  it('loads the channel names once on mount', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ channels: ['fpv channel', 'history channel'] }));
+  it('loads the channel names and the folder map once on mount', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        channels: ['fpv channel', 'history channel'],
+        folders: { '/videos/fpv': 'fpv channel' },
+      }),
+    );
 
     const { result } = renderHook(() => useChannelNames());
 
     expect(result.current.channels).toEqual([]);
+    expect(result.current.folders).toEqual({});
     await waitFor(() => {
       expect(result.current.channels).toEqual(['fpv channel', 'history channel']);
     });
+    expect(result.current.folders).toEqual({ '/videos/fpv': 'fpv channel' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith('/api/videos/channels', {
       signal: expect.any(AbortSignal),
@@ -34,6 +41,7 @@ describe('useChannelNames', () => {
       expect(fetchMock).toHaveBeenCalled();
     });
     expect(result.current.channels).toEqual([]);
+    expect(result.current.folders).toEqual({});
   });
 
   it('does not set state after unmount', async () => {
@@ -46,7 +54,7 @@ describe('useChannelNames', () => {
 
     const { result, unmount } = renderHook(() => useChannelNames());
     unmount();
-    resolveFetch(jsonResponse({ channels: ['fpv channel'] }));
+    resolveFetch(jsonResponse({ channels: ['fpv channel'], folders: {} }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();

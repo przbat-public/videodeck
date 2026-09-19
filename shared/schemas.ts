@@ -96,8 +96,15 @@ export const VideoListItemSchema = z.object({
   highlights: z.record(z.string(), z.array(z.string())).optional(),
 });
 
+/**
+ * Channel metadata for the UI: the distinct names behind the search filter,
+ * and the channel each configured folder belongs to. The console's "search in
+ * this channel" link needs the name, because the search filters by
+ * `channelName`, not by folder path.
+ */
 export const ChannelsResponseSchema = z.object({
   channels: z.array(z.string()),
+  folders: z.record(z.string(), z.string()),
 });
 
 /** One subtitle file actually on disk, with its language from the file name */

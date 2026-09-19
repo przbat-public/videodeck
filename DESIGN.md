@@ -140,6 +140,12 @@ Data tables (the channel console on `/download`) follow one shape:
   nested card. The config form is the menu's `Edytuj config.json` entry, so
   the sheet has no edit button of its own and a channel without a
   `config.json` just says so.
+- The "search in this channel" entry carries the channel name, because that
+  is what the search filters by (`channelName.keyword`). The name comes from
+  the `folders` map of `GET /api/videos/channels`, so a folder whose videos
+  are not indexed has no name and the entry is left out rather than pointing
+  at a filter that matches nothing. The entry is a router `Link` (still a
+  real `<a>` for middle click and new tabs) so the click stays client side.
 - A row that is working reports `aria-busy`, disables its own controls and
   shows the working chip until the action settles.
 

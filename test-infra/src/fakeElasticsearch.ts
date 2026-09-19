@@ -507,24 +507,46 @@ export class FakeElasticsearch {
     if (!aggs) {
       return {};
     }
+    return { aggregations: this.runAggregations(docs, aggs) };
+  }
+
+  /**
+   * One terms bucket list per named aggregation. A definition may carry its
+   * own `aggs`: each bucket then runs those against the documents it holds,
+   * which is how the console asks for the channel of every folder in one
+   * query.
+   */
+  private runAggregations(docs: DocumentEntry[], aggs: Record<string, unknown>): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     for (const [name, definition] of Object.entries(aggs)) {
-      const terms = (definition ?? {}) as { terms?: { field?: string; size?: number } };
+      const terms = (definition ?? {}) as {
+        terms?: { field?: string; size?: number };
+        aggs?: Record<string, unknown>;
+      };
       const field = this.fieldKey(terms.terms?.field ?? '');
-      const counts = new Map<string, number>();
+      const byValue = new Map<string, DocumentEntry[]>();
       for (const doc of docs) {
         const value = doc.source[field];
         if (typeof value === 'string' && value.length > 0) {
-          counts.set(value, (counts.get(value) ?? 0) + 1);
+          const bucket = byValue.get(value);
+          if (bucket === undefined) {
+            byValue.set(value, [doc]);
+          } else {
+            bucket.push(doc);
+          }
         }
       }
-      const buckets = [...counts.entries()]
-        .map(([key, docCount]) => ({ key, doc_count: docCount }))
-        .sort((a, b) => b.doc_count - a.doc_count || a.key.localeCompare(b.key))
-        .slice(0, terms.terms?.size ?? 10);
+      const buckets = [...byValue.entries()]
+        .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+        .slice(0, terms.terms?.size ?? 10)
+        .map(([key, bucketDocs]) => ({
+          key,
+          doc_count: bucketDocs.length,
+          ...(terms.aggs === undefined ? {} : this.runAggregations(bucketDocs, terms.aggs)),
+        }));
       result[name] = { doc_count_error_upper_bound: 0, sum_other_doc_count: 0, buckets };
     }
-    return { aggregations: result };
+    return result;
   }
 
   private matches(doc: DocumentEntry, query: Record<string, unknown>): boolean {

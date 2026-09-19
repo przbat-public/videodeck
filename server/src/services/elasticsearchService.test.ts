@@ -728,12 +728,34 @@ describe('elasticsearchService', () => {
       expect(mockClient.search.mock.calls[1][0].highlight).toBeUndefined();
     });
 
-    it('lists distinct channel names sorted', async () => {
+    it('lists distinct channel names sorted, with the channel of every folder', async () => {
       mockClient.search.mockResolvedValue({
-        aggregations: { channels: { buckets: [{ key: 'Beta' }, { key: 'Alpha' }] } },
+        aggregations: {
+          channels: { buckets: [{ key: 'Beta' }, { key: 'Alpha' }] },
+          folders: {
+            buckets: [
+              { key: '/videos/b', channel: { buckets: [{ key: 'Beta' }] } },
+              { key: '/videos/a', channel: { buckets: [{ key: 'Alpha' }] } },
+              { key: '/videos/unlabelled', channel: { buckets: [] } },
+            ],
+          },
+        },
       });
 
-      expect(await listChannelNames()).toEqual(['Alpha', 'Beta']);
+      expect(await listChannelNames()).toEqual({
+        channels: ['Alpha', 'Beta'],
+        // A folder whose videos carry no channel name is left out, so the
+        // console can hide the search link instead of pointing nowhere
+        folders: { '/videos/a': 'Alpha', '/videos/b': 'Beta' },
+      });
+
+      // The folder map comes from one query: a sub-aggregation over the terms
+      // bucket, so the search page and the console cannot drift apart
+      const request = mockClient.search.mock.calls[0][0];
+      expect(request.aggs.folders).toEqual({
+        terms: { field: 'folderPath.keyword', size: 500 },
+        aggs: { channel: { terms: { field: 'channelName.keyword', size: 1 } } },
+      });
     });
 
     it('clamps out-of-range paging values', async () => {

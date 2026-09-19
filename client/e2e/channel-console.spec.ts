@@ -47,11 +47,18 @@ const consoleSummaries = () => ({
 });
 
 /** A library of twenty channels, two of which have jobs in the queue */
+/** The channel name every folder's videos carry in the fake index */
+const channelName = (index: number): string => `Kanał ${String(index + 1).padStart(2, '0')}`;
+
 async function consolePage(page: Page, viewport = { width: 1280, height: 900 }): Promise<void> {
   await page.setViewportSize(viewport);
   await mockApi(page, {
     status: consoleStatus(),
     summaries: consoleSummaries(),
+    channels: {
+      channels: folderPaths.map((_, index) => channelName(index)),
+      folders: Object.fromEntries(folderPaths.map((folderPath, index) => [folderPath, channelName(index)])),
+    },
     queue: {
       paused: false,
       jobs: [
@@ -188,7 +195,7 @@ test.describe('channel console', () => {
     // The search entry is a real link, so middle click and new tab work
     await expect(page.getByRole('menuitem', { name: 'Szukaj w tym kanale' })).toHaveAttribute(
       'href',
-      `/?channel=${encodeURIComponent(folderPaths[1] ?? '')}`,
+      `/?channel=${encodeURIComponent(channelName(1))}`,
     );
   });
 });

@@ -1,7 +1,7 @@
 import { cleanup, screen, within } from '@testing-library/react';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { folderSection } from './drivers/statusDrivers';
+import { channelRow, folderSection } from './drivers/statusDrivers';
 import { refreshCacheAndWait, renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
 
@@ -48,6 +48,29 @@ describe('client integration — real backend', () => {
     expect(screen.getByTestId('video-player').getAttribute('src')).toMatch(
       /\/api\/videos\/file\/20260101_G%C5%82%C4%99boka%20integracja\.mp4\?folder=/,
     );
+  });
+
+  it('searches inside one channel from the console row, using the channel name', async () => {
+    // The console link has to carry the name the search filters by
+    // (channelName), not the folder path: the index is seeded with two
+    // channels whose names differ from their folders.
+    await refreshCacheAndWait();
+
+    const page = await renderApp('/download');
+    const row = await channelRow(env.folder('channel-two'));
+
+    await page.user.click(within(row).getByRole('button', { name: 'Więcej akcji' }));
+    const link = await screen.findByRole('menuitem', { name: 'Szukaj w tym kanale' });
+    expect(link).toHaveAttribute('href', '/?channel=Drugi%20kana%C5%82');
+
+    await page.user.click(link);
+
+    // The list page arrives filtered to that channel: only its video shows,
+    // and the channel select names the channel rather than an unknown value
+    expect(await screen.findByText('Drugi kanał wideo')).toBeInTheDocument();
+    expect(await screen.findByRole('combobox', { name: 'Kanał' })).toHaveTextContent('Drugi kanał');
+    expect(page.router.state.location.search).toBe('?channel=Drugi%20kana%C5%82');
+    expect(screen.queryByText('Głęboka integracja')).toBeNull();
   });
 
   it('downloads the playlist and runs a queue job through the fake yt-dlp', async () => {
