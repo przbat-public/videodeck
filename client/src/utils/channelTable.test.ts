@@ -93,6 +93,22 @@ describe('buildChannelRows', () => {
     expect(built[2]?.attention).toEqual(['noChannelUrl', 'noList', 'noIndex']);
   });
 
+  it('leaves the category out when the config has none', () => {
+    const built = buildChannelRows(status, summaries.summaries, []);
+
+    expect('category' in (built[2] ?? {})).toBe(false);
+    expect(built[2]?.category).toBeUndefined();
+  });
+
+  it('keeps the first error when several jobs failed', () => {
+    const built = buildChannelRows(status, {}, [
+      job({ id: 'job-1', status: 'error', error: 'first' }),
+      job({ id: 'job-2', status: 'error', error: 'second' }),
+    ]);
+
+    expect(built[1]?.queue).toMatchObject({ failed: 2, firstError: 'first' });
+  });
+
   it('leaves the summary absent while it has not arrived', () => {
     const built = buildChannelRows(status, {}, []);
 
@@ -108,6 +124,47 @@ describe('filterChannels', () => {
     expect(filterChannels(built, { query: 'fpv', filter: 'all' }).map((row) => row.name)).toEqual(['kanal-b']);
     expect(filterChannels(built, { query: 'KANAL', filter: 'all' })).toHaveLength(3);
     expect(filterChannels(built, { query: 'nope', filter: 'all' })).toEqual([]);
+  });
+
+  it('returns every row for an empty query and the "all" chip', () => {
+    const built = rows();
+
+    expect(filterChannels(built, { query: '   ', filter: 'all' })).toHaveLength(3);
+  });
+
+  it('breaks ties on the name so the order never depends on the input order', () => {
+    const built = buildChannelRows(status, {}, []);
+
+    // No summaries at all: every channel ties on "missing" and on "updated"
+    expect(sortChannels(built, 'missing').map((row) => row.name)).toEqual(['kanal-a', 'kanal-b', 'kanal-c']);
+    expect(sortChannels(built, 'updated').map((row) => row.name)).toEqual(['kanal-a', 'kanal-b', 'kanal-c']);
+  });
+
+  it('orders two channels with the same update date by name', () => {
+    const sameDate = {
+      summaries: {
+        '/videos/kanal-a': {
+          videos: 1,
+          downloaded: 1,
+          notDownloaded: 0,
+          stale: 0,
+          newestUpdate: '2026-09-01T00:00:00.000Z',
+        },
+        '/videos/kanal-b': {
+          videos: 1,
+          downloaded: 1,
+          notDownloaded: 0,
+          stale: 0,
+          newestUpdate: '2026-09-01T00:00:00.000Z',
+        },
+      },
+    };
+
+    expect(sortChannels(buildChannelRows(status, sameDate.summaries, []), 'updated').map((row) => row.name)).toEqual([
+      'kanal-a',
+      'kanal-b',
+      'kanal-c',
+    ]);
   });
 
   it('filters by attention, queue activity and failures', () => {

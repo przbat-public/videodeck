@@ -72,6 +72,37 @@ describe('useChannelQueue', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('ignores a failure that lands after unmount', async () => {
+    let rejectFetch!: (error: unknown) => void;
+    fetchMock.mockImplementation(
+      () =>
+        new Promise<MockResponse>((_resolve, reject) => {
+          rejectFetch = reject;
+        }),
+    );
+    const { result, unmount } = renderHook(() => useChannelQueue());
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    unmount();
+    await act(async () => {
+      rejectFetch(new Error('network'));
+    });
+
+    expect(result.current.error).toBeNull();
+  });
+
+  it('reports a non-Error failure with the same message as a failed response', async () => {
+    // The sibling per-folder hook uses the "cannot load the queue" message for
+    // both shapes, so the two never disagree about the same failure.
+    fetchMock.mockImplementation(() => Promise.reject('boom'));
+    const { result } = renderHook(() => useChannelQueue());
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.error).toBe('Nie udało się wczytać kolejki');
+  });
+
   it('polls while a job is active and stops when the queue drains', async () => {
     vi.useFakeTimers();
     try {

@@ -54,6 +54,34 @@ describe('useFolderSummaries', () => {
     expect(result.current.loading).toBe(false);
   });
 
+  it('ignores a failure that lands after unmount', async () => {
+    let rejectFetch!: (error: unknown) => void;
+    fetchMock.mockImplementation(
+      () =>
+        new Promise<MockResponse>((_resolve, reject) => {
+          rejectFetch = reject;
+        }),
+    );
+    const { result, unmount } = renderHook(() => useFolderSummaries());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    unmount();
+    await act(async () => {
+      rejectFetch(new Error('network'));
+    });
+
+    expect(result.current.error).toBeNull();
+  });
+
+  it('falls back to the generic message when the failure is not an Error', async () => {
+    fetchMock.mockRejectedValue('boom');
+    const { result } = renderHook(() => useFolderSummaries());
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+
+    expect(result.current.error).toBe('Wystąpił błąd');
+  });
+
   it('loads again on reload', async () => {
     fetchMock.mockResolvedValue(json(body));
     const { result } = renderHook(() => useFolderSummaries());

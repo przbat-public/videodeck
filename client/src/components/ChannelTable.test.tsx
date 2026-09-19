@@ -71,6 +71,35 @@ describe('ChannelTable', () => {
     expect(screen.getAllByText('brak list.json')).toHaveLength(1);
   });
 
+  it('says the playlist state is still being checked', () => {
+    renderTable([row({ listExists: null })]);
+
+    expect(screen.getByText('sprawdzam...')).toBeInTheDocument();
+  });
+
+  it('shows the age of the last update next to the playlist', () => {
+    renderTable([
+      row({
+        summary: {
+          videos: 10,
+          downloaded: 10,
+          notDownloaded: 0,
+          stale: 0,
+          newestUpdate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+      }),
+    ]);
+
+    expect(screen.getByText('3 dni temu')).toBeInTheDocument();
+  });
+
+  it('chips a queue that is only waiting', () => {
+    renderTable([row({ queue: { running: 0, queued: 2, failed: 0 } })]);
+
+    expect(screen.getByText('2 czeka')).toBeInTheDocument();
+    expect(screen.queryByText(/w toku/)).toBeNull();
+  });
+
   it('dashes the counts until they arrive', () => {
     const { rerender } = render(
       <ChannelTable
