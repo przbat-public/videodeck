@@ -44,6 +44,12 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
   res.locals.requestId = requestId;
   res.setHeader('X-Request-Id', requestId);
 
+  // Captured here, not read from `req.url` later: while a mounted router
+  // handles the request Express rewrites `req.url` to the path inside the
+  // mount, and `res.on('finish')` can still see that shortened form ("/search"
+  // instead of "/api/videos/search").
+  const requestPath = req.originalUrl.split('?')[0] ?? req.originalUrl;
+
   const start = Date.now();
   res.on('finish', () => {
     const durationMs = Date.now() - start;
@@ -52,9 +58,9 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
     // instead of a new series per URL (every filename would be one).
     const route = req.route?.path ?? 'unmatched';
     recordRequest(req.method, route, res.statusCode, durationMs);
-    // `req.path`, not `originalUrl`: a query string carries folder paths and
+    // The path, not the whole URL: a query string carries folder paths and
     // search phrases, and the log is where they would outlive the request.
-    logger.info(`${req.method} ${req.path} → ${res.statusCode} (${durationMs}ms) [${requestId}]`);
+    logger.info(`${req.method} ${requestPath} → ${res.statusCode} (${durationMs}ms) [${requestId}]`);
   });
   next();
 }
@@ -108,6 +114,14 @@ export function errorHandler(error: unknown, req: Request, res: Response, next: 
 export function createApp(options: CreateAppOptions = {}): express.Express {
   const app = express();
 
+  // No ETags for `res.json`: an API answer is per-request state, not a
+  // representation to revalidate. Express answered the browser's conditional
+  // polls with `304 Not Modified` and no body, and `fetch` reports a 304 as
+  // `ok: false`, so the client showed "could not load the queue" while the
+  // queue was healthy. File responses keep their own `Cache-Control` and
+  // `Last-Modified`, which is what the player and the thumbnails rely on.
+  app.set('etag', false);
+
   const extraCorsOrigins = getCorsOrigins();
   const extensionOrigins = getExtensionOrigins();
 
@@ -146,6 +160,14 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   const auth = createAuthMiddleware(options.apiToken, isTokenRequired());
   app.use('/api', auth);
   app.use('/metrics', auth);
+
+  // The API is live state the pages poll, so browsers must not serve it from a
+  // cache between polls. Route handlers that serve content with a longer life
+  // (thumbnails, videos) set their own Cache-Control and win by being later.
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   app.use('/api/videos', videosRouter);
   // /api/status, /api/folder/* (config, list.json, download queue)

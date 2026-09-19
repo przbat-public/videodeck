@@ -71,6 +71,19 @@ describe('createAuthMiddleware', () => {
 });
 
 describe('createApp auth wiring', () => {
+  /** Minimal DownloadQueue stand-in so /api routes answer without Elasticsearch */
+  const fakeQueue = () => ({
+    enqueue: jest.fn(),
+    list: jest.fn(() => []),
+    get: jest.fn(),
+    cancel: jest.fn(),
+    cancelAll: jest.fn(() => 0),
+    setPaused: jest.fn(),
+    clearFinished: jest.fn(() => 0),
+    on: jest.fn(),
+    off: jest.fn(),
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockedCheckElasticsearch.mockResolvedValue(true);
@@ -160,38 +173,51 @@ describe('createApp auth wiring', () => {
     const log = jest.spyOn(console, 'log').mockImplementation(() => {
       /* captured by the assertions below */
     });
+    const app = createApp({ downloadQueue: fakeQueue() });
 
-    const response = await request(createApp()).get('/health?probe=private-value');
+    // A mounted route on purpose: while the router handles the request,
+    // Express rewrites `req.url` to the path inside the mount, so reading it
+    // in the finish handler logged "/folder/queue" with no "/api" prefix.
+    const response = await request(app).get('/api/folder/queue?folderPath=/private/videos');
 
     // The path identifies the endpoint; the query would put a folder path or
     // a search phrase into a log that outlives the request.
     expect(response.status).toBe(200);
     const line = String(log.mock.calls.at(-1)?.[0] ?? '');
-    expect(line).toContain('GET /health');
-    expect(line).not.toContain('private-value');
+    expect(line).toContain('GET /api/folder/queue');
+    expect(line).not.toContain('/private/videos');
 
     log.mockRestore();
   });
 
+  it('answers API requests with a fresh body instead of a 304', async () => {
+    const app = createApp({ downloadQueue: fakeQueue() });
+
+    const first = await request(app).get('/api/folder/queue');
+
+    // No ETag to revalidate: Express answered the browser's conditional polls
+    // with "304 Not Modified" and an empty body, and fetch reports that as
+    // `ok: false`, so the queue controls showed a load error during polling.
+    expect(first.headers.etag).toBeUndefined();
+    expect(first.headers['cache-control']).toBe('no-store');
+
+    const conditional = await request(app)
+      .get('/api/folder/queue')
+      .set('If-None-Match', 'W/"1a-r58vDHgamo0RCXYOQAGwXQFm9YU"');
+
+    expect(conditional.status).toBe(200);
+    expect(conditional.body).toEqual(first.body);
+  });
+
   it('accepts an injected download queue', async () => {
-    const fakeQueue = {
-      enqueue: jest.fn(),
-      list: jest.fn(() => []),
-      get: jest.fn(),
-      cancel: jest.fn(),
-      cancelAll: jest.fn(() => 0),
-      setPaused: jest.fn(),
-      clearFinished: jest.fn(() => 0),
-      on: jest.fn(),
-      off: jest.fn(),
-    };
-    const app = createApp({ downloadQueue: fakeQueue });
+    const queue = fakeQueue();
+    const app = createApp({ downloadQueue: queue });
 
     const response = await request(app).get('/api/folder/queue').query({ folderPath: '/test/videos' });
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ jobs: [], paused: false });
-    expect(fakeQueue.list).toHaveBeenCalledWith('/test/videos');
+    expect(queue.list).toHaveBeenCalledWith('/test/videos');
   });
 });
 
