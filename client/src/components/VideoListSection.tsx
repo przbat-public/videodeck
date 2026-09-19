@@ -191,13 +191,16 @@ export function VideoListSection({
   // Stable row renderer for the windowed list (react-window 2 re-renders
   // rows when this identity changes, so it must be memoized).
   const renderRow = useCallback(
-    ({ index, style }: RowComponentProps): JSX.Element | null => {
+    ({ index, style, ariaAttributes }: RowComponentProps): JSX.Element | null => {
       const video = rows[index];
       if (!video) {
         return null;
       }
       return (
-        <div style={style}>
+        // The list container carries role="list", so the rows have to take
+        // the role="listitem" react-window hands out here; without it the
+        // list had no items at all for assistive tech.
+        <div style={style} {...ariaAttributes}>
           <VideoItem
             video={video}
             isDownloaded={downloadStatuses[video.id] || false}

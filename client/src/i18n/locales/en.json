@@ -63,6 +63,7 @@
     "updateOld": "Update stale",
     "updateAll": "Update all",
     "cancelAll": "Cancel all",
+    "progressLabel": "Download progress: {{title}}",
     "queueError": "Queue error: {{message}}",
     "loadingVideos": "Loading video list ...",
     "videoListCount": "Videos: {{count}}",

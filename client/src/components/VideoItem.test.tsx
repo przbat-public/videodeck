@@ -96,6 +96,8 @@ describe('VideoItem', () => {
     const bar = screen.getByRole('progressbar');
     expect(bar).toHaveAttribute('aria-valuenow', '42');
     expect(bar).toHaveAttribute('aria-valuemax', '100');
+    // A progressbar with no name announces only "42 percent".
+    expect(bar).toHaveAccessibleName(/Postęp pobierania/);
     expect(screen.queryByText('[download] Destination: video.mp4')).toBeNull();
   });
 
