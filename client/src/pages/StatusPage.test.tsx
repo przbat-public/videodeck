@@ -365,7 +365,10 @@ describe('StatusPage', () => {
     summariesCalls = 0;
     queueCalls = 0;
 
-    await user.click(screen.getByRole('button', { name: 'Pobierz wszystkie' }));
+    const rowA = (await screen.findByText('/videos/a')).closest('tr');
+    expect(rowA).not.toBeNull();
+    await user.click(within(rowA as HTMLElement).getByRole('button', { name: 'Więcej akcji' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Pobierz wszystkie' }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue', expect.objectContaining({ method: 'POST' })),
@@ -380,13 +383,22 @@ describe('StatusPage', () => {
     const fetchMock = installFetch({
       status: () => {
         statusCalls += 1;
-        return json(statusResponse);
+        return json({
+          ...statusResponse,
+          // Both folders are configured; only /videos/a already has a list
+          folderConfigs: {
+            '/videos/a': { channelUrl: 'https://yt/@a' },
+            '/videos/b': { channelUrl: 'https://yt/@b' },
+          },
+        });
       },
     });
     renderPage();
-    await screen.findByText('/videos/b');
+    const rowB = (await screen.findByText('/videos/b')).closest('tr');
+    expect(rowB).not.toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Pobierz playlistę' }));
+    await user.click(within(rowB as HTMLElement).getByRole('button', { name: 'Więcej akcji' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Pobierz playlistę' }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(

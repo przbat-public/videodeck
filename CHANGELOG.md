@@ -71,9 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   channel with its playlist state, video counts and queue activity, filters
   and sorts that list, and expands a row into the folder section it replaced.
   Each row carries the queue actions that matter (download all, update stale,
-  update all, cancel the channel's jobs, fetch the playlist) as one primary
-  button plus a menu, so a library of sixty channels stays near one screen
-  instead of twenty stacked lists. The video column stacks its numbers as
+  update all, cancel the channel's jobs, fetch the playlist) in one row menu,
+  so a library of sixty channels stays near one screen instead of twenty
+  stacked lists. The video column stacks its numbers as
   plain lines, the expanded row continues the table instead of opening a card
   of its own (no second header, no nested border), and the config form opens
   from the row menu. The counts come from a new

@@ -111,12 +111,6 @@ interface ChannelActionsCellProps {
   onEditConfig: (row: ChannelRow) => void;
 }
 
-/** The label of the row's one primary button */
-type PrimaryLabelKey =
-  | 'channelConsole.actions.downloadAll'
-  | 'channelConsole.actions.downloadPlaylist'
-  | 'channelConsole.actions.updateAll';
-
 interface ChannelRowMenuProps {
   row: ChannelRow;
   busy: boolean;
@@ -125,10 +119,9 @@ interface ChannelRowMenuProps {
 }
 
 /**
- * The secondary row actions behind the ⋯ trigger: the two updates, the
- * download, cancelling the channel's jobs, the config form and the search
- * link. One primary button plus this menu keeps a row at three controls
- * instead of the six that made the old stacked sections unreadable.
+ * The row's queue actions behind the ⋯ trigger: what can be bulk-done with the
+ * channel, cancelling its jobs, the config form and the search link. Every one
+ * of them lives here, so the row never repeats an action as a button.
  */
 function ChannelRowMenu({ row, busy, onAction, onEditConfig }: ChannelRowMenuProps): JSX.Element {
   const { t } = useTranslation();
@@ -145,7 +138,17 @@ function ChannelRowMenu({ row, busy, onAction, onEditConfig }: ChannelRowMenuPro
         <Ellipsis aria-hidden="true" focusable="false" className="channel-menu-icon" />
       </MenuTrigger>
       <MenuContent>
-        {row.listExists !== false && (
+        {row.listExists === false ? (
+          <>
+            {/* Without list.json there is nothing to update or download, so
+                the playlist is the only bulk entry on offer. Without a
+                channel URL there is not even that. */}
+            <MenuItem disabled={busy || !row.configured} onSelect={() => onAction(row, 'playlist')}>
+              {t('channelConsole.actions.downloadPlaylist')}
+            </MenuItem>
+            <MenuSeparator />
+          </>
+        ) : (
           <>
             <MenuItem
               disabled={busy || (countsKnown && (summary?.stale ?? 0) === 0)}
@@ -185,8 +188,9 @@ function ChannelRowMenu({ row, busy, onAction, onEditConfig }: ChannelRowMenuPro
 }
 
 /**
- * The row's actions: one primary button for the thing the channel most needs,
- * the expand toggle and the ⋯ menu.
+ * The row's actions: the expand toggle and the ⋯ menu. Every queue action
+ * lives in the menu, so a row never repeats one of them as a button and the
+ * three controls that used to crowd the column are gone.
  */
 function ChannelActionsCell({
   row,
@@ -197,29 +201,11 @@ function ChannelActionsCell({
   onEditConfig,
 }: ChannelActionsCellProps): JSX.Element {
   const { t } = useTranslation();
-  const { summary } = row;
   const busy = pendingAction !== undefined;
-  const missing = summary?.notDownloaded;
-  const downloaded = summary?.downloaded ?? 0;
-
-  const primary: { action: ChannelAction; labelKey: PrimaryLabelKey; disabled: boolean } =
-    row.listExists === false
-      ? { action: 'playlist', labelKey: 'channelConsole.actions.downloadPlaylist', disabled: false }
-      : missing === undefined || missing > 0
-        ? { action: 'download', labelKey: 'channelConsole.actions.downloadAll', disabled: false }
-        : { action: 'update', labelKey: 'channelConsole.actions.updateAll', disabled: downloaded === 0 };
 
   return (
     <td data-label={t('channelConsole.column.actions')} aria-busy={busy}>
       <span className="channel-actions">
-        <Button
-          size="small"
-          variant="primary"
-          disabled={busy || primary.disabled}
-          onClick={() => onAction(row, primary.action)}
-        >
-          {t(primary.labelKey)}
-        </Button>
         <Button size="small" onClick={() => onToggle(row)}>
           {expanded ? t('channelConsole.collapse') : t('channelConsole.expand')}
         </Button>

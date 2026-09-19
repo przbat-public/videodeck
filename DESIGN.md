@@ -129,12 +129,12 @@ Data tables (the channel console on `/download`) follow one shape:
   and a hardcoded offset would hide the header behind it. The card that
   wraps the table uses `overflow: clip`, not `hidden`: a scroll container
   there would pin the header in place.
-- Every row keeps one primary button for the action the row most needs and
-  moves the rest into a `Menu` behind a `⋯` trigger with an `aria-label`.
-  Six buttons on every row is what made the old stacked sections
-  unreadable, and the menu keeps the keyboard order short. The menu lists the
-  two updates first and the download third, so the order does not move when
-  the primary button changes.
+- Every queue action lives in one `Menu` behind a `⋯` trigger with an
+  `aria-label`; the row itself carries no action button beyond the expand
+  toggle. Buttons per row are what made the old stacked sections unreadable,
+  and one menu keeps the keyboard order short. The entries keep a fixed
+  order: the two updates, then the download, and a channel without a
+  `list.json` gets the playlist entry instead of the three.
 - A cell that carries several numbers stacks them, one plain line each: the
   total first, then what needs doing in the warning colour. A pill per number
   made the column a row of chips that wrapped unpredictably.
