@@ -20,7 +20,7 @@ videos straight from YouTube.
 
 <p align="center">
   <img src="docs/screenshots/search.png" alt="Search with filters" width="48%">
-  <img src="docs/screenshots/status.png" alt="Channel status page" width="48%">
+  <img src="docs/screenshots/status.png" alt="Channel download console" width="48%">
   <img src="docs/screenshots/detail.png" alt="Video player with subtitles" width="48%">
 </p>
 

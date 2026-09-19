@@ -643,12 +643,19 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
-  overflow: hidden;
+  /* `clip`, not `hidden`: the sticky header needs the viewport as its scroll
+     container, and `hidden` would make the card one (with nothing to scroll),
+     which pins the header in place. Both clip to the rounded corner. */
+  overflow: clip;
 }
 
 .channel-table {
   width: 100%;
-  border-collapse: collapse;
+  /* `separate` keeps the sticky header's bottom border attached to it: with
+     `collapse` the border belongs to the table and scrolls away. Nothing here
+     doubles a border, so the two render the same. */
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .channel-caption {
@@ -659,6 +666,12 @@
 }
 
 .channel-table th {
+  /* Column names stay visible while the table scrolls past them. The offset
+     comes from the queue bar itself, which sticks above this row. */
+  position: sticky;
+  top: var(--channel-queue-bar-height, 0px);
+  z-index: 5;
+  background: var(--color-surface);
   text-align: left;
   font-size: 0.8rem;
   text-transform: uppercase;

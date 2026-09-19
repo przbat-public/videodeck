@@ -93,7 +93,8 @@ Seven shared primitives in `client/src/components/ui/`:
   Keyboard focus draws an inset ring inside the list; mouse hover stays a
   plain highlight.
 - **Menu** — Radix DropdownMenu behind thin wrappers: trigger, content,
-  items, checkbox items, section labels and separators, all styled like the
+  items, checkbox items, link items (a real `<a>` through `asChild`, for
+  entries that navigate), section labels and separators, all styled like the
   Select dropdown. The top bar gear menu (navigation, index actions,
   theme, language) composes it. Checkbox items keep the menu open on
   toggle; the same inset-ring focus rule as Select applies.
@@ -117,6 +118,23 @@ while running, log on errors — the server drops the routine progress
 lines before they reach the log), detail player (70% width, poster,
 subtitle tracks). All live in `client/src/components/` and reuse the
 tokens.
+
+Data tables (the channel console on `/download`) follow one shape:
+
+- A real `<table>` with a `<caption>` that sums the rows on screen,
+  `<th scope="col">` headers and `aria-sort` on the one sortable column.
+- The header row sticks while the table scrolls past. Its offset is the
+  sticky queue bar's own height (`--channel-queue-bar-height`, published by
+  a `ResizeObserver` on the bar), because the bar wraps on narrower screens
+  and a hardcoded offset would hide the header behind it. The card that
+  wraps the table uses `overflow: clip`, not `hidden`: a scroll container
+  there would pin the header in place.
+- Every row keeps one primary button for the action the row most needs and
+  moves the rest into a `Menu` behind a `⋯` trigger with an `aria-label`.
+  Six buttons on every row is what made the old stacked sections
+  unreadable, and the menu keeps the keyboard order short.
+- A row that is working reports `aria-busy`, disables its own controls and
+  shows the working chip until the action settles.
 
 Icons come from **lucide-react** (stroke icons on the 24px grid,
 `currentColor`); no hand-drawn paths and no icon fonts.
@@ -143,6 +161,9 @@ entrance animations, no parallax.
   label and the menu itself follows the APG menu button pattern.
 - Error banners use `role="alert"`; toasts are additional, not the only
   signal.
+- A control that is running an action says so: `aria-busy` on the region,
+  the busy control disabled, and a visible chip. Nothing depends on the
+  disabled state alone to explain itself.
 - Media: the player includes subtitle tracks; `useMediaCaption` is the one
   deliberate ignore, documented inline.
 
@@ -191,6 +212,10 @@ work.
 - Dark mode must read as well as light mode at every breakpoint.
 - Long Polish titles and channel names truncate with ellipsis or wrap;
   they never overflow a card or a queue row.
+- The channel console table collapses into one card per channel below
+  768px: the header row is hidden, every cell prints its column name from
+  `data-label`, the sticky header rule stops applying, and the row actions
+  keep their 44px height. A table never scrolls sideways on a phone.
 - New breakpoints, a changed grid floor or a removed hover affordance are
   a contract change: update this section and run the responsive-design
   skill audit.
