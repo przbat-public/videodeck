@@ -147,11 +147,39 @@ describe('StatusPage', () => {
     expect(screen.getByRole('button', { name: 'Utwórz config.json' })).toBeInTheDocument();
   });
 
+  it('shows why the queue controls are unusable when the queue read fails', async () => {
+    installFetch({ queue: () => json({ error: 'boom' }, 500) });
+    renderPage();
+
+    expect(await screen.findByText('Błąd kolejki: Nie udało się wczytać kolejki')).toBeInTheDocument();
+  });
+
   it('shows the error when the status request fails', async () => {
     installFetch({ status: () => json({ error: 'boom' }, 500) });
     renderPage();
 
     expect(await screen.findByText('Błąd: Nie udało się pobrać statusu')).toBeInTheDocument();
+  });
+
+  it('retries the failed status request without a page reload', async () => {
+    let failNext = true;
+    installFetch({
+      status: () => {
+        if (failNext) {
+          failNext = false;
+          return json({ error: 'boom' }, 500);
+        }
+        return json(statusResponse);
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Błąd: Nie udało się pobrać statusu');
+
+    await user.click(screen.getByRole('button', { name: 'Spróbuj ponownie' }));
+
+    expect(await screen.findByText('/videos/a')).toBeInTheDocument();
+    expect(screen.queryByText('Błąd: Nie udało się pobrać statusu')).toBeNull();
   });
 
   it('says so when no folders are configured', async () => {

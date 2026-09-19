@@ -117,6 +117,57 @@ describe('useVideoDetail', () => {
     expect(result.current.state.details).toBeNull();
   });
 
+  it('should fetch the details again on reload after a failure', async () => {
+    const mockDetails = {
+      title: 'Test Video',
+      description: 'Test description',
+      uploadDate: '2024-01-01',
+      duration: '10:30',
+      viewCount: 1000,
+      likeCount: 50,
+      channelName: 'Test Channel',
+      comments: [],
+      commentCount: 0,
+      videoPath: 'test-video.mp4',
+      thumbnailPath: 'test-video.webp',
+      subtitles: [],
+      folderPath: '/videos/a',
+    };
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ details: mockDetails }) });
+
+    const { result } = renderHook(() => useVideoDetail('test-video'));
+    await waitFor(() => expect(result.current.state.error).not.toBeNull());
+
+    act(() => {
+      result.current.reload();
+    });
+
+    await waitFor(() => expect(result.current.state.details).toEqual(mockDetails));
+    expect(result.current.state.error).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores a failure that lands after unmount', async () => {
+    let rejectFetch!: (error: Error) => void;
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectFetch = reject;
+        }),
+    );
+    const { result, unmount } = renderHook(() => useVideoDetail('test-video'));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    unmount();
+    await act(async () => {
+      rejectFetch(new Error('network'));
+    });
+
+    expect(result.current.state.error).toBeNull();
+  });
+
   it('should handle non-Error exception', async () => {
     fetchMock.mockRejectedValueOnce('String error');
 

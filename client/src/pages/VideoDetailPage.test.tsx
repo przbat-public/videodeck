@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { VideoDetails } from '@videodeck/shared/api';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -191,5 +192,30 @@ describe('VideoDetailPage', () => {
     renderPage();
 
     expect(await screen.findByText(/^Błąd:/)).toBeInTheDocument();
+  });
+
+  it('retries the failed details request and keeps the page in a landmark', async () => {
+    let failNext = true;
+    installFetch({
+      details: () => {
+        if (failNext) {
+          failNext = false;
+          return json({ error: 'nope' }, 500);
+        }
+        return json({ details });
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(/^Błąd:/);
+
+    // The error screen is the page: it has to sit in the main landmark, not
+    // outside every landmark like the plain div it used to be.
+    expect(screen.getByRole('main')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Spróbuj ponownie' }));
+
+    expect(await screen.findByText('A talk about hedgehogs')).toBeInTheDocument();
+    expect(screen.queryByText(/^Błąd:/)).toBeNull();
   });
 });

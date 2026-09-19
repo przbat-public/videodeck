@@ -75,4 +75,27 @@ describe('useStatus', () => {
     // The aborted fetch dispatches nothing: no error state, no crash.
     expect(result.current.state.error).toBeNull();
   });
+
+  it('loads the status again on reload after a failure', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'boom' }, 500));
+    const { result } = renderHook(() => useStatus());
+    await waitFor(() => expect(result.current.state.error).not.toBeNull());
+
+    act(() => {
+      result.current.reload();
+    });
+
+    await waitFor(() => expect(result.current.state.statusData).not.toBeNull());
+    expect(result.current.state.error).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to the generic message when the failure is not an Error', async () => {
+    fetchMock.mockRejectedValueOnce('boom');
+    const { result } = renderHook(() => useStatus());
+
+    await waitFor(() => expect(result.current.state.error).not.toBeNull());
+
+    expect(result.current.state.error).toBe('Wystąpił błąd');
+  });
 });

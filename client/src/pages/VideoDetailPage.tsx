@@ -1,31 +1,40 @@
 import type { JSX } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
+import { Button } from '../components/ui/Button';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { Loading } from '../components/ui/Loading';
 import VideoComments from '../components/VideoComments';
 import VideoSummary from '../components/VideoSummary';
+import { usePageFocus } from '../hooks/usePageFocus';
 import { useVideoDetail } from '../hooks/useVideoDetail';
 import { formatUploadDate } from '../utils/videoDates';
 
 export default function VideoDetailPage(): JSX.Element {
   const { videoId } = useParams<{ videoId: string }>();
-  const { state } = useVideoDetail(videoId);
+  const { state, reload } = useVideoDetail(videoId);
   const { t, i18n } = useTranslation();
+  // One landmark for every state of the page: the loading and error screens
+  // used to render outside any landmark, and nothing moved focus, so a failed
+  // route left the user at the top of an unchanged-looking document.
+  const mainRef = usePageFocus<HTMLElement>();
 
   if (state.loading) {
     return (
-      <div className="video-detail-page">
+      <main className="video-detail-page" ref={mainRef} tabIndex={-1}>
         <Loading message={t('video.loading')} />
-      </div>
+      </main>
     );
   }
 
   if (state.error || !state.details) {
     return (
-      <div className="video-detail-page">
-        <ErrorMessage>{t('app.error', { message: state.error || t('video.notFound') })}</ErrorMessage>
-      </div>
+      <main className="video-detail-page" ref={mainRef} tabIndex={-1}>
+        <div className="page-error">
+          <ErrorMessage>{t('app.error', { message: state.error || t('video.notFound') })}</ErrorMessage>
+          <Button onClick={reload}>{t('app.retry')}</Button>
+        </div>
+      </main>
     );
   }
 
@@ -35,7 +44,7 @@ export default function VideoDetailPage(): JSX.Element {
   const subtitleUrl = (subtitlePath: string) => `/api/videos/file/${encodeURIComponent(subtitlePath)}${folderQuery}`;
 
   return (
-    <div className="video-detail-page">
+    <main className="video-detail-page" ref={mainRef} tabIndex={-1}>
       <div className="video-detail-container">
         <div className="video-detail-main">
           <div className="video-player-section">
@@ -107,6 +116,6 @@ export default function VideoDetailPage(): JSX.Element {
           commentCount={state.details.commentCount}
         />
       </div>
-    </div>
+    </main>
   );
 }
