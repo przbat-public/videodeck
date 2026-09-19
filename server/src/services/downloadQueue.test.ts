@@ -132,7 +132,7 @@ describe('indexChangedVideos', () => {
     expect(mockedIndexVideosFromDisk).toHaveBeenCalledWith('/videos/channel-a', ['20250101_New']);
   });
 
-  it('retries changed-video indexing in the background when Elasticsearch is down', async () => {
+  it('retries changed-video indexing in the background when the batch did not land', async () => {
     jest.useFakeTimers();
     try {
       mockedRefreshIndex.mockResolvedValue({
@@ -144,15 +144,40 @@ describe('indexChangedVideos', () => {
         changed: ['abc'],
         removed: [],
       });
-      mockedIndexVideosFromDisk.mockRejectedValue(new Error('ES down'));
+      // indexVideosFromDisk logs its own failures and never rejects, so a
+      // batch that did not land comes back as a short count, not as a throw.
+      mockedIndexVideosFromDisk.mockResolvedValue(0);
 
       await expect(indexChangedVideos(job)).resolves.toBeUndefined();
 
       mockedIndexVideosFromDisk.mockResolvedValue(1);
       await jest.advanceTimersByTimeAsync(30_000);
-      await Promise.resolve();
 
       expect(mockedIndexVideosFromDisk).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+      clearIndexRetries();
+    }
+  });
+
+  it('does not schedule a retry when every changed video was indexed', async () => {
+    jest.useFakeTimers();
+    try {
+      mockedRefreshIndex.mockResolvedValue({
+        index: {
+          version: 1,
+          builtAt: 'x',
+          entries: { abc: { baseName: '20250101_New', videoFile: '20250101_New.mp4', infoMtime: 'x' } },
+        },
+        changed: ['abc'],
+        removed: [],
+      });
+      mockedIndexVideosFromDisk.mockResolvedValue(1);
+
+      await indexChangedVideos(job);
+      await jest.advanceTimersByTimeAsync(600_000);
+
+      expect(mockedIndexVideosFromDisk).toHaveBeenCalledTimes(1);
     } finally {
       jest.useRealTimers();
       clearIndexRetries();
@@ -685,6 +710,57 @@ describe('DownloadQueue', () => {
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 
+  it('keeps a job cancelled while its post-job hook is still running', async () => {
+    let resolveAfter: () => void = () => {
+      /* replaced by the pending hook's promise executor below */
+    };
+    afterJob.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAfter = resolve;
+        }),
+    );
+    const job = at(queue.enqueue([request('a')]), 0);
+
+    spawned().process.exit(0);
+    await flush();
+    expect(queue.get(job.id)?.status).toBe('running');
+
+    expect(queue.cancel(job.id)).toBe(true);
+    resolveAfter();
+    await flush();
+    await flush();
+
+    expect(queue.get(job.id)?.status).toBe('cancelled');
+  });
+
+  it('frees the folder slot when a running job is cancelled during its hook', async () => {
+    let resolveAfter: () => void = () => {
+      /* replaced by the pending hook's promise executor below */
+    };
+    afterJob.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAfter = resolve;
+        }),
+    );
+    queue.enqueue([request('a'), request('b')]);
+    expect(spawn.calls).toHaveLength(1); // one download per folder at a time
+
+    spawned().process.exit(0);
+    await flush();
+    expect(queue.cancel(at(queue.list(), 0).id)).toBe(true);
+    await flush();
+
+    // Cancelling released the folder, so the queued download must start even
+    // though the finished job's hook is still pending.
+    expect(spawn.calls).toHaveLength(2);
+    expect(spawned(1).args).toContain('https://www.youtube.com/watch?v=b');
+
+    resolveAfter();
+    await flush();
+  });
+
   it('marks a job as error on a non-zero exit code', async () => {
     const job = at(queue.enqueue([request('a')]), 0);
 
@@ -789,6 +865,26 @@ describe('DownloadQueue', () => {
 
       expect(spawn.calls).toHaveLength(1);
       expect(retryQueue.get(job.id)?.status).toBe('cancelled');
+    });
+
+    it('leaves the retry queued when the queue is paused during the backoff', async () => {
+      const job = at(retryQueue.enqueue([request('a')]), 0);
+
+      spawned(0).process.exit(1);
+      await flush();
+      retryQueue.setPaused(true);
+
+      await sleep(15);
+      await flush();
+
+      // Pausing must not be answered by starting a fresh yt-dlp run.
+      expect(spawn.calls).toHaveLength(1);
+      expect(retryQueue.get(job.id)?.status).toBe('queued');
+
+      retryQueue.setPaused(false);
+      await flush();
+
+      expect(spawn.calls).toHaveLength(2);
     });
 
     it('fails a members-only video at once instead of waiting out the backoff', async () => {
@@ -1076,6 +1172,23 @@ describe('queue state persistence', () => {
     await waitForState((state) => state.paused === true);
   });
 
+  it('drops a cancelled running job from the persisted state', async () => {
+    const spawn = createFakeSpawn();
+    const queue = new DownloadQueue({
+      spawnFn: spawn.spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    const job = at(queue.enqueue([request('a')]), 0);
+    await waitForState((state) => (state.jobs ?? []).some((entry) => entry.videoId === 'a'));
+
+    queue.cancel(job.id);
+
+    // A reboot must not resurrect a job the user cancelled while it ran.
+    await waitForState((state) => (state.jobs ?? []).length === 0);
+  });
+
   it('serializes state writes so an older snapshot cannot land after a newer one', async () => {
     // Every persistState call returns a promise we resolve by hand, so the
     // test controls exactly when each write completes.
@@ -1159,6 +1272,72 @@ describe('queue state persistence', () => {
 
     await fs.writeFile(stateFile, '{not json');
     await expect(restoreQueueState(new DownloadQueue({ stateFile }), stateFile)).resolves.toBe(0);
+  });
+
+  it('skips restored jobs whose folder path is not absolute and normalised', async () => {
+    await fs.writeFile(
+      stateFile,
+      JSON.stringify({
+        paused: true,
+        jobs: [
+          { folderPath: 'videos/channel-a', videoId: 'relative' },
+          { folderPath: '/videos/../etc', videoId: 'traversal' },
+          { folderPath: '/videos/channel-a/', videoId: 'trailing-slash' },
+          { folderPath: '', videoId: 'empty' },
+          { folderPath: '/videos/channel-a', videoId: '' },
+          { folderPath: '/videos/channel-a', videoId: 'ok' },
+        ],
+      }),
+    );
+
+    const spawn = createFakeSpawn();
+    const queue = new DownloadQueue({
+      spawnFn: spawn.spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+
+    await expect(restoreQueueState(queue, stateFile)).resolves.toBe(1);
+    expect(queue.list().map((job) => job.videoId)).toEqual(['ok']);
+    expect(spawn.spawnFn).not.toHaveBeenCalled();
+  });
+
+  it('drops restored options that do not parse and keeps the jobs', async () => {
+    await fs.writeFile(
+      stateFile,
+      JSON.stringify({
+        paused: true,
+        jobs: [
+          { folderPath: '/videos/channel-a', videoId: 'broken', options: { maxHeight: '2160p' } },
+          {
+            folderPath: '/videos/channel-a',
+            videoId: 'good',
+            options: { maxHeight: 1080, subLangs: ['pl'], writeComments: false, extraArgs: ['--no-playlist'] },
+          },
+        ],
+      }),
+    );
+
+    const queue = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+
+    await expect(restoreQueueState(queue, stateFile)).resolves.toBe(2);
+    const jobs = queue.list('/videos/channel-a');
+    expect(jobs.map((job) => job.videoId)).toEqual(['broken', 'good']);
+    // Unparseable options fall back to the folder defaults at spawn time
+    // instead of reaching buildYtDlpArgs as an unvalidated cast.
+    expect(at(jobs, 0).options).toBeUndefined();
+    expect(at(jobs, 1).options).toEqual({
+      maxHeight: 1080,
+      subLangs: ['pl'],
+      writeComments: false,
+      extraArgs: ['--no-playlist'],
+    });
   });
 
   it('waitForIdle resolves once the last child process is gone', async () => {

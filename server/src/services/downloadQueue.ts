@@ -2,11 +2,14 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import type { DownloadOptions, JobStatus, JobType, QueueJob } from '@videodeck/shared/api';
 import { extractYtDlpProgress, isYtDlpProgressLine } from '@videodeck/shared/progress';
+import { DownloadOptionsSchema } from '@videodeck/shared/schemas';
 import { removePartialDownloads, writeTextAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/objectUtils';
+import { normalizeFolderPath } from '../utils/videoPathUtils';
 import { refreshIndex } from './folderIndex';
 import { indexVideosFromDisk } from './videoScanner';
 import { buildYtDlpArgs } from './ytdlp';
@@ -123,13 +126,15 @@ export async function indexChangedVideos(job: QueueJob): Promise<void> {
   if (baseNames.length === 0) {
     return;
   }
-  try {
-    const indexed = await indexVideosFromDisk(job.folderPath, baseNames);
-    logger.info(`Job ${job.id}: indexed ${indexed}/${baseNames.length} changed videos in Elasticsearch`);
-  } catch (error) {
-    logger.error(`Job ${job.id}: cannot index changed videos, will retry:`, error);
+  // indexVideosFromDisk logs per-video failures and never rejects, so a short
+  // count is the only signal that part of the batch did not land.
+  const indexed = await indexVideosFromDisk(job.folderPath, baseNames);
+  if (indexed < baseNames.length) {
+    logger.error(`Job ${job.id}: indexed ${indexed}/${baseNames.length} changed videos, will retry`);
     scheduleIndexRetry(job.folderPath, baseNames);
+    return;
   }
+  logger.info(`Job ${job.id}: indexed ${indexed}/${baseNames.length} changed videos in Elasticsearch`);
 }
 
 /** Folders whose incremental indexing failed and is waiting for a retry */
@@ -157,12 +162,14 @@ function scheduleIndexRetry(folderPath: string, baseNames: string[], attempt = 0
   const delay = INDEX_RETRY_DELAYS_MS[attempt] ?? 480_000;
   const timer = setTimeout(() => {
     indexRetryTimers.delete(folderPath);
-    indexVideosFromDisk(folderPath, baseNames)
-      .then((indexed) => logger.info(`Retry indexed ${indexed}/${baseNames.length} videos in ${folderPath}`))
-      .catch((error: unknown) => {
-        logger.error(`Index retry failed for ${folderPath}:`, error);
+    void indexVideosFromDisk(folderPath, baseNames).then((indexed) => {
+      if (indexed < baseNames.length) {
+        logger.warn(`Retry indexed ${indexed}/${baseNames.length} videos in ${folderPath}`);
         scheduleIndexRetry(folderPath, baseNames, attempt + 1);
-      });
+        return;
+      }
+      logger.info(`Retry indexed ${indexed}/${baseNames.length} videos in ${folderPath}`);
+    });
   }, delay);
   timer.unref();
   indexRetryTimers.set(folderPath, timer);
@@ -310,25 +317,24 @@ export class DownloadQueue extends EventEmitter {
     if (!job || !isActive(job)) {
       return false;
     }
-    if (job.status === 'running') {
-      const child = this.processes.get(id);
-      job.status = 'cancelled';
-      job.finishedAt = new Date().toISOString();
-      this.emitJob(job);
-      // Stop a pending retry from resurrecting the job
-      const timer = this.retryTimers.get(id);
-      if (timer) {
-        clearTimeout(timer);
-        this.retryTimers.delete(id);
-      }
-      killProcessGroup(child, 'SIGTERM');
-      // 'close' handler will clean up the process map and pump the queue
-      return true;
+    // Stop a pending retry from resurrecting the job
+    const timer = this.retryTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      this.retryTimers.delete(id);
     }
     job.status = 'cancelled';
     job.finishedAt = new Date().toISOString();
+    this.attempts.delete(id);
     this.emitJob(job);
+    // A running job is killed; the 'close' handler then sweeps its partial files
+    killProcessGroup(this.processes.get(id), 'SIGTERM');
+    // Persist right away: a cancelled job must not come back after a reboot,
+    // and the 'close' handler of an already-exited process never persists.
     this.persistState();
+    // Cancelling frees the folder slot. The 'close' handler pumps too, but it
+    // has already run when the job was waiting on its post-job hook.
+    this.pump();
     return true;
   }
 
@@ -568,7 +574,13 @@ export class DownloadQueue extends EventEmitter {
         return;
       }
       job.progress = 100;
-      void this.runAfterJob(job).then(() => this.finish(job, 'done', undefined, code));
+      void this.runAfterJob(job).then(() => {
+        // A cancel during the hook already recorded the job as cancelled;
+        // overwriting it with 'done' would hide the user's action.
+        if (job.status === 'running') {
+          this.finish(job, 'done', undefined, code);
+        }
+      });
       return;
     }
 
@@ -606,11 +618,19 @@ export class DownloadQueue extends EventEmitter {
     );
     const timer = setTimeout(() => {
       this.retryTimers.delete(job.id);
-      if (job.status === 'running') {
-        this.start(job);
-      } else {
+      if (job.status !== 'running') {
         this.pump();
+        return;
       }
+      if (this.paused) {
+        // Pausing during the backoff must not start a new yt-dlp run: hand the
+        // job back to the queue so the normal resume path picks it up.
+        job.status = 'queued';
+        this.emitJob(job);
+        this.persistState();
+        return;
+      }
+      this.start(job);
     }, delay);
     this.retryTimers.set(job.id, timer);
     this.pump();
@@ -751,8 +771,28 @@ export async function restoreQueueState(
 }
 
 /**
+ * Whether a persisted folder path is safe to spawn yt-dlp in: absolute,
+ * already normalised (no trailing slash, no `~`) and free of `..` segments,
+ * so a hand-edited state file cannot point the queue at another directory.
+ *
+ * The enqueue route additionally checks the path against the configured
+ * folder list. Restore deliberately does not: the drive a folder lives on may
+ * not be mounted yet when the server boots, and dropping the job then would
+ * lose it silently.
+ */
+function isRestorableFolder(folderPath: string): boolean {
+  return (
+    path.isAbsolute(folderPath) &&
+    normalizeFolderPath(folderPath) === folderPath &&
+    !folderPath.split(path.sep).includes('..')
+  );
+}
+
+/**
  * Convert one persisted job back into an enqueue request. Entries that do not
- * look like a job we wrote (corrupt hand-edited file) are skipped.
+ * look like a job we wrote (corrupt hand-edited file) are skipped, and
+ * unparseable options fall back to the folder defaults instead of reaching
+ * buildYtDlpArgs as an unchecked cast.
  */
 function toEnqueueRequest(job: unknown): EnqueueRequest | null {
   if (!job || typeof job !== 'object') {
@@ -760,8 +800,15 @@ function toEnqueueRequest(job: unknown): EnqueueRequest | null {
   }
   const record = job as Record<string, unknown>;
   const { folderPath, videoId } = record;
-  if (typeof folderPath !== 'string' || typeof videoId !== 'string') {
+  if (typeof folderPath !== 'string' || !isRestorableFolder(folderPath)) {
     return null;
+  }
+  if (typeof videoId !== 'string' || videoId.length === 0) {
+    return null;
+  }
+  const options = record.options === undefined ? null : DownloadOptionsSchema.safeParse(record.options);
+  if (options && !options.success) {
+    logger.warn(`Queue state: dropping unreadable options of job ${videoId}`);
   }
   return {
     folderPath,
@@ -770,6 +817,6 @@ function toEnqueueRequest(job: unknown): EnqueueRequest | null {
     ...(typeof record.title === 'string' ? { title: record.title } : {}),
     type: record.type === 'update' ? 'update' : 'download',
     ...(typeof record.baseName === 'string' ? { baseName: record.baseName } : {}),
-    ...(record.options && typeof record.options === 'object' ? { options: record.options as DownloadOptions } : {}),
+    ...(options?.success ? { options: options.data } : {}),
   };
 }
