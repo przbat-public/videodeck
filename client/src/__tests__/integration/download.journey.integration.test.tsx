@@ -183,7 +183,9 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
     await screen.findByRole('button', { name: 'Wznów kolejkę' });
 
     const row = await channelRow(env.folder('channel-console-row'));
-    await page.user.click(within(row).getByRole('button', { name: 'Pobierz wszystkie' }));
+    // Every queue action is in the row menu now
+    await page.user.click(within(row).getByRole('button', { name: 'Więcej akcji' }));
+    await page.user.click(await screen.findByRole('menuitem', { name: 'Pobierz wszystkie' }));
 
     await waitFor(async () => {
       const state = await readQueueState();

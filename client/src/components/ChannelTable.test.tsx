@@ -160,6 +160,15 @@ describe('ChannelTable', () => {
     expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_CHANNEL_CONSOLE_STATE, folder: '/videos/kanal-a' });
   });
 
+  it('collapses the expanded row again from its toggle', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderTable([row()], { ...DEFAULT_CHANNEL_CONSOLE_STATE, folder: '/videos/kanal-a' });
+
+    await user.click(screen.getByRole('button', { name: 'Ukryj filmy' }));
+
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_CHANNEL_CONSOLE_STATE, folder: '' });
+  });
+
   it('renders the expanded content of the named row', () => {
     renderTable([row()], { ...DEFAULT_CHANNEL_CONSOLE_STATE, folder: '/videos/kanal-a' });
 
@@ -230,39 +239,31 @@ describe('ChannelTable', () => {
     expect(within(caption as HTMLElement).getByText(/wymaga uwagi: 1/)).toBeInTheDocument();
   });
 
-  it('queues the missing videos from the primary action', async () => {
-    const user = userEvent.setup();
-    const { onAction } = renderTable([row({ summary: { videos: 40, downloaded: 2, notDownloaded: 38, stale: 1 } })]);
-
-    await user.click(screen.getByRole('button', { name: 'Pobierz wszystkie' }));
-
-    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'download');
-  });
-
-  it('falls back to updating everything once nothing is missing', async () => {
-    const user = userEvent.setup();
-    const { onAction } = renderTable([row({ summary: { videos: 5, downloaded: 5, notDownloaded: 0, stale: 0 } })]);
-
-    await user.click(screen.getByRole('button', { name: 'Aktualizuj wszystkie' }));
-
-    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'update');
-  });
-
-  it('disables the primary action when the channel has nothing to update', () => {
-    renderTable([row({ summary: { videos: 5, downloaded: 0, notDownloaded: 0, stale: 0 } })]);
-
-    expect(screen.getByRole('button', { name: 'Aktualizuj wszystkie' })).toBeDisabled();
-  });
-
   it('keeps the actions usable when the counts could not be loaded', async () => {
     const user = userEvent.setup();
     // No summary at all: the counts may have failed, but the list.json the
-    // action reads is authoritative, so the button must still work.
+    // action reads is authoritative, so the entry must still work.
     const { onAction } = renderTable([row()]);
 
-    await user.click(screen.getByRole('button', { name: 'Pobierz wszystkie' }));
+    await openRowMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Pobierz wszystkie' }));
 
     expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'download');
+  });
+
+  it('leaves the row with the expand toggle and the menu only', () => {
+    renderTable([row({ summary: { videos: 40, downloaded: 2, notDownloaded: 38, stale: 1 } })]);
+
+    // Every queue action lives in the menu now, so the cell carries no
+    // primary button of its own
+    expect(screen.queryByRole('button', { name: 'Pobierz wszystkie' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Aktualizuj wszystkie' })).toBeNull();
+    const rowCells = screen.getAllByRole('row')[1];
+    expect(
+      within(rowCells as HTMLElement)
+        .getAllByRole('button')
+        .map((button) => button.textContent?.trim()),
+    ).toEqual(['Pokaż filmy', '']);
   });
 
   it('offers the secondary actions in the row menu', async () => {
@@ -347,30 +348,40 @@ describe('ChannelTable', () => {
     expect(screen.getByRole('menuitem', { name: 'Pobierz wszystkie' })).toHaveAttribute('data-disabled');
   });
 
-  it('fetches the playlist when the channel has no list to work from', async () => {
+  it('fetches the playlist from the menu when the channel has no list to work from', async () => {
     const user = userEvent.setup();
     const { onAction } = renderTable([row({ listExists: false, attention: ['noList'] })]);
 
-    await user.click(screen.getByRole('button', { name: 'Pobierz playlistę' }));
-    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'playlist');
-
     await openRowMenu(user);
+    // Nothing to update or download without a list, so the playlist is the
+    // only bulk entry on offer
     expect(screen.queryByRole('menuitem', { name: 'Aktualizuj wszystkie' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Pobierz wszystkie' })).toBeNull();
-    expect(screen.getByRole('menuitem', { name: 'Edytuj config.json' })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: 'Pobierz playlistę' }));
+
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'playlist');
   });
 
-  it('marks a busy row and blocks its controls while the action runs', async () => {
+  it('disables the playlist entry for a channel without a channel URL', async () => {
+    const user = userEvent.setup();
+    renderTable([row({ configured: false, listExists: false, attention: ['noChannelUrl', 'noList'] })]);
+
+    await openRowMenu(user);
+
+    expect(screen.getByRole('menuitem', { name: 'Pobierz playlistę' })).toHaveAttribute('data-disabled');
+  });
+
+  it('marks a busy row and blocks its actions while the action runs', async () => {
     const user = userEvent.setup();
     renderTable([row({ summary: { videos: 40, downloaded: 1, notDownloaded: 39, stale: 0 } })], undefined, false, {
       pending: { '/videos/kanal-a': 'download' },
     });
 
     expect(screen.getByText('Pracuję...')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Pobierz wszystkie' })).toBeDisabled();
 
     await openRowMenu(user);
     expect(screen.getByRole('menuitem', { name: 'Aktualizuj stare' })).toHaveAttribute('data-disabled');
+    expect(screen.getByRole('menuitem', { name: 'Pobierz wszystkie' })).toHaveAttribute('data-disabled');
     expect(screen.getByRole('menuitem', { name: 'Edytuj config.json' })).not.toHaveAttribute('data-disabled');
   });
 });

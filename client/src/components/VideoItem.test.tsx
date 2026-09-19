@@ -133,6 +133,13 @@ describe('VideoItem', () => {
     expect(onEnqueue).toHaveBeenCalledWith(video, 'download');
   });
 
+  it('labels a cancelled job', () => {
+    renderItem({ job: job({ status: 'cancelled', log: ['cancelled by the user'] }) });
+
+    expect(screen.getByText('Anulowano')).toBeInTheDocument();
+    expect(screen.queryByText('cancelled by the user')).toBeNull();
+  });
+
   it('shows a done status without the log', () => {
     renderItem({ isDownloaded: true, job: job({ status: 'done', log: ['finished'] }) });
 

@@ -175,11 +175,18 @@ test.describe('channel console', () => {
     );
     expect(overflow).toBeLessThanOrEqual(0);
 
-    // Touch contract: the row's primary action and the menu trigger reach 44px
-    const primary = await page.getByRole('button', { name: 'Pobierz wszystkie' }).first().boundingBox();
+    // Touch contract: the expand toggle, the menu trigger and the entries
+    // inside the menu all reach 44px
+    const expand = await page.getByRole('button', { name: 'Pokaż filmy' }).first().boundingBox();
     const menu = await page.getByRole('button', { name: 'Więcej akcji' }).first().boundingBox();
-    expect(primary?.height ?? 0).toBeGreaterThanOrEqual(43.5);
+    expect(expand?.height ?? 0).toBeGreaterThanOrEqual(43.5);
     expect(menu?.height ?? 0).toBeGreaterThanOrEqual(43.5);
+
+    // kanal-01 has no list.json yet, so its menu offers the playlist; the
+    // bulk entries are checked on the next row
+    await page.locator('.channel-row', { hasText: 'kanal-02' }).getByRole('button', { name: 'Więcej akcji' }).click();
+    const entry = await page.getByRole('menuitem', { name: 'Pobierz wszystkie' }).boundingBox();
+    expect(entry?.height ?? 0).toBeGreaterThanOrEqual(43.5);
   });
 
   test('the row menu reaches the secondary actions', async ({ page }) => {
@@ -187,10 +194,12 @@ test.describe('channel console', () => {
 
     // kanal-02 has videos missing, a running job to cancel and a stale download.
     const row = page.locator('.channel-row', { hasText: 'kanal-02' });
-    await expect(row.getByRole('button', { name: 'Pobierz wszystkie' })).toBeVisible();
+    // Every queue action lives in the menu: the row carries no action button
+    await expect(row.getByRole('button', { name: 'Pobierz wszystkie' })).toHaveCount(0);
     await row.getByRole('button', { name: 'Więcej akcji' }).click();
 
-    await expect(page.getByRole('menuitem', { name: 'Aktualizuj stare' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Aktualizuj stare' })).toBeEnabled();
+    await expect(page.getByRole('menuitem', { name: 'Pobierz wszystkie' })).toBeEnabled();
     await expect(page.getByRole('menuitem', { name: 'Anuluj zadania kanału' })).toBeEnabled();
     // The search entry is a real link, so middle click and new tab work
     await expect(page.getByRole('menuitem', { name: 'Szukaj w tym kanale' })).toHaveAttribute(
