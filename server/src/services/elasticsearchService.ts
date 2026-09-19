@@ -812,16 +812,57 @@ function buildHighlights(highlight: Record<string, string[]> | undefined): Recor
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
-/** Distinct channel names across the configured folders (for the filter UI) */
-export async function listChannelNames(): Promise<string[]> {
+export interface ChannelNames {
+  /** Distinct channel names across the configured folders, for the filter UI */
+  channels: string[];
+  /** Folder path to the channel name its videos carry, for the console link */
+  folders: Record<string, string>;
+}
+
+/** Terms bucket shape of the two aggregations below */
+interface TermsBucket {
+  key: string;
+  channel?: { buckets?: Array<{ key: string }> };
+}
+
+/**
+ * Channel metadata for the UI. One query answers both questions: the distinct
+ * names behind the search filter, and which channel each folder holds (a
+ * sub-aggregation per folder bucket), so the console can link to the search
+ * page with a value the search actually filters by.
+ */
+export async function listChannelNames(): Promise<ChannelNames> {
   const esClient = getElasticsearchClient();
   const response = await esClient.search<VideoDocument>({
     index: getIndexPattern(),
     size: 0,
-    aggs: { channels: { terms: { field: 'channelName.keyword', size: 200 } } },
+    aggs: {
+      channels: { terms: { field: 'channelName.keyword', size: 200 } },
+      folders: {
+        terms: { field: 'folderPath.keyword', size: 500 },
+        aggs: { channel: { terms: { field: 'channelName.keyword', size: 1 } } },
+      },
+    },
   });
-  const buckets = (response.aggregations?.channels as { buckets?: Array<{ key: string }> } | undefined)?.buckets;
-  return (buckets ?? []).map((bucket) => bucket.key).sort((a, b) => a.localeCompare(b));
+  const aggregations = response.aggregations as
+    | { channels?: { buckets?: TermsBucket[] }; folders?: { buckets?: TermsBucket[] } }
+    | undefined;
+
+  const channels = (aggregations?.channels?.buckets ?? [])
+    .map((bucket) => bucket.key)
+    .sort((a, b) => a.localeCompare(b));
+
+  // A folder whose videos carry no channel name is left out: the console then
+  // hides its search link instead of pointing at a filter that matches nothing
+  const folders: Record<string, string> = {};
+  for (const bucket of aggregations?.folders?.buckets ?? []) {
+    const [topChannel] = bucket.channel?.buckets ?? [];
+    if (topChannel !== undefined) {
+      folders[bucket.key] = topChannel.key;
+    }
+  }
+
+  return { channels, folders };
 }
 
 export async function getAllVideos(sortOption: SortOption = 'date-desc'): Promise<VideoListItem[]> {

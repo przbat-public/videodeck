@@ -55,6 +55,8 @@ export async function mockApi(
     details?: unknown;
     status?: unknown;
     list?: unknown;
+    /** Body of GET /api/videos/channels: the filter names and the folder map */
+    channels?: unknown;
     /** Body of the queue GET; defaults to an empty, unpaused queue */
     queue?: unknown;
     /** Body of GET /api/folder/summaries; defaults to no counts at all */
@@ -70,7 +72,9 @@ export async function mockApi(
   await context.route('**/api/videos/categories', (route) =>
     route.fulfill(json({ categories: handlers.categories ?? ['fpv', 'lego'] })),
   );
-  await context.route('**/api/videos/channels', (route) => route.fulfill(json({ channels: ['Kanał E2E'] })));
+  await context.route('**/api/videos/channels', (route) =>
+    route.fulfill(json(handlers.channels ?? { channels: ['Kanał E2E'], folders: { '/videos/e2e': 'Kanał E2E' } })),
+  );
   await context.route('**/api/videos/**/details', async (route) => {
     const body = handlers.details ?? {
       details: {

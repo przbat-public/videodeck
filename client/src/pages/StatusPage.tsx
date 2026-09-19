@@ -11,6 +11,7 @@ import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { Loading } from '../components/ui/Loading';
 import { useChannelActions } from '../hooks/useChannelActions';
 import { useChannelConsoleState } from '../hooks/useChannelConsoleState';
+import { useChannelNames } from '../hooks/useChannelNames';
 import { useChannelQueue } from '../hooks/useChannelQueue';
 import { useFolderSummaries } from '../hooks/useFolderSummaries';
 import { usePageFocus } from '../hooks/usePageFocus';
@@ -32,6 +33,7 @@ export default function StatusPage(): JSX.Element {
   const { state: consoleState, setState: setConsoleState } = useChannelConsoleState();
   const { summaries, loading: summariesLoading, error: summariesError, reload: reloadSummaries } = useFolderSummaries();
   const { jobs, refresh: refreshQueue } = useChannelQueue();
+  const { folders: channelsByFolder } = useChannelNames();
   const { pending, run } = useChannelActions({
     // A queue change can already have moved a video to "downloaded", and a
     // playlist fetch rewrites list.json: both refresh what the primary action
@@ -61,8 +63,8 @@ export default function StatusPage(): JSX.Element {
   const statusData = state.statusData;
 
   const rows = useMemo(
-    () => (statusData ? buildChannelRows(statusData, summaries, jobs) : []),
-    [statusData, summaries, jobs],
+    () => (statusData ? buildChannelRows(statusData, summaries, jobs, channelsByFolder) : []),
+    [statusData, summaries, jobs, channelsByFolder],
   );
 
   const visibleRows = useMemo(

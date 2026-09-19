@@ -1,6 +1,7 @@
 import { Ellipsis } from 'lucide-react';
 import { Fragment, type JSX, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import type { ChannelAction } from '../hooks/useChannelActions';
 import type { ChannelConsoleState } from '../utils/channelConsoleState';
 import type { AttentionReason, ChannelRow } from '../utils/channelTable';
@@ -171,9 +172,13 @@ function ChannelRowMenu({ row, busy, onAction, onEditConfig }: ChannelRowMenuPro
           {t('channelConsole.actions.cancel')}
         </MenuItem>
         <MenuItem onSelect={() => onEditConfig(row)}>{t('channelConsole.actions.editConfig')}</MenuItem>
-        <MenuLinkItem>
-          <a href={`/?channel=${encodeURIComponent(row.folderPath)}`}>{t('channelConsole.searchInChannel')}</a>
-        </MenuLinkItem>
+        {/* The search filters by channel name, so a folder whose videos are
+            not indexed yet has nothing to link to */}
+        {row.channelName !== undefined && row.channelName !== '' && (
+          <MenuLinkItem>
+            <Link to={`/?channel=${encodeURIComponent(row.channelName)}`}>{t('channelConsole.searchInChannel')}</Link>
+          </MenuLinkItem>
+        )}
       </MenuContent>
     </Menu>
   );

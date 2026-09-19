@@ -83,6 +83,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- "Szukaj w tym kanale" on the download console opens the list page filtered
+  to that channel. The link used to carry the folder path, which the search
+  filter (`channelName`) never matches, so it landed on an empty result. The
+  channel of every folder now comes with `GET /api/videos/channels`, and a
+  folder whose videos are not indexed has no search entry at all
 - The page landmark no longer draws the blue focus ring after a route
   change. The app moves focus there on purpose so screen readers announce
   the new page, but the landmark is not a tab stop, so the ring only ever

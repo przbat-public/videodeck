@@ -30,6 +30,12 @@ export interface ChannelRow {
   folderPath: string;
   /** Last path segment: `/Volumes/MEDIA/youtube/kanal-04` shows as `kanal-04` */
   name: string;
+  /**
+   * The channel name the search index holds for this folder. The search
+   * filters by `channelName`, so the "search in this channel" link needs this
+   * and not the folder path; absent while the folder has no indexed videos.
+   */
+  channelName?: string;
   category?: string;
   /** Whether config.json carries a channelUrl */
   configured: boolean;
@@ -98,6 +104,7 @@ export function buildChannelRows(
   status: StatusResponse,
   summaries: Record<string, FolderSummary>,
   jobs: readonly QueueJob[],
+  channelsByFolder: Record<string, string> = {},
 ): ChannelRow[] {
   const queueByFolder = queueCountsByFolder(jobs);
 
@@ -105,9 +112,11 @@ export function buildChannelRows(
     const config = status.folderConfigs[folderPath] ?? null;
     const category = config?.category?.trim();
     const summary = summaries[folderPath];
+    const channelName = channelsByFolder[folderPath];
     const base = {
       folderPath,
       name: folderName(folderPath),
+      ...(channelName ? { channelName } : {}),
       ...(category ? { category } : {}),
       configured: Boolean(config?.channelUrl),
       indexed: status.indexedFolders.includes(folderPath),

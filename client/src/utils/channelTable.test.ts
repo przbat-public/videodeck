@@ -55,6 +55,18 @@ const rows = () =>
   ]);
 
 describe('buildChannelRows', () => {
+  it('carries the channel name the search page filters by', () => {
+    const built = buildChannelRows(status, summaries.summaries, [], {
+      '/videos/kanal-b': 'Kanał B',
+    });
+
+    expect(built[0]?.channelName).toBe('Kanał B');
+    // A folder with no indexed videos has no channel name: the console hides
+    // the search link for it instead of pointing at a filter that matches
+    // nothing
+    expect(built[1]?.channelName).toBeUndefined();
+  });
+
   it('builds one row per configured folder, keeping the status order', () => {
     const built = rows();
 

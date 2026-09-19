@@ -55,6 +55,22 @@ describe('deep server integration (real app, fake external world)', () => {
       (job) => job !== undefined && (job as QueueJob).status === status,
     );
 
+  it('reports the channel name of every indexed folder for the console search link', async () => {
+    const folderPath = await env.seedFolder('channel-names', {
+      ...videoFiles('chan0000001', 'Film kanału Alfa', { channel: 'Kanał Alfa' }),
+      'config.json': folderConfig('https://www.youtube.com/@alfa'),
+    });
+    env.setFolders('channel-names');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const response = await env.agent.get('/api/videos/channels').expect(200);
+    const body = response.body as { channels: string[]; folders: Record<string, string> };
+
+    expect(body.channels).toContain('Kanał Alfa');
+    expect(body.folders[folderPath]).toBe('Kanał Alfa');
+  });
+
   it('saves a folder config and serves it back through /api/status', async () => {
     const folderPath = await env.seedFolder('channel-a', {});
     env.setFolders('channel-a');

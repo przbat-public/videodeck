@@ -140,12 +140,18 @@ describe('videos router', () => {
     });
 
     it('lists distinct channel names for the filter UI', async () => {
-      mockedListChannelNames.mockResolvedValue(['Alpha', 'Beta']);
+      mockedListChannelNames.mockResolvedValue({
+        channels: ['Alpha', 'Beta'],
+        folders: { '/videos/a': 'Alpha' },
+      });
 
       const response = await request(app).get('/api/videos/channels');
 
       expect(response.status).toBe(200);
-      expect(ChannelsResponseSchema.parse(response.body)).toEqual({ channels: ['Alpha', 'Beta'] });
+      expect(ChannelsResponseSchema.parse(response.body)).toEqual({
+        channels: ['Alpha', 'Beta'],
+        folders: { '/videos/a': 'Alpha' },
+      });
     });
 
     it('should use default sort when sort parameter is not provided', async () => {
