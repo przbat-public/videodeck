@@ -135,6 +135,9 @@ Data tables (the channel console on `/download`) follow one shape:
   unreadable, and the menu keeps the keyboard order short. The menu lists the
   two updates first and the download third, so the order does not move when
   the primary button changes.
+- A cell that carries several numbers stacks them, one plain line each: the
+  total first, then what needs doing in the warning colour. A pill per number
+  made the column a row of chips that wrapped unpredictably.
 - The expanded row continues the table: it has no header of its own (the row
   names the channel, shows its warnings and carries the actions) and no
   nested card. The config form is the menu's `Edytuj config.json` entry, so

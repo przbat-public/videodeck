@@ -64,8 +64,7 @@ export function PlaylistDownloadSection({
   }
 
   return (
-    <div className="playlist-download-section">
-      <h4 className="playlist-section-title">{t('playlist.title')}</h4>
+    <>
       {downloadError && <ErrorMessage compact>{t('app.error', { message: downloadError })}</ErrorMessage>}
       <div className="playlist-info">
         {listExists === null ? (
@@ -82,6 +81,6 @@ export function PlaylistDownloadSection({
           {listExists && onLoadVideosList && <Button onClick={onLoadVideosList}>{t('playlist.loadVideos')}</Button>}
         </div>
       </div>
-    </div>
+    </>
   );
 }

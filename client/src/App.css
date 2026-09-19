@@ -514,19 +514,6 @@
 }
 
 /* Playlist Download Section */
-.playlist-download-section {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--color-border);
-}
-
-.playlist-section-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-text);
-  margin: 0 0 1rem 0;
-}
-
 .playlist-info {
   background: var(--color-surface);
   padding: 1rem;
@@ -710,6 +697,15 @@
 .channel-badge--bad {
   background: var(--color-danger-bg);
   color: var(--color-danger-text);
+}
+
+/* The video counts: one plain line each, no pill per number */
+.channel-count {
+  display: block;
+}
+
+.channel-count--warn {
+  color: var(--color-warning-text);
 }
 
 .channel-muted {

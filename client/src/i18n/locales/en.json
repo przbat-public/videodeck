@@ -145,7 +145,6 @@
     "extraArgsReserved": "the -f, -o, --download-archive, --merge-output-format and --paths flags are reserved; --exec, --proxy and --cookies* are forbidden"
   },
   "playlist": {
-    "title": "Video list download",
     "checking": "Checking list.json status...",
     "exists": "list.json already exists. Click the button below to update the video list.",
     "missing": "list.json does not exist. Click the button below to create the video list from the channel.",
@@ -267,8 +266,10 @@
     },
     "videos": {
       "total": "{{count}} videos",
-      "notDownloaded": "{{count}} missing",
-      "stale": "{{count}} not updated in a month",
+      "notDownloaded_one": "{{count}} missing",
+      "notDownloaded_other": "{{count}} missing",
+      "stale_one": "{{count}} not updated in a month",
+      "stale_other": "{{count}} not updated in a month",
       "loading": "counting..."
     },
     "queue": {
