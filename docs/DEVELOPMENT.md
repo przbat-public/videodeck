@@ -117,6 +117,13 @@ with the player and subtitles, the status page:
 pnpm run test:e2e  # first time: cd client && pnpm exec playwright install chromium
 ```
 
+The suite reuses a server already listening on port 3000, which is convenient
+while this app's dev server runs and wrong when another project's does: the
+tests then exercise that application. Pass a port to start a fresh one beside
+it: `E2E_PORT=3210 pnpm run test:e2e` (the override also disables reuse). The
+variable reaches the whole gate, so `E2E_PORT=3210 pnpm run verify` works with
+another dev server holding 3000.
+
 Server route tests check responses against contract schemas (`shared/schemas.ts`),
 and the VTT parser is pinned by fixtures from real yt-dlp files.
 
