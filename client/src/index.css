@@ -77,6 +77,15 @@
   outline-offset: 2px;
 }
 
+/* The app moves focus to a page's landmark after a route change so screen
+   readers announce the new page (hooks/usePageFocus). That focus is
+   programmatic and the landmark carries tabindex="-1", so it never joins the
+   tab order: the ring only ever showed up as a stray border on first load.
+   Keyboard stops inside the page keep their ring. */
+main[tabindex='-1']:focus-visible {
+  outline: none;
+}
+
 body {
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell',

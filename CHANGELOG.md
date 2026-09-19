@@ -81,6 +81,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The page landmark no longer draws the blue focus ring after a route
+  change. The app moves focus there on purpose so screen readers announce
+  the new page, but the landmark is not a tab stop, so the ring only ever
+  read as a stray border along the top of the page on first load
 - Stale npm commands in the docs (README, the Polish README, CONTRIBUTING,
   RELEASING, the PR template and the chrome-extension guides) now say pnpm,
   and the release gate one-liner matches the one in AGENTS.md again
