@@ -195,6 +195,19 @@ describe('VideoListSection', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('exposes the windowed rows as list items', async () => {
+    installFetch({});
+    await renderLoaded();
+
+    // The list container is role="list"; dropping react-window's
+    // ariaAttributes left it with no items at all.
+    expect(screen.getByRole('list')).toBeInTheDocument();
+    const items = screen.getAllByRole('listitem');
+    expect(items).toHaveLength(4);
+    expect(items[0]).toHaveAttribute('aria-posinset', '1');
+    expect(items[0]).toHaveAttribute('aria-setsize', '4');
+  });
+
   it('"Pobierz wszystkie" enqueues only videos that are not downloaded and have a url', async () => {
     const fetchMock = installFetch({
       enqueue: () => ({ jobs: [makeJob({ status: 'queued' })], skipped: [] }),

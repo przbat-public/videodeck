@@ -27,6 +27,20 @@ test.describe('search page', () => {
     expect(new URL(page.url()).search).toContain('q=motor');
   });
 
+  test('the matched phrase is highlighted with a visible background', async ({ page }) => {
+    await mockApi(page, { search: () => ({ videos: [video('v1', 'Silnik krokowy')], totalCount: 1 }) });
+
+    await page.goto('/?q=krokowy');
+
+    const mark = page.locator('mark.search-highlight');
+    await expect(mark).toBeVisible();
+    // The rule read `background-color: var(--color-surface) 3cd` — a leftover
+    // hex tail the browser drops, which left the highlight transparent.
+    const background = await mark.evaluate((element) => getComputedStyle(element).backgroundColor);
+    expect(background).not.toBe('rgba(0, 0, 0, 0)');
+    expect(background).not.toBe('transparent');
+  });
+
   test('the language switcher flips the UI to English and back', async ({ page }) => {
     await mockApi(page);
 

@@ -63,6 +63,7 @@
     "updateOld": "Aktualizuj stare",
     "updateAll": "Aktualizuj wszystkie",
     "cancelAll": "Anuluj wszystko",
+    "progressLabel": "Postęp pobierania: {{title}}",
     "queueError": "Błąd kolejki: {{message}}",
     "loadingVideos": "Ładowanie listy filmów ...",
     "videoListCount": "Liczba filmów: {{count}}",

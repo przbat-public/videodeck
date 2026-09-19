@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { mockApi, video } from './helpers';
+import { json, mockApi, video } from './helpers';
 
 /**
  * Responsive regression guard, per DESIGN.md section 11 and the
@@ -34,6 +34,55 @@ async function searchPage(page: Page): Promise<void> {
 
 const horizontalOverflow = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+
+/** The status page's folder section with every bulk button visible */
+async function folderListPage(page: Page): Promise<void> {
+  await mockApi(page, {
+    status: {
+      videosFolderPath: ['/videos/e2e'],
+      folderConfigs: { '/videos/e2e': { channelUrl: 'https://yt/@e2e', category: 'fpv' } },
+      downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
+      indexedFolders: ['/videos/e2e'],
+      listExists: { '/videos/e2e': true },
+      status: 'ok',
+    },
+    list: {
+      videos: [
+        { id: 'v1', title: 'Pobrany dawno temu', url: 'https://yt/v1' },
+        { id: 'v2', title: 'Jeszcze nie pobrany', url: 'https://yt/v2' },
+      ],
+      downloadStatuses: { v1: true },
+      lastUpdatedDates: { v1: '2020-01-01T00:00:00.000Z' },
+    },
+  });
+  // mockApi answers the queue with no jobs; a running one is needed for the
+  // fourth bulk button, so this route is registered after it (and thus wins).
+  await page.route(/\/api\/folder\/queue/, (route) =>
+    route.fulfill(
+      json({
+        paused: false,
+        jobs: [
+          {
+            id: 'job-1',
+            folderPath: '/videos/e2e',
+            videoId: 'v2',
+            videoUrl: 'https://yt/v2',
+            title: 'Jeszcze nie pobrany',
+            type: 'download',
+            status: 'running',
+            progress: 30,
+            log: [],
+            logLineCount: 0,
+            createdAt: '2026-01-01T10:00:00.000Z',
+          },
+        ],
+      }),
+    ),
+  );
+  await page.goto('/download');
+  await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
+  await page.getByText('Pobrany dawno temu').waitFor();
+}
 
 // WCAG contrast scanning. page.evaluate serializes only the function it
 // receives, so everything the browser needs lives inside this one function.
@@ -423,5 +472,17 @@ test.describe('long unbroken content', () => {
     expect(second).not.toBeNull();
     const overlap = (second?.y ?? 0) - ((first?.y ?? 0) + (first?.height ?? 0));
     expect(overlap).toBeGreaterThanOrEqual(-1);
+  });
+
+  test('the folder list header wraps its four bulk buttons on a phone', async ({ page }) => {
+    // The header row had no flex-wrap, so the buttons next to the counts ran
+    // past the right edge of a 360px screen. The old guard missed it because
+    // it mocked an empty list, which renders no buttons at all.
+    await page.setViewportSize({ width: 360, height: 800 });
+    await folderListPage(page);
+    for (const name of ['Pobierz wszystkie', 'Aktualizuj stare', 'Aktualizuj wszystkie', 'Anuluj wszystko']) {
+      await expect(page.getByRole('button', { name })).toBeVisible();
+    }
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
 });
