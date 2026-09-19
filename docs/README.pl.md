@@ -187,7 +187,14 @@ Dodatkowe zabezpieczenia:
   `--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`
   i `--video-password` (RCE, kradzież ciasteczek, wyciek poświadczeń).
   `PUT /api/folder/config` odrzuca te flagi, a w ręcznie edytowanym pliku
-  są ignorowane (razem ze swoją wartością).
+  są ignorowane (razem ze swoją wartością). Dopasowanie obejmuje też krótkie
+  zapisy (`-a`, `-u`, `-p`) i skrócone formy długich flag, które przyjmuje
+  yt-dlp (`--prox`, `--print-to-fi`), a budowanie argumentów odrzuca je
+  zanim wystartuje yt-dlp.
+- **Brak otwartego API na interfejsie sieciowym** — serwer nie wystartuje,
+  gdy `HOST` nie jest adresem loopback i nie ustawiono ani `API_TOKEN`, ani
+  `REQUIRE_API_TOKEN=true`. Wystawienie API do sieci wymaga tokenu, a nie
+  przeoczonej zmiennej.
 - **Dokładne ID rozszerzenia w CORS** — domyślnie (tryb dev) CORS dopuszcza
   każde `chrome-extension://…`, bo rozszerzenia developerskie dostają nowe ID
   przy każdym załadowaniu. Ustaw `EXTENSION_ORIGINS` z dokładnym ID

@@ -1,0 +1,33 @@
+# Nginx template for the client image. The container entrypoint runs envsubst
+# over /etc/nginx/templates/*.template and writes the result to conf.d; only
+# variables that exist in the environment are substituted, so the nginx
+# variables below ($host, $uri, ...) are left alone.
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # SPA routing: let React Router handle unknown paths
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://server:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        # The browser never sees the API token: this container holds it and
+        # adds it here. Without it the UI answered 401 against the compose
+        # default of REQUIRE_API_TOKEN=true. An empty token sends an empty
+        # bearer value, which the server ignores while it runs open on
+        # loopback.
+        proxy_set_header Authorization "Bearer ${API_TOKEN}";
+        # SSE for the extension's download stream
+        proxy_set_header Connection '';
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+    }
+}

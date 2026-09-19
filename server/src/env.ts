@@ -37,6 +37,28 @@ const EnvSchema = z.object({
 export type ValidatedEnv = z.infer<typeof EnvSchema>;
 
 /**
+ * Hosts that only accept connections from the machine itself, where an API
+ * without a token stays private. Anything else (0.0.0.0, a LAN address, a
+ * hostname) is reachable by the network.
+ */
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+
+/**
+ * Problems the schema alone cannot see, because they span two variables: an
+ * unauthenticated server on a public interface. The default HOST is loopback,
+ * so this only fires when somebody deliberately opened the server up.
+ */
+function crossFieldProblems(env: ValidatedEnv): string[] {
+  const problems: string[] = [];
+  if (env.API_TOKEN === undefined && env.REQUIRE_API_TOKEN !== 'true' && !LOOPBACK_HOSTS.has(env.HOST)) {
+    problems.push(
+      `HOST: refusing to serve an unauthenticated API on ${env.HOST} — set API_TOKEN (recommended) or REQUIRE_API_TOKEN=true`,
+    );
+  }
+  return problems;
+}
+
+/**
  * Validate `process.env` for a real boot. Throws one Error whose message
  * lists every invalid variable, or returns the parsed (defaulted) values.
  */
@@ -47,6 +69,10 @@ export function validateEnv(env: NodeJS.ProcessEnv): ValidatedEnv {
       .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('; ');
     throw new Error(`Invalid environment configuration: ${issues}`);
+  }
+  const problems = crossFieldProblems(result.data);
+  if (problems.length > 0) {
+    throw new Error(`Invalid environment configuration: ${problems.join('; ')}`);
   }
   return result.data;
 }

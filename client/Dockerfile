@@ -4,7 +4,7 @@ FROM node:22-slim AS build
 RUN corepack enable
 
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY client/package.json ./client/
 COPY shared/package.json ./shared/
 COPY server/package.json ./server/
@@ -17,5 +17,7 @@ RUN cd client && pnpm run build
 
 FROM nginx:alpine
 COPY --from=build /app/client/dist /usr/share/nginx/html
-COPY client/nginx.conf /etc/nginx/conf.d/default.conf
+# A template, not a config: the entrypoint substitutes ${API_TOKEN} into the
+# proxy header at container start, so the token never lands in the image.
+COPY client/nginx.conf.template /etc/nginx/templates/default.conf.template
 EXPOSE 80

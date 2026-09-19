@@ -25,8 +25,11 @@ points at `http://<host>:3001`.
    openssl rand -hex 32
    ```
    With `REQUIRE_API_TOKEN=true` (the compose default) the API refuses all
-   requests without the token. Configure the same token in the Chrome
-   extension options.
+   requests without the token. The `client` container receives the same
+   `API_TOKEN` and adds the `Authorization` header to every `/api` request it
+   proxies, so the web UI works without the browser ever holding the token.
+   Configure the same token in the Chrome extension options: the extension
+   talks to the API directly.
 
 3. Bring the stack up:
    ```bash
