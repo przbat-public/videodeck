@@ -236,13 +236,20 @@ test.describe('status page', () => {
     // The console lists every configured folder as a row of the channel table
     await expect(page.getByRole('table')).toBeVisible();
     await expect(page.getByText('/videos/e2e')).toBeVisible();
-    for (const column of ['Kanał', 'Lista filmów', 'Filmy', 'Kolejka', 'Akcje']) {
+    for (const column of ['Kanał', 'Filmy', 'Kolejka', 'Akcje']) {
       await expect(page.getByRole('columnheader', { name: column })).toBeVisible();
     }
 
-    // The folder's own section (config, playlist, list) opens under the row
+    // The folder's own section (config form, playlist, list) opens under the
+    // row; the config form is reached from the row menu, not a button in here
     await expandChannel(page);
-    await expect(page.getByRole('button', { name: 'Edytuj konfigurację' })).toBeVisible();
+    // The row above offers the same playlist action, so the section's own
+    // button is addressed inside the expanded row
+    const expanded = page.locator('.channel-expanded-row');
+    await expect(expanded.getByRole('button', { name: 'Pobierz playlistę' })).toBeVisible();
+    await page.locator('.channel-row').first().getByRole('button', { name: 'Więcej akcji' }).click();
+    await page.getByRole('menuitem', { name: 'Edytuj config.json' }).click();
+    await expect(page.getByLabel('Adres kanału YouTube:')).toBeVisible();
     // The download page is reachable through the gear menu; the brand link
     // leads back to the list.
     await page.getByRole('button', { name: 'Menu aplikacji' }).click();

@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { DownloadOptions, FolderConfig } from '@videodeck/shared/api';
+import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchMock } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
@@ -9,17 +10,44 @@ import { FolderConfigEditor } from './FolderConfigEditor';
 const FOLDER = '/videos/channel-a';
 const defaults: DownloadOptions = { maxHeight: 2160, subLangs: ['en'], writeComments: true };
 
+/**
+ * The editor is controlled: the console's row menu owns "open the form".
+ * The harness is that caller, with a button that stands in for the menu item
+ * (and disappears while the form is open, like the menu entry does).
+ */
+function EditorHarness({
+  config,
+  knownCategories,
+  onConfigUpdate,
+}: {
+  config: FolderConfig | null;
+  knownCategories: string[];
+  onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
+}): React.JSX.Element {
+  const [editing, setEditing] = useState(false);
+  return (
+    <div>
+      {!editing && (
+        <button type="button" onClick={() => setEditing(true)}>
+          Edytuj konfigurację
+        </button>
+      )}
+      <FolderConfigEditor
+        folderPath={FOLDER}
+        initialConfig={config}
+        downloadDefaults={defaults}
+        knownCategories={knownCategories}
+        editing={editing}
+        onEditingFinished={() => setEditing(false)}
+        onConfigUpdate={onConfigUpdate}
+      />
+    </div>
+  );
+}
+
 const renderEditor = (config: FolderConfig | null, knownCategories: string[] = []) => {
   const onConfigUpdate = vi.fn();
-  render(
-    <FolderConfigEditor
-      folderPath={FOLDER}
-      initialConfig={config}
-      downloadDefaults={defaults}
-      knownCategories={knownCategories}
-      onConfigUpdate={onConfigUpdate}
-    />,
-  );
+  render(<EditorHarness config={config} knownCategories={knownCategories} onConfigUpdate={onConfigUpdate} />);
   return { onConfigUpdate };
 };
 
@@ -115,7 +143,7 @@ describe('FolderConfigEditor', () => {
     }));
     renderEditor(null);
 
-    await user.click(screen.getByRole('button', { name: 'Utwórz config.json' }));
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
     const channelInput = screen.getByLabelText('Adres kanału YouTube:');
     await user.clear(channelInput);
     await user.type(channelInput, 'https://yt/@new');

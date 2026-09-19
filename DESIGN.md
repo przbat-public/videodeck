@@ -132,7 +132,14 @@ Data tables (the channel console on `/download`) follow one shape:
 - Every row keeps one primary button for the action the row most needs and
   moves the rest into a `Menu` behind a `⋯` trigger with an `aria-label`.
   Six buttons on every row is what made the old stacked sections
-  unreadable, and the menu keeps the keyboard order short.
+  unreadable, and the menu keeps the keyboard order short. The menu lists the
+  two updates first and the download third, so the order does not move when
+  the primary button changes.
+- The expanded row continues the table: it has no header of its own (the row
+  names the channel, shows its warnings and carries the actions) and no
+  nested card. The config form is the menu's `Edytuj config.json` entry, so
+  the sheet has no edit button of its own and a channel without a
+  `config.json` just says so.
 - A row that is working reports `aria-busy`, disables its own controls and
   shows the working chip until the action settles.
 

@@ -452,42 +452,6 @@
 
 
 
-.folder-section {
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 1.5rem;
-  background: var(--color-bg-soft);
-  transition: all 0.3s;
-}
-
-.folder-section:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.folder-section-header {
-  margin-bottom: 1rem;
-}
-
-.folder-path {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--color-text);
-  margin: 0;
-  font-family: 'Courier New', monospace;
-  word-break: break-all;
-}
-
-/* Shown only when the ES index is missing — an actionable warning */
-.folder-index-badge {
-  font-size: 0.75rem;
-  font-weight: 500;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  background: var(--color-warning-bg);
-  color: var(--color-warning-text);
-  border: 1px solid var(--color-warning-border);
-}
-
 .folder-config {
   margin-top: 1rem;
 }
@@ -752,11 +716,6 @@
   color: var(--color-text-muted);
 }
 
-.channel-age {
-  display: block;
-  font-size: 0.8rem;
-}
-
 .channel-actions {
   display: flex;
   flex-wrap: wrap;
@@ -776,7 +735,7 @@
 }
 
 .channel-expanded-row > td {
-  padding: 0 0.75rem 1rem;
+  padding: 0.75rem 0.75rem 1rem;
   background: var(--color-bg-soft);
 }
 
@@ -1156,10 +1115,6 @@
   }
 
   .video-comments-section {
-    padding: 1rem;
-  }
-
-  .folder-section {
     padding: 1rem;
   }
 

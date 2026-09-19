@@ -16,6 +16,14 @@ interface FolderConfigEditorProps {
   downloadDefaults: DownloadOptions;
   /** Categories used by other folders, offered as input suggestions */
   knownCategories?: string[];
+  /**
+   * Whether the form is open. The row menu on the download console owns this
+   * (there is no edit button of our own), so the caller decides when the
+   * editor appears.
+   */
+  editing: boolean;
+  /** The form is closing: saved or cancelled */
+  onEditingFinished: () => void;
   onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
 }
 
@@ -24,13 +32,14 @@ export function FolderConfigEditor({
   initialConfig,
   downloadDefaults,
   knownCategories = [],
+  editing,
+  onEditingFinished,
   onConfigUpdate,
 }: FolderConfigEditorProps) {
   const { t } = useTranslation();
   const [config, setConfig] = useState<FolderConfig | null>(initialConfig);
   const [previousInitialConfig, setPreviousInitialConfig] = useState(initialConfig);
   const [error, setError] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState<FormState>(() => toFormState(initialConfig, downloadDefaults));
   const [isSaving, setIsSaving] = useState(false);
 
@@ -70,7 +79,7 @@ export function FolderConfigEditor({
       const result = SaveFolderConfigResponseSchema.parse(await response.json());
       setConfig(result.config);
       onConfigUpdate(folderPath, result.config);
-      setIsEditing(false);
+      onEditingFinished();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';
       setError(errorMessage);
@@ -81,7 +90,7 @@ export function FolderConfigEditor({
 
   const handleCancel = () => {
     setForm(toFormState(config, downloadDefaults));
-    setIsEditing(false);
+    onEditingFinished();
     setError(null);
   };
 
@@ -92,28 +101,24 @@ export function FolderConfigEditor({
     return `${field}-${slug}`;
   };
 
+  // The row menu opens this form, so with a config in place and the form shut
+  // there is nothing left to render. A missing config.json still says so out
+  // loud: that is information, not an action.
+  if (!editing && config !== null) {
+    return null;
+  }
+
   return (
     <div className="folder-config">
       {error && <ErrorMessage compact>{t('app.error', { message: error })}</ErrorMessage>}
 
-      {config === null ? (
+      {config === null && (
         <div className="config-empty">
           <p>{t('config.missingFile')}</p>
-          {!isEditing && (
-            <Button variant="primary" onClick={() => setIsEditing(true)}>
-              {t('config.create')}
-            </Button>
-          )}
         </div>
-      ) : (
-        !isEditing && (
-          <Button variant="primary" onClick={() => setIsEditing(true)}>
-            {t('config.edit')}
-          </Button>
-        )
       )}
 
-      {isEditing && (
+      {editing && (
         <div className="config-edit">
           <div className="config-field">
             <label htmlFor={id('channelUrl')}>{t('config.channelUrl')}</label>

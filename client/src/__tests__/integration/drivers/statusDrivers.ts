@@ -1,12 +1,12 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 
 // polish-ok: the driver addresses the console rows and the folder section by
 // their real labels (the folder path and the Polish catalog values).
 
 /**
  * Typed UI drivers for the status-page journeys (playlist download and the
- * queue). The console keeps every folder section behind its channel row, so
- * the driver expands that row before handing the section back.
+ * queue). The console keeps everything a channel owns behind its row, so the
+ * driver expands that row before handing the section back.
  */
 
 /** Budget for a wait that covers a real request round trip against the backend */
@@ -22,16 +22,21 @@ export async function channelRow(folderPath: string): Promise<HTMLElement> {
   return row;
 }
 
-/** The folder section element; its heading shows the folder path */
+/**
+ * The cell the expanded row adds underneath it: the config form, the playlist
+ * actions and the video list. It carries no header of its own (the row above
+ * names the channel), so the row it hangs from is the handle.
+ */
 export async function folderSection(folderPath: string): Promise<HTMLElement> {
   const row = await channelRow(folderPath);
-  if (row.nextElementSibling?.querySelector('.folder-section') == null) {
+  if (row.nextElementSibling?.querySelector('.channel-expanded-row') == null) {
     fireEvent.click(within(row).getByRole('button', { name: 'Pokaż filmy' }));
   }
-  const heading = await screen.findByRole('heading', { name: folderPath }, { timeout: ROUND_TRIP_MS });
-  const section = heading.closest('.folder-section');
-  if (!(section instanceof HTMLElement)) {
-    throw new Error(`no folder section found for ${folderPath}`);
-  }
-  return section;
+  return waitFor(() => {
+    const cell = row.nextElementSibling?.querySelector('td');
+    if (!(cell instanceof HTMLElement)) {
+      throw new Error(`no expanded section for ${folderPath}`);
+    }
+    return cell;
+  });
 }

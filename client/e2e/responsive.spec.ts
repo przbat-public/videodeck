@@ -484,8 +484,8 @@ test.describe('long unbroken content', () => {
     await page.setViewportSize({ width: 360, height: 800 });
     await folderListPage(page);
     // The console row carries a "Pobierz wszystkie" of its own, so the header
-    // buttons are addressed inside the expanded section.
-    const section = page.locator('.folder-section');
+    // buttons are addressed inside the expanded row.
+    const section = page.locator('.channel-expanded-row');
     for (const name of ['Pobierz wszystkie', 'Aktualizuj stare', 'Aktualizuj wszystkie', 'Anuluj wszystko']) {
       await expect(section.getByRole('button', { name })).toBeVisible();
     }

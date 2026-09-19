@@ -5,7 +5,6 @@ import type { ChannelAction } from '../hooks/useChannelActions';
 import type { ChannelConsoleState } from '../utils/channelConsoleState';
 import type { AttentionReason, ChannelRow } from '../utils/channelTable';
 import { summarizeChannels } from '../utils/channelTable';
-import { formatAge } from '../utils/videoDates';
 import { Button } from './ui/Button';
 import { Menu, MenuContent, MenuItem, MenuLinkItem, MenuSeparator, MenuTrigger } from './ui/Menu';
 
@@ -21,12 +20,15 @@ interface ChannelTableProps {
   pending: Record<string, ChannelAction>;
   /** Starts one of the row's queue actions; the page owns the fetch */
   onAction: (row: ChannelRow, action: ChannelAction) => void;
+  /** Opens the config editor for the row (the page expands it and edits) */
+  onEditConfig: (row: ChannelRow) => void;
 }
 
 /**
- * The reasons shown as chips in the channel cell. The others are already
- * visible in their own column: the playlist state, the stale counts and the
- * failed jobs each have one, and a chip would only repeat them.
+ * The reasons shown as chips in the channel cell. The others already have a
+ * home: the stale counts sit in the video column and the failed jobs in the
+ * queue column, so a chip would only repeat them. A missing `list.json` shows
+ * as a zero count plus the "fetch the playlist" action.
  */
 const CHANNEL_CELL_REASONS: readonly AttentionReason[] = ['noChannelUrl', 'noIndex'];
 
@@ -105,6 +107,7 @@ interface ChannelActionsCellProps {
   pendingAction: ChannelAction | undefined;
   onToggle: (row: ChannelRow) => void;
   onAction: (row: ChannelRow, action: ChannelAction) => void;
+  onEditConfig: (row: ChannelRow) => void;
 }
 
 /** The label of the row's one primary button */
@@ -113,10 +116,72 @@ type PrimaryLabelKey =
   | 'channelConsole.actions.downloadPlaylist'
   | 'channelConsole.actions.updateAll';
 
+interface ChannelRowMenuProps {
+  row: ChannelRow;
+  busy: boolean;
+  onAction: (row: ChannelRow, action: ChannelAction) => void;
+  onEditConfig: (row: ChannelRow) => void;
+}
+
+/**
+ * The secondary row actions behind the ⋯ trigger: the two updates, the
+ * download, cancelling the channel's jobs, the config form and the search
+ * link. One primary button plus this menu keeps a row at three controls
+ * instead of the six that made the old stacked sections unreadable.
+ */
+function ChannelRowMenu({ row, busy, onAction, onEditConfig }: ChannelRowMenuProps): JSX.Element {
+  const { t } = useTranslation();
+  const { summary, queue } = row;
+  // Counts arrive after the table and may never arrive at all. They only
+  // decide what looks pointless; the actions themselves read list.json, which
+  // is the authority, so an unknown count disables nothing.
+  const countsKnown = summary !== undefined;
+  const activeJobs = queue.running + queue.queued;
+
+  return (
+    <Menu>
+      <MenuTrigger aria-label={t('channelConsole.actions.more')}>
+        <Ellipsis aria-hidden="true" focusable="false" className="channel-menu-icon" />
+      </MenuTrigger>
+      <MenuContent>
+        {row.listExists !== false && (
+          <>
+            <MenuItem
+              disabled={busy || (countsKnown && (summary?.stale ?? 0) === 0)}
+              onSelect={() => onAction(row, 'update-stale')}
+            >
+              {t('channelConsole.actions.updateStale')}
+            </MenuItem>
+            <MenuItem
+              disabled={busy || (countsKnown && (summary?.downloaded ?? 0) === 0)}
+              onSelect={() => onAction(row, 'update')}
+            >
+              {t('channelConsole.actions.updateAll')}
+            </MenuItem>
+            <MenuItem
+              disabled={busy || (countsKnown && summary?.notDownloaded === 0)}
+              onSelect={() => onAction(row, 'download')}
+            >
+              {t('channelConsole.actions.downloadAll')}
+            </MenuItem>
+            <MenuSeparator />
+          </>
+        )}
+        <MenuItem disabled={busy || activeJobs === 0} onSelect={() => onAction(row, 'cancel')}>
+          {t('channelConsole.actions.cancel')}
+        </MenuItem>
+        <MenuItem onSelect={() => onEditConfig(row)}>{t('channelConsole.actions.editConfig')}</MenuItem>
+        <MenuLinkItem>
+          <a href={`/?channel=${encodeURIComponent(row.folderPath)}`}>{t('channelConsole.searchInChannel')}</a>
+        </MenuLinkItem>
+      </MenuContent>
+    </Menu>
+  );
+}
+
 /**
  * The row's actions: one primary button for the thing the channel most needs,
- * the secondary ones behind a ⋯ menu, and the expand toggle. Four bulk buttons
- * on every row made the table unreadable at twenty channels.
+ * the expand toggle and the ⋯ menu.
  */
 function ChannelActionsCell({
   row,
@@ -124,18 +189,13 @@ function ChannelActionsCell({
   pendingAction,
   onToggle,
   onAction,
+  onEditConfig,
 }: ChannelActionsCellProps): JSX.Element {
   const { t } = useTranslation();
-  const { summary, queue } = row;
+  const { summary } = row;
   const busy = pendingAction !== undefined;
-  // Counts arrive after the table, and may never arrive at all. They only
-  // decide which action leads and what looks pointless; the action itself
-  // reads list.json, which is the authority.
-  const countsKnown = summary !== undefined;
-  const downloaded = summary?.downloaded ?? 0;
-  const stale = summary?.stale ?? 0;
-  const activeJobs = queue.running + queue.queued;
   const missing = summary?.notDownloaded;
+  const downloaded = summary?.downloaded ?? 0;
 
   const primary: { action: ChannelAction; labelKey: PrimaryLabelKey; disabled: boolean } =
     row.listExists === false
@@ -158,34 +218,7 @@ function ChannelActionsCell({
         <Button size="small" onClick={() => onToggle(row)}>
           {expanded ? t('channelConsole.collapse') : t('channelConsole.expand')}
         </Button>
-        <Menu>
-          <MenuTrigger aria-label={t('channelConsole.actions.more')}>
-            <Ellipsis aria-hidden="true" focusable="false" className="channel-menu-icon" />
-          </MenuTrigger>
-          <MenuContent>
-            {row.listExists !== false && (
-              <>
-                <MenuItem
-                  disabled={busy || (countsKnown && stale === 0)}
-                  onSelect={() => onAction(row, 'update-stale')}
-                >
-                  {t('channelConsole.actions.updateStale')}
-                </MenuItem>
-                <MenuItem disabled={busy || (countsKnown && downloaded === 0)} onSelect={() => onAction(row, 'update')}>
-                  {t('channelConsole.actions.updateAll')}
-                </MenuItem>
-                <MenuSeparator />
-              </>
-            )}
-            <MenuItem disabled={busy || activeJobs === 0} onSelect={() => onAction(row, 'cancel')}>
-              {t('channelConsole.actions.cancel')}
-            </MenuItem>
-            <MenuItem onSelect={() => onToggle(row)}>{t('channelConsole.actions.editConfig')}</MenuItem>
-            <MenuLinkItem>
-              <a href={`/?channel=${encodeURIComponent(row.folderPath)}`}>{t('channelConsole.searchInChannel')}</a>
-            </MenuLinkItem>
-          </MenuContent>
-        </Menu>
+        <ChannelRowMenu row={row} busy={busy} onAction={onAction} onEditConfig={onEditConfig} />
         {busy && <span className="channel-badge channel-badge--info">{t('channelConsole.actions.working')}</span>}
       </span>
     </td>
@@ -199,6 +232,7 @@ interface ChannelRowItemProps {
   pendingAction: ChannelAction | undefined;
   onToggle: (row: ChannelRow) => void;
   onAction: (row: ChannelRow, action: ChannelAction) => void;
+  onEditConfig: (row: ChannelRow) => void;
   renderExpanded: (row: ChannelRow) => ReactNode;
 }
 
@@ -210,9 +244,10 @@ function ChannelRowItem({
   pendingAction,
   onToggle,
   onAction,
+  onEditConfig,
   renderExpanded,
 }: ChannelRowItemProps): JSX.Element {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { summary } = row;
   const cellReasons = row.attention.filter((reason) => CHANNEL_CELL_REASONS.includes(reason));
 
@@ -233,21 +268,6 @@ function ChannelRowItem({
           )}
         </td>
 
-        <td data-label={t('channelConsole.column.playlist')}>
-          {row.listExists === null ? (
-            <span className="channel-muted">{t('channelConsole.list.checking')}</span>
-          ) : row.listExists ? (
-            <>
-              <span>{t('channelConsole.list.exists')}</span>
-              {summary?.newestUpdate !== undefined && summary.newestUpdate !== '' && (
-                <span className="channel-muted channel-age">{formatAge(summary.newestUpdate, i18n.language)}</span>
-              )}
-            </>
-          ) : (
-            <span className="channel-badge channel-badge--warn">{t('channelConsole.list.missing')}</span>
-          )}
-        </td>
-
         <td data-label={t('channelConsole.column.videos')}>
           <ChannelVideosCell summary={summary} countsLoading={countsLoading} />
         </td>
@@ -262,11 +282,12 @@ function ChannelRowItem({
           pendingAction={pendingAction}
           onToggle={onToggle}
           onAction={onAction}
+          onEditConfig={onEditConfig}
         />
       </tr>
       {expanded && (
         <tr className="channel-expanded-row">
-          <td colSpan={5}>{renderExpanded(row)}</td>
+          <td colSpan={4}>{renderExpanded(row)}</td>
         </tr>
       )}
     </Fragment>
@@ -274,10 +295,10 @@ function ChannelRowItem({
 }
 
 /**
- * The channel console's table: one row per channel with its playlist state,
- * its counts and what the queue is doing with it. The row the URL names is
- * expanded underneath, where the page renders the full folder section, so
- * nothing that used to be on this page is lost.
+ * The channel console's table: one row per channel with its counts and what
+ * the queue is doing with it. The row the URL names is expanded underneath,
+ * where the page renders the config form, the playlist actions and the video
+ * list, so nothing the old stacked sections had is lost.
  */
 export function ChannelTable({
   rows,
@@ -287,6 +308,7 @@ export function ChannelTable({
   countsLoading,
   pending,
   onAction,
+  onEditConfig,
 }: ChannelTableProps): JSX.Element {
   const { t } = useTranslation();
   const totals = summarizeChannels(rows);
@@ -317,7 +339,6 @@ export function ChannelTable({
                 {t('channelConsole.column.channel')}
               </button>
             </th>
-            <th scope="col">{t('channelConsole.column.playlist')}</th>
             <th scope="col">{t('channelConsole.column.videos')}</th>
             <th scope="col">{t('channelConsole.column.queue')}</th>
             <th scope="col">{t('channelConsole.column.actions')}</th>
@@ -333,6 +354,7 @@ export function ChannelTable({
               pendingAction={pending[row.folderPath]}
               onToggle={toggleRow}
               onAction={onAction}
+              onEditConfig={onEditConfig}
               renderExpanded={renderExpanded}
             />
           ))}

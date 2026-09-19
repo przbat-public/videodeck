@@ -45,9 +45,7 @@
   "status": {
     "loading": "Ładowanie statusu...",
     "foldersTitle": "Konfiguracja folderów wideo",
-    "noFolders": "Brak skonfigurowanych ścieżek",
-    "indexMissing": "indeks ES: brak",
-    "indexMissingTitle": "Brak indeksu w Elasticsearch — uruchom „Odśwież indeks” z opcją „tylko brakujące”"
+    "noFolders": "Brak skonfigurowanych ścieżek"
   },
   "queue": {
     "title": "Kolejka pobierania:",
@@ -141,8 +139,6 @@
     "summaryTruncated": "To streszczenie powstało na podstawie skróconych napisów — tekst źródłowy był zbyt długi dla modelu."
   },
   "config": {
-    "create": "Utwórz config.json",
-    "edit": "Edytuj konfigurację",
     "save": "Zapisz",
     "saving": "Zapisywanie...",
     "cancel": "Anuluj",
@@ -287,16 +283,9 @@
     },
     "column": {
       "channel": "Kanał",
-      "playlist": "Lista filmów",
       "videos": "Filmy",
       "queue": "Kolejka",
       "actions": "Akcje"
-    },
-    "list": {
-      "checking": "sprawdzam...",
-      "missing": "brak list.json",
-      "exists": "list.json jest",
-      "unknownDate": "bez daty"
     },
     "videos": {
       "total": "{{count}} filmów",
