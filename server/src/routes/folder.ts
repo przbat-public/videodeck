@@ -12,6 +12,7 @@ import type {
   EnqueueJobsResponse,
   FolderConfig,
   FolderListResponse,
+  FolderSummariesResponse,
   ListExistsResponse,
   QueueJob,
   QueueListResponse,
@@ -40,10 +41,12 @@ import {
 } from '../services/folderConfig';
 import type { FolderIndex } from '../services/folderIndex';
 import { findEntryByVideoId, getDownloadStatuses, loadIndex, rebuildIndex } from '../services/folderIndex';
+import { summarizeFolder } from '../services/folderSummary';
 import { buildPlaylistArgs, runYtDlp } from '../services/ytdlp';
 import { writeJsonAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/objectUtils';
+import { runPool } from '../utils/runPool';
 import { registerSseStream } from '../utils/sseRegistry';
 import { normalizeFolderPath } from '../utils/videoPathUtils';
 import type { NoParams, RouteHandler } from './http';
@@ -178,6 +181,29 @@ function writeStatusCache(folderPaths: string[], body: StatusResponse): void {
 /** Tests: drop the status cache */
 export function invalidateStatusCache(): void {
   statusCache = null;
+}
+
+/** 5 s cache of GET /api/folder/summaries keyed by the expanded folder list */
+const SUMMARY_CACHE_TTL_MS = 5_000;
+/** Folders read at once: the console asks for every channel on one page load */
+const SUMMARY_READ_CONCURRENCY = 8;
+let summaryCache: { key: string; readAt: number; body: FolderSummariesResponse } | null = null;
+
+function readSummaryCache(folderPaths: string[]): FolderSummariesResponse | undefined {
+  const cached = summaryCache;
+  if (cached === null || cached.key !== folderPaths.join('\n') || Date.now() - cached.readAt >= SUMMARY_CACHE_TTL_MS) {
+    return undefined;
+  }
+  return cached.body;
+}
+
+function writeSummaryCache(folderPaths: string[], body: FolderSummariesResponse): void {
+  summaryCache = { key: folderPaths.join('\n'), readAt: Date.now(), body };
+}
+
+/** Tests: drop the summaries cache */
+export function invalidateSummaryCache(): void {
+  summaryCache = null;
 }
 
 export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): express.Router {
@@ -316,6 +342,37 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     }
 
     res.json({ videos, downloadStatuses, lastUpdatedDates });
+  };
+
+  /**
+   * Counts per channel for the download page's console: one request for every
+   * configured folder instead of one per row. `list.json` and the folder index
+   * are two reads per folder on disk, so the reads run through a pool and the
+   * answer is cached for a few seconds; a folder that cannot be read reports
+   * zeroes and never fails the whole response.
+   */
+  const getFolderSummaries: RouteHandler<NoParams, FolderSummariesResponse> = async (_req, res) => {
+    const videosFolderPaths = getVideosFolderPaths();
+    const cached = readSummaryCache(videosFolderPaths);
+    if (cached !== undefined) {
+      res.json(cached);
+      return;
+    }
+
+    const summaries: FolderSummariesResponse['summaries'] = {};
+    await runPool(videosFolderPaths, SUMMARY_READ_CONCURRENCY, async (folderPath) => {
+      try {
+        const [list, statuses] = await Promise.all([readListJson(folderPath), getDownloadStatuses(folderPath)]);
+        summaries[folderPath] = summarizeFolder(list, statuses);
+      } catch (error) {
+        logger.error(`Cannot summarize ${folderPath}:`, error);
+        summaries[folderPath] = { videos: 0, downloaded: 0, notDownloaded: 0, stale: 0 };
+      }
+    });
+
+    const body: FolderSummariesResponse = { summaries };
+    writeSummaryCache(videosFolderPaths, body);
+    res.json(body);
   };
 
   const rebuildFolderIndex: RouteHandler<NoParams, RebuildIndexResponse> = async (req, res) => {
@@ -587,6 +644,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
   router.put('/folder/config', saveFolderConfig);
   router.get('/folder/list-exists', listExists);
   router.get('/folder/list', getFolderList);
+  router.get('/folder/summaries', getFolderSummaries);
   router.post('/folder/rebuild-index', rebuildFolderIndex);
   router.post('/folder/download-playlist', downloadPlaylist);
   router.get('/folder/video-downloaded', isVideoDownloaded);

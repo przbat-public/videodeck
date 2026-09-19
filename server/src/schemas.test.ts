@@ -2,6 +2,7 @@ import {
   ChannelVideoSchema,
   CommentWithRepliesSchema,
   EnqueueJobsResponseSchema,
+  FolderSummariesResponseSchema,
   QueueJobSchema,
   SearchResponseSchema,
   VideoCommentSchema,
@@ -121,5 +122,31 @@ describe('response shapes', () => {
 
   it('rejects a search response with a wrong shape', () => {
     expect(() => SearchResponseSchema.parse({ videos: 'nope', totalCount: 0 })).toThrow();
+  });
+
+  it('accepts a folder summaries response, with and without the newest date', () => {
+    const body = {
+      summaries: {
+        '/videos/a': {
+          videos: 40,
+          downloaded: 2,
+          notDownloaded: 38,
+          stale: 1,
+          newestUpdate: '2026-09-01T00:00:00.000Z',
+        },
+        '/videos/b': { videos: 0, downloaded: 0, notDownloaded: 0, stale: 0 },
+      },
+    };
+    expect(FolderSummariesResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it('rejects a folder summary with a negative or fractional count', () => {
+    const summary = { videos: 1, downloaded: 0, notDownloaded: 1, stale: 0 };
+    expect(() =>
+      FolderSummariesResponseSchema.parse({ summaries: { '/videos/a': { ...summary, stale: -1 } } }),
+    ).toThrow();
+    expect(() =>
+      FolderSummariesResponseSchema.parse({ summaries: { '/videos/a': { ...summary, videos: 1.5 } } }),
+    ).toThrow();
   });
 });

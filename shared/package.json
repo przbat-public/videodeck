@@ -10,6 +10,11 @@
       "import": "./api.ts",
       "require": "./api.ts"
     },
+    "./dates": {
+      "types": "./dates.ts",
+      "import": "./dates.ts",
+      "require": "./dates.ts"
+    },
     "./schemas": {
       "types": "./schemas.ts",
       "import": "./schemas.ts",
