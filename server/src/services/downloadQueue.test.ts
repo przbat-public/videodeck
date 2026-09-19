@@ -856,11 +856,14 @@ describe('DownloadQueue', () => {
     it('cancelling during the backoff stops the retry', async () => {
       const job = at(retryQueue.enqueue([request('a')]), 0);
 
+      // `close` is synchronous, so the backoff timer exists the moment the
+      // process exits: cancelling here is guaranteed to land before it fires.
+      // Waiting first let the jittered delay (0-10 ms) beat the cancel on a
+      // busy runner and start a second yt-dlp run.
       spawned(0).process.exit(1);
-      await flush();
       retryQueue.cancel(job.id);
 
-      await sleep(15);
+      await sleep(30);
       await flush();
 
       expect(spawn.calls).toHaveLength(1);
@@ -870,11 +873,12 @@ describe('DownloadQueue', () => {
     it('leaves the retry queued when the queue is paused during the backoff', async () => {
       const job = at(retryQueue.enqueue([request('a')]), 0);
 
+      // Paused in the same tick as the process exit, so the pause cannot lose
+      // a race with the jittered delay and start the retry anyway.
       spawned(0).process.exit(1);
-      await flush();
       retryQueue.setPaused(true);
 
-      await sleep(15);
+      await sleep(30);
       await flush();
 
       // Pausing must not be answered by starting a fresh yt-dlp run.
