@@ -15,7 +15,7 @@ dodaje filmy do kolejki wprost z YouTube.
 
 <p align="center">
   <img src="screenshots/search.png" alt="Wyszukiwanie z filtrami" width="48%">
-  <img src="screenshots/status.png" alt="Strona statusu kanału" width="48%">
+  <img src="screenshots/status.png" alt="Konsola pobierania kanałów" width="48%">
   <img src="screenshots/detail.png" alt="Odtwarzacz wideo z napisami" width="48%">
 </p>
 

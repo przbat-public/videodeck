@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChannelTable } from '../components/ChannelTable';
 import type { ChannelFilterCounts } from '../components/ChannelToolbar';
@@ -15,6 +15,7 @@ import { useChannelQueue } from '../hooks/useChannelQueue';
 import { useFolderSummaries } from '../hooks/useFolderSummaries';
 import { usePageFocus } from '../hooks/usePageFocus';
 import { useStatus } from '../hooks/useStatus';
+import { useStickyOffset } from '../hooks/useStickyOffset';
 import { buildChannelRows, filterChannels, sortChannels } from '../utils/channelTable';
 import { collectCategories } from '../utils/folderConfigForm';
 
@@ -44,6 +45,13 @@ export default function StatusPage(): JSX.Element {
   });
   const { t } = useTranslation();
   const mainRef = usePageFocus<HTMLElement>();
+  const pageRef = useRef<HTMLDivElement>(null);
+  const queueBarRef = useRef<HTMLDivElement>(null);
+
+  // The table header sticks below the queue bar, so the bar publishes its own
+  // height: it wraps on narrower screens, and a hardcoded offset would leave
+  // the header behind the bar or floating in the middle of the table.
+  useStickyOffset(pageRef, queueBarRef, '--channel-queue-bar-height');
 
   const statusData = state.statusData;
 
@@ -73,10 +81,10 @@ export default function StatusPage(): JSX.Element {
 
   return (
     <main className="app-main" ref={mainRef} tabIndex={-1}>
-      <div className="status-page">
+      <div className="status-page" ref={pageRef}>
         <h1>{t('channelConsole.title')}</h1>
 
-        <div className="channel-queue-bar">
+        <div className="channel-queue-bar" ref={queueBarRef}>
           <QueueControls />
         </div>
 
