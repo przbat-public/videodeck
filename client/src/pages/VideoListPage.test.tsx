@@ -435,6 +435,19 @@ describe('VideoListPage', () => {
 
       expect(await screen.findByText('Brak filmów. Spróbuj innego zapytania.')).toBeInTheDocument();
     });
+
+    it('shows the failure instead of the empty list when the search fails', async () => {
+      const base = installFetch();
+      fetchMock = vi.fn(async (url: string, init?: RequestInit) =>
+        url.startsWith('/api/videos/search?') ? json({ error: 'boom' }, 500) : base(url, init),
+      );
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      renderAt('/?q=drone');
+
+      expect(await screen.findByText('Błąd: Nie udało się wyszukać filmów')).toBeInTheDocument();
+      // "Nothing matched" is a lie when the request never produced an answer.
+      expect(screen.queryByText('Brak filmów. Spróbuj innego zapytania.')).toBeNull();
+    });
   });
 
   describe('load more', () => {
@@ -462,6 +475,58 @@ describe('VideoListPage', () => {
 
       expect(await screen.findByText('First')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Pokaż więcej' })).toBeNull();
+    });
+
+    it('keeps the page already shown when loading more fails', async () => {
+      const base = installFetch({
+        search: (params) =>
+          params.get('offset') === '0'
+            ? { videos: [video('v1', 'First')], totalCount: 3 }
+            : { videos: [], totalCount: 3 },
+      });
+      fetchMock = vi.fn(async (url: string, init?: RequestInit) =>
+        url.includes('offset=1') ? json({ error: 'boom' }, 500) : base(url, init),
+      );
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      renderAt('/');
+      expect(await screen.findByText('First')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Pokaż więcej' }));
+
+      expect(await screen.findByText('Błąd: Nie udało się wyszukać filmów')).toBeInTheDocument();
+      expect(screen.getByText('First')).toBeInTheDocument();
+      // The failed page can be asked for again.
+      expect(screen.getByRole('button', { name: 'Pokaż więcej' })).toBeInTheDocument();
+    });
+
+    it('marks the results busy and announces the search while the next page loads', async () => {
+      let releaseSecondPage: (() => void) | undefined;
+      const base = installFetch({
+        search: (params) =>
+          params.get('offset') === '1'
+            ? { videos: [video('v2', 'Second')], totalCount: 3 }
+            : { videos: [video('v1', 'First')], totalCount: 3 },
+      });
+      fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes('offset=1')) {
+          await new Promise<void>((resolve) => {
+            releaseSecondPage = resolve;
+          });
+        }
+        return base(url, init);
+      });
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      renderAt('/');
+      expect(await screen.findByText('First')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Pokaż więcej' }));
+
+      expect(await screen.findByText('Ładowanie filmów...')).toBeInTheDocument();
+      expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'true');
+
+      releaseSecondPage?.();
+      expect(await screen.findByText('Second')).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'false'));
     });
   });
 });

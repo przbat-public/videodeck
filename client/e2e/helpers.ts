@@ -45,6 +45,8 @@ export async function mockApi(
     details?: unknown;
     status?: unknown;
     list?: unknown;
+    /** Body of the queue GET; defaults to an empty, unpaused queue */
+    queue?: unknown;
   } = {},
 ): Promise<void> {
   const context = page.context();
@@ -130,7 +132,7 @@ export async function mockApi(
     const request = route.request();
     const url = request.url();
     if (request.method() === 'GET') {
-      return route.fulfill(json({ jobs: [], paused: queuePaused }));
+      return route.fulfill(json(handlers.queue ?? { jobs: [], paused: queuePaused }));
     }
     if (request.method() === 'POST' && /queue\/(pause|resume)/.test(url)) {
       // Match the PATH segment: the resume URL carries `?paused=0` in its

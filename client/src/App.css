@@ -191,6 +191,13 @@
   font-weight: 600;
 }
 
+/* Live status line while a new search replaces the results on screen */
+.search-refreshing {
+  margin: 0 0 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
 /* Video Card Link */
 .video-card-link {
   text-decoration: none;

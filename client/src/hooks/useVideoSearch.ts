@@ -30,6 +30,7 @@ function reportSearchError(
   wasAborted: boolean,
   isCurrent: () => boolean,
   dispatch: Dispatch<VideoSearchAction>,
+  append: boolean,
 ): void {
   if (wasAborted || !isCurrent()) {
     return;
@@ -37,7 +38,7 @@ function reportSearchError(
   const errorMessage = err instanceof Error ? err.message : i18n.t('errors.occurred');
   dispatch({
     type: VideoSearchActionType.SEARCH_ERROR,
-    payload: errorMessage,
+    payload: { message: errorMessage, append },
   });
 
   // One toast slot: rapid typing must not stack a toast per keystroke
@@ -106,7 +107,7 @@ export function useVideoSearch(): UseVideoSearchResult {
         },
       });
     } catch (err) {
-      reportSearchError(err, controller.signal.aborted, isCurrent, dispatch);
+      reportSearchError(err, controller.signal.aborted, isCurrent, dispatch, append);
     } finally {
       if (isCurrent()) {
         inFlightRef.current = false;

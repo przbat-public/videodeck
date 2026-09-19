@@ -4,7 +4,7 @@ import type { JSX, Ref } from 'react';
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
-import { List, type RowComponentProps, useListRef } from 'react-window';
+import { List, type RowComponentProps, useDynamicRowHeight, useListRef } from 'react-window';
 import { useDownloadQueue } from '../hooks/useDownloadQueue';
 import { logError } from '../utils/logError';
 import { isOlderThanMonth } from '../utils/videoDates';
@@ -12,10 +12,20 @@ import { ErrorMessage } from './ui/ErrorMessage';
 import { VideoItem } from './VideoItem';
 import { VideoListHeader } from './VideoListHeader';
 
-const ITEM_HEIGHT = 58;
-const ITEM_HEIGHT_WITH_LOG = 220;
-/** Header plus the progress bar that replaces the masked log while running */
-const ITEM_HEIGHT_WITH_PROGRESS = 84;
+/**
+ * Starting estimate for a row. The real height depends on the title and on
+ * whether the row carries a progress bar or an error log, and the old fixed
+ * 58/84/220 trio never matched: a long title measured 276–528 px and an error
+ * row 398 px, so react-window painted the next row over them. The measured
+ * height from useDynamicRowHeight is used instead.
+ */
+const DEFAULT_ROW_HEIGHT = 58;
+
+/**
+ * react-window re-renders and re-measures every row when `rowProps` changes
+ * identity, so the empty object has to be shared, not rebuilt per render.
+ */
+const ROW_PROPS = {};
 
 interface VideoListSectionProps {
   folderPath: string;
@@ -42,6 +52,12 @@ export function VideoListSection({
   const [videosError, setVideosError] = useState<string | null>(null);
   const [hasLoadedVideos, setHasLoadedVideos] = useState(false);
   const listRef = useListRef(null);
+  // Measured per-row heights, reset when the folder changes: a job log or a
+  // longer title changes the row, and a stale estimate overlapped the next row.
+  const rowHeight = useDynamicRowHeight({
+    defaultRowHeight: DEFAULT_ROW_HEIGHT,
+    key: `${folderPath}:${listExists}`,
+  });
 
   const fetchList = useCallback(async () => {
     const response = await fetch(`/api/folder/list?folderPath=${encodeURIComponent(folderPath)}`);
@@ -195,19 +211,6 @@ export function VideoListSection({
     [rows, downloadStatuses, jobsByVideoId, handleEnqueueOne, handleCancel],
   );
 
-  const getRowHeight = useCallback(
-    (index: number): number => {
-      const row = rows[index];
-      const job = row?.id ? jobsByVideoId[row.id] : undefined;
-      if (job?.status === 'running') {
-        return ITEM_HEIGHT_WITH_PROGRESS;
-      }
-      const showLog = job?.status === 'error' && job.log.length > 0;
-      return showLog ? ITEM_HEIGHT_WITH_LOG : ITEM_HEIGHT;
-    },
-    [rows, jobsByVideoId],
-  );
-
   // When a job starts running, bring its row into view. The windowed list is
   // the source of truth — scrollToItem knows the row's exact offset (the
   // per-item scrollIntoView fallback that used to live in VideoItem could
@@ -300,9 +303,9 @@ export function VideoListSection({
             <List
               listRef={listRef}
               rowCount={rows.length}
-              rowHeight={getRowHeight}
+              rowHeight={rowHeight}
               rowKey={(index) => rows[index]?.id ?? `index-${index}`}
-              rowProps={{}}
+              rowProps={ROW_PROPS}
               overscanCount={8}
               rowComponent={renderRow}
             />

@@ -160,6 +160,41 @@ describe('VideoListSection', () => {
     expect(screen.getAllByRole('button', { name: 'Pobierz' })).toHaveLength(2); // v3 + v4 (disabled)
   });
 
+  it('reports a reload that did not come back', async () => {
+    const base = installFetch({});
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) =>
+      url.startsWith('/api/folder/list') ? json({}, 500) : base(url, init),
+    ) as unknown as typeof fetch;
+    const ref = { current: null as null | { loadVideos: () => Promise<void> } };
+    render(
+      <MemoryRouter>
+        <VideoListSection ref={ref} folderPath={FOLDER} listExists={true} />
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      await loadVideosViaRef(ref);
+    });
+
+    expect(await screen.findByText('Błąd: Failed to load videos')).toBeInTheDocument();
+  });
+
+  it('does nothing when the folder has no list.json', async () => {
+    const fetchMock = installFetch({});
+    const ref = { current: null as null | { loadVideos: () => Promise<void> } };
+    render(
+      <MemoryRouter>
+        <VideoListSection ref={ref} folderPath={FOLDER} listExists={false} />
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      await loadVideosViaRef(ref);
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('"Pobierz wszystkie" enqueues only videos that are not downloaded and have a url', async () => {
     const fetchMock = installFetch({
       enqueue: () => ({ jobs: [makeJob({ status: 'queued' })], skipped: [] }),

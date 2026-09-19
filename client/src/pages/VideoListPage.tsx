@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useRegisterMenuSections } from '../components/appMenuRegistry';
 import SearchBar from '../components/SearchBar';
 import { Button } from '../components/ui/Button';
+import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { Loading } from '../components/ui/Loading';
 import VideoList from '../components/VideoList';
 import { useCacheRefresh } from '../hooks/useCacheRefresh';
@@ -16,7 +17,7 @@ import { useVideoSearch } from '../hooks/useVideoSearch';
 export default function VideoListPage(): JSX.Element {
   const { searchState, setSearchState } = useSearchUrlState();
   const { query, sort, category, channel } = searchState;
-  const { videos, loading: videoLoading, hasMore, search, loadMore } = useVideoSearch();
+  const { videos, loading: videoLoading, error: videoError, hasMore, search, loadMore } = useVideoSearch();
   const { loading: refreshLoading, refreshCache } = useCacheRefresh();
   const { categories } = useCategories();
   const { channels } = useChannelNames();
@@ -92,8 +93,12 @@ export default function VideoListPage(): JSX.Element {
     },
   ]);
 
+  // A failed search must not dress itself up as "no results": the error is the
+  // message, and a failed "load more" keeps the pages already on screen.
+  const showEmptyState = !videoError;
+
   return (
-    <main className="app-main">
+    <main className="app-main" aria-busy={videoLoading}>
       <SearchBar
         query={query}
         sort={sort}
@@ -108,7 +113,15 @@ export default function VideoListPage(): JSX.Element {
         <Loading message={t('search.loading')} />
       ) : (
         <>
-          <VideoList videos={videos} searchQuery={query} />
+          {videoError && <ErrorMessage>{t('app.error', { message: videoError })}</ErrorMessage>}
+          {videoLoading && videos.length > 0 && (
+            // Announced, not just decorative: the cards on screen still answer
+            // the previous query while the new one is in flight.
+            <p className="search-refreshing" role="status">
+              {t('search.loading')}
+            </p>
+          )}
+          {(videos.length > 0 || showEmptyState) && <VideoList videos={videos} searchQuery={query} />}
           {hasMore && (
             <div className="load-more">
               <Button onClick={handleLoadMore} disabled={videoLoading}>

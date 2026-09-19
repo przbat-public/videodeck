@@ -368,4 +368,60 @@ test.describe('long unbroken content', () => {
     await page.getByText(unbroken.slice(0, 40)).waitFor();
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
+
+  test('a row carrying an error log does not overlap the row below it', async ({ page }) => {
+    // The windowed list sized every row from three fixed constants, so an
+    // error row (title + failure box + up to a 200px log) painted over its
+    // neighbour.
+    const log = Array.from({ length: 20 }, (_, index) => `ERROR: line ${index} of the yt-dlp output`);
+    await mockApi(page, {
+      status: {
+        videosFolderPath: ['/videos/e2e'],
+        folderConfigs: { '/videos/e2e': { channelUrl: 'https://yt/@e2e', category: 'fpv' } },
+        downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
+        indexedFolders: ['/videos/e2e'],
+        listExists: { '/videos/e2e': true },
+        status: 'ok',
+      },
+      list: {
+        videos: [
+          { id: 'v1', title: 'Pierwszy film', url: 'https://yt/v1' },
+          { id: 'v2', title: 'Drugi film', url: 'https://yt/v2' },
+        ],
+        downloadStatuses: {},
+        lastUpdatedDates: {},
+      },
+      queue: {
+        paused: false,
+        jobs: [
+          {
+            id: 'job-1',
+            folderPath: '/videos/e2e',
+            videoId: 'v1',
+            videoUrl: 'https://yt/v1',
+            title: 'Pierwszy film',
+            type: 'download',
+            status: 'error',
+            error: 'yt-dlp exited with code 1 after 3 attempts',
+            log,
+            logLineCount: log.length,
+            createdAt: '2026-01-01T10:00:00.000Z',
+            finishedAt: '2026-01-01T10:01:00.000Z',
+          },
+        ],
+      },
+    });
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto('/download');
+    await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
+    await page.getByText(log[19] ?? '').waitFor();
+
+    const rows = page.locator('.video-item');
+    const first = await rows.nth(0).boundingBox();
+    const second = await rows.nth(1).boundingBox();
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    const overlap = (second?.y ?? 0) - ((first?.y ?? 0) + (first?.height ?? 0));
+    expect(overlap).toBeGreaterThanOrEqual(-1);
+  });
 });

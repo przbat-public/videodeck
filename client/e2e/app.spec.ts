@@ -135,7 +135,10 @@ test.describe('search page', () => {
 
     await page.goto('/');
 
-    await expect(page.getByText(/Nie udało się wyszukać filmów/)).toBeVisible();
+    // The toast is announced in its own live region...
+    await expect(page.locator('[role="status"]').getByText(/Nie udało się wyszukać filmów/)).toBeVisible();
+    // ...and the results area carries the reason instead of "no results".
+    await expect(page.getByText('Błąd: Nie udało się wyszukać filmów')).toBeVisible();
   });
 });
 
