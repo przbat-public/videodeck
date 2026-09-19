@@ -153,7 +153,11 @@ entrance animations, no parallax.
 ## 8. Accessibility
 
 - Focus: `:focus-visible` gets a 3px `--color-focus` outline, 2px offset.
-  Inputs may use a border-color focus instead.
+  Inputs may use a border-color focus instead. The page landmark is the one
+  exception: the app focuses it after a route change so screen readers
+  announce the new page, and the landmark carries `tabindex="-1"` (never a
+  tab stop), so its ring is suppressed rather than shown as a stray border
+  on load.
 - Contrast: text at least 4.5:1, primary button text included. Muted text
   stays readable in dark mode (`#9aa0a6` on `#1d1f24`).
 - Every input has an accessible name: `aria-label` or a linked `<label>`.

@@ -91,3 +91,32 @@ test.describe('select controls', () => {
       .toContain('rgba(102, 126, 234, 0.2)');
   });
 });
+
+test.describe('page landmark focus', () => {
+  test('the landmark the app focuses on load paints no ring', async ({ page }) => {
+    await mockApi(page, { search: () => ({ videos: [], totalCount: 0 }) });
+
+    for (const url of ['/', '/download']) {
+      await page.goto(url);
+      const main = page.locator('.app-main');
+      await expect(main).toBeFocused();
+      // A programmatic route-change focus is not a keyboard stop: the
+      // landmark has tabindex="-1", so it never joins the tab order and the
+      // 3px ring only ever showed up as a stray border on load.
+      expect(await main.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('none');
+    }
+  });
+
+  test('a control inside the landmark still draws its ring', async ({ page }) => {
+    await mockApi(page, { search: () => ({ videos: [], totalCount: 0 }) });
+    await page.goto('/');
+
+    // The gear trigger has no focus style of its own, so it shows the global
+    // ring: the suppression above must not leak past the landmark itself.
+    const gear = page.getByRole('button', { name: 'Menu aplikacji' });
+    await gear.focus();
+    await expect(gear).toBeFocused();
+
+    expect(await gear.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
+  });
+});
