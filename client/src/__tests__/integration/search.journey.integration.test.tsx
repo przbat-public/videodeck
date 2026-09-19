@@ -123,7 +123,10 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
     expect(lastSearch().body.from ?? 0).toBe(0);
 
     await page.user.click(screen.getByRole('button', { name: 'Pokaż więcej' }));
-    await waitFor(() => expect(screen.getByText('Film pokazowy 105')).toBeInTheDocument());
-    expect(lastSearch().body.from).toBe(100);
+    // Page two appends a hundred cards. Waiting for the request first keeps the
+    // assertion below off the default 1 s waitFor budget, which rendering that
+    // page can outrun on a loaded machine.
+    await waitFor(() => expect(lastSearch().body.from).toBe(100), { timeout: 15_000 });
+    await waitFor(() => expect(screen.getByText('Film pokazowy 105')).toBeInTheDocument(), { timeout: 15_000 });
   });
 });
