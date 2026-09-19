@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
@@ -15,6 +15,25 @@ const json = (body: unknown, status = 200): MockResponse => ({
 const downloadDefaults = { maxHeight: 2160, subLangs: ['en'], writeComments: true };
 
 describe('FolderSection', () => {
+  it('renders the sections without a header or a card of its own', () => {
+    render(
+      <FolderSection
+        folderPath="/videos/a"
+        initialConfig={{ channelUrl: 'https://www.youtube.com/@a' }}
+        downloadDefaults={downloadDefaults}
+        initialListExists={true}
+        editingConfig={false}
+        onEditingFinished={vi.fn()}
+        onConfigUpdate={vi.fn()}
+      />,
+    );
+
+    // The channel row above already names the channel and shows the index
+    // warning, so a second heading in here would only repeat it
+    expect(screen.queryByRole('heading', { name: '/videos/a' })).toBeNull();
+    expect(screen.queryByText('/videos/a')).toBeNull();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     fetchMock.mockReset();
@@ -27,8 +46,9 @@ describe('FolderSection', () => {
         folderPath="/videos/a"
         initialConfig={{ channelUrl: 'https://www.youtube.com/@a' }}
         downloadDefaults={downloadDefaults}
-        indexed={false}
         initialListExists={null}
+        editingConfig={false}
+        onEditingFinished={vi.fn()}
         onConfigUpdate={vi.fn()}
       />,
     );
@@ -43,8 +63,9 @@ describe('FolderSection', () => {
         folderPath="/videos/b"
         initialConfig={{ channelUrl: 'https://www.youtube.com/@b' }}
         downloadDefaults={downloadDefaults}
-        indexed={false}
         initialListExists={null}
+        editingConfig={false}
+        onEditingFinished={vi.fn()}
         onConfigUpdate={vi.fn()}
       />,
     );

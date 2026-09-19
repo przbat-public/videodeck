@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChannelTable } from '../components/ChannelTable';
 import type { ChannelFilterCounts } from '../components/ChannelToolbar';
@@ -16,6 +16,8 @@ import { useFolderSummaries } from '../hooks/useFolderSummaries';
 import { usePageFocus } from '../hooks/usePageFocus';
 import { useStatus } from '../hooks/useStatus';
 import { useStickyOffset } from '../hooks/useStickyOffset';
+import type { ChannelConsoleState } from '../utils/channelConsoleState';
+import type { ChannelRow } from '../utils/channelTable';
 import { buildChannelRows, filterChannels, sortChannels } from '../utils/channelTable';
 import { collectCategories } from '../utils/folderConfigForm';
 
@@ -47,6 +49,9 @@ export default function StatusPage(): JSX.Element {
   const mainRef = usePageFocus<HTMLElement>();
   const pageRef = useRef<HTMLDivElement>(null);
   const queueBarRef = useRef<HTMLDivElement>(null);
+  // The channel whose config form is open. The row menu opens it; collapsing
+  // the row, saving or cancelling closes it again.
+  const [editingFolder, setEditingFolder] = useState('');
 
   // The table header sticks below the queue bar, so the bar publishes its own
   // height: it wraps on narrower screens, and a hardcoded offset would leave
@@ -79,6 +84,30 @@ export default function StatusPage(): JSX.Element {
 
   const knownCategories = statusData ? collectCategories(statusData.folderConfigs) : [];
 
+  /** Every console state change goes through here, so a collapsed row also
+   *  closes the form it was showing. */
+  const changeConsoleState = useCallback(
+    (next: ChannelConsoleState): void => {
+      if (next.folder !== consoleState.folder) {
+        setEditingFolder('');
+      }
+      setConsoleState(next);
+    },
+    [consoleState.folder, setConsoleState],
+  );
+
+  const closeConfigEditor = useCallback((): void => {
+    setEditingFolder('');
+  }, []);
+
+  const openConfigEditor = useCallback(
+    (row: ChannelRow): void => {
+      setConsoleState({ ...consoleState, folder: row.folderPath });
+      setEditingFolder(row.folderPath);
+    },
+    [consoleState, setConsoleState],
+  );
+
   return (
     <main className="app-main" ref={mainRef} tabIndex={-1}>
       <div className="status-page" ref={pageRef}>
@@ -106,22 +135,24 @@ export default function StatusPage(): JSX.Element {
             <p>{t('status.noFolders')}</p>
           ) : (
             <>
-              <ChannelToolbar state={consoleState} counts={counts} onChange={setConsoleState} />
+              <ChannelToolbar state={consoleState} counts={counts} onChange={changeConsoleState} />
               <ChannelTable
                 rows={visibleRows}
                 state={consoleState}
-                onChange={setConsoleState}
+                onChange={changeConsoleState}
                 countsLoading={summariesLoading}
                 pending={pending}
                 onAction={(row, action) => void run(row.folderPath, action)}
+                onEditConfig={openConfigEditor}
                 renderExpanded={(row) => (
                   <FolderSection
                     folderPath={row.folderPath}
                     initialConfig={statusData.folderConfigs[row.folderPath] || null}
                     downloadDefaults={statusData.downloadDefaults}
-                    indexed={statusData.indexedFolders.includes(row.folderPath)}
                     initialListExists={statusData.listExists[row.folderPath] ?? null}
                     knownCategories={knownCategories}
+                    editingConfig={editingFolder === row.folderPath}
+                    onEditingFinished={closeConfigEditor}
                     onConfigUpdate={updateFolderConfig}
                   />
                 )}

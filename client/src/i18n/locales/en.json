@@ -45,9 +45,7 @@
   "status": {
     "loading": "Loading status...",
     "foldersTitle": "Video folder configuration",
-    "noFolders": "No configured paths",
-    "indexMissing": "ES index: missing",
-    "indexMissingTitle": "No index in Elasticsearch — run \"Refresh index\" with \"missing only\""
+    "noFolders": "No configured paths"
   },
   "queue": {
     "title": "Download queue:",
@@ -123,8 +121,6 @@
     "summaryTruncated": "This summary was generated from truncated subtitles — the source text was too long for the model."
   },
   "config": {
-    "create": "Create config.json",
-    "edit": "Edit configuration",
     "save": "Save",
     "saving": "Saving...",
     "cancel": "Cancel",
@@ -265,16 +261,9 @@
     },
     "column": {
       "channel": "Channel",
-      "playlist": "Playlist",
       "videos": "Videos",
       "queue": "Queue",
       "actions": "Actions"
-    },
-    "list": {
-      "checking": "checking...",
-      "missing": "no list.json",
-      "exists": "list.json present",
-      "unknownDate": "no date"
     },
     "videos": {
       "total": "{{count}} videos",

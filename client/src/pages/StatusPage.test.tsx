@@ -99,7 +99,6 @@ describe('StatusPage', () => {
     expect(screen.getByText('/videos/b')).toBeInTheDocument();
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent?.trim())).toEqual([
       'Kanał',
-      'Lista filmów',
       'Filmy',
       'Kolejka',
       'Akcje',
@@ -226,7 +225,71 @@ describe('StatusPage', () => {
     await user.click(within(rowB as HTMLElement).getByRole('button', { name: 'Pokaż filmy' }));
 
     expect(await screen.findByText('Plik config.json nie istnieje w tym folderze.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Utwórz config.json' })).toBeInTheDocument();
+    // No edit button of its own any more: the row menu owns that entry point
+    expect(screen.queryByRole('button', { name: 'Utwórz config.json' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edytuj konfigurację' })).toBeNull();
+    // ... and the row above already shows the path, so the section has no header
+    expect(screen.queryByRole('heading', { name: '/videos/b' })).toBeNull();
+  });
+
+  it('opens the config form from the row menu', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr');
+    expect(rowA).not.toBeNull();
+
+    await user.click(within(rowA as HTMLElement).getByRole('button', { name: 'Więcej akcji' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Edytuj config.json' }));
+
+    expect(await screen.findByLabelText('Adres kanału YouTube:')).toHaveValue('https://yt/@a');
+    expect(screen.getByRole('button', { name: 'Zapisz' })).toBeInTheDocument();
+  });
+
+  it('closes the config form when the editor is cancelled', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr');
+    expect(rowA).not.toBeNull();
+
+    await user.click(within(rowA as HTMLElement).getByRole('button', { name: 'Więcej akcji' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Edytuj config.json' }));
+    const channelUrl = await screen.findByLabelText('Adres kanału YouTube:');
+
+    await user.click(screen.getByRole('button', { name: 'Anuluj' }));
+
+    expect(screen.queryByLabelText('Adres kanału YouTube:')).toBeNull();
+    expect(channelUrl).not.toBeInTheDocument();
+  });
+
+  it('checks list.json for a folder the status did not report', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installFetch({
+      status: () =>
+        json({
+          ...statusResponse,
+          folderConfigs: {
+            '/videos/a': { channelUrl: 'https://yt/@a' },
+            '/videos/b': { channelUrl: 'https://yt/@b' },
+          },
+          listExists: {},
+        }),
+    });
+    renderPage();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr');
+    expect(rowA).not.toBeNull();
+
+    await user.click(within(rowA as HTMLElement).getByRole('button', { name: 'Pokaż filmy' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/folder/list-exists?folderPath=%2Fvideos%2Fa'));
+  });
+
+  it('says so when the per-channel counts cannot be read', async () => {
+    installFetch({ summaries: () => json({ error: 'boom' }, 500) });
+    renderPage();
+
+    expect(
+      await screen.findByText('Nie udało się policzyć filmów: Nie udało się policzyć filmów w kanałach'),
+    ).toBeInTheDocument();
   });
 
   it('shows why the queue controls are unusable when the queue read fails', async () => {

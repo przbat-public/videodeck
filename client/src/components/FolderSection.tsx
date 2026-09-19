@@ -1,10 +1,8 @@
 import type { DownloadOptions, FolderConfig } from '@videodeck/shared/api';
 import { ListExistsResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { FolderConfigEditor } from './FolderConfigEditor';
 import { PlaylistDownloadSection } from './PlaylistDownloadSection';
-import { Tooltip } from './ui/Tooltip';
 import type { VideoListSectionHandle } from './VideoListSection';
 import { VideoListSection } from './VideoListSection';
 
@@ -12,26 +10,35 @@ interface FolderSectionProps {
   folderPath: string;
   initialConfig: FolderConfig | null;
   downloadDefaults: DownloadOptions;
-  /** Whether this folder already has a search cache in Elasticsearch */
-  indexed: boolean;
   /** list.json presence from /api/status; null = unknown (fall back to a fetch) */
   initialListExists?: boolean | null;
   /** Categories used by other folders, offered as input suggestions */
   knownCategories?: string[];
+  /** Whether the config form is open; the console's row menu sets this */
+  editingConfig: boolean;
+  /** The form closed itself: the console drops its "editing" state */
+  onEditingFinished: () => void;
   onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
 }
 
+/**
+ * What the console shows under a channel row: the config form, the playlist
+ * actions and the channel's videos. It renders as a flat list of sections, not
+ * as a card of its own: the row above already names the channel, shows the
+ * warnings and carries the actions, so a second header and border would only
+ * repeat them.
+ */
 export function FolderSection({
   folderPath,
   initialConfig,
   downloadDefaults,
-  indexed,
   initialListExists = null,
   knownCategories = [],
+  editingConfig,
+  onEditingFinished,
   onConfigUpdate,
 }: FolderSectionProps) {
   const [listExists, setListExists] = useState<boolean | null>(initialListExists);
-  const { t } = useTranslation();
   const videoListSectionRef = useRef<VideoListSectionHandle>(null);
 
   // The config prop is the single source of truth (StatusPage holds it); the
@@ -68,26 +75,14 @@ export function FolderSection({
   };
 
   return (
-    <div className="folder-section">
-      <div className="folder-section-header">
-        <h3 className="folder-path">{folderPath}</h3>
-        {/* Only the actionable state is shown: a missing ES index needs the
-            "refresh index (missing only)" run; "ready" adds nothing. */}
-        {!indexed && (
-          <Tooltip label={t('status.indexMissingTitle')}>
-            {/* biome-ignore lint/a11y/noNoninteractiveTabindex: the span is the Radix tooltip trigger; focus is the keyboard path to the detail */}
-            <span className="folder-index-badge" tabIndex={0}>
-              {t('status.indexMissing')}
-            </span>
-          </Tooltip>
-        )}
-      </div>
-
+    <>
       <FolderConfigEditor
         folderPath={folderPath}
         initialConfig={initialConfig}
         downloadDefaults={downloadDefaults}
         knownCategories={knownCategories}
+        editing={editingConfig}
+        onEditingFinished={onEditingFinished}
         onConfigUpdate={handleConfigUpdate}
       />
 
@@ -100,6 +95,6 @@ export function FolderSection({
       />
 
       <VideoListSection ref={videoListSectionRef} folderPath={folderPath} listExists={listExists === true} />
-    </div>
+    </>
   );
 }

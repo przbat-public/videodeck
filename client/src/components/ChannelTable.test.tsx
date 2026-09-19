@@ -25,6 +25,7 @@ const renderTable = (
 ) => {
   const onChange = vi.fn();
   const onAction = vi.fn();
+  const onEditConfig = vi.fn();
   render(
     <ChannelTable
       rows={rows}
@@ -33,10 +34,11 @@ const renderTable = (
       countsLoading={countsLoading}
       pending={options.pending ?? {}}
       onAction={onAction}
+      onEditConfig={onEditConfig}
       renderExpanded={(expanded) => <p>filmy kanału {expanded.name}</p>}
     />,
   );
-  return { onChange, onAction };
+  return { onChange, onAction, onEditConfig };
 };
 
 /** The row's secondary actions live behind the ⋯ trigger */
@@ -45,17 +47,18 @@ const openRowMenu = async (user: ReturnType<typeof userEvent.setup>): Promise<vo
 };
 
 describe('ChannelTable', () => {
-  it('renders the five columns and one row per channel', () => {
+  it('renders the four columns and one row per channel', () => {
     renderTable([row(), row({ folderPath: '/videos/kanal-b', name: 'kanal-b' })]);
 
     const headers = screen.getAllByRole('columnheader').map((header) => header.textContent?.trim());
-    expect(headers).toEqual(['Kanał', 'Lista filmów', 'Filmy', 'Kolejka', 'Akcje']);
+    // The playlist column is gone: the expanded row already shows list.json
+    expect(headers).toEqual(['Kanał', 'Filmy', 'Kolejka', 'Akcje']);
     expect(screen.getAllByRole('row')).toHaveLength(3); // header + two channels
     expect(screen.getByText('kanal-a')).toBeInTheDocument();
     expect(screen.getByText('/videos/kanal-a')).toBeInTheDocument();
   });
 
-  it('shows the counts, the playlist state and the queue activity', () => {
+  it('shows the counts and the queue activity', () => {
     renderTable([
       row({
         summary: { videos: 40, downloaded: 2, notDownloaded: 38, stale: 5, newestUpdate: '2026-09-18T12:00:00.000Z' },
@@ -66,7 +69,6 @@ describe('ChannelTable', () => {
     expect(screen.getByText('40 filmów')).toBeInTheDocument();
     expect(screen.getByText('38 niepobranych')).toBeInTheDocument();
     expect(screen.getByText('5 nie od miesiąca')).toBeInTheDocument();
-    expect(screen.getByText('list.json jest')).toBeInTheDocument();
     expect(screen.getByText('1 w toku')).toBeInTheDocument();
     expect(screen.getByText('2 czeka')).toBeInTheDocument();
     expect(screen.getByText('1 błąd')).toBeInTheDocument();
@@ -74,37 +76,16 @@ describe('ChannelTable', () => {
     expect(screen.getByText('1 błąd')).not.toHaveAttribute('title');
   });
 
-  it('chips the reasons no other column shows', () => {
+  it('chips only the reasons the row cannot show elsewhere', () => {
     renderTable([
       row({ configured: false, indexed: false, listExists: false, attention: ['noChannelUrl', 'noList', 'noIndex'] }),
     ]);
 
     expect(screen.getByText('brak channelUrl')).toBeInTheDocument();
     expect(screen.getByText('brak indeksu ES')).toBeInTheDocument();
-    // The playlist column owns that state; a chip would only repeat it.
-    expect(screen.getAllByText('brak list.json')).toHaveLength(1);
-  });
-
-  it('says the playlist state is still being checked', () => {
-    renderTable([row({ listExists: null })]);
-
-    expect(screen.getByText('sprawdzam...')).toBeInTheDocument();
-  });
-
-  it('shows the age of the last update next to the playlist', () => {
-    renderTable([
-      row({
-        summary: {
-          videos: 10,
-          downloaded: 10,
-          notDownloaded: 0,
-          stale: 0,
-          newestUpdate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-      }),
-    ]);
-
-    expect(screen.getByText('3 dni temu')).toBeInTheDocument();
+    // list.json has no column of its own any more; the row says it with an
+    // empty count and the "Pobierz playlistę" action instead
+    expect(screen.queryByText('brak list.json')).toBeNull();
   });
 
   it('chips a queue that is only waiting', () => {
@@ -123,6 +104,7 @@ describe('ChannelTable', () => {
         countsLoading
         pending={{}}
         onAction={vi.fn()}
+        onEditConfig={vi.fn()}
         renderExpanded={() => null}
       />,
     );
@@ -136,6 +118,7 @@ describe('ChannelTable', () => {
         countsLoading={false}
         pending={{}}
         onAction={vi.fn()}
+        onEditConfig={vi.fn()}
         renderExpanded={() => null}
       />,
     );
@@ -295,14 +278,38 @@ describe('ChannelTable', () => {
     expect(screen.getByRole('menuitem', { name: 'Anuluj zadania kanału' })).toHaveAttribute('data-disabled');
   });
 
-  it('opens the config editor by expanding the row from the menu', async () => {
+  it('opens the config editor from the row menu', async () => {
     const user = userEvent.setup();
-    const { onChange } = renderTable([row()]);
+    const { onChange, onEditConfig } = renderTable([row()]);
 
     await openRowMenu(user);
     await user.click(screen.getByRole('menuitem', { name: 'Edytuj config.json' }));
 
-    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_CHANNEL_CONSOLE_STATE, folder: '/videos/kanal-a' });
+    // The page expands the row and opens the form; the table only reports it
+    expect(onEditConfig).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('lists the three bulk actions with download all after the two updates', async () => {
+    const user = userEvent.setup();
+    const { onAction } = renderTable([row({ summary: { videos: 40, downloaded: 20, notDownloaded: 20, stale: 5 } })]);
+
+    await openRowMenu(user);
+
+    const labels = screen.getAllByRole('menuitem').map((item) => item.textContent?.trim());
+    expect(labels.slice(0, 3)).toEqual(['Aktualizuj stare', 'Aktualizuj wszystkie', 'Pobierz wszystkie']);
+
+    await user.click(screen.getByRole('menuitem', { name: 'Pobierz wszystkie' }));
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'download');
+  });
+
+  it('disables the menu download when nothing is missing', async () => {
+    const user = userEvent.setup();
+    renderTable([row({ summary: { videos: 5, downloaded: 5, notDownloaded: 0, stale: 2 } })]);
+
+    await openRowMenu(user);
+
+    expect(screen.getByRole('menuitem', { name: 'Pobierz wszystkie' })).toHaveAttribute('data-disabled');
   });
 
   it('fetches the playlist when the channel has no list to work from', async () => {
@@ -314,6 +321,7 @@ describe('ChannelTable', () => {
 
     await openRowMenu(user);
     expect(screen.queryByRole('menuitem', { name: 'Aktualizuj wszystkie' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Pobierz wszystkie' })).toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Edytuj config.json' })).toBeInTheDocument();
   });
 

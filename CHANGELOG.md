@@ -73,7 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Each row carries the queue actions that matter (download all, update stale,
   update all, cancel the channel's jobs, fetch the playlist) as one primary
   button plus a menu, so a library of sixty channels stays near one screen
-  instead of twenty stacked lists. The counts come from a new
+  instead of twenty stacked lists. The expanded row continues the table
+  instead of opening a card of its own (no second header, no nested border)
+  and the config form opens from the row menu. The counts come from a new
   `GET /api/folder/summaries` endpoint with its own cache, the table is
   reachable by URL (`q`, `filter`, `sort`, `folder`), and its header row
   sticks under the queue bar so the columns keep their names while the

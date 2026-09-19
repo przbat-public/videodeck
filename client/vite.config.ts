@@ -65,9 +65,9 @@ export default defineConfig({
       // not a target. Raise them as coverage grows.
       thresholds: {
         statements: 97,
-        branches: 92.08,
-        functions: 96.08,
-        lines: 97.67,
+        branches: 92.37,
+        functions: 96.1,
+        lines: 97.68,
         // Ratchet: `npm run test:coverage` raises these in place whenever
         // coverage grows, so they can only move up. Commit the change.
         autoUpdate: true,
