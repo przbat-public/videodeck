@@ -20,7 +20,7 @@ export type VideoSearchAction =
       type: 'SEARCH_SUCCESS';
       payload: { videos: VideoListItem[]; totalCount: number; append?: boolean };
     }
-  | { type: 'SEARCH_ERROR'; payload: string };
+  | { type: 'SEARCH_ERROR'; payload: { message: string; append?: boolean } };
 
 export const initialState: VideoSearchState = {
   videos: [],
@@ -48,9 +48,11 @@ export function videoSearchReducer(state: VideoSearchState, action: VideoSearchA
     case VideoSearchActionType.SEARCH_ERROR:
       return {
         ...state,
-        error: action.payload,
-        videos: [],
-        totalCount: 0,
+        error: action.payload.message,
+        // A failed "load more" keeps the pages already on screen so the user
+        // can retry; a failed fresh search has no results worth keeping.
+        videos: action.payload.append ? state.videos : [],
+        totalCount: action.payload.append ? state.totalCount : 0,
         loading: false,
       };
     default:

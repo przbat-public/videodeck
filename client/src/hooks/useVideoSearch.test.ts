@@ -222,6 +222,25 @@ describe('useVideoSearch', () => {
     });
   });
 
+  it('keeps the pages already loaded when the next page fails', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ videos: [video('a')], totalCount: 3 }))
+      .mockRejectedValueOnce(new Error('Network error'));
+    const { result } = renderHook(() => useVideoSearch());
+
+    await act(() => result.current.search(state()));
+    await act(() => result.current.loadMore());
+
+    // Dropping the visible page on a failed "load more" left the user with an
+    // empty screen and no way back to what they were reading.
+    expect(result.current).toMatchObject({
+      videos: [video('a')],
+      totalCount: 3,
+      hasMore: true,
+      error: 'Network error',
+    });
+  });
+
   it('treats a non-2xx response as a failure', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
     const { result } = renderHook(() => useVideoSearch());
