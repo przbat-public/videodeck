@@ -156,6 +156,23 @@ describe('createApp auth wiring', () => {
     expect(response.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it('keeps query values out of the request log', async () => {
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {
+      /* captured by the assertions below */
+    });
+
+    const response = await request(createApp()).get('/health?probe=private-value');
+
+    // The path identifies the endpoint; the query would put a folder path or
+    // a search phrase into a log that outlives the request.
+    expect(response.status).toBe(200);
+    const line = String(log.mock.calls.at(-1)?.[0] ?? '');
+    expect(line).toContain('GET /health');
+    expect(line).not.toContain('private-value');
+
+    log.mockRestore();
+  });
+
   it('accepts an injected download queue', async () => {
     const fakeQueue = {
       enqueue: jest.fn(),

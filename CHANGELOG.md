@@ -59,6 +59,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dimensions (tokens, hierarchy, primitives, a11y, copy) with Nielsen
   heuristics, design laws and a persona walkthrough, every finding tagged
   by business impact
+- **`pnpm run verify`**: one command chains the whole local gate (format,
+  lint, type-aware ESLint, script linting and tests, knip, dependency
+  cruiser, the humanizer gate, typecheck, unit, integration and Playwright
+  suites), and CI installs through a shared composite action so the jobs
+  cannot drift apart
+- The checkbox and tooltip primitives come from Radix instead of hand-rolled
+  markup, which brings the focus, keyboard and ARIA behaviour of both
+  controls with them
 
 ### Fixed
 
@@ -95,6 +103,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   download page moved to /download, and a gear menu holds navigation, the
   index actions (list page only), the theme and the language. The old
   toolbar and its video counter are gone
+- The download queue no longer marks a job done when it was cancelled while
+  the post-job hook was still running, no longer brings a cancelled job back
+  after a restart, and no longer starts a retry while the queue is paused. A
+  batch whose videos failed to index is retried instead of counted as indexed
+- A failed search says why it failed instead of showing "nothing matched", a
+  failed "show more" keeps the pages already loaded, and the results area
+  marks itself busy while a new search runs
+- Restricted yt-dlp flags can no longer be smuggled into a folder config
+  through the prefix spellings yt-dlp accepts (`--prox`, `--print-to-fi`) or
+  the short forms (`-p`, `-u`, `-a`, `-o/path`): the argument builder now
+  refuses them before anything is spawned
+- Queue rows measure their own height, so an error log no longer paints over
+  the row below it, and a long row title clamps to two lines like the search
+  result titles already did
+- The folder list header wraps its bulk buttons on a phone instead of running
+  off a 360px screen, and the search highlight got its background back
+- Failed status and detail loads offer a retry, every page renders inside a
+  `<main>` landmark, and a route change that drops focus moves it to the new
+  page instead of leaving it on the document body
+- The queue controls on the status page poll while the page is open, so
+  "clear finished" tracks jobs finished elsewhere, they report a failed
+  request instead of silently staying disabled, and their error text is
+  translated rather than English
+- The weekly dependency report runs `pnpm outdated` and `pnpm audit`; it used
+  to run the npm commands in a pnpm workspace, fail, and print "0 vulns" for
+  a check that never ran. A command that cannot answer now says so
+- Server request logs keep the request path and drop the query string, so
+  folder paths and search phrases no longer end up in the log file
+- The paging integration journey waits for the appended page instead of
+  failing on a loaded machine
 
 
 ## [1.0.0] - 2026-09-14

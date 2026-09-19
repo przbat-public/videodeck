@@ -9,18 +9,23 @@ on:
     # Weekly — picks up newly published queries
     - cron: '30 1 * * 1'
 
-permissions:
-  contents: read
-  security-events: write
-  actions: read
+# Empty on purpose: the scan asks for its own scopes below, so unrelated
+# jobs cannot inherit a write scope.
+permissions: {}
 
 jobs:
   analyze:
     name: Analyze (javascript-typescript)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4

@@ -52,7 +52,9 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
     // instead of a new series per URL (every filename would be one).
     const route = req.route?.path ?? 'unmatched';
     recordRequest(req.method, route, res.statusCode, durationMs);
-    logger.info(`${req.method} ${req.originalUrl} → ${res.statusCode} (${durationMs}ms) [${requestId}]`);
+    // `req.path`, not `originalUrl`: a query string carries folder paths and
+    // search phrases, and the log is where they would outlive the request.
+    logger.info(`${req.method} ${req.path} → ${res.statusCode} (${durationMs}ms) [${requestId}]`);
   });
   next();
 }
@@ -98,7 +100,7 @@ export function errorHandler(error: unknown, req: Request, res: Response, next: 
     next(error); // streaming response (SSE, sendFile) — let Express tear it down
     return;
   }
-  logger.error(`Unhandled error in ${req.method} ${req.originalUrl} [${String(res.locals.requestId)}]:`, error);
+  logger.error(`Unhandled error in ${req.method} ${req.path} [${String(res.locals.requestId)}]:`, error);
   const body: ApiError = { error: 'Internal server error' };
   res.status(500).json(body);
 }
