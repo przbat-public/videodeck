@@ -13,7 +13,7 @@ import { fireEvent, screen, within } from '@testing-library/react';
 const ROUND_TRIP_MS = 15_000;
 
 /** The console row of a channel */
-async function channelRow(folderPath: string): Promise<HTMLElement> {
+export async function channelRow(folderPath: string): Promise<HTMLElement> {
   const path = await screen.findByText(folderPath, undefined, { timeout: ROUND_TRIP_MS });
   const row = path.closest('tr');
   if (!(row instanceof HTMLElement)) {

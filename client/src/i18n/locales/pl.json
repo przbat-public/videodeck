@@ -316,6 +316,20 @@
       "failed": "błąd pobierania",
       "stale": "stare pobrania"
     },
+    "actions": {
+      "downloadAll": "Pobierz wszystkie",
+      "downloadPlaylist": "Pobierz playlistę",
+      "updateStale": "Aktualizuj stare",
+      "updateAll": "Aktualizuj wszystkie",
+      "cancel": "Anuluj zadania kanału",
+      "editConfig": "Edytuj config.json",
+      "more": "Więcej akcji",
+      "working": "Pracuję...",
+      "nothingToDo": "Nie ma tu nic do zrobienia",
+      "listFailed": "Nie udało się wczytać listy filmów kanału",
+      "cancelled": "Anulowano zadania kanału",
+      "playlistQueued": "Pobieram playlistę kanału"
+    },
     "expand": "Pokaż filmy",
     "collapse": "Ukryj filmy",
     "searchInChannel": "Szukaj w tym kanale",

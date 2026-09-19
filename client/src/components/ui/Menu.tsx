@@ -7,6 +7,7 @@ type MenuContentProps = ComponentProps<typeof MenuPrimitive.Content>;
 type MenuCheckboxItemProps = ComponentProps<typeof MenuPrimitive.CheckboxItem>;
 type MenuLabelProps = ComponentProps<typeof MenuPrimitive.Label>;
 type MenuSeparatorProps = ComponentProps<typeof MenuPrimitive.Separator>;
+type MenuLinkItemProps = ComponentProps<typeof MenuPrimitive.Item>;
 
 /**
  * Radix DropdownMenu behind the app's own props: the WAI-ARIA menu button
@@ -75,6 +76,15 @@ export function MenuCheckboxItem({ className = '', children, onSelect, ...props 
       {children}
     </MenuPrimitive.CheckboxItem>
   );
+}
+
+/**
+ * A menu entry that is a real link. `asChild` hands the item's props to the
+ * anchor, so middle-click, "open in new tab" and the status bar URL keep
+ * working where a `onSelect` + navigate would swallow them.
+ */
+export function MenuLinkItem({ className = '', ...props }: MenuLinkItemProps): JSX.Element {
+  return <MenuPrimitive.Item asChild className={['ui-menu-item', className].filter(Boolean).join(' ')} {...props} />;
 }
 
 export function MenuLabel({ className = '', ...props }: MenuLabelProps): JSX.Element {

@@ -746,24 +746,14 @@
 
 .channel-actions {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.35rem;
-  align-items: flex-start;
 }
 
-.channel-expand {
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
-  border-radius: 6px;
-  padding: 0.35rem 0.6rem;
-  min-height: 36px;
-  cursor: pointer;
-}
-
-.channel-search-link {
-  color: var(--color-primary-text);
-  font-size: 0.9rem;
+.channel-menu-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .channel-empty {
@@ -813,8 +803,6 @@
   }
 
   .channel-actions {
-    flex-direction: row;
-    flex-wrap: wrap;
     align-items: center;
   }
 
@@ -826,14 +814,11 @@
      compact desktop rhythm grows here instead of shrinking. */
   .channel-search,
   .channel-chip,
-  .channel-expand,
-  .channel-search-link {
+  .ui-menu-item {
     min-height: 44px;
   }
 
-  .channel-chip,
-  .channel-expand,
-  .channel-search-link {
+  .channel-chip {
     display: inline-flex;
     align-items: center;
   }

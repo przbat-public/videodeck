@@ -9,6 +9,7 @@ import { QueueControls } from '../components/QueueControls';
 import { Button } from '../components/ui/Button';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { Loading } from '../components/ui/Loading';
+import { useChannelActions } from '../hooks/useChannelActions';
 import { useChannelConsoleState } from '../hooks/useChannelConsoleState';
 import { useChannelQueue } from '../hooks/useChannelQueue';
 import { useFolderSummaries } from '../hooks/useFolderSummaries';
@@ -26,8 +27,21 @@ import { collectCategories } from '../utils/folderConfigForm';
 export default function StatusPage(): JSX.Element {
   const { state, updateFolderConfig, reload } = useStatus();
   const { state: consoleState, setState: setConsoleState } = useChannelConsoleState();
-  const { summaries, loading: summariesLoading, error: summariesError } = useFolderSummaries();
-  const { jobs } = useChannelQueue();
+  const { summaries, loading: summariesLoading, error: summariesError, reload: reloadSummaries } = useFolderSummaries();
+  const { jobs, refresh: refreshQueue } = useChannelQueue();
+  const { pending, run } = useChannelActions({
+    // A queue change can already have moved a video to "downloaded", and a
+    // playlist fetch rewrites list.json: both refresh what the primary action
+    // and the counts column read.
+    onQueueChanged: () => {
+      void refreshQueue();
+      reloadSummaries();
+    },
+    onListChanged: () => {
+      reload();
+      reloadSummaries();
+    },
+  });
   const { t } = useTranslation();
   const mainRef = usePageFocus<HTMLElement>();
 
@@ -90,6 +104,8 @@ export default function StatusPage(): JSX.Element {
                 state={consoleState}
                 onChange={setConsoleState}
                 countsLoading={summariesLoading}
+                pending={pending}
+                onAction={(row, action) => void run(row.folderPath, action)}
                 renderExpanded={(row) => (
                   <FolderSection
                     folderPath={row.folderPath}
