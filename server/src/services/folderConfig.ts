@@ -79,6 +79,11 @@ const RESERVED_ARGS_WITH_VALUE = [
  * - `--ffmpeg-location` points the merge step at an arbitrary binary;
  * - `--downloader-args` / `--external-downloader-args` forward arbitrary
  *   arguments to external downloaders.
+ *
+ * The short spellings are listed too (`-a` for `--batch-file`, `-u`/`-p` for
+ * `--username`/`--password`), and matching accepts the prefix spellings
+ * yt-dlp resolves (`--prox`, `--cookies-fr`), so a shortened flag cannot slip
+ * past the list.
  */
 const FORBIDDEN_EXTRA_ARGS = [
   '--exec',
@@ -97,6 +102,8 @@ const FORBIDDEN_EXTRA_ARGS = [
   '--print-to-file',
   '--batch-file',
   '-a',
+  '-u',
+  '-p',
   '--load-info-json',
   '--use-postprocessor',
   '--postprocessor-args',
@@ -115,14 +122,48 @@ const FORBIDDEN_ARGS_VALUE_WIDTH: Record<string, number> = {
   '--print-to-file': 3,
 };
 
-/** Whether an `extraArgs` entry shadows a pipeline-owned flag (`-f`, `-f=…`) */
-export function isReservedExtraArg(arg: string): boolean {
-  return RESERVED_EXTRA_ARGS.some((reserved) => arg === reserved || arg.startsWith(`${reserved}=`));
+/**
+ * Real yt-dlp flags that also happen to be proper prefixes of a restricted
+ * flag. yt-dlp prefers an exact match over a prefix match, so these stay
+ * legal: `--print` (not `--print-to-file`), `--downloader` and
+ * `--external-downloader` (not their `-args` forms; both accept only names
+ * from yt-dlp's own downloader table) and `--no-download`, an alias for
+ * `--no-simulate` rather than `--no-download-archive`.
+ */
+const PREFIX_LOOKALIKE_FLAGS = new Set(['--print', '--downloader', '--external-downloader', '--no-download']);
+
+/** The flag part of an argument: `--proxy=http://p` becomes `--proxy` */
+function flagName(arg: string): string {
+  const equals = arg.indexOf('=');
+  return equals === -1 ? arg : arg.slice(0, equals);
 }
 
-/** Whether an `extraArgs` entry is a dangerous flag (`--exec`, `--proxy=…`) */
+/**
+ * The restricted flag an `extraArgs` entry stands for, or undefined when the
+ * entry is not restricted. yt-dlp's parser accepts any unambiguous prefix of a
+ * long option (`--prox` means `--proxy`) and lets short options carry their
+ * value glued (`-psecret`), so full-name comparison alone let both spellings
+ * through.
+ */
+function restrictedArg(arg: string, restricted: readonly string[]): string | undefined {
+  if (arg.startsWith('--')) {
+    const flag = flagName(arg);
+    if (PREFIX_LOOKALIKE_FLAGS.has(flag)) {
+      return undefined;
+    }
+    return restricted.find((name) => name === flag || (flag.length > 2 && name.startsWith(flag)));
+  }
+  return restricted.find((name) => name.length === 2 && arg.startsWith(name));
+}
+
+/** Whether an `extraArgs` entry shadows a pipeline-owned flag (`-f`, `--out=…`) */
+export function isReservedExtraArg(arg: string): boolean {
+  return restrictedArg(arg, RESERVED_EXTRA_ARGS) !== undefined;
+}
+
+/** Whether an `extraArgs` entry is a dangerous flag (`--exec`, `--prox=…`) */
 export function isForbiddenExtraArg(arg: string): boolean {
-  return FORBIDDEN_EXTRA_ARGS.some((forbidden) => arg === forbidden || arg.startsWith(`${forbidden}=`));
+  return restrictedArg(arg, FORBIDDEN_EXTRA_ARGS) !== undefined;
 }
 
 /** Error message when `value` is not a valid maxHeight, or null when it is */
@@ -258,14 +299,14 @@ function isLanguageCode(value: unknown): value is string {
 
 /**
  * Extra entries a dropped flag consumes on top of itself: 1 when its value is
- * glued (`--proxy=http://p`) or the flag takes none, 2 when the value is the
- * next entry (only for flags that take one — `valueFlags`).
+ * glued (`--proxy=http://p`, `-psecret`) or the flag takes none, 2 when the
+ * value is the next entry (only for flags that take one — `valueFlags`).
  */
-function orphanValueWidth(arg: string, next: unknown, valueFlags: readonly string[] | undefined): number {
-  if (arg.includes('=')) {
+function orphanValueWidth(arg: string, flag: string, next: unknown, valueFlags: readonly string[] | undefined): number {
+  if (arg.includes('=') || (flag.length === 2 && arg.length > 2)) {
     return 1;
   }
-  if (valueFlags !== undefined && !valueFlags.includes(arg)) {
+  if (valueFlags !== undefined && !valueFlags.includes(flag)) {
     return 1;
   }
   return typeof next === 'string' && !next.startsWith('-') ? 2 : 1;
@@ -285,15 +326,17 @@ function resolveExtraArgs(extraArgs: unknown[]): string[] {
       index += 1;
       continue;
     }
-    if (isReservedExtraArg(arg)) {
-      index += orphanValueWidth(arg, extraArgs[index + 1], RESERVED_ARGS_WITH_VALUE);
+    const reservedFlag = restrictedArg(arg, RESERVED_EXTRA_ARGS);
+    if (reservedFlag !== undefined) {
+      index += orphanValueWidth(arg, reservedFlag, extraArgs[index + 1], RESERVED_ARGS_WITH_VALUE);
       continue;
     }
-    if (isForbiddenExtraArg(arg)) {
+    const forbiddenFlag = restrictedArg(arg, FORBIDDEN_EXTRA_ARGS);
+    if (forbiddenFlag !== undefined) {
       // Drop the flag and its value(s): `--proxy http://p` arrives as two
       // entries, `--print-to-file` as three (template + file).
-      const extraWidth = FORBIDDEN_ARGS_VALUE_WIDTH[arg];
-      index += extraWidth ?? orphanValueWidth(arg, extraArgs[index + 1], undefined);
+      const extraWidth = FORBIDDEN_ARGS_VALUE_WIDTH[forbiddenFlag];
+      index += extraWidth ?? orphanValueWidth(arg, forbiddenFlag, extraArgs[index + 1], undefined);
       continue;
     }
     accepted.push(arg);
