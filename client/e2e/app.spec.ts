@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { json, mockApi, video } from './helpers';
+import { expandChannel, json, mockApi, video } from './helpers';
 
 test.describe('search page', () => {
   test('the URL drives the form and the results', async ({ page }) => {
@@ -228,13 +228,20 @@ test.describe('video details', () => {
 });
 
 test.describe('status page', () => {
-  test('shows the folders and their configuration', async ({ page }) => {
+  test('shows the channels and their configuration', async ({ page }) => {
     await mockApi(page);
 
     await page.goto('/download');
 
-    await expect(page.getByText('Konfiguracja folderów wideo')).toBeVisible();
+    // The console lists every configured folder as a row of the channel table
+    await expect(page.getByRole('table')).toBeVisible();
     await expect(page.getByText('/videos/e2e')).toBeVisible();
+    for (const column of ['Kanał', 'Lista filmów', 'Filmy', 'Kolejka', 'Akcje']) {
+      await expect(page.getByRole('columnheader', { name: column })).toBeVisible();
+    }
+
+    // The folder's own section (config, playlist, list) opens under the row
+    await expandChannel(page);
     await expect(page.getByRole('button', { name: 'Edytuj konfigurację' })).toBeVisible();
     // The download page is reachable through the gear menu; the brand link
     // leads back to the list.
@@ -299,6 +306,7 @@ test.describe('status page', () => {
     });
 
     await page.goto('/download');
+    await expandChannel(page);
     await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
     await expect(page.getByText('Film E2E')).toBeVisible();
 

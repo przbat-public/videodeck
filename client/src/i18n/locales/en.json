@@ -221,7 +221,8 @@
       "geo-restricted": "This video is not available in your country",
       "bot-wall": "YouTube is asking for a sign-in (bot wall)",
       "age-gate": "This video is age-restricted and requires a logged-in session"
-    }
+    },
+    "loadSummaries": "Could not count the videos per channel"
   },
   "theme": {
     "system": "System",
@@ -244,5 +245,59 @@
   "nav": {
     "backToList": "Back to list",
     "home": "Home"
+  },
+  "channelConsole": {
+    "title": "Downloads",
+    "summary": "Channels: {{channels}} · videos: {{videos}} · missing: {{missing}} · need attention: {{attention}}",
+    "searchPlaceholder": "Search channel, category or path...",
+    "sortLabel": "Sort",
+    "filter": {
+      "all": "All ({{count}})",
+      "attention": "Needs attention ({{count}})",
+      "queue": "In the queue ({{count}})",
+      "failed": "Failed ({{count}})"
+    },
+    "sort": {
+      "name": "Channel name",
+      "attention": "Needs attention first",
+      "updated": "Last update",
+      "missing": "Most missing"
+    },
+    "column": {
+      "channel": "Channel",
+      "playlist": "Playlist",
+      "videos": "Videos",
+      "queue": "Queue",
+      "actions": "Actions"
+    },
+    "list": {
+      "checking": "checking...",
+      "missing": "no list.json",
+      "exists": "list.json present",
+      "unknownDate": "no date"
+    },
+    "videos": {
+      "total": "{{count}} videos",
+      "notDownloaded": "{{count}} missing",
+      "stale": "{{count}} not updated in a month",
+      "loading": "counting..."
+    },
+    "queue": {
+      "running": "{{count}} running",
+      "queued": "{{count}} queued",
+      "failed": "{{count}} failed"
+    },
+    "attention": {
+      "noChannelUrl": "no channelUrl",
+      "noList": "no list.json",
+      "noIndex": "no ES index",
+      "failed": "download failed",
+      "stale": "stale downloads"
+    },
+    "expand": "Show videos",
+    "collapse": "Hide videos",
+    "searchInChannel": "Search in this channel",
+    "empty": "No channel matches the filter",
+    "countsError": "Could not count the videos: {{message}}"
   }
 }

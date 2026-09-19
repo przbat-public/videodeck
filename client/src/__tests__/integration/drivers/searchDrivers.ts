@@ -40,8 +40,16 @@ export async function typeInto(user: RenderedApp['user'], label: string, value: 
  */
 const titleMatcher = (title: string) => (_content: string, element: Element | null) => element?.textContent === title;
 
-/** Wait for a video card with exactly this title */
-export const findCardByTitle = (title: string) => screen.findByText(titleMatcher(title));
+/**
+ * Wait for a video card with exactly this title.
+ *
+ * The budget is generous on purpose: the first card of a journey waits for a
+ * mount, a search round trip against the in-process backend and the list
+ * render, which on a loaded machine outruns the 1 s default and reports a
+ * missing card that is simply not painted yet.
+ */
+export const findCardByTitle = (title: string, timeoutMs = 15_000) =>
+  screen.findByText(titleMatcher(title), undefined, { timeout: timeoutMs });
 
 /** The card with exactly this title, or null */
 export const queryCardByTitle = (title: string) => screen.queryByText(titleMatcher(title));

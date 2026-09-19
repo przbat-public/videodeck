@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { StatusResponse } from '@videodeck/shared/api';
 import { MemoryRouter } from 'react-router-dom';
@@ -29,16 +29,23 @@ const json = (body: unknown, status = 200): MockResponse => ({
  * queue controls — hence the routing mock rather than a single canned
  * response.
  */
-function installFetch(handlers: { status?: () => MockResponse; queue?: () => MockResponse } = {}): FetchMock {
+function installFetch(
+  handlers: { status?: () => MockResponse; queue?: () => MockResponse; summaries?: () => MockResponse } = {},
+): FetchMock {
+  // One table for the plain GETs keeps this dispatcher tiny; the two special
+  // cases below it need the method or a prefix.
+  const routes: Record<string, () => MockResponse> = {
+    '/api/status': () => handlers.status?.() ?? json(statusResponse),
+    '/api/folder/summaries': () => handlers.summaries?.() ?? json({ summaries: {} }),
+    '/api/folder/queue': () => handlers.queue?.() ?? json({ jobs: [], paused: false }),
+    '/api/folder/queue/pause?paused=1': () => json({ paused: true }),
+    '/api/folder/queue/resume?paused=0': () => json({ paused: false }),
+  };
+
   const fetchMock: FetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === '/api/status') {
-      return handlers.status?.() ?? json(statusResponse);
-    }
-    if (url === '/api/folder/queue') {
-      return handlers.queue?.() ?? json({ jobs: [], paused: false });
-    }
-    if (url === '/api/folder/queue/pause?paused=1' || url === '/api/folder/queue/resume?paused=0') {
-      return json({ paused: url.includes('pause') });
+    const handler = routes[url];
+    if (handler !== undefined) {
+      return handler();
     }
     if (url === '/api/folder/queue/finished' && init?.method === 'DELETE') {
       return json({ cleared: 2 });
@@ -71,20 +78,77 @@ describe('StatusPage', () => {
     expect(screen.getByText('Ładowanie statusu...')).toBeInTheDocument();
   });
 
-  it('renders one section per configured folder', async () => {
+  it('renders one row per configured folder', async () => {
     renderPage();
 
     expect(await screen.findByText('/videos/a')).toBeInTheDocument();
     expect(screen.getByText('/videos/b')).toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent?.trim())).toEqual([
+      'Kanał',
+      'Lista filmów',
+      'Filmy',
+      'Kolejka',
+      'Akcje',
+    ]);
   });
 
-  it('marks only the folders whose Elasticsearch index is missing', async () => {
+  it('chips only the folders whose Elasticsearch index is missing', async () => {
     renderPage();
 
     expect(await screen.findByText('/videos/b')).toBeInTheDocument();
-    expect(screen.getByText('indeks ES: brak')).toBeInTheDocument();
-    // "ready" is noise: only the actionable state is shown
+    expect(screen.getByText('brak indeksu ES')).toBeInTheDocument();
+    // The console shows the actionable state only, never a "ready" badge
     expect(screen.queryByText('indeks ES: gotowy')).toBeNull();
+  });
+
+  it('shows the counts and the queue state of every channel', async () => {
+    installFetch({
+      summaries: () =>
+        json({
+          summaries: {
+            '/videos/a': { videos: 40, downloaded: 2, notDownloaded: 38, stale: 5 },
+            '/videos/b': { videos: 0, downloaded: 0, notDownloaded: 0, stale: 0 },
+          },
+        }),
+      queue: () =>
+        json({
+          paused: false,
+          jobs: [
+            {
+              id: 'job-1',
+              folderPath: '/videos/a',
+              videoId: 'v1',
+              videoUrl: 'https://yt/v1',
+              type: 'download',
+              status: 'error',
+              error: 'yt-dlp exited with code 1',
+              log: [],
+              logLineCount: 0,
+              createdAt: '2026-09-19T10:00:00.000Z',
+            },
+          ],
+        }),
+    });
+    renderPage();
+
+    expect(await screen.findByText('40 filmów')).toBeInTheDocument();
+    expect(screen.getByText('38 niepobranych')).toBeInTheDocument();
+    expect(screen.getByText('5 nie od miesiąca')).toBeInTheDocument();
+    expect(screen.getByText('1 błąd')).toBeInTheDocument();
+    // One channel has no counts of its own, so it shows none
+    expect(screen.getByText('0 filmów')).toBeInTheDocument();
+  });
+
+  it('filters the rows from the toolbar and keeps the filter in the URL', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('/videos/a');
+
+    await user.click(screen.getByRole('button', { name: /Wymaga uwagi/ }));
+
+    // /videos/b has no index, so it is the one that needs attention
+    expect(screen.getByText('/videos/b')).toBeInTheDocument();
+    expect(screen.queryByText('/videos/a')).toBeNull();
   });
 
   it('pauses and resumes the download queue', async () => {
@@ -139,11 +203,15 @@ describe('StatusPage', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue/finished', { method: 'DELETE' }));
   });
 
-  it('offers to create config.json for a folder that has none', async () => {
+  it('opens the full folder section under the row the URL expands', async () => {
+    const user = userEvent.setup();
     renderPage();
+    const rowB = (await screen.findByText('/videos/b')).closest('tr');
+    expect(rowB).not.toBeNull();
 
-    expect(await screen.findByText('/videos/b')).toBeInTheDocument();
-    expect(screen.getByText('Plik config.json nie istnieje w tym folderze.')).toBeInTheDocument();
+    await user.click(within(rowB as HTMLElement).getByRole('button', { name: 'Pokaż filmy' }));
+
+    expect(await screen.findByText('Plik config.json nie istnieje w tym folderze.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Utwórz config.json' })).toBeInTheDocument();
   });
 

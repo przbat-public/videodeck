@@ -120,8 +120,8 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
     page.unmount();
     const searchPage = await renderApp('/');
     await findCardByTitle('Fake video aaaaaaaaaaa');
-    expect(queryCardByTitle('Fake video bbbbbbbbbbb')).toBeInTheDocument();
-    expect(queryCardByTitle('Głęboka integracja')).toBeInTheDocument();
+    await findCardByTitle('Fake video bbbbbbbbbbb');
+    await findCardByTitle('Głęboka integracja');
     expect(queryCardByTitle('Drugi kanał wideo')).not.toBeInTheDocument();
 
     await typeAndCommitPhrase(searchPage.user, 'aaaaaaaaaaa');

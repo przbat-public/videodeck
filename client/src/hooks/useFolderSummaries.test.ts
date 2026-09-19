@@ -1,0 +1,68 @@
+import { renderHook, waitFor } from '@testing-library/react';
+import { act } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockResponse } from '../test/fetchMock';
+import { installFetchMock } from '../test/fetchMock';
+import { useFolderSummaries } from './useFolderSummaries';
+
+const fetchMock = installFetchMock();
+
+const json = (body: unknown, status = 200): MockResponse => ({
+  ok: status >= 200 && status < 300,
+  status,
+  json: async () => body,
+});
+
+const body = {
+  summaries: {
+    '/videos/a': { videos: 10, downloaded: 8, notDownloaded: 2, stale: 1, newestUpdate: '2026-09-01T00:00:00.000Z' },
+  },
+};
+
+describe('useFolderSummaries', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchMock.mockReset();
+  });
+
+  it('loads the counts for every channel', async () => {
+    fetchMock.mockResolvedValue(json(body));
+    const { result } = renderHook(() => useFolderSummaries());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.summaries['/videos/a']).toEqual(body.summaries['/videos/a']);
+    expect(result.current.error).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith('/api/folder/summaries', { signal: expect.any(AbortSignal) });
+  });
+
+  it('reports a failed request and keeps the table usable', async () => {
+    fetchMock.mockResolvedValue(json({ error: 'boom' }, 500));
+    const { result } = renderHook(() => useFolderSummaries());
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+
+    expect(result.current.summaries).toEqual({});
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('does not call the endpoint when disabled', () => {
+    fetchMock.mockResolvedValue(json(body));
+    const { result } = renderHook(() => useFolderSummaries(false));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('loads again on reload', async () => {
+    fetchMock.mockResolvedValue(json(body));
+    const { result } = renderHook(() => useFolderSummaries());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.reload();
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+});
