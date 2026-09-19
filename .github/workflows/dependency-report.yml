@@ -6,22 +6,27 @@ on:
     - cron: '0 8 * * 1'
   workflow_dispatch:
 
-permissions:
-  contents: read
-  issues: write
+# Empty on purpose: the job that publishes the issue asks for exactly what it
+# needs, so a step in another job cannot inherit a write scope.
+permissions: {}
 
 jobs:
   report:
     name: Generate and publish dependency report
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      # `npm outdated`/`npm audit` only read package.json + lockfiles,
-      # so no install step is needed.
+      # `pnpm outdated`/`pnpm audit` only read package.json + the workspace
+      # lockfile, so no install step is needed (pnpm ships with the runner).
       - name: Generate report
         run: node scripts/dependency-report.mjs > /tmp/dependency-report.md
       - name: Create or update the report issue

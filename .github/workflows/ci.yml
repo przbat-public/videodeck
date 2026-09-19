@@ -28,6 +28,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
       - name: Biome + repository invariants
         run: pnpm run lint
@@ -48,6 +52,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
       - run: pnpm run format:check
 
@@ -57,6 +65,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -70,6 +82,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
       - run: pnpm run typecheck
 
@@ -92,6 +108,10 @@ jobs:
             run: pnpm run test
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
       - name: Run tests
         working-directory: ${{ matrix.dir }}
@@ -103,6 +123,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
       # The real <App /> against the real backend booted in-process via
       # @videodeck/test-infra (fake ES + mock OpenAI + fake yt-dlp).
@@ -116,6 +140,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
       # Coverage thresholds are the ratchet: the run fails when coverage drops
       # below the committed numbers. Locally, `pnpm run test:coverage` raises
@@ -143,6 +171,10 @@ jobs:
           --health-retries 24
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
       # The fake binary validates the yt-dlp argument templates offline; the
       # Elasticsearch suite runs against the service container above. Nothing
@@ -164,6 +196,10 @@ jobs:
     needs: [lint, format, typecheck, unit-tests]
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
       - run: pnpm run build:server && pnpm run build:client && pnpm run build:extension
       - uses: actions/upload-artifact@v7
@@ -188,6 +224,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
       - name: Install Playwright browsers + OS deps
         working-directory: client

@@ -1,13 +1,16 @@
 /**
- * Weekly dependency report: `npm outdated` + `npm audit` for every package.
+ * Weekly dependency report: `pnpm outdated` + `pnpm audit` for every package.
  *
  * Prints a Markdown report to stdout. Exit code is 0 even when outdated
  * packages or vulnerabilities are found — findings belong in the report, not
  * in the exit status. GitHub Actions turns the output into a labeled issue
  * (see .github/workflows/dependency-report.yml).
  *
- * The npm subprocesses run without installing anything: both commands only
- * need `package.json` + `package-lock.json` from the repository.
+ * The pnpm subprocesses run without installing anything: both commands read
+ * `package.json` plus the workspace `pnpm-lock.yaml`. This repository has no
+ * `package-lock.json`, which is why the report used to say "0 vulns" for
+ * every package: `npm audit` failed outright and its empty output was read as
+ * "nothing found". A command that cannot answer now says so in the report.
  */
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -15,6 +18,8 @@ import { pathToFileURL } from 'node:url';
 /** @typedef {{ name: string, dir: string }} PackageSpec */
 /** @typedef {{ package: string, current: string, wanted: string, latest: string }} OutdatedRow */
 /** @typedef {{ low: number, moderate: number, high: number, critical: number, total: number }} AuditSummary */
+/** @typedef {{ stdout: string, stderr: string, failed: boolean }} CommandOutput */
+/** @typedef {{ name: string, outdated: OutdatedRow[], outdatedError: string | null, audit: AuditSummary, auditError: string | null }} PackageReport */
 
 /** @type {PackageSpec[]} */
 const PACKAGES = [
@@ -24,29 +29,65 @@ const PACKAGES = [
   { name: 'chrome-extension', dir: 'chrome-extension' },
 ];
 
+const NO_VULNERABILITIES = { low: 0, moderate: 0, high: 0, critical: 0, total: 0 };
+
 /**
- * Run an npm command that uses a non-zero exit code to signal findings
- * (`npm outdated` exits 1 when anything is outdated, `npm audit` when
- * vulnerabilities exist). Both outcomes are normal here.
+ * First non-empty line of a command's diagnostics, for a one-line report
+ * @param {string} text
+ * @returns {string | undefined}
+ */
+function firstLine(text) {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line !== '');
+}
+
+/**
+ * Run a pnpm command. Both commands this script uses report findings through
+ * a non-zero exit code as well as through their JSON (`pnpm outdated` exits 1
+ * when anything is outdated, `pnpm audit` when vulnerabilities exist), so the
+ * exit status alone is not an error — the output is what decides.
  * @param {string} dir
  * @param {string[]} args
- * @returns {string} stdout, even when the command failed
+ * @returns {CommandOutput}
  */
-export function runNpm(dir, args) {
+export function runPnpm(dir, args) {
   try {
-    return execFileSync('npm', args, {
+    const stdout = execFileSync('pnpm', args, {
       cwd: dir,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    return { stdout, stderr: '', failed: false };
   } catch (error) {
     const failed = /** @type {{ stdout?: string, stderr?: string }} */ (error);
-    return failed.stdout ?? '';
+    return { stdout: failed.stdout ?? '', stderr: failed.stderr ?? '', failed: true };
   }
 }
 
 /**
- * Parse `npm outdated --json` output into sorted rows.
+ * Whether the command answered with JSON, and why not when it did not. An
+ * empty or non-JSON answer is a failure of the command (missing binary,
+ * missing lockfile, no network), never "nothing found".
+ * @param {CommandOutput} output
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+export function checkJson(output) {
+  const text = output.stdout.trim();
+  if (text === '') {
+    return { ok: false, error: firstLine(output.stderr) ?? 'the command produced no output' };
+  }
+  try {
+    JSON.parse(text);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: `unreadable output: ${firstLine(text) ?? ''}` };
+  }
+}
+
+/**
+ * Parse `pnpm outdated --json` output into sorted rows.
  * @param {string} json
  * @returns {OutdatedRow[]}
  */
@@ -64,7 +105,7 @@ export function parseOutdated(json) {
 }
 
 /**
- * Parse `npm audit --json` output into a severity summary.
+ * Parse `pnpm audit --json` output into a severity summary.
  * @param {string} json
  * @returns {AuditSummary}
  */
@@ -78,8 +119,6 @@ export function parseAudit(json) {
   const critical = counts.critical ?? 0;
   return { low, moderate, high, critical, total: low + moderate + high + critical };
 }
-
-/** @typedef {{ name: string, outdated: OutdatedRow[], audit: AuditSummary }} PackageReport */
 
 /**
  * @param {string} date
@@ -105,7 +144,10 @@ export function composeReport(date, packages) {
     lines.push(`## ${pkg.name}`);
     lines.push('');
 
-    if (pkg.outdated.length === 0) {
+    if (pkg.outdatedError !== null) {
+      lines.push(`Outdated: could not run (${pkg.outdatedError}).`);
+      lines.push('');
+    } else if (pkg.outdated.length === 0) {
       lines.push('Outdated: none.');
       lines.push('');
     } else {
@@ -119,6 +161,14 @@ export function composeReport(date, packages) {
       lines.push('');
     }
 
+    if (pkg.auditError !== null) {
+      // A command that failed is not a clean bill of health: say so instead
+      // of printing the zero counts an empty answer would produce.
+      lines.push(`Audit: could not run (${pkg.auditError}).`);
+      lines.push('');
+      continue;
+    }
+
     const { low, moderate, high, critical, total } = pkg.audit;
     lines.push(
       `Audit: ${total} vuln${total === 1 ? '' : 's'} (low ${low}, moderate ${moderate}, high ${high}, critical ${critical}).`,
@@ -130,15 +180,25 @@ export function composeReport(date, packages) {
 }
 
 /**
- * Collect live data for every package.
+ * Collect live data for every package. Outdated packages are per package;
+ * the audit reads the one workspace lockfile, so it repeats the same numbers,
+ * but each section stays self-contained.
  * @returns {PackageReport[]}
  */
 export function collectReports() {
-  return PACKAGES.map(({ name, dir }) => ({
-    name,
-    outdated: parseOutdated(runNpm(dir, ['outdated', '--json'])),
-    audit: parseAudit(runNpm(dir, ['audit', '--json'])),
-  }));
+  return PACKAGES.map(({ name, dir }) => {
+    const outdated = runPnpm(dir, ['outdated', '--json']);
+    const audit = runPnpm(dir, ['audit', '--json']);
+    const outdatedCheck = checkJson(outdated);
+    const auditCheck = checkJson(audit);
+    return {
+      name,
+      outdated: outdatedCheck.ok ? parseOutdated(outdated.stdout) : [],
+      outdatedError: outdatedCheck.ok ? null : outdatedCheck.error,
+      audit: auditCheck.ok ? parseAudit(audit.stdout) : NO_VULNERABILITIES,
+      auditError: auditCheck.ok ? null : auditCheck.error,
+    };
+  });
 }
 
 const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;

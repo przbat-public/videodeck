@@ -10,20 +10,26 @@ on:
     paths:
       - '**/pnpm-lock.yaml'
 
-permissions:
-  actions: read
-  security-events: write
-  contents: read
+# Empty on purpose: each scan asks for its own scopes below.
+permissions: {}
 
 jobs:
   # Full scan of every lockfile on main and weekly: fails when known
   # vulnerabilities exist, reports to the Code scanning dashboard.
   scan-scheduled:
     if: github.event_name != 'pull_request'
+    permissions:
+      actions: read
+      security-events: write
+      contents: read
     uses: 'google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.6.0'
 
   # Compares the PR branch against main and only reports NEW vulnerabilities
   # introduced by the PR (warns by default — it does not block the merge).
   scan-pr:
     if: github.event_name == 'pull_request'
+    permissions:
+      actions: read
+      security-events: write
+      contents: read
     uses: 'google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.6.0'

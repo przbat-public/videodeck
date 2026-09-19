@@ -2,16 +2,19 @@ name: 'Dependency Review'
 
 on: [pull_request]
 
-permissions:
-  contents: read
-  pull-requests: write
+permissions: {}
 
 jobs:
   dependency-review:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: 'Checkout Repository'
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: 'Dependency Review'
         uses: actions/dependency-review-action@v5
         with:
