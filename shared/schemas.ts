@@ -241,6 +241,24 @@ export const FolderListResponseSchema = z.object({
   lastUpdatedDates: z.record(z.string(), z.string()),
 });
 
+/**
+ * Per-channel counts behind the download page's channel console. Only videos
+ * `list.json` still contains are counted, `stale` marks downloads whose
+ * metadata is older than a month (see `shared/dates.ts`), and `newestUpdate`
+ * stays absent while the channel has nothing downloaded.
+ */
+export const FolderSummarySchema = z.object({
+  videos: z.number().int().nonnegative(),
+  downloaded: z.number().int().nonnegative(),
+  notDownloaded: z.number().int().nonnegative(),
+  stale: z.number().int().nonnegative(),
+  newestUpdate: z.string().optional(),
+});
+
+export const FolderSummariesResponseSchema = z.object({
+  summaries: z.record(z.string(), FolderSummarySchema),
+});
+
 export const QueueJobSchema = z.object({
   id: z.string(),
   folderPath: z.string(),
@@ -358,6 +376,8 @@ export type FolderConfig = z.infer<typeof FolderConfigSchema>;
 export type StatusResponse = z.infer<typeof StatusResponseSchema>;
 export type ChannelVideo = z.infer<typeof ChannelVideoSchema>;
 export type FolderListResponse = z.infer<typeof FolderListResponseSchema>;
+export type FolderSummary = z.infer<typeof FolderSummarySchema>;
+export type FolderSummariesResponse = z.infer<typeof FolderSummariesResponseSchema>;
 export type QueueJob = z.infer<typeof QueueJobSchema>;
 export type SkippedVideo = z.infer<typeof SkippedVideoSchema>;
 export type EnqueueJobsResponse = z.infer<typeof EnqueueJobsResponseSchema>;

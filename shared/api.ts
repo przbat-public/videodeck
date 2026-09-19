@@ -27,6 +27,8 @@ export type {
   EnqueueJobsResponse,
   FolderConfig,
   FolderListResponse,
+  FolderSummariesResponse,
+  FolderSummary,
   ListExistsResponse,
   QueueJob,
   QueueListResponse,

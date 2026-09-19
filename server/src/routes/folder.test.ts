@@ -8,6 +8,7 @@ import {
   downloadVideoEventSchema,
   EnqueueJobsResponseSchema,
   FolderListResponseSchema,
+  FolderSummariesResponseSchema,
   QueueListResponseSchema,
   QueuePauseResponseSchema,
   StatusResponseSchema,
@@ -30,6 +31,7 @@ import {
 import { findEntryByVideoId, getDownloadStatuses, loadIndex, rebuildIndex } from '../services/folderIndex';
 import { at } from '../test-utils';
 import { activeSseStreamCount } from '../utils/sseRegistry';
+import { invalidateSummaryCache } from './folder';
 
 jest.mock('node:fs/promises');
 jest.mock('node:child_process');
@@ -177,6 +179,7 @@ describe('folder router', () => {
     mockedListCachedFolders.mockResolvedValue(new Set([FOLDER]));
     downloadQueue.clear();
     spawnCalls.length = 0;
+    invalidateSummaryCache();
     app = createApp();
   });
 
@@ -432,6 +435,80 @@ describe('folder router', () => {
       expect(response.status).toBe(200);
       expect(response.body.downloadStatuses).toEqual({});
       expect(response.body.lastUpdatedDates).toEqual({});
+    });
+  });
+
+  describe('GET /api/folder/summaries', () => {
+    const listPath = (folder: string): string => `${folder}/list.json`;
+    const listOf = (ids: string[]): string =>
+      JSON.stringify(ids.map((id) => ({ id, title: `Video ${id}`, url: `https://yt/watch?v=${id}` })));
+
+    beforeEach(() => {
+      invalidateSummaryCache();
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === listPath(FOLDER)) {
+          return Promise.resolve(listOf(['v1', 'v2', 'v3']));
+        }
+        if (target === listPath(OTHER_FOLDER)) {
+          return Promise.resolve(listOf(['w1']));
+        }
+        return Promise.reject(enoent());
+      });
+      mockedGetDownloadStatuses.mockImplementation((folderPath) =>
+        Promise.resolve(
+          folderPath === FOLDER
+            ? {
+                downloadStatuses: { v1: true, v2: true },
+                lastUpdatedDates: {
+                  v1: '2026-09-01T00:00:00.000Z',
+                  v2: '2020-01-01T00:00:00.000Z',
+                },
+              }
+            : { downloadStatuses: {}, lastUpdatedDates: {} },
+        ),
+      );
+    });
+
+    it('reports one summary per configured folder', async () => {
+      const response = await request(app).get('/api/folder/summaries');
+
+      expect(response.status).toBe(200);
+      expect(FolderSummariesResponseSchema.parse(response.body)).toEqual({
+        summaries: {
+          [FOLDER]: {
+            videos: 3,
+            downloaded: 2,
+            notDownloaded: 1,
+            stale: 1,
+            newestUpdate: '2026-09-01T00:00:00.000Z',
+          },
+          [OTHER_FOLDER]: { videos: 1, downloaded: 0, notDownloaded: 1, stale: 0 },
+        },
+      });
+    });
+
+    it('reports zeroes for a folder without a readable list.json', async () => {
+      mockedFs.readFile.mockRejectedValue(enoent());
+
+      const response = await request(app).get('/api/folder/summaries');
+
+      expect(response.status).toBe(200);
+      expect(response.body.summaries).toEqual({
+        [FOLDER]: { videos: 0, downloaded: 0, notDownloaded: 0, stale: 0 },
+        [OTHER_FOLDER]: { videos: 0, downloaded: 0, notDownloaded: 0, stale: 0 },
+      });
+    });
+
+    it('reads the folders once for a burst of requests', async () => {
+      await request(app).get('/api/folder/summaries');
+      const readsAfterFirst = mockedFs.readFile.mock.calls.length;
+
+      await request(app).get('/api/folder/summaries');
+
+      // The console polls this endpoint; the second request inside the cache
+      // window must not touch the disks again.
+      expect(mockedFs.readFile.mock.calls.length).toBe(readsAfterFirst);
     });
   });
 
