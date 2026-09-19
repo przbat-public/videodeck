@@ -146,7 +146,7 @@ describe('StatusPage', () => {
 
     expect(await screen.findByText('40 filmów')).toBeInTheDocument();
     expect(screen.getByText('38 niepobranych')).toBeInTheDocument();
-    expect(screen.getByText('5 nie od miesiąca')).toBeInTheDocument();
+    expect(screen.getByText('5 nie zaktualizowanych od miesiąca')).toBeInTheDocument();
     expect(screen.getByText('1 błąd')).toBeInTheDocument();
     // One channel has no counts of its own, so it shows none
     expect(screen.getByText('0 filmów')).toBeInTheDocument();

@@ -33,6 +33,13 @@ describe('PlaylistDownloadSection', () => {
     fetchMock.mockReset();
   });
 
+  it('has no title of its own: the channel row above names the section', () => {
+    renderSection();
+
+    expect(screen.queryByRole('heading', { name: 'Pobieranie listy filmów' })).toBeNull();
+    expect(screen.queryByRole('heading')).toBeNull();
+  });
+
   it('renders nothing for a folder without a channel URL', () => {
     const { container } = render(
       <PlaylistDownloadSection

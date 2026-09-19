@@ -163,7 +163,6 @@
     "extraArgsReserved": "flagi -f, -o, --download-archive, --merge-output-format i --paths są zarezerwowane; --exec, --proxy i --cookies* są zabronione"
   },
   "playlist": {
-    "title": "Pobieranie listy filmów",
     "checking": "Sprawdzanie statusu pliku list.json...",
     "exists": "Plik list.json już istnieje. Kliknij przycisk poniżej, aby zaktualizować listę filmów.",
     "missing": "Plik list.json nie istnieje. Kliknij przycisk poniżej, aby utworzyć listę filmów z kanału.",
@@ -289,8 +288,14 @@
     },
     "videos": {
       "total": "{{count}} filmów",
-      "notDownloaded": "{{count}} niepobranych",
-      "stale": "{{count}} nie od miesiąca",
+      "notDownloaded_one": "{{count}} niepobrany",
+      "notDownloaded_few": "{{count}} niepobrane",
+      "notDownloaded_many": "{{count}} niepobranych",
+      "notDownloaded_other": "{{count}} niepobranych",
+      "stale_one": "{{count}} nie zaktualizowany od miesiąca",
+      "stale_few": "{{count}} nie zaktualizowane od miesiąca",
+      "stale_many": "{{count}} nie zaktualizowanych od miesiąca",
+      "stale_other": "{{count}} nie zaktualizowanych od miesiąca",
       "loading": "liczę..."
     },
     "queue": {

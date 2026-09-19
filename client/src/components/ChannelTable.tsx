@@ -62,14 +62,14 @@ function ChannelVideosCell({ summary, countsLoading }: ChannelVideosCellProps): 
   }
   return (
     <>
-      <span>{t('channelConsole.videos.total', { count: summary.videos })}</span>
+      <span className="channel-count">{t('channelConsole.videos.total', { count: summary.videos })}</span>
       {summary.notDownloaded > 0 && (
-        <span className="channel-badge channel-badge--warn">
+        <span className="channel-count channel-count--warn">
           {t('channelConsole.videos.notDownloaded', { count: summary.notDownloaded })}
         </span>
       )}
       {summary.stale > 0 && (
-        <span className="channel-badge channel-badge--warn">
+        <span className="channel-count channel-count--warn">
           {t('channelConsole.videos.stale', { count: summary.stale })}
         </span>
       )}

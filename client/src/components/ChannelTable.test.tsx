@@ -71,12 +71,30 @@ describe('ChannelTable', () => {
 
     expect(screen.getByText('40 filmów')).toBeInTheDocument();
     expect(screen.getByText('38 niepobranych')).toBeInTheDocument();
-    expect(screen.getByText('5 nie od miesiąca')).toBeInTheDocument();
+    expect(screen.getByText('5 nie zaktualizowanych od miesiąca')).toBeInTheDocument();
     expect(screen.getByText('1 w toku')).toBeInTheDocument();
     expect(screen.getByText('2 czeka')).toBeInTheDocument();
     expect(screen.getByText('1 błąd')).toBeInTheDocument();
     // No native title attributes: the design contract sends the info to a Tooltip
     expect(screen.getByText('1 błąd')).not.toHaveAttribute('title');
+  });
+
+  it('stacks the video counts as plain lines, not as badges', () => {
+    renderTable([row({ summary: { videos: 1257, downloaded: 1255, notDownloaded: 1, stale: 1 } })]);
+
+    const total = screen.getByText('1257 filmów');
+    const missing = screen.getByText('1 niepobrany');
+    const stale = screen.getByText('1 nie zaktualizowany od miesiąca');
+
+    // Each count is its own line of plain text: a pill per number made the
+    // cell a row of chips that wrapped unpredictably
+    for (const line of [total, missing, stale]) {
+      expect(line).toHaveClass('channel-count');
+      expect(line).not.toHaveClass('channel-badge');
+    }
+    expect(missing).toHaveClass('channel-count--warn');
+    expect(stale).toHaveClass('channel-count--warn');
+    expect(total).not.toHaveClass('channel-count--warn');
   });
 
   it('chips only the reasons the row cannot show elsewhere', () => {
