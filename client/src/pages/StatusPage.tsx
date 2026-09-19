@@ -2,21 +2,29 @@ import type { JSX } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FolderSection } from '../components/FolderSection';
 import { QueueControls } from '../components/QueueControls';
+import { Button } from '../components/ui/Button';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { Loading } from '../components/ui/Loading';
+import { usePageFocus } from '../hooks/usePageFocus';
 import { useStatus } from '../hooks/useStatus';
 import { collectCategories } from '../utils/folderConfigForm';
 
 export default function StatusPage(): JSX.Element {
-  const { state, updateFolderConfig } = useStatus();
+  const { state, updateFolderConfig, reload } = useStatus();
   const { t } = useTranslation();
+  const mainRef = usePageFocus<HTMLElement>();
 
   return (
-    <main className="app-main">
+    <main className="app-main" ref={mainRef} tabIndex={-1}>
       <div className="status-page">
         {state.loading && <Loading message={t('status.loading')} />}
 
-        {state.error && <ErrorMessage>{t('app.error', { message: state.error })}</ErrorMessage>}
+        {state.error && (
+          <div className="page-error">
+            <ErrorMessage>{t('app.error', { message: state.error })}</ErrorMessage>
+            <Button onClick={reload}>{t('app.retry')}</Button>
+          </div>
+        )}
 
         {state.statusData &&
           (() => {

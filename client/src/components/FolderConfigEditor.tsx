@@ -180,7 +180,7 @@ export function FolderConfigEditor({
                   value={form.subLangs}
                   onChange={(e) => updateForm({ subLangs: e.target.value })}
                   placeholder={t('config.subtitleLangsPlaceholder', {
-                    langs: downloadDefaults.subLangs.join(', ') || 'brak',
+                    langs: downloadDefaults.subLangs.join(', ') || t('config.none'),
                   })}
                   className="config-input"
                 />

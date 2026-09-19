@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useRouteError } from 'react-router-dom';
+import { usePageFocus } from '../hooks/usePageFocus';
 import { logError } from '../utils/logError';
 
 /**
@@ -12,6 +13,7 @@ import { logError } from '../utils/logError';
 export default function RouteError(): JSX.Element {
   const { t } = useTranslation();
   const error = useRouteError();
+  const mainRef = usePageFocus<HTMLElement>();
   // Logged in an effect: StrictMode double-invokes render, which used to
   // double-log every route error.
   useEffect(() => {
@@ -19,10 +21,10 @@ export default function RouteError(): JSX.Element {
   }, [error]);
 
   return (
-    <div className="route-error">
+    <main className="route-error" ref={mainRef} tabIndex={-1}>
       <h1>{t('app.unexpectedError')}</h1>
       <p>{t('app.routeErrorText')}</p>
       <Link to="/">{t('app.backToStart')}</Link>
-    </div>
+    </main>
   );
 }

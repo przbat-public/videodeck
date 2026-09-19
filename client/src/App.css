@@ -201,6 +201,14 @@
   font-size: 0.9rem;
 }
 
+/* A failed page load: the reason plus the retry that re-runs the request */
+.page-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 /* Video Card Link */
 .video-card-link {
   text-decoration: none;

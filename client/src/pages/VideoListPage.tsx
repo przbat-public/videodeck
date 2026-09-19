@@ -10,6 +10,7 @@ import VideoList from '../components/VideoList';
 import { useCacheRefresh } from '../hooks/useCacheRefresh';
 import { useCategories } from '../hooks/useCategories';
 import { useChannelNames } from '../hooks/useChannelNames';
+import { usePageFocus } from '../hooks/usePageFocus';
 import { useRecreateIndices } from '../hooks/useRecreateIndices';
 import { useSearchUrlState } from '../hooks/useSearchUrlState';
 import { useVideoSearch } from '../hooks/useVideoSearch';
@@ -24,6 +25,7 @@ export default function VideoListPage(): JSX.Element {
   const { loading: recreateIndicesLoading, recreateIndices } = useRecreateIndices();
   const [onlyMissing, setOnlyMissing] = useState(false);
   const { t } = useTranslation();
+  const mainRef = usePageFocus<HTMLElement>();
 
   // The URL drives the results: a deep link, a reload and a change made in
   // the search bar all arrive here the same way.
@@ -98,7 +100,7 @@ export default function VideoListPage(): JSX.Element {
   const showEmptyState = !videoError;
 
   return (
-    <main className="app-main" aria-busy={videoLoading}>
+    <main className="app-main" ref={mainRef} tabIndex={-1} aria-busy={videoLoading}>
       <SearchBar
         query={query}
         sort={sort}
