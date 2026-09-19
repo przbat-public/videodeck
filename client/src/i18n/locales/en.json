@@ -294,6 +294,20 @@
       "failed": "download failed",
       "stale": "stale downloads"
     },
+    "actions": {
+      "downloadAll": "Download all",
+      "downloadPlaylist": "Download playlist",
+      "updateStale": "Update stale",
+      "updateAll": "Update all",
+      "cancel": "Cancel the channel's jobs",
+      "editConfig": "Edit config.json",
+      "more": "More actions",
+      "working": "Working...",
+      "nothingToDo": "Nothing to do here",
+      "listFailed": "Could not read the channel's video list",
+      "cancelled": "Cancelled the channel's jobs",
+      "playlistQueued": "Fetching the channel's playlist"
+    },
     "expand": "Show videos",
     "collapse": "Hide videos",
     "searchInChannel": "Search in this channel",

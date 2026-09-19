@@ -3,10 +3,10 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
-import { folderConfig } from '@videodeck/test-infra/deepServerTestEnv';
+import { folderConfig, videoFiles } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { findCardByTitle, queryCardByTitle, typeAndCommitPhrase } from './drivers/searchDrivers';
-import { folderSection } from './drivers/statusDrivers';
+import { channelRow, folderSection } from './drivers/statusDrivers';
 import { renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
 
@@ -162,6 +162,33 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
       const state = await readQueueState();
       expect(state.paused).toBe(true);
       expect(state.jobs).toHaveLength(0);
+    });
+  });
+
+  it('queues the missing videos of a channel from its console row', async () => {
+    await env.seedFolder('channel-console-row', {
+      'config.json': folderConfig('https://www.youtube.com/@consolerow'),
+      'list.json': JSON.stringify([
+        { id: 'ddddddddddd', title: 'Juz pobrany', url: 'https://www.youtube.com/watch?v=ddddddddddd' },
+        { id: 'eeeeeeeeeee', title: 'Do pobrania', url: 'https://www.youtube.com/watch?v=eeeeeeeeeee' },
+      ]),
+      // The first video is already on disk, so only the second may be queued
+      ...videoFiles('ddddddddddd', 'Juz pobrany'),
+    });
+    env.setFolders('channel-console-row');
+
+    const page = await renderApp('/download');
+    // The previous test left the queue paused, which keeps the new job waiting
+    // long enough to inspect the persisted state.
+    await screen.findByRole('button', { name: 'Wznów kolejkę' });
+
+    const row = await channelRow(env.folder('channel-console-row'));
+    await page.user.click(within(row).getByRole('button', { name: 'Pobierz wszystkie' }));
+
+    await waitFor(async () => {
+      const state = await readQueueState();
+      expect(state.jobs).toHaveLength(1);
+      expect(state.jobs?.[0]).toMatchObject({ videoId: 'eeeeeeeeeee' });
     });
   });
 });

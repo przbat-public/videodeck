@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { List, type RowComponentProps, useDynamicRowHeight, useListRef } from 'react-window';
 import { useDownloadQueue } from '../hooks/useDownloadQueue';
 import { logError } from '../utils/logError';
-import { isOlderThanMonth } from '../utils/videoDates';
+import { selectDownloadable, selectDownloaded, selectStale } from '../utils/videoSelection';
 import { ErrorMessage } from './ui/ErrorMessage';
 import { VideoItem } from './VideoItem';
 import { VideoListHeader } from './VideoListHeader';
@@ -229,10 +229,14 @@ export function VideoListSection({
     }
   }, [runningJobVideoId, rows, listRef]);
 
-  const isNotDownloaded = (video: ChannelVideo) => !downloadStatuses[video.id] && !!video.url;
-  const isDownloaded = (video: ChannelVideo) => !!downloadStatuses[video.id] && !!video.url;
-  const isVideoOlderThanMonth = (video: ChannelVideo) =>
-    isDownloaded(video) && isOlderThanMonth(lastUpdatedDates[video.id]);
+  // The three selections the bulk buttons work on. The rules live in
+  // utils/videoSelection so the console's row actions cannot drift from them.
+  const downloadable = useMemo(() => selectDownloadable(videos, downloadStatuses), [videos, downloadStatuses]);
+  const downloaded = useMemo(() => selectDownloaded(videos, downloadStatuses), [videos, downloadStatuses]);
+  const stale = useMemo(
+    () => selectStale(videos, downloadStatuses, lastUpdatedDates),
+    [videos, downloadStatuses, lastUpdatedDates],
+  );
 
   // Bulk actions on big channels arm a confirmation first: one misclick used
   // to enqueue hundreds of downloads.
@@ -248,12 +252,7 @@ export function VideoListSection({
   }, []);
 
   const requestBulk = (action: 'download' | 'update' | 'update-old') => {
-    const items =
-      action === 'download'
-        ? videos.filter(isNotDownloaded)
-        : action === 'update'
-          ? videos.filter(isDownloaded)
-          : videos.filter(isVideoOlderThanMonth);
+    const items = action === 'download' ? downloadable : action === 'update' ? downloaded : stale;
     if (items.length === 0) {
       return;
     }
@@ -274,9 +273,9 @@ export function VideoListSection({
     return null;
   }
 
-  const notDownloadedCount = videos.filter(isNotDownloaded).length;
-  const downloadedCount = videos.filter(isDownloaded).length;
-  const notUpdatedCount = videos.filter(isVideoOlderThanMonth).length;
+  const notDownloadedCount = downloadable.length;
+  const downloadedCount = downloaded.length;
+  const notUpdatedCount = stale.length;
   const runningCount = jobs.filter((job) => job.status === 'running').length;
   const queuedCount = activeCount - runningCount;
 

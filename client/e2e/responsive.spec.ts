@@ -483,8 +483,11 @@ test.describe('long unbroken content', () => {
     // it mocked an empty list, which renders no buttons at all.
     await page.setViewportSize({ width: 360, height: 800 });
     await folderListPage(page);
+    // The console row carries a "Pobierz wszystkie" of its own, so the header
+    // buttons are addressed inside the expanded section.
+    const section = page.locator('.folder-section');
     for (const name of ['Pobierz wszystkie', 'Aktualizuj stare', 'Aktualizuj wszystkie', 'Anuluj wszystko']) {
-      await expect(page.getByRole('button', { name })).toBeVisible();
+      await expect(section.getByRole('button', { name })).toBeVisible();
     }
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });

@@ -30,10 +30,20 @@ const json = (body: unknown, status = 200): MockResponse => ({
  * response.
  */
 function installFetch(
-  handlers: { status?: () => MockResponse; queue?: () => MockResponse; summaries?: () => MockResponse } = {},
+  handlers: {
+    status?: () => MockResponse;
+    queue?: () => MockResponse;
+    summaries?: () => MockResponse;
+    list?: () => MockResponse;
+  } = {},
 ): FetchMock {
-  // One table for the plain GETs keeps this dispatcher tiny; the two special
-  // cases below it need the method or a prefix.
+  // One table per method keeps the dispatcher flat: `/api/folder/queue` alone
+  // answers a GET (the queue) and a POST (an enqueue).
+  const methodRoutes: Record<string, () => MockResponse> = {
+    'POST /api/folder/queue': () => json({ jobs: [], skipped: [] }),
+    'POST /api/folder/download-playlist': () => json({ output: 'ok' }),
+    'DELETE /api/folder/queue/finished': () => json({ cleared: 2 }),
+  };
   const routes: Record<string, () => MockResponse> = {
     '/api/status': () => handlers.status?.() ?? json(statusResponse),
     '/api/folder/summaries': () => handlers.summaries?.() ?? json({ summaries: {} }),
@@ -43,12 +53,16 @@ function installFetch(
   };
 
   const fetchMock: FetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    const byMethod = methodRoutes[`${init?.method ?? 'GET'} ${url}`];
+    if (byMethod !== undefined) {
+      return byMethod();
+    }
     const handler = routes[url];
     if (handler !== undefined) {
       return handler();
     }
-    if (url === '/api/folder/queue/finished' && init?.method === 'DELETE') {
-      return json({ cleared: 2 });
+    if (url.startsWith('/api/folder/list?')) {
+      return handlers.list?.() ?? json({ videos: [], downloadStatuses: {}, lastUpdatedDates: {} });
     }
     if (url.startsWith('/api/folder/list-exists')) {
       return json({ exists: false });
@@ -257,5 +271,66 @@ describe('StatusPage', () => {
     renderPage();
 
     expect(await screen.findByText('Brak skonfigurowanych ścieżek')).toBeInTheDocument();
+  });
+
+  it('queues a channel from its row and refreshes the queue and the counts', async () => {
+    const user = userEvent.setup();
+    let summariesCalls = 0;
+    let queueCalls = 0;
+    const fetchMock = installFetch({
+      summaries: () => {
+        summariesCalls += 1;
+        return json({
+          summaries: { '/videos/a': { videos: 3, downloaded: 0, notDownloaded: 3, stale: 0 } },
+        });
+      },
+      queue: () => {
+        queueCalls += 1;
+        return json({ jobs: [], paused: false });
+      },
+      list: () =>
+        json({
+          videos: [{ id: 'v1', title: 'Film 1', url: 'https://yt/v1' }],
+          downloadStatuses: {},
+          lastUpdatedDates: {},
+        }),
+    });
+    renderPage();
+    await screen.findByText('3 filmów');
+    // Count only what the action causes: the mount already read both once
+    // (the console hook and the queue bar poll the same endpoint).
+    summariesCalls = 0;
+    queueCalls = 0;
+
+    await user.click(screen.getByRole('button', { name: 'Pobierz wszystkie' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/folder/queue', expect.objectContaining({ method: 'POST' })),
+    );
+    await waitFor(() => expect(summariesCalls).toBeGreaterThan(0));
+    expect(queueCalls).toBeGreaterThan(0);
+  });
+
+  it('fetches a playlist from a row with no list and reloads the status', async () => {
+    const user = userEvent.setup();
+    let statusCalls = 0;
+    const fetchMock = installFetch({
+      status: () => {
+        statusCalls += 1;
+        return json(statusResponse);
+      },
+    });
+    renderPage();
+    await screen.findByText('/videos/b');
+
+    await user.click(screen.getByRole('button', { name: 'Pobierz playlistę' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/folder/download-playlist',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    await waitFor(() => expect(statusCalls).toBeGreaterThan(1));
   });
 });

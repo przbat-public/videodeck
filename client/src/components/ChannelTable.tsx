@@ -1,9 +1,13 @@
+import { Ellipsis } from 'lucide-react';
 import { Fragment, type JSX, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { ChannelAction } from '../hooks/useChannelActions';
 import type { ChannelConsoleState } from '../utils/channelConsoleState';
 import type { AttentionReason, ChannelRow } from '../utils/channelTable';
 import { summarizeChannels } from '../utils/channelTable';
 import { formatAge } from '../utils/videoDates';
+import { Button } from './ui/Button';
+import { Menu, MenuContent, MenuItem, MenuLinkItem, MenuSeparator, MenuTrigger } from './ui/Menu';
 
 interface ChannelTableProps {
   rows: ChannelRow[];
@@ -13,6 +17,10 @@ interface ChannelTableProps {
   renderExpanded: (row: ChannelRow) => ReactNode;
   /** True while the counts are still on their way */
   countsLoading: boolean;
+  /** Folder path to the queue action it is running, for the row's busy state */
+  pending: Record<string, ChannelAction>;
+  /** Starts one of the row's queue actions; the page owns the fetch */
+  onAction: (row: ChannelRow, action: ChannelAction) => void;
 }
 
 /**
@@ -91,18 +99,121 @@ function ChannelQueueCell({ queue }: { queue: ChannelRow['queue'] }): JSX.Elemen
   );
 }
 
+interface ChannelActionsCellProps {
+  row: ChannelRow;
+  expanded: boolean;
+  pendingAction: ChannelAction | undefined;
+  onToggle: (row: ChannelRow) => void;
+  onAction: (row: ChannelRow, action: ChannelAction) => void;
+}
+
+/** The label of the row's one primary button */
+type PrimaryLabelKey =
+  | 'channelConsole.actions.downloadAll'
+  | 'channelConsole.actions.downloadPlaylist'
+  | 'channelConsole.actions.updateAll';
+
+/**
+ * The row's actions: one primary button for the thing the channel most needs,
+ * the secondary ones behind a ⋯ menu, and the expand toggle. Four bulk buttons
+ * on every row made the table unreadable at twenty channels.
+ */
+function ChannelActionsCell({
+  row,
+  expanded,
+  pendingAction,
+  onToggle,
+  onAction,
+}: ChannelActionsCellProps): JSX.Element {
+  const { t } = useTranslation();
+  const { summary, queue } = row;
+  const busy = pendingAction !== undefined;
+  // Counts arrive after the table, and may never arrive at all. They only
+  // decide which action leads and what looks pointless; the action itself
+  // reads list.json, which is the authority.
+  const countsKnown = summary !== undefined;
+  const downloaded = summary?.downloaded ?? 0;
+  const stale = summary?.stale ?? 0;
+  const activeJobs = queue.running + queue.queued;
+  const missing = summary?.notDownloaded;
+
+  const primary: { action: ChannelAction; labelKey: PrimaryLabelKey; disabled: boolean } =
+    row.listExists === false
+      ? { action: 'playlist', labelKey: 'channelConsole.actions.downloadPlaylist', disabled: false }
+      : missing === undefined || missing > 0
+        ? { action: 'download', labelKey: 'channelConsole.actions.downloadAll', disabled: false }
+        : { action: 'update', labelKey: 'channelConsole.actions.updateAll', disabled: downloaded === 0 };
+
+  return (
+    <td data-label={t('channelConsole.column.actions')} aria-busy={busy}>
+      <span className="channel-actions">
+        <Button
+          size="small"
+          variant="primary"
+          disabled={busy || primary.disabled}
+          onClick={() => onAction(row, primary.action)}
+        >
+          {t(primary.labelKey)}
+        </Button>
+        <Button size="small" onClick={() => onToggle(row)}>
+          {expanded ? t('channelConsole.collapse') : t('channelConsole.expand')}
+        </Button>
+        <Menu>
+          <MenuTrigger aria-label={t('channelConsole.actions.more')}>
+            <Ellipsis aria-hidden="true" focusable="false" className="channel-menu-icon" />
+          </MenuTrigger>
+          <MenuContent>
+            {row.listExists !== false && (
+              <>
+                <MenuItem
+                  disabled={busy || (countsKnown && stale === 0)}
+                  onSelect={() => onAction(row, 'update-stale')}
+                >
+                  {t('channelConsole.actions.updateStale')}
+                </MenuItem>
+                <MenuItem disabled={busy || (countsKnown && downloaded === 0)} onSelect={() => onAction(row, 'update')}>
+                  {t('channelConsole.actions.updateAll')}
+                </MenuItem>
+                <MenuSeparator />
+              </>
+            )}
+            <MenuItem disabled={busy || activeJobs === 0} onSelect={() => onAction(row, 'cancel')}>
+              {t('channelConsole.actions.cancel')}
+            </MenuItem>
+            <MenuItem onSelect={() => onToggle(row)}>{t('channelConsole.actions.editConfig')}</MenuItem>
+            <MenuLinkItem>
+              <a href={`/?channel=${encodeURIComponent(row.folderPath)}`}>{t('channelConsole.searchInChannel')}</a>
+            </MenuLinkItem>
+          </MenuContent>
+        </Menu>
+        {busy && <span className="channel-badge channel-badge--info">{t('channelConsole.actions.working')}</span>}
+      </span>
+    </td>
+  );
+}
+
 interface ChannelRowItemProps {
   row: ChannelRow;
   expanded: boolean;
   countsLoading: boolean;
+  pendingAction: ChannelAction | undefined;
   onToggle: (row: ChannelRow) => void;
+  onAction: (row: ChannelRow, action: ChannelAction) => void;
   renderExpanded: (row: ChannelRow) => ReactNode;
 }
 
 /** One channel: its cells, and the expanded section underneath when open */
-function ChannelRowItem({ row, expanded, countsLoading, onToggle, renderExpanded }: ChannelRowItemProps): JSX.Element {
+function ChannelRowItem({
+  row,
+  expanded,
+  countsLoading,
+  pendingAction,
+  onToggle,
+  onAction,
+  renderExpanded,
+}: ChannelRowItemProps): JSX.Element {
   const { t, i18n } = useTranslation();
-  const { summary, queue } = row;
+  const { summary } = row;
   const cellReasons = row.attention.filter((reason) => CHANNEL_CELL_REASONS.includes(reason));
 
   return (
@@ -142,19 +253,16 @@ function ChannelRowItem({ row, expanded, countsLoading, onToggle, renderExpanded
         </td>
 
         <td data-label={t('channelConsole.column.queue')}>
-          <ChannelQueueCell queue={queue} />
+          <ChannelQueueCell queue={row.queue} />
         </td>
 
-        <td data-label={t('channelConsole.column.actions')}>
-          <span className="channel-actions">
-            <button type="button" className="channel-expand" onClick={() => onToggle(row)}>
-              {expanded ? t('channelConsole.collapse') : t('channelConsole.expand')}
-            </button>
-            <a className="channel-search-link" href={`/?channel=${encodeURIComponent(row.folderPath)}`}>
-              {t('channelConsole.searchInChannel')}
-            </a>
-          </span>
-        </td>
+        <ChannelActionsCell
+          row={row}
+          expanded={expanded}
+          pendingAction={pendingAction}
+          onToggle={onToggle}
+          onAction={onAction}
+        />
       </tr>
       {expanded && (
         <tr className="channel-expanded-row">
@@ -171,7 +279,15 @@ function ChannelRowItem({ row, expanded, countsLoading, onToggle, renderExpanded
  * expanded underneath, where the page renders the full folder section, so
  * nothing that used to be on this page is lost.
  */
-export function ChannelTable({ rows, state, onChange, renderExpanded, countsLoading }: ChannelTableProps): JSX.Element {
+export function ChannelTable({
+  rows,
+  state,
+  onChange,
+  renderExpanded,
+  countsLoading,
+  pending,
+  onAction,
+}: ChannelTableProps): JSX.Element {
   const { t } = useTranslation();
   const totals = summarizeChannels(rows);
 
@@ -214,7 +330,9 @@ export function ChannelTable({ rows, state, onChange, renderExpanded, countsLoad
               row={row}
               expanded={state.folder === row.folderPath}
               countsLoading={countsLoading}
+              pendingAction={pending[row.folderPath]}
               onToggle={toggleRow}
+              onAction={onAction}
               renderExpanded={renderExpanded}
             />
           ))}
