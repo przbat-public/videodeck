@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { DownloadOptions, JobType } from '@videodeck/shared/api';
-import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
+import { DEFAULT_DOWNLOAD_OPTIONS, isForbiddenExtraArg, isReservedExtraArg } from './folderConfig';
 
 /**
  * Everything the server says to yt-dlp lives here, behind a small, testable
@@ -87,6 +87,13 @@ function buildMetadataArgs(options: DownloadOptions): string[] {
     args.push('--impersonate', 'chrome');
   }
   if (options.extraArgs) {
+    // Config validation and resolveExtraArgs already drop these. The queue
+    // state file is parsed by hand, so this is the last line before spawn.
+    for (const arg of options.extraArgs) {
+      if (isReservedExtraArg(arg) || isForbiddenExtraArg(arg)) {
+        throw new Error(`refusing restricted yt-dlp argument: ${arg}`);
+      }
+    }
     args.push(...options.extraArgs);
   }
   return args;

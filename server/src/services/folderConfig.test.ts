@@ -134,6 +134,45 @@ describe('folderConfig', () => {
       expect(validateFolderConfig({ extraArgs: ['--ffmpeg-location', '/tmp/evil'] })).toMatch(/restricted argument/);
     });
 
+    it('rejects abbreviated restricted flags', () => {
+      // yt-dlp resolves any unambiguous prefix of a long option, so these all
+      // reach the restricted option the full name describes.
+      expect(validateFolderConfig({ extraArgs: ['--prox=http://attacker'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--prox', 'http://attacker'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--cookies-fr=chrome'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--load-i=/tmp/x.info.json'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--config-lo=/tmp/x'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--print-to-fi', '%(id)s', '/tmp/x.txt'] })).toMatch(
+        /restricted argument/,
+      );
+      expect(validateFolderConfig({ extraArgs: ['--downloader-a', 'curl:--config /tmp/x'] })).toMatch(
+        /restricted argument/,
+      );
+      expect(validateFolderConfig({ extraArgs: ['--exec-b', 'id'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--netr'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--use-post', 'Exec:/tmp/x'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['--user', 'u'] })).toMatch(/restricted argument/);
+    });
+
+    it('rejects the short spellings of the restricted flags, glued values included', () => {
+      expect(validateFolderConfig({ extraArgs: ['-u', 'user'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['-uuser'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['-p', 'secret'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['-psecret'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['-a/etc/passwd'] })).toMatch(/restricted argument/);
+      expect(validateFolderConfig({ extraArgs: ['-o/tmp/elsewhere/%(title)s.%(ext)s'] })).toMatch(/built-in argument/);
+      expect(validateFolderConfig({ extraArgs: ['-fmp4'] })).toMatch(/built-in argument/);
+    });
+
+    it('keeps the real flags that merely start like a restricted one', () => {
+      // An exact match beats a prefix match in yt-dlp's option parser.
+      expect(validateFolderConfig({ extraArgs: ['--print', '%(id)s'] })).toBeNull();
+      expect(validateFolderConfig({ extraArgs: ['--downloader', 'aria2c'] })).toBeNull();
+      expect(validateFolderConfig({ extraArgs: ['--external-downloader', 'curl'] })).toBeNull();
+      expect(validateFolderConfig({ extraArgs: ['--no-download'] })).toBeNull();
+      expect(validateFolderConfig({ extraArgs: ['--print-traffic'] })).toBeNull();
+    });
+
     it('rejects extraArgs that shadow pipeline-owned flags', () => {
       expect(validateFolderConfig({ extraArgs: ['-f', 'mp4'] })).toMatch(/built-in argument/);
       expect(validateFolderConfig({ extraArgs: ['--format=best'] })).toMatch(/built-in argument/);
@@ -310,6 +349,17 @@ describe('folderConfig', () => {
         concurrentFragments: 1,
         sponsorblockRemove: false,
       });
+    });
+
+    it('drops abbreviated restricted flags with their values from a hand-edited file', () => {
+      const withExtraArgs = (extraArgs: string[]): string[] | undefined =>
+        resolveDownloadOptions({ extraArgs }).extraArgs;
+
+      expect(withExtraArgs(['--prox', 'http://attacker', '--no-playlist'])).toEqual(['--no-playlist']);
+      expect(withExtraArgs(['--print-to-fi', '%(id)s', '/tmp/x.txt', '--no-playlist'])).toEqual(['--no-playlist']);
+      expect(withExtraArgs(['--cooki=/tmp/c.txt', '--no-playlist'])).toEqual(['--no-playlist']);
+      expect(withExtraArgs(['-psecret', '--no-playlist'])).toEqual(['--no-playlist']);
+      expect(withExtraArgs(['-o/tmp/elsewhere/%(title)s.%(ext)s', '--print', '%(id)s'])).toEqual(['--print', '%(id)s']);
     });
   });
 
