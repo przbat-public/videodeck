@@ -16,8 +16,9 @@ RUN corepack enable \
 WORKDIR /app
 
 # pnpm workspace: the lockfile + every package manifest must exist before
-# install; sources come afterwards in their own layer.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# install; sources come afterwards in their own layer. `tsconfig.base.json` is
+# part of the build, not the install: both package configs extend it.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY server/package.json ./server/
 COPY shared/package.json ./shared/
 COPY client/package.json ./client/

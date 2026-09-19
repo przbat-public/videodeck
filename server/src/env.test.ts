@@ -61,4 +61,22 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ ...BASE, PORT: '70000' })).toThrow(/PORT/);
     expect(() => validateEnv({ ...BASE, PORT: '0' })).toThrow(/PORT/);
   });
+
+  describe('unauthenticated API on a public interface', () => {
+    it('refuses to start when HOST is not loopback and no token is configured', () => {
+      expect(() => validateEnv({ ...BASE, HOST: '0.0.0.0' })).toThrow(/unauthenticated API on 0\.0\.0\.0/);
+      expect(() => validateEnv({ ...BASE, HOST: '192.168.1.10' })).toThrow(/unauthenticated API/);
+    });
+
+    it('accepts a public interface once a token or REQUIRE_API_TOKEN is set', () => {
+      expect(validateEnv({ ...BASE, HOST: '0.0.0.0', API_TOKEN: 'sekret' }).HOST).toBe('0.0.0.0');
+      expect(validateEnv({ ...BASE, HOST: '0.0.0.0', REQUIRE_API_TOKEN: 'true' }).HOST).toBe('0.0.0.0');
+    });
+
+    it('keeps the loopback default unauthenticated, which is the dev setup', () => {
+      expect(validateEnv({ ...BASE }).HOST).toBe('127.0.0.1');
+      expect(validateEnv({ ...BASE, HOST: 'localhost' }).HOST).toBe('localhost');
+      expect(validateEnv({ ...BASE, HOST: '::1' }).HOST).toBe('::1');
+    });
+  });
 });

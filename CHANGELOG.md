@@ -133,6 +133,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   folder paths and search phrases no longer end up in the log file
 - The paging integration journey waits for the appended page instead of
   failing on a loaded machine
+- The Docker stack builds again: `context: ..` pointed one directory above
+  the checkout, `.dockerignore` hid the `chrome-extension` manifest the
+  Dockerfiles copy, and neither image carried `tsconfig.base.json`, which both
+  package configs extend. `docker compose build` now produces both images. The
+  web UI container also receives the API token and adds it to the requests it
+  proxies, so the shipped `REQUIRE_API_TOKEN=true` default no longer answers
+  the UI with 401
+- The server refuses to start when `HOST` is not a loopback address and
+  neither `API_TOKEN` nor `REQUIRE_API_TOKEN=true` is set, instead of
+  serving an open API to the network by accident
 
 
 ## [1.0.0] - 2026-09-14

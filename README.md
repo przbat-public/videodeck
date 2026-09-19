@@ -190,7 +190,14 @@ Additional protections:
   `--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`,
   or `--video-password` (RCE, cookie theft, credential leaks).
   `PUT /api/folder/config` rejects these flags, and in a hand-edited file
-  they are ignored (together with their value).
+  they are ignored (together with their value). The match also covers the
+  short spellings (`-a`, `-u`, `-p`) and the abbreviated long forms yt-dlp
+  accepts (`--prox`, `--print-to-fi`), and the argument builder refuses them
+  before yt-dlp starts.
+- **No open API on a network interface**: the server refuses to start when
+  `HOST` is not a loopback address and neither `API_TOKEN` nor
+  `REQUIRE_API_TOKEN=true` is set. Publishing the API to the network takes a
+  token, not a forgotten variable.
 - **Exact extension id in CORS**: by default (dev mode), CORS allows
   any `chrome-extension://…` because developer extensions get a new id
   each time they are loaded. Set `EXTENSION_ORIGINS` with the exact id
