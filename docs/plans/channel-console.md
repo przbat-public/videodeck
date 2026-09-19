@@ -44,6 +44,12 @@ to jump to a channel.
 - URL state carries `q` (text filter), `filter`, `sort` and `folder` (expanded
   row). Deep links, reload and Back all work, following the model of
   `client/src/utils/searchUrlState.ts`.
+- The table has five columns: channel, playlist, videos, queue and actions. It
+  carries no category column and no Elasticsearch index column, which the
+  maintainer asked to drop: the category stays visible in the config editor and
+  reachable through the text filter, and a missing index becomes one chip next
+  to the channel name, where it keeps feeding the "needs attention" filter
+  without spending a column on a state that settles once per channel.
 
 ## Structure
 
@@ -99,7 +105,9 @@ to jump to a channel.
   needs-attention grouping; `hooks/useFolderSummaries.test.ts` for load, error
   and retry; `components/ChannelTable.test.tsx` for one row per folder, expand
   and collapse, the row actions calling the existing queue hooks, `aria-sort`
-  and the filter chips emptying the table.
+  on the sortable columns and the filter chips emptying the table. A named test
+  pins the five columns and asserts that no category or index column comes
+  back.
 - Integration, real backend in process: `/download` renders a row per seeded
   folder, expanding a row loads that channel's list, and the "Szukaj w tym
   kanale" link lands on the list page with `?channel=`.
@@ -121,6 +129,10 @@ to jump to a channel.
 - Twenty rows with four bulk buttons each would be 80 buttons. The row keeps
   one primary action and moves the rest into the row menu, which keeps the
   table scannable and the keyboard order short.
+- Dropping the category column means the console cannot group or filter by
+  category on its own. The text filter still matches it, the search page has
+  the category filter, and the config editor shows it; a category chip can be
+  added next to the channel name if the table turns out to need one.
 - Removing the stacked sections is a visible change: the responsive and
   accessibility probes run at all three breakpoints before merge, and the
   screenshots in `docs/screenshots/` are refreshed.
