@@ -45,6 +45,7 @@ describe('useDownloadQueue', () => {
 
     await waitFor(() => expect(result.current.jobs).toHaveLength(1));
     expect(fetchMock).toHaveBeenCalledWith(`/api/folder/queue?folderPath=${encodeURIComponent(FOLDER)}`, {
+      cache: 'no-store',
       signal: expect.any(AbortSignal),
     });
     expect(result.current.hasActive).toBe(false);
@@ -245,7 +246,7 @@ describe('useDownloadQueue', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock).toHaveBeenLastCalledWith(
       `/api/folder/queue?folderPath=${encodeURIComponent('/videos/channel-b')}`,
-      { signal: expect.any(AbortSignal) },
+      { cache: 'no-store', signal: expect.any(AbortSignal) },
     );
   });
 });

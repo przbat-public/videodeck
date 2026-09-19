@@ -143,6 +143,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The server refuses to start when `HOST` is not a loopback address and
   neither `API_TOKEN` nor `REQUIRE_API_TOKEN=true` is set, instead of
   serving an open API to the network by accident
+- The queue controls no longer report a load failure while the queue is
+  healthy: Express answered the browser's conditional polls of `/api` with
+  `304 Not Modified` and no body, which `fetch` reports as a failed response.
+  API responses no longer carry ETags and are sent with
+  `Cache-Control: no-store`; files keep their own caching headers
+- Request logs carry the full path again. Reading it after Express had
+  rewritten the URL inside the mounted router logged `/api/videos/search`
+  as `/search`
 
 
 ## [1.0.0] - 2026-09-14
