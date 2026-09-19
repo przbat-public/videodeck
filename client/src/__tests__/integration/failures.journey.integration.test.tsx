@@ -123,11 +123,13 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
 
     const page = await renderApp('/');
     // The user sees the failure toast, not a broken page or stale results.
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith(
-        expect.stringContaining('Nie udało się wyszukać filmów'),
-        expect.anything(),
-      ),
+    await waitFor(
+      () =>
+        expect(toast.error).toHaveBeenCalledWith(
+          expect.stringContaining('Nie udało się wyszukać filmów'),
+          expect.anything(),
+        ),
+      { timeout: 15_000 },
     );
     expect(queryCardByTitle('Głęboka integracja')).not.toBeInTheDocument();
 

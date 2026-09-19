@@ -1,5 +1,7 @@
-import { cleanup, screen } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
+import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { folderSection } from './drivers/statusDrivers';
 import { refreshCacheAndWait, renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
 
@@ -9,8 +11,10 @@ import { startBackend, stopBackend } from './test-env';
  * world is fake — everything between the UI and the fetch proxy is real.
  */
 
+let env: DeepServerTestEnv;
+
 beforeAll(async () => {
-  await startBackend();
+  env = await startBackend();
 });
 
 afterAll(async () => {
@@ -49,26 +53,23 @@ describe('client integration — real backend', () => {
   it('downloads the playlist and runs a queue job through the fake yt-dlp', async () => {
     const page = await renderApp('/download');
 
-    // The seeded folder's section offers the playlist download (one button
-    // per configured folder); the fake yt-dlp answers with two NDJSON entries.
-    const playlistButtons = await screen.findAllByRole('button', { name: 'Pobierz playlistę' });
-    const playlistButton = playlistButtons[0];
-    if (!playlistButton) {
-      throw new Error('no playlist button found on the status page');
-    }
-    await page.user.click(playlistButton);
-    await screen.findByText(/Plik list\.json już istnieje/);
+    // The console keeps every folder behind its channel row, so the seeded
+    // folder is expanded first; its section then offers the playlist download
+    // and the fake yt-dlp answers with two NDJSON entries.
+    const section = await folderSection(env.folder('channel-integration'));
+    await page.user.click(within(section).getByRole('button', { name: 'Pobierz playlistę' }));
+    await within(section).findByText(/Plik list\.json już istnieje/);
 
-    await page.user.click(screen.getByRole('button', { name: 'Pobierz listę filmów' }));
-    await screen.findByText('Fake playlist video 1');
+    await page.user.click(within(section).getByRole('button', { name: 'Pobierz listę filmów' }));
+    await within(section).findByText('Fake playlist video 1');
 
     // Enqueue the first entry: the real queue spawns the fake yt-dlp, which
     // writes the video files; the item flips to the downloaded state.
-    const downloadButtons = screen.getAllByRole('button', { name: 'Pobierz' });
+    const downloadButtons = within(section).getAllByRole('button', { name: 'Pobierz' });
     expect(downloadButtons.length).toBeGreaterThan(0);
     if (downloadButtons[0]) {
       await page.user.click(downloadButtons[0]);
     }
-    await screen.findByText('Pobrano', undefined, { timeout: 30_000 });
+    await within(section).findByText('Pobrano', undefined, { timeout: 30_000 });
   });
 });

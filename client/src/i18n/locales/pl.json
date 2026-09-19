@@ -243,7 +243,8 @@
       "geo-restricted": "Ten film nie jest dostępny w Twoim kraju",
       "bot-wall": "YouTube żąda zalogowania (ściana antybotowa)",
       "age-gate": "Ten film jest dla dorosłych i wymaga zalogowanej sesji"
-    }
+    },
+    "loadSummaries": "Nie udało się policzyć filmów w kanałach"
   },
   "theme": {
     "system": "Systemowy",
@@ -266,5 +267,59 @@
   "nav": {
     "backToList": "Wróć do listy",
     "home": "Strona główna"
+  },
+  "channelConsole": {
+    "title": "Pobieranie filmów",
+    "summary": "Kanałów: {{channels}} · filmów: {{videos}} · niepobranych: {{missing}} · wymaga uwagi: {{attention}}",
+    "searchPlaceholder": "Szukaj kanału, kategorii lub ścieżki...",
+    "sortLabel": "Sortuj",
+    "filter": {
+      "all": "Wszystkie ({{count}})",
+      "attention": "Wymaga uwagi ({{count}})",
+      "queue": "W kolejce ({{count}})",
+      "failed": "Błędy ({{count}})"
+    },
+    "sort": {
+      "name": "Nazwa kanału",
+      "attention": "Wymaga uwagi najpierw",
+      "updated": "Ostatnia aktualizacja",
+      "missing": "Najwięcej niepobranych"
+    },
+    "column": {
+      "channel": "Kanał",
+      "playlist": "Lista filmów",
+      "videos": "Filmy",
+      "queue": "Kolejka",
+      "actions": "Akcje"
+    },
+    "list": {
+      "checking": "sprawdzam...",
+      "missing": "brak list.json",
+      "exists": "list.json jest",
+      "unknownDate": "bez daty"
+    },
+    "videos": {
+      "total": "{{count}} filmów",
+      "notDownloaded": "{{count}} niepobranych",
+      "stale": "{{count}} nie od miesiąca",
+      "loading": "liczę..."
+    },
+    "queue": {
+      "running": "{{count}} w toku",
+      "queued": "{{count}} czeka",
+      "failed": "{{count}} błąd"
+    },
+    "attention": {
+      "noChannelUrl": "brak channelUrl",
+      "noList": "brak list.json",
+      "noIndex": "brak indeksu ES",
+      "failed": "błąd pobierania",
+      "stale": "stare pobrania"
+    },
+    "expand": "Pokaż filmy",
+    "collapse": "Ukryj filmy",
+    "searchInChannel": "Szukaj w tym kanale",
+    "empty": "Żaden kanał nie pasuje do filtra",
+    "countsError": "Nie udało się policzyć filmów: {{message}}"
   }
 }

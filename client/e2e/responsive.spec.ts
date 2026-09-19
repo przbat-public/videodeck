@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { json, mockApi, video } from './helpers';
+import { expandChannel, json, mockApi, video } from './helpers';
 
 /**
  * Responsive regression guard, per DESIGN.md section 11 and the
@@ -80,6 +80,7 @@ async function folderListPage(page: Page): Promise<void> {
     ),
   );
   await page.goto('/download');
+  await expandChannel(page);
   await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
   await page.getByText('Pobrany dawno temu').waitFor();
 }
@@ -413,6 +414,7 @@ test.describe('long unbroken content', () => {
     });
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto('/download');
+    await expandChannel(page);
     await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
     await page.getByText(unbroken.slice(0, 40)).waitFor();
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
@@ -462,6 +464,7 @@ test.describe('long unbroken content', () => {
     });
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto('/download');
+    await expandChannel(page);
     await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
     await page.getByText(log[19] ?? '').waitFor();
 

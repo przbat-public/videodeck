@@ -25,6 +25,16 @@ export const video = (baseName: string, title: string, overrides: Partial<E2eVid
 });
 
 /** JSON response helper */
+/**
+ * Expands a channel row on the download console so its folder section (config,
+ * playlist, video list) renders. Without a name the first channel is used.
+ */
+export async function expandChannel(page: Page, name?: string): Promise<void> {
+  const row =
+    name === undefined ? page.locator('.channel-row').first() : page.locator('.channel-row', { hasText: name });
+  await row.getByRole('button', { name: 'Pokaż filmy' }).click();
+}
+
 export const json = (body: unknown, status = 200) => ({
   status,
   contentType: 'application/json',
@@ -47,6 +57,8 @@ export async function mockApi(
     list?: unknown;
     /** Body of the queue GET; defaults to an empty, unpaused queue */
     queue?: unknown;
+    /** Body of GET /api/folder/summaries; defaults to no counts at all */
+    summaries?: unknown;
   } = {},
 ): Promise<void> {
   const context = page.context();
@@ -102,6 +114,9 @@ export async function mockApi(
         },
       ),
     ),
+  );
+  await context.route('**/api/folder/summaries', (route) =>
+    route.fulfill(json(handlers.summaries ?? { summaries: {} })),
   );
   // list-exists and list calls used by the status page's folder section
   await context.route('**/api/folder/list-exists**', (route) => route.fulfill(json({ exists: false })));

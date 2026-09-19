@@ -1,22 +1,71 @@
 import type { JSX } from 'react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ChannelTable } from '../components/ChannelTable';
+import type { ChannelFilterCounts } from '../components/ChannelToolbar';
+import { ChannelToolbar } from '../components/ChannelToolbar';
 import { FolderSection } from '../components/FolderSection';
 import { QueueControls } from '../components/QueueControls';
 import { Button } from '../components/ui/Button';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { Loading } from '../components/ui/Loading';
+import { useChannelConsoleState } from '../hooks/useChannelConsoleState';
+import { useChannelQueue } from '../hooks/useChannelQueue';
+import { useFolderSummaries } from '../hooks/useFolderSummaries';
 import { usePageFocus } from '../hooks/usePageFocus';
 import { useStatus } from '../hooks/useStatus';
+import { buildChannelRows, filterChannels, sortChannels } from '../utils/channelTable';
 import { collectCategories } from '../utils/folderConfigForm';
 
+/**
+ * The download page as a console: one row per channel with its counts and what
+ * the queue is doing with it, and the full folder section (config, playlist,
+ * video list) under the row the URL expands. The page keeps its height whether
+ * the library holds five channels or sixty.
+ */
 export default function StatusPage(): JSX.Element {
   const { state, updateFolderConfig, reload } = useStatus();
+  const { state: consoleState, setState: setConsoleState } = useChannelConsoleState();
+  const { summaries, loading: summariesLoading, error: summariesError } = useFolderSummaries();
+  const { jobs } = useChannelQueue();
   const { t } = useTranslation();
   const mainRef = usePageFocus<HTMLElement>();
+
+  const statusData = state.statusData;
+
+  const rows = useMemo(
+    () => (statusData ? buildChannelRows(statusData, summaries, jobs) : []),
+    [statusData, summaries, jobs],
+  );
+
+  const visibleRows = useMemo(
+    () => sortChannels(filterChannels(rows, consoleState), consoleState.sort),
+    [rows, consoleState],
+  );
+
+  // Chip counts come from every row, not the filtered ones: a chip that reads
+  // "(0)" would look broken while its own filter is the reason it is empty.
+  const counts: ChannelFilterCounts = useMemo(
+    () => ({
+      all: rows.length,
+      attention: rows.filter((row) => row.attention.length > 0).length,
+      queue: rows.filter((row) => row.queue.running + row.queue.queued > 0).length,
+      failed: rows.filter((row) => row.queue.failed > 0).length,
+    }),
+    [rows],
+  );
+
+  const knownCategories = statusData ? collectCategories(statusData.folderConfigs) : [];
 
   return (
     <main className="app-main" ref={mainRef} tabIndex={-1}>
       <div className="status-page">
+        <h1>{t('channelConsole.title')}</h1>
+
+        <div className="channel-queue-bar">
+          <QueueControls />
+        </div>
+
         {state.loading && <Loading message={t('status.loading')} />}
 
         {state.error && (
@@ -26,37 +75,35 @@ export default function StatusPage(): JSX.Element {
           </div>
         )}
 
-        {state.statusData &&
-          (() => {
-            const statusData = state.statusData;
-            const knownCategories = collectCategories(statusData.folderConfigs);
-            return (
-              <div className="status-content">
-                <QueueControls />
-                <div className="status-section">
-                  <h2>{t('status.foldersTitle')}</h2>
-                  <div className="folder-sections">
-                    {statusData.videosFolderPath.length > 0 ? (
-                      statusData.videosFolderPath.map((path) => (
-                        <FolderSection
-                          key={path}
-                          folderPath={path}
-                          initialConfig={statusData.folderConfigs[path] || null}
-                          downloadDefaults={statusData.downloadDefaults}
-                          indexed={statusData.indexedFolders.includes(path)}
-                          initialListExists={statusData.listExists[path] ?? null}
-                          knownCategories={knownCategories}
-                          onConfigUpdate={updateFolderConfig}
-                        />
-                      ))
-                    ) : (
-                      <p>{t('status.noFolders')}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+        {summariesError && (
+          <ErrorMessage compact>{t('channelConsole.countsError', { message: summariesError })}</ErrorMessage>
+        )}
+
+        {statusData &&
+          (statusData.videosFolderPath.length === 0 ? (
+            <p>{t('status.noFolders')}</p>
+          ) : (
+            <>
+              <ChannelToolbar state={consoleState} counts={counts} onChange={setConsoleState} />
+              <ChannelTable
+                rows={visibleRows}
+                state={consoleState}
+                onChange={setConsoleState}
+                countsLoading={summariesLoading}
+                renderExpanded={(row) => (
+                  <FolderSection
+                    folderPath={row.folderPath}
+                    initialConfig={statusData.folderConfigs[row.folderPath] || null}
+                    downloadDefaults={statusData.downloadDefaults}
+                    indexed={statusData.indexedFolders.includes(row.folderPath)}
+                    initialListExists={statusData.listExists[row.folderPath] ?? null}
+                    knownCategories={knownCategories}
+                    onConfigUpdate={updateFolderConfig}
+                  />
+                )}
+              />
+            </>
+          ))}
       </div>
     </main>
   );
