@@ -12,6 +12,9 @@ const UNAVAILABLE_ERROR_NAMES = new Set([
   'NoLivingConnectionsError',
   'TimeoutError',
   'RequestAbortedError',
+  // Our own domain error: a read that refused to try because the cluster was
+  // known to be gone (the fail-fast window)
+  'ElasticsearchUnavailableError',
 ]);
 
 const UNAVAILABLE_SOCKET_CODES = new Set([

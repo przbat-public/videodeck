@@ -104,6 +104,20 @@ polls it), the console renders nothing, and the only clue in the UI is
 - E2E (mocked API): `/health` answering 503 shows the banner, the retry hides it
   once the mock answers 200 again, and the index actions are disabled.
 
+## Outcome
+
+- PR1 (`feat(server): recognise an unreachable Elasticsearch`): the classifier,
+  the 503 with its code, the throttled compact line, the disk-backed status,
+  the `elasticsearch: 'ok' | 'down'` field, the boot line and `restart()` on the
+  fake Elasticsearch.
+- PR2 (`feat(client): banner an unreachable Elasticsearch and recover from
+  it`): the health hook and store, the banner, the disabled index actions, the
+  Elasticsearch-specific messages, `GET /api/health` for the browser, and the
+  client reset that makes the recovery real.
+- PR3 (`feat(server): fail fast while Elasticsearch is down`): the 5 s window
+  that stops a second read from paying the retry budget again, and the
+  `elasticsearch_up` gauge.
+
 ## Boundaries and risks
 
 - The error handler must not swallow real bugs: only classified connection
