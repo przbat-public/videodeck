@@ -13,6 +13,7 @@ const status: StatusResponse = {
   indexedFolders: ['/videos/kanal-a', '/videos/kanal-b'],
   listExists: { '/videos/kanal-b': true, '/videos/kanal-a': true, '/videos/kanal-c': false },
   status: 'ok',
+  elasticsearch: 'ok',
 };
 
 const summaries = {

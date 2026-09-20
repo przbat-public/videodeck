@@ -227,10 +227,21 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     // Configs live on an external disk: 56 folders read one after another
     // cost up to 3 s (the same reason categories are read in parallel).
     // readFolderConfig never throws, so the whole list is always built.
-    const [configs, cachedFolders] = await Promise.all([
+    // Elasticsearch absence must not take the page down: the folder list, the
+    // configs and list.json presence all come from disk. An unreachable cluster
+    // reports no cached folders and says so, and the client hides the per-row
+    // index chips instead of claiming every channel lost its index.
+    const [configs, cachedLookup] = await Promise.all([
       Promise.all(videosFolderPaths.map(readFolderConfig)),
-      listCachedFolders(videosFolderPaths),
+      listCachedFolders(videosFolderPaths).catch(() => null),
     ]);
+    const elasticsearchUp = cachedLookup?.elasticsearchUp ?? false;
+    // A partial read is not reported as an index state: either the cluster
+    // answered for every folder, or the response says it is down and the client
+    // hides the per-row chips.
+    const indexedFolders = elasticsearchUp
+      ? videosFolderPaths.filter((folderPath) => cachedLookup?.folders.has(folderPath) === true)
+      : [];
     const folderConfigs: Record<string, FolderConfig | null> = {};
     videosFolderPaths.forEach((folderPath, index) => {
       folderConfigs[folderPath] = configs[index] ?? null;
@@ -252,8 +263,9 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
       videosFolderPath: videosFolderPaths,
       folderConfigs,
       downloadDefaults: DEFAULT_DOWNLOAD_OPTIONS,
-      indexedFolders: videosFolderPaths.filter((folderPath) => cachedFolders.has(folderPath)),
+      indexedFolders,
       listExists,
+      elasticsearch: elasticsearchUp ? 'ok' : 'down',
       status: 'ok',
     };
     writeStatusCache(videosFolderPaths, body);

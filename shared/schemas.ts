@@ -13,6 +13,11 @@ import { z } from 'zod';
 export const ApiErrorSchema = z.object({
   error: z.string(),
   message: z.string().optional(),
+  /**
+   * Machine-readable reason for the failures the client translates itself.
+   * Only `elasticsearch_unavailable` (503) is defined so far.
+   */
+  code: z.string().optional(),
 });
 
 export const VideoCommentSchema = z.object({
@@ -233,6 +238,12 @@ export const StatusResponseSchema = z.object({
   indexedFolders: z.array(z.string()),
   /** Which folders have a list.json (one request instead of one per folder) */
   listExists: z.record(z.string(), z.boolean()),
+  /**
+   * Whether the Elasticsearch read behind `indexedFolders` worked. When it is
+   * `down`, the list is empty because nothing could be read, not because the
+   * folders lost their index, so the console suppresses its index chips.
+   */
+  elasticsearch: z.enum(['ok', 'down']),
   status: z.literal('ok'),
 });
 

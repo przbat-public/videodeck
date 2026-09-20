@@ -1,9 +1,13 @@
 import dotenv from 'dotenv';
 import { createApp } from './app';
-import { getApiToken, getHost } from './config';
+import { ELASTICSEARCH_URL, getApiToken, getHost } from './config';
 import { validateEnv } from './env';
 import { downloadQueue, restoreQueueState } from './services/downloadQueue';
-import { sweepOrphanIndexVersions, warnOnLegacyMappings } from './services/elasticsearchService';
+import {
+  checkElasticsearchConnection,
+  sweepOrphanIndexVersions,
+  warnOnLegacyMappings,
+} from './services/elasticsearchService';
 import { getYtDlpVersion } from './services/ytdlp';
 import { installShutdownHandlers } from './shutdown';
 import { logger } from './utils/logger';
@@ -48,6 +52,17 @@ async function startServer() {
       if (!apiToken) {
         logger.warn(
           'API_TOKEN is not set — the API is unauthenticated and reachable by every local process and browser tab. Set it in .env and in the Chrome extension options.',
+        );
+      }
+    });
+
+    // One clear line about Elasticsearch at boot. With it down, search, the
+    // index read on the status page and every reindex degrade, and the first
+    // request would otherwise be where the operator finds out.
+    void checkElasticsearchConnection().then((up) => {
+      if (!up) {
+        logger.warn(
+          `Elasticsearch is not reachable at ${ELASTICSEARCH_URL} — search, index reads and indexing degrade until it comes back`,
         );
       }
     });

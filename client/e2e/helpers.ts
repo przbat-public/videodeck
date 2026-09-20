@@ -115,6 +115,7 @@ export async function mockApi(
           indexedFolders: ['/videos/e2e'],
           listExists: { '/videos/e2e': false },
           status: 'ok',
+          elasticsearch: 'ok',
         },
       ),
     ),

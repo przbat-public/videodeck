@@ -17,6 +17,7 @@ const statusResponse: StatusResponse = {
   indexedFolders: ['/videos/a'],
   listExists: { '/videos/a': true, '/videos/b': false },
   status: 'ok',
+  elasticsearch: 'ok',
 };
 
 describe('useStatus', () => {

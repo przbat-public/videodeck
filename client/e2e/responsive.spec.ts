@@ -45,6 +45,7 @@ async function folderListPage(page: Page): Promise<void> {
       indexedFolders: ['/videos/e2e'],
       listExists: { '/videos/e2e': true },
       status: 'ok',
+      elasticsearch: 'ok',
     },
     list: {
       videos: [
@@ -405,6 +406,7 @@ test.describe('long unbroken content', () => {
         indexedFolders: ['/videos/e2e'],
         listExists: { '/videos/e2e': true },
         status: 'ok',
+        elasticsearch: 'ok',
       },
       list: {
         videos: [{ id: 'v1', title: unbroken, url: 'https://yt/v1' }],
@@ -433,6 +435,7 @@ test.describe('long unbroken content', () => {
         indexedFolders: ['/videos/e2e'],
         listExists: { '/videos/e2e': true },
         status: 'ok',
+        elasticsearch: 'ok',
       },
       list: {
         videos: [

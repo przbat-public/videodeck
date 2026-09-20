@@ -8,6 +8,7 @@ const statusData: StatusData = {
   downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
   indexedFolders: ['/videos/a'],
   listExists: { '/videos/a': false },
+  elasticsearch: 'ok',
   status: 'ok',
 };
 

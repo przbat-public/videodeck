@@ -93,6 +93,7 @@ export class FakeElasticsearch {
   private readonly requests: FakeEsRequest[] = [];
   private readonly faults: Array<{ match: string | RegExp; status: number }> = [];
   private server: Server | null = null;
+  private port: number | null = null;
 
   /** Every request the app sent, in order (assertions on search bodies) */
   get requestLog(): FakeEsRequest[] {
@@ -146,17 +147,23 @@ export class FakeElasticsearch {
     return entries;
   }
 
-  /** Start listening on an ephemeral port; resolves with the base URL. */
-  async start(): Promise<string> {
+  /**
+   * Start listening; resolves with the base URL. Without a port it takes an
+   * ephemeral one, and a later restart rebinds the same port so the app's
+   * already-configured ELASTICSEARCH_URL keeps pointing here.
+   */
+  async start(port = 0): Promise<string> {
     const server = createServer((req, res) => this.handle(req, res));
     this.server = server;
     await new Promise<void>((resolve) => {
-      server.listen(0, '127.0.0.1', resolve);
+      server.listen(port, '127.0.0.1', resolve);
     });
-    const { port } = server.address() as AddressInfo;
-    return `http://127.0.0.1:${port}`;
+    const bound = (server.address() as AddressInfo).port;
+    this.port = bound;
+    return `http://127.0.0.1:${bound}`;
   }
 
+  /** Stop listening: the next client call fails like a stopped container. */
   async stop(): Promise<void> {
     const server = this.server;
     this.server = null;
@@ -166,6 +173,19 @@ export class FakeElasticsearch {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
     });
+  }
+
+  /**
+   * Give Elasticsearch back on the port it had, for a test that takes it away
+   * and then checks that the app recovers.
+   */
+  async restart(): Promise<string> {
+    const port = this.port;
+    if (port === null) {
+      throw new Error('fake-elasticsearch: restart needs a previous start()');
+    }
+    await this.stop();
+    return this.start(port);
   }
 
   private json(res: ServerResponse, status: number, body: unknown): void {
