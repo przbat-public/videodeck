@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ApiError } from '@videodeck/shared/api';
 import cors from 'cors';
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import helmet from 'helmet';
@@ -19,7 +19,7 @@ import { createFolderRouter } from './routes/folder';
 import { createAuthMiddleware, isAllowedCorsOrigin } from './routes/http';
 import videosRouter from './routes/videos';
 import { isElasticsearchUnavailable } from './services/elasticsearchErrors';
-import { checkElasticsearchConnection } from './services/elasticsearchService';
+import { checkElasticsearchConnection, noteElasticsearchUnavailable } from './services/elasticsearchService';
 import { logger } from './utils/logger';
 import { describeError, LogThrottle } from './utils/logThrottle';
 
@@ -121,6 +121,9 @@ export function errorHandler(error: unknown, req: Request, res: Response, next: 
     return;
   }
   if (isElasticsearchUnavailable(error)) {
+    // The health probe runs on its own client: tell the service a request
+    // failed, so a later successful probe knows to rebuild the long-lived one
+    noteElasticsearchUnavailable();
     if (elasticsearchUnavailableThrottle.shouldLog()) {
       logger.warn(
         `Elasticsearch unreachable during ${req.method} ${req.path}: ${describeError(error)} (further failures log once per 30s)`,
@@ -205,7 +208,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   // the whole stack (Elasticsearch included) is healthy. The ES check is
   // cached for a few seconds so a polling dashboard does not ping ES per hit.
   let healthCache: { checkedAt: number; esUp: boolean } | null = null;
-  app.get('/health', async (_req, res) => {
+  const healthHandler: RequestHandler = async (_req, res) => {
     const now = Date.now();
     // Only a healthy answer is cached. While Elasticsearch is down every probe
     // runs (a refused connection is instant and silent), so the client sees the
@@ -218,7 +221,11 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
       status: esUp ? 'ok' : 'degraded',
       elasticsearch: esUp ? 'ok' : 'down',
     });
-  });
+  };
+  app.get('/health', healthHandler);
+  // The browser reaches the API through the dev proxy and nginx, both of which
+  // forward /api only: the UI asks here, the extension keeps using /health.
+  app.get('/api/health', healthHandler);
 
   // Liveness probe: the process answers — no dependencies involved
   app.get('/health/live', (_req, res) => {

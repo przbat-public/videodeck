@@ -200,7 +200,7 @@ describe('useRecreateIndices', () => {
   });
 
   it('handles an HTTP error from the start endpoint with its message', async () => {
-    mockServer(jsonResponse({ message: 'Service unavailable' }, 503), []);
+    mockServer(jsonResponse({ error: 'Service unavailable' }, 503), []);
 
     const { result } = renderHook(() => useRecreateIndices());
 

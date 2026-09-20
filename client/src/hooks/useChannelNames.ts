@@ -1,5 +1,6 @@
 import { ChannelsResponseSchema } from '@videodeck/shared/schemas';
 import { useEffect, useState } from 'react';
+import { readApiFailure } from '../utils/apiFailure';
 
 interface UseChannelNamesResult {
   /** Distinct channel names from Elasticsearch, for the channel filter */
@@ -20,8 +21,9 @@ export function useChannelNames(): UseChannelNamesResult {
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/videos/channels', { signal: controller.signal })
-      .then((response) => {
+      .then(async (response) => {
         if (!response.ok) {
+          await readApiFailure(response);
           throw new Error(`channels fetch failed (HTTP ${response.status})`);
         }
         return response.json();

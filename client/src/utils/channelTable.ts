@@ -39,7 +39,8 @@ export interface ChannelRow {
   category?: string;
   /** Whether config.json carries a channelUrl */
   configured: boolean;
-  indexed: boolean;
+  /** ES index present (true), missing (false) or unknown (null, cluster down) */
+  indexed: boolean | null;
   /** `list.json` exists (false), does not (true) or is still unknown (null) */
   listExists: boolean | null;
   /** Counts from GET /api/folder/summaries; absent until they arrive */
@@ -78,7 +79,12 @@ function queueCountsByFolder(jobs: readonly QueueJob[]): Record<string, ChannelQ
   return byFolder;
 }
 
-/** The reasons this channel needs attention, in `ATTENTION_REASONS` order */
+/**
+ * The reasons this channel needs attention, in `ATTENTION_REASONS` order.
+ * `indexed` is `null` while the status could not read Elasticsearch at all: the
+ * console then reports no index state instead of chipping every channel, and
+ * the banner above the table says why.
+ */
 function attentionReasons(row: Omit<ChannelRow, 'attention'>): AttentionReason[] {
   const reasons = new Set<AttentionReason>();
   if (!row.configured) {
@@ -87,7 +93,7 @@ function attentionReasons(row: Omit<ChannelRow, 'attention'>): AttentionReason[]
   if (row.listExists === false) {
     reasons.add('noList');
   }
-  if (!row.indexed) {
+  if (row.indexed === false) {
     reasons.add('noIndex');
   }
   if (row.queue.failed > 0) {
@@ -119,7 +125,7 @@ export function buildChannelRows(
       ...(channelName ? { channelName } : {}),
       ...(category ? { category } : {}),
       configured: Boolean(config?.channelUrl),
-      indexed: status.indexedFolders.includes(folderPath),
+      indexed: status.elasticsearch === 'down' ? null : status.indexedFolders.includes(folderPath),
       listExists: status.listExists[folderPath] ?? null,
       ...(summary ? { summary } : {}),
       queue: queueByFolder[folderPath] ?? { running: 0, queued: 0, failed: 0 },

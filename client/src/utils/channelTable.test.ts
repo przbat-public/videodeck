@@ -68,6 +68,15 @@ describe('buildChannelRows', () => {
     expect(built[1]?.channelName).toBeUndefined();
   });
 
+  it('reports no index state while Elasticsearch could not be read', () => {
+    const built = buildChannelRows({ ...status, elasticsearch: 'down', indexedFolders: [] }, summaries.summaries, []);
+
+    // A chip per channel would say "reindex everything"; the banner above the
+    // table says the cluster is down
+    expect(built.map((row) => row.indexed)).toEqual([null, null, null]);
+    expect(built.flatMap((row) => row.attention)).not.toContain('noIndex');
+  });
+
   it('builds one row per configured folder, keeping the status order', () => {
     const built = rows();
 

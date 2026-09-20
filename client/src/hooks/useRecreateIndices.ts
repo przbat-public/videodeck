@@ -3,6 +3,7 @@ import { RecreateIndicesStatusSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import i18n from '../i18n';
+import { readApiFailure } from '../utils/apiFailure';
 import { sleep } from '../utils/sleep';
 
 interface UseRecreateIndicesResult {
@@ -18,6 +19,7 @@ export const RECREATE_POLL_INTERVAL_MS = 1500;
 async function fetchStatus(signal: AbortSignal): Promise<RecreateIndicesStatus> {
   const response = await fetch('/api/videos/recreateIndices/status', { signal });
   if (!response.ok) {
+    await readApiFailure(response);
     throw new Error(i18n.t('errors.recreateStatus', { status: response.status }));
   }
   return RecreateIndicesStatusSchema.parse(await response.json());
@@ -27,8 +29,8 @@ async function fetchStatus(signal: AbortSignal): Promise<RecreateIndicesStatus> 
 async function startRecreate(signal: AbortSignal, loadingToastId: string): Promise<void> {
   const response = await fetch('/api/videos/recreateIndices', { method: 'POST', signal });
   if (!response.ok && response.status !== 409) {
-    const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    const failure = await readApiFailure(response);
+    throw new Error(failure.message ?? `HTTP error! status: ${response.status}`);
   }
   if (response.status === 409) {
     toast.loading(i18n.t('toast.recreateAlreadyRunning'), { id: loadingToastId });

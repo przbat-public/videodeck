@@ -10,6 +10,7 @@ import {
   VideoSearchActionType,
   videoSearchReducer,
 } from '../reducers/videoSearchReducer';
+import { readApiFailure } from '../utils/apiFailure';
 import type { SearchState } from '../utils/searchUrlState';
 import { DEFAULT_SEARCH_STATE, toSearchParams } from '../utils/searchUrlState';
 
@@ -60,6 +61,12 @@ interface UseVideoSearchResult {
   loadMore: () => Promise<void>;
 }
 
+/** The message a failed search deserves: an unreachable cluster gets its own */
+async function searchFailureMessage(response: Response): Promise<string> {
+  const failure = await readApiFailure(response);
+  return i18n.t(failure.elasticsearchDown ? 'errors.searchElasticsearch' : 'errors.search');
+}
+
 export function useVideoSearch(): UseVideoSearchResult {
   const [state, dispatch] = useReducer(videoSearchReducer, initialState);
   // Searches can overlap when the URL changes twice in a row. Only the
@@ -92,7 +99,7 @@ export function useVideoSearch(): UseVideoSearchResult {
         signal: controller.signal,
       });
       if (!response.ok) {
-        throw new Error(i18n.t('errors.search'));
+        throw new Error(await searchFailureMessage(response));
       }
       const data = SearchResponseSchema.parse(await response.json());
       if (!isCurrent()) {

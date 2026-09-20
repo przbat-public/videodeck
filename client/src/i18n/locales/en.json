@@ -176,7 +176,8 @@
     "progressLabel": "Indexing",
     "progressFolder": "folder {{folder}}/{{total}}",
     "progressFiles": "{{filesDone}}/{{filesTotal}} files",
-    "progressIndexed": "{{count}} indexed"
+    "progressIndexed": "{{count}} indexed",
+    "elasticsearchDownTitle": "Elasticsearch is not responding"
   },
   "toast": {
     "addedToQueue_one": "Added {{count}} video to {{target}}",
@@ -217,7 +218,13 @@
       "bot-wall": "YouTube is asking for a sign-in (bot wall)",
       "age-gate": "This video is age-restricted and requires a logged-in session"
     },
-    "loadSummaries": "Could not count the videos per channel"
+    "loadSummaries": "Could not count the videos per channel",
+    "searchElasticsearch": "Failed to search videos: Elasticsearch is not responding",
+    "channelsElasticsearch": "Failed to load the channel list: Elasticsearch is not responding"
+  },
+  "health": {
+    "elasticsearchDown": "Elasticsearch is not responding. Search and indexing are off; downloads and the video list still work.",
+    "recheck": "Check again"
   },
   "theme": {
     "system": "System",

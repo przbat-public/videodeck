@@ -116,8 +116,17 @@ gear menu), search bar (input + selects), video card
 (thumbnail, title, muted metadata), queue item (status line, progress bar
 while running, log on errors — the server drops the routine progress
 lines before they reach the log), detail player (70% width, poster,
-subtitle tracks). All live in `client/src/components/` and reuse the
-tokens.
+subtitle tracks), outage banner (a dependency is gone: one sentence that
+names what is off and what still works, plus a retry). All live in
+`client/src/components/` and reuse the tokens.
+
+The outage banner is the shell's `role="status"` strip under the top bar. It
+is the one place allowed to poll for state: `useServerHealth` asks
+`GET /api/health` every 10 s, on focus and on the retry button, and writes the
+answer into the `client/src/utils/elasticsearchStatus.ts` store. Pages and the
+menu read that store instead of polling, and a `503` with
+`code: 'elasticsearch_unavailable'` reports itself there too, so the banner
+appears in the same tick as the failure that caused it.
 
 Data tables (the channel console on `/download`) follow one shape:
 

@@ -29,6 +29,7 @@ export type {
   FolderListResponse,
   FolderSummariesResponse,
   FolderSummary,
+  HealthResponse,
   ListExistsResponse,
   QueueJob,
   QueueListResponse,

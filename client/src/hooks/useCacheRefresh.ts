@@ -4,6 +4,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import i18n from '../i18n';
 import { CacheRefreshActionType, cacheRefreshReducer, initialState } from '../reducers/cacheRefreshReducer';
+import { readApiFailure } from '../utils/apiFailure';
 import { sleep } from '../utils/sleep';
 
 interface UseCacheRefreshResult {
@@ -74,6 +75,7 @@ export function formatReindexResult(status: ReindexStatus): string {
 async function fetchStatus(signal: AbortSignal): Promise<ReindexStatus> {
   const response = await fetch('/api/videos/refreshCache/status', { signal });
   if (!response.ok) {
+    await readApiFailure(response);
     throw new Error(i18n.t('reindex.statusFailed', { status: response.status }));
   }
   return ReindexStatusSchema.parse(await response.json());
@@ -84,8 +86,8 @@ async function startReindex(url: string, signal: AbortSignal, loadingToastId: st
   const response = await fetch(url, { method: 'POST', signal });
 
   if (!response.ok && response.status !== 409) {
-    const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    const failure = await readApiFailure(response);
+    throw new Error(failure.message ?? `HTTP error! status: ${response.status}`);
   }
 
   if (response.status === 409) {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useReducer } from 'react';
 import i18n from '../i18n';
 import type { StatusData } from '../reducers/statusReducer';
 import { initialState, StatusActionType, statusReducer } from '../reducers/statusReducer';
+import { reportElasticsearchReachable, reportElasticsearchUnavailable } from '../utils/elasticsearchStatus';
 
 interface UseStatusResult {
   state: { statusData: StatusData | null; loading: boolean; error: string | null };
@@ -30,6 +31,14 @@ export function useStatus(): UseStatusResult {
         throw new Error(i18n.t('errors.fetchStatus'));
       }
       const data = StatusResponseSchema.parse(await response.json());
+      // The status answer says whether the index read worked, so the banner
+      // knows before the first /health poll comes back. A healthy read is only
+      // evidence: it must not clear a state the probe reported.
+      if (data.elasticsearch === 'down') {
+        reportElasticsearchUnavailable();
+      } else {
+        reportElasticsearchReachable();
+      }
       dispatch({ type: StatusActionType.FETCH_SUCCESS, payload: data });
     } catch (err) {
       if (signal?.aborted) {

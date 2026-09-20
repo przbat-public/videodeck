@@ -299,7 +299,8 @@ describe('useCacheRefresh', () => {
   });
 
   it('should handle HTTP error response with custom message', async () => {
-    mockServer(jsonResponse({ message: 'Service unavailable' }, 503), []);
+    // The API contract always carries `error`; `message` is the optional detail
+    mockServer(jsonResponse({ error: 'Service unavailable' }, 503), []);
 
     const { result } = renderHook(() => useCacheRefresh());
 
@@ -343,7 +344,7 @@ describe('useCacheRefresh', () => {
       await result.current.refreshCache();
     });
 
-    expect(toast.error).toHaveBeenCalledWith('Unknown error', { id: LOADING_TOAST_ID });
+    expect(toast.error).toHaveBeenCalledWith('HTTP error! status: 500', { id: LOADING_TOAST_ID });
   });
 
   it('reports a failing status endpoint', async () => {

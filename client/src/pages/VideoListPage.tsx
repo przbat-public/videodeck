@@ -14,6 +14,7 @@ import { usePageFocus } from '../hooks/usePageFocus';
 import { useRecreateIndices } from '../hooks/useRecreateIndices';
 import { useSearchUrlState } from '../hooks/useSearchUrlState';
 import { useVideoSearch } from '../hooks/useVideoSearch';
+import { useElasticsearchState } from '../utils/elasticsearchStatus';
 
 export default function VideoListPage(): JSX.Element {
   const { searchState, setSearchState } = useSearchUrlState();
@@ -23,6 +24,7 @@ export default function VideoListPage(): JSX.Element {
   const { categories } = useCategories();
   const { channels } = useChannelNames();
   const { loading: recreateIndicesLoading, recreateIndices } = useRecreateIndices();
+  const elasticsearchDown = useElasticsearchState() === 'down';
   const [onlyMissing, setOnlyMissing] = useState(false);
   const { t } = useTranslation();
   const mainRef = usePageFocus<HTMLElement>();
@@ -74,8 +76,10 @@ export default function VideoListPage(): JSX.Element {
         {
           key: 'refresh',
           label: refreshLoading ? t('reindex.refreshing') : t('reindex.start'),
-          disabled: refreshLoading,
-          title: t('reindex.startTitle'),
+          // Both index actions need the cluster; the banner above the page
+          // says why they are off
+          disabled: refreshLoading || elasticsearchDown,
+          title: elasticsearchDown ? t('reindex.elasticsearchDownTitle') : t('reindex.startTitle'),
           onSelect: () => void handleRefreshCache(),
         },
         {
@@ -87,8 +91,8 @@ export default function VideoListPage(): JSX.Element {
         {
           key: 'recreate',
           label: recreateIndicesLoading ? t('reindex.recreating') : t('reindex.recreate'),
-          disabled: recreateIndicesLoading,
-          title: t('reindex.recreateTitle'),
+          disabled: recreateIndicesLoading || elasticsearchDown,
+          title: elasticsearchDown ? t('reindex.elasticsearchDownTitle') : t('reindex.recreateTitle'),
           onSelect: () => void handleRecreateIndices(),
         },
       ],

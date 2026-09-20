@@ -1,3 +1,5 @@
+import { ELASTICSEARCH_UNAVAILABLE_CODE } from '@videodeck/shared/schemas';
+
 /**
  * Recognising "Elasticsearch is not reachable" in whatever shape the official
  * client throws it. The transport wraps the socket error (sometimes twice), so
@@ -66,8 +68,7 @@ export function isElasticsearchUnavailable(error: unknown): boolean {
   return false;
 }
 
-/** Machine-readable code the API answers with when Elasticsearch is down */
-export const ELASTICSEARCH_UNAVAILABLE_CODE = 'elasticsearch_unavailable';
+export { ELASTICSEARCH_UNAVAILABLE_CODE };
 
 /** The API's answer for an unreachable cluster, distinct from a 500 */
 export class ElasticsearchUnavailableError extends Error {

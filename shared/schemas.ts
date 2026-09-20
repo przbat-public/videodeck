@@ -10,6 +10,18 @@ import { z } from 'zod';
  * the server's route tests assert its responses satisfy them.
  */
 
+/**
+ * Code the API answers with when it cannot reach Elasticsearch (503). The
+ * client turns it into its own message, and the health banner keys off it.
+ */
+export const ELASTICSEARCH_UNAVAILABLE_CODE = 'elasticsearch_unavailable';
+
+/** GET /health: the readiness probe the UI and the extension share */
+export const HealthResponseSchema = z.object({
+  status: z.enum(['ok', 'degraded']),
+  elasticsearch: z.enum(['ok', 'down']),
+});
+
 export const ApiErrorSchema = z.object({
   error: z.string(),
   message: z.string().optional(),
@@ -409,3 +421,4 @@ export type DownloadPlaylistResponse = z.infer<typeof DownloadPlaylistResponseSc
 export type SaveFolderConfigResponse = z.infer<typeof SaveFolderConfigResponseSchema>;
 export type DownloadVideoEvent = z.infer<typeof downloadVideoEventSchema>;
 export type ApiError = z.infer<typeof ApiErrorSchema>;
+export type HealthResponse = z.infer<typeof HealthResponseSchema>;

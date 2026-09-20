@@ -57,6 +57,8 @@ export async function mockApi(
     list?: unknown;
     /** Body of GET /api/videos/channels: the filter names and the folder map */
     channels?: unknown;
+    /** Body of GET /api/health; a degraded stack is `{ status: 'degraded', elasticsearch: 'down' }` */
+    health?: unknown;
     /** Body of the queue GET; defaults to an empty, unpaused queue */
     queue?: unknown;
     /** Body of GET /api/folder/summaries; defaults to no counts at all */
@@ -64,6 +66,11 @@ export async function mockApi(
   } = {},
 ): Promise<void> {
   const context = page.context();
+  // The readiness probe behind the outage banner (see ElasticsearchBanner)
+  await context.route('**/api/health', async (route) => {
+    const body = (handlers.health ?? { status: 'ok', elasticsearch: 'ok' }) as { elasticsearch?: string };
+    await route.fulfill(json(body, body.elasticsearch === 'down' ? 503 : 200));
+  });
   await context.route('**/api/videos/search**', async (route) => {
     const url = new URL(route.request().url());
     const body = handlers.search?.(url.searchParams) ?? { videos: [], totalCount: 0 };
