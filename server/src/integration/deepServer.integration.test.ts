@@ -197,7 +197,8 @@ describe('deep server integration (real app, fake external world)', () => {
     const healthyBody = healthy.body as { elasticsearch: string; indexedFolders: string[] };
     expect(healthyBody.elasticsearch).toBe('ok');
     expect(healthyBody.indexedFolders).toContain(firstFolder);
-    await env.agent.get('/health').expect(200);
+    // No /health call here on purpose: a healthy probe is cached for 5 s, and
+    // the point below is what the probe says once the cluster is gone
 
     await env.fakeEs.stop();
     env.setFolders('es-down-b');
@@ -210,10 +211,20 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(statusBody.indexedFolders).toEqual([]);
 
     // Anything that reads documents is a dependency failure, not a crash
-    // The search client retries transient failures for a while by design, so
-    // this one call is the slow part of the test
     const search = await env.agent.get('/api/videos/search?q=film').expect(503);
     expect(search.body).toEqual({ error: 'Elasticsearch is not reachable', code: 'elasticsearch_unavailable' });
+
+    // And it fails fast: the search client retries transient failures for
+    // seconds by design, and a fresh outage skips that budget instead of
+    // making the user wait it out twice
+    const fastStartedAt = Date.now();
+    await env.agent.get('/api/videos/search?q=film').expect(503);
+    expect(Date.now() - fastStartedAt).toBeLessThan(1_000);
+
+    // The metric says the same thing for a scrape
+    const degradedMetrics = await env.agent.get('/metrics').expect(200);
+    expect(degradedMetrics.text).toContain('elasticsearch_up 0');
+
     // The probe is not cached while it is down, so the recovery is seen at once
     await env.agent.get('/health').expect(503);
 
@@ -221,6 +232,8 @@ describe('deep server integration (real app, fake external world)', () => {
     env.setFolders('es-down-a', 'es-down-b');
 
     await env.agent.get('/health').expect(200);
+    const recoveredMetrics = await env.agent.get('/metrics').expect(200);
+    expect(recoveredMetrics.text).toContain('elasticsearch_up 1');
     const recovered = await env.agent.get('/api/status').expect(200);
     const recoveredBody = recovered.body as { elasticsearch: string; indexedFolders: string[] };
     expect(recoveredBody.elasticsearch).toBe('ok');

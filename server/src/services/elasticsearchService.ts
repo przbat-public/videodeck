@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto';
 import type { estypes } from '@elastic/elasticsearch';
 import { Client } from '@elastic/elasticsearch';
+import { Gauge } from '@prometheus-io/client';
 import type { RecreateIndicesStatus, SortOption, VideoListItem } from '@videodeck/shared/api';
 import { SEARCH_DEFAULT_PAGE_SIZE } from '@videodeck/shared/schemas';
 import { ELASTICSEARCH_URL, getVideosFolderPaths } from '../config';
+import { metricsRegistry } from '../metricsRegistry';
 import { logger } from '../utils/logger';
 import { LogThrottle } from '../utils/logThrottle';
 import { runPool } from '../utils/runPool';
-import { isElasticsearchUnavailable } from './elasticsearchErrors';
+import { ElasticsearchUnavailableError, isElasticsearchUnavailable } from './elasticsearchErrors';
 
 /**
  * Index layout
@@ -723,6 +725,7 @@ export async function searchVideosWithTotal(
   if (folderPaths?.length === 0) {
     return { videos: [], total: 0 };
   }
+  assertElasticsearchReachable();
   const esClient = getElasticsearchClient();
   const { from, size } = normalizePaging(options);
 
@@ -863,6 +866,7 @@ interface TermsBucket {
  * page with a value the search actually filters by.
  */
 export async function listChannelNames(): Promise<ChannelNames> {
+  assertElasticsearchReachable();
   const esClient = getElasticsearchClient();
   const response = await esClient.search<VideoDocument>({
     index: getIndexPattern(),
@@ -901,6 +905,7 @@ export async function getAllVideos(sortOption: SortOption = 'date-desc'): Promis
 }
 
 async function findOne(query: Record<string, unknown>): Promise<VideoListItem | null> {
+  assertElasticsearchReachable();
   const esClient = getElasticsearchClient();
   const response = await esClient.search<VideoDocument>({
     index: getIndexPattern(),
@@ -951,6 +956,21 @@ export async function refreshIndex(folderPath: string): Promise<void> {
 let unavailableSince: number | null = null;
 
 /**
+ * How long a fresh outage keeps reads from even trying. The regular client
+ * retries transient failures for up to two minutes, and nothing in a stopped
+ * container is going to answer inside that: a second search while the first is
+ * still failing should return at once.
+ */
+const FAIL_FAST_WINDOW_MS = 5_000;
+
+/** 1 when the last observation reached the cluster, 0 after a failure */
+export const elasticsearchUpGauge = new Gauge({
+  name: 'elasticsearch_up',
+  help: '1 when Elasticsearch answered the last check, 0 after a failed request',
+  registers: [metricsRegistry],
+});
+
+/**
  * Record that a request could not reach the cluster. The error handler calls
  * this for every classified failure, so the next successful probe knows it has
  * a recovery on its hands (the probe runs on its own client and cannot see the
@@ -958,6 +978,24 @@ let unavailableSince: number | null = null;
  */
 export function noteElasticsearchUnavailable(now: number = Date.now()): void {
   unavailableSince ??= now;
+  elasticsearchUpGauge.set(0);
+}
+
+/** The cluster answered: forget the outage (the probe calls this) */
+export function clearElasticsearchOutage(): void {
+  unavailableSince = null;
+  elasticsearchUpGauge.set(1);
+}
+
+/**
+ * Refuse a read while an outage is fresh, instead of letting it wait out the
+ * client's retry budget. Only reads use this: a write that is skipped here
+ * would lose its batch, and the queue already retries those.
+ */
+function assertElasticsearchReachable(): void {
+  if (unavailableSince !== null && Date.now() - unavailableSince < FAIL_FAST_WINDOW_MS) {
+    throw new ElasticsearchUnavailableError();
+  }
 }
 
 /** Drop the long-lived client so the next call opens fresh connections */
@@ -988,8 +1026,10 @@ export async function checkElasticsearchConnection(): Promise<boolean> {
   }
   if (unavailableSince !== null) {
     logger.info('Elasticsearch answered again — reconnecting with a fresh client');
-    unavailableSince = null;
+    clearElasticsearchOutage();
     resetElasticsearchClient();
+  } else {
+    elasticsearchUpGauge.set(1);
   }
   return true;
 }

@@ -94,6 +94,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An outage no longer makes every search wait out the client's retry budget:
+  while an outage is fresh (5 s) reads are refused immediately, and
+  `/metrics` publishes `elasticsearch_up` (1/0) for a dashboard
 - A stopped Elasticsearch no longer floods the terminal or blanks the
   download page: `/api/status` serves the folders from disk and reports
   `elasticsearch: "down"`, anything that reads documents answers

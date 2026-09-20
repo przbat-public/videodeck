@@ -49,6 +49,10 @@ describe('isElasticsearchUnavailable', () => {
     expect(isElasticsearchUnavailable('ECONNREFUSED')).toBe(false);
   });
 
+  it('recognises our own domain error, so a refused read answers 503 too', () => {
+    expect(isElasticsearchUnavailable(new ElasticsearchUnavailableError())).toBe(true);
+  });
+
   it('survives a cyclic cause chain', () => {
     const first = new Error('first');
     const second = new Error('second');

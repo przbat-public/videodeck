@@ -1,10 +1,12 @@
 import type { VideoListItem } from '@videodeck/shared/api';
+import { metricsRegistry } from '../metricsRegistry';
 import { at } from '../test-utils';
 import {
   buildIndexVersionName,
   bulkIndexDocuments,
   bulkIndexVideos,
   checkElasticsearchConnection,
+  clearElasticsearchOutage,
   createIndex,
   createIndexVersion,
   deleteIndex,
@@ -262,6 +264,56 @@ describe('elasticsearchService', () => {
       expect(warn).toHaveBeenCalledTimes(1);
       expect(String(warn.mock.calls[0]?.[0])).toContain('Cannot check the index cache of 2 folder(s)');
       warn.mockRestore();
+    });
+  });
+
+  describe('fail-fast while Elasticsearch is down', () => {
+    afterEach(() => {
+      clearElasticsearchOutage();
+      mockClient.search.mockReset();
+    });
+
+    it('refuses a read immediately instead of waiting for the client retries', async () => {
+      noteElasticsearchUnavailable();
+
+      await expect(searchVideosWithTotal('robot arm')).rejects.toThrow('Elasticsearch is not reachable');
+      // The whole point: no request left the process
+      expect(mockClient.search).not.toHaveBeenCalled();
+    });
+
+    it('lets reads through again once the window has passed', async () => {
+      const now = jest.spyOn(Date, 'now');
+      now.mockReturnValue(1_000);
+      noteElasticsearchUnavailable();
+      now.mockReturnValue(10_000);
+      mockClient.search.mockResolvedValue({ hits: { hits: [], total: { value: 0 } } });
+
+      await searchVideosWithTotal('robot arm');
+      expect(mockClient.search).toHaveBeenCalled();
+      now.mockRestore();
+    });
+
+    it('lets reads through again after a healthy probe', async () => {
+      noteElasticsearchUnavailable();
+      mockClient.ping.mockResolvedValue({});
+      await checkElasticsearchConnection();
+      mockClient.search.mockResolvedValue({ hits: { hits: [], total: { value: 0 } } });
+
+      await searchVideosWithTotal('robot arm');
+      expect(mockClient.search).toHaveBeenCalled();
+    });
+
+    it('publishes the state as a metric', async () => {
+      const gauge = metricsRegistry.getSingleMetric('elasticsearch_up') as {
+        get: () => Promise<{ values: Array<{ value: number }> }>;
+      };
+
+      noteElasticsearchUnavailable();
+      expect((await gauge.get()).values[0]?.value).toBe(0);
+
+      mockClient.ping.mockResolvedValue({});
+      await checkElasticsearchConnection();
+      expect((await gauge.get()).values[0]?.value).toBe(1);
     });
   });
 
