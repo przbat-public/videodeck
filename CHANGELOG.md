@@ -84,6 +84,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A stopped Elasticsearch no longer floods the terminal or blanks the
+  download page: `/api/status` serves the folders from disk and reports
+  `elasticsearch: "down"`, anything that reads documents answers
+  `503 { error, code: "elasticsearch_unavailable" }`, and the server prints
+  one compact line per 30 s instead of a stack per request (the boot log
+  names the unreachable URL once, and `/health` keeps reporting the state)
 - "Szukaj w tym kanale" on the download console opens the list page filtered
   to that channel. The link used to carry the folder path, which the search
   filter (`channelName`) never matches, so it landed on an empty result. The

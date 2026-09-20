@@ -344,10 +344,10 @@ export async function loadVideosCache(options: { onlyMissing?: boolean } = {}): 
     const configured = getVideosFolderPaths();
     let folderPaths = configured;
     if (options.onlyMissing) {
-      const cached = await listCachedFolders(configured);
-      folderPaths = configured.filter((folderPath) => !cached.has(folderPath));
+      const lookup = await listCachedFolders(configured);
+      folderPaths = configured.filter((folderPath) => !lookup.folders.has(folderPath));
       logger.info(
-        `Reindex (onlyMissing): ${cached.size}/${configured.length} folders already have a cache and are skipped`,
+        `Reindex (onlyMissing): ${lookup.folders.size}/${configured.length} folders already have a cache and are skipped`,
       );
     }
 

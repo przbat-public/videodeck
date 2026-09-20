@@ -175,6 +175,62 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(list.body.downloadStatuses.aaaaaaaaaaa).toBe(true);
   });
 
+  it('reports an unreachable Elasticsearch and recovers when it comes back', async () => {
+    const firstFolder = await env.seedFolder('es-down-a', {
+      ...videoFiles('esdown00001', 'Film bez Elasticsearch'),
+      'config.json': folderConfig('https://www.youtube.com/@esdowna'),
+      'list.json': JSON.stringify([
+        { id: 'esdown00001', title: 'Film bez Elasticsearch', url: 'https://www.youtube.com/watch?v=esdown00001' },
+      ]),
+    });
+    const secondFolder = await env.seedFolder('es-down-b', {
+      'config.json': folderConfig('https://www.youtube.com/@esdownb', 'other'),
+    });
+
+    // Every status observation uses its own folder set: the answer is cached
+    // for 5 s per set, and the test has no business sleeping that out.
+    env.setFolders('es-down-a', 'es-down-b');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const healthy = await env.agent.get('/api/status').expect(200);
+    const healthyBody = healthy.body as { elasticsearch: string; indexedFolders: string[] };
+    expect(healthyBody.elasticsearch).toBe('ok');
+    expect(healthyBody.indexedFolders).toContain(firstFolder);
+    await env.agent.get('/health').expect(200);
+
+    await env.fakeEs.stop();
+    env.setFolders('es-down-b');
+
+    // The disk-backed status survives, and says why the index data is missing
+    const status = await env.agent.get('/api/status').expect(200);
+    const statusBody = status.body as { elasticsearch: string; videosFolderPath: string[]; indexedFolders: string[] };
+    expect(statusBody.elasticsearch).toBe('down');
+    expect(statusBody.videosFolderPath).toContain(secondFolder);
+    expect(statusBody.indexedFolders).toEqual([]);
+
+    // Anything that reads documents is a dependency failure, not a crash
+    // The search client retries transient failures for a while by design, so
+    // this one call is the slow part of the test
+    const search = await env.agent.get('/api/videos/search?q=film').expect(503);
+    expect(search.body).toEqual({ error: 'Elasticsearch is not reachable', code: 'elasticsearch_unavailable' });
+    // The probe is not cached while it is down, so the recovery is seen at once
+    await env.agent.get('/health').expect(503);
+
+    await env.fakeEs.restart();
+    env.setFolders('es-down-a', 'es-down-b');
+
+    await env.agent.get('/health').expect(200);
+    const recovered = await env.agent.get('/api/status').expect(200);
+    const recoveredBody = recovered.body as { elasticsearch: string; indexedFolders: string[] };
+    expect(recoveredBody.elasticsearch).toBe('ok');
+    expect(recoveredBody.indexedFolders).toContain(firstFolder);
+    const recoveredSearch = await env.agent.get('/api/videos/search?q=film').expect(200);
+    expect((recoveredSearch.body as { videos: Array<{ title: string }> }).videos.map((video) => video.title)).toContain(
+      'Film bez Elasticsearch',
+    );
+  }, 45_000);
+
   it('fails fast with the members-only code instead of retrying', async () => {
     const folderPath = await env.seedFolder('channel-e', {});
     env.setFolders('channel-e');

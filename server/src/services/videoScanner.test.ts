@@ -591,7 +591,7 @@ describe('videoScanner', () => {
 
     it('skips folders whose cache already exists when onlyMissing is set', async () => {
       mockFolder(['a.info.json', 'a.mp4', 'a.webp']);
-      mockedEs.listCachedFolders.mockResolvedValue(new Set([FOLDER]));
+      mockedEs.listCachedFolders.mockResolvedValue({ folders: new Set([FOLDER]), elasticsearchUp: true });
 
       await refreshVideosCache({ onlyMissing: true });
 
@@ -602,7 +602,7 @@ describe('videoScanner', () => {
 
     it('reindexes a folder without a cache even when onlyMissing is set', async () => {
       mockFolder(['a.info.json', 'a.mp4', 'a.webp']);
-      mockedEs.listCachedFolders.mockResolvedValue(new Set());
+      mockedEs.listCachedFolders.mockResolvedValue({ folders: new Set(), elasticsearchUp: true });
 
       await refreshVideosCache({ onlyMissing: true });
 

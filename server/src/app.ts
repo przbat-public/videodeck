@@ -18,8 +18,10 @@ import type { DownloadQueueLike } from './routes/folder';
 import { createFolderRouter } from './routes/folder';
 import { createAuthMiddleware, isAllowedCorsOrigin } from './routes/http';
 import videosRouter from './routes/videos';
+import { isElasticsearchUnavailable } from './services/elasticsearchErrors';
 import { checkElasticsearchConnection } from './services/elasticsearchService';
 import { logger } from './utils/logger';
+import { describeError, LogThrottle } from './utils/logThrottle';
 
 /**
  * Largest expected JSON body: bulk enqueue for a channel with thousands of
@@ -93,6 +95,14 @@ function createHostGuard(extraHosts: readonly string[]): (req: Request, res: Res
 }
 
 /**
+ * A stopped Elasticsearch fails every request that touches it, and each failure
+ * used to print a multi-level stack. The compact line is throttled, because the
+ * status page, the channel list, every search and the health poll all fail at
+ * once and one line says it. Exported so a test can start a fresh window.
+ */
+export const elasticsearchUnavailableThrottle = new LogThrottle(30_000);
+
+/**
  * Safety net for anything a handler did not catch itself. Express 5 forwards
  * rejected async handlers here, so the boilerplate `try/catch + sendError`
  * blocks are gone: a 500 now looks the same everywhere and the full error
@@ -100,10 +110,27 @@ function createHostGuard(extraHosts: readonly string[]): (req: Request, res: Res
  *
  * The response body is generic on purpose: `error.message` may carry file
  * paths, tokens or library internals that must not leak to the client.
+ *
+ * An unreachable Elasticsearch is the one exception. It is not a bug, it is a
+ * dependency the operator can see to, so it answers 503 with a code the client
+ * translates, and the log keeps one line instead of a stack per request.
  */
 export function errorHandler(error: unknown, req: Request, res: Response, next: NextFunction): void {
   if (res.headersSent) {
     next(error); // streaming response (SSE, sendFile) — let Express tear it down
+    return;
+  }
+  if (isElasticsearchUnavailable(error)) {
+    if (elasticsearchUnavailableThrottle.shouldLog()) {
+      logger.warn(
+        `Elasticsearch unreachable during ${req.method} ${req.path}: ${describeError(error)} (further failures log once per 30s)`,
+      );
+    }
+    const unavailableBody: ApiError = {
+      error: 'Elasticsearch is not reachable',
+      code: 'elasticsearch_unavailable',
+    };
+    res.status(503).json(unavailableBody);
     return;
   }
   logger.error(`Unhandled error in ${req.method} ${req.path} [${String(res.locals.requestId)}]:`, error);
@@ -180,7 +207,10 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   let healthCache: { checkedAt: number; esUp: boolean } | null = null;
   app.get('/health', async (_req, res) => {
     const now = Date.now();
-    if (!healthCache || now - healthCache.checkedAt > HEALTH_CACHE_TTL_MS) {
+    // Only a healthy answer is cached. While Elasticsearch is down every probe
+    // runs (a refused connection is instant and silent), so the client sees the
+    // recovery as soon as it happens instead of a stale 'down' for the TTL.
+    if (!healthCache?.esUp || now - healthCache.checkedAt > HEALTH_CACHE_TTL_MS) {
       healthCache = { checkedAt: now, esUp: await checkElasticsearchConnection() };
     }
     const esUp = healthCache.esUp;

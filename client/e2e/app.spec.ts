@@ -278,6 +278,7 @@ test.describe('status page', () => {
         indexedFolders: ['/videos/e2e'],
         listExists: { '/videos/e2e': true },
         status: 'ok',
+        elasticsearch: 'ok',
       },
       list: {
         videos: [{ id: 'e2e-v1', title: 'Film E2E', url: 'https://yt/v1' }],

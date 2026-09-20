@@ -31,7 +31,7 @@ import {
 import { findEntryByVideoId, getDownloadStatuses, loadIndex, rebuildIndex } from '../services/folderIndex';
 import { at } from '../test-utils';
 import { activeSseStreamCount } from '../utils/sseRegistry';
-import { invalidateSummaryCache } from './folder';
+import { invalidateStatusCache, invalidateSummaryCache } from './folder';
 
 jest.mock('node:fs/promises');
 jest.mock('node:child_process');
@@ -176,7 +176,7 @@ describe('folder router', () => {
     mockFileHandle.close.mockResolvedValue(undefined);
     mockedReadFolderConfig.mockResolvedValue(null);
     mockedLoadDownloadOptions.mockResolvedValue({ ...DEFAULT_DOWNLOAD_OPTIONS });
-    mockedListCachedFolders.mockResolvedValue(new Set([FOLDER]));
+    mockedListCachedFolders.mockResolvedValue({ folders: new Set([FOLDER]), elasticsearchUp: true });
     downloadQueue.clear();
     spawnCalls.length = 0;
     invalidateSummaryCache();
@@ -213,9 +213,27 @@ describe('folder router', () => {
         },
         indexedFolders: [FOLDER],
         listExists: { [FOLDER]: true, [OTHER_FOLDER]: true },
+        elasticsearch: 'ok',
         status: 'ok',
       });
       expect(mockedListCachedFolders).toHaveBeenCalledWith([FOLDER, OTHER_FOLDER]);
+    });
+
+    it('serves the folders from disk when Elasticsearch is unreachable', async () => {
+      invalidateStatusCache();
+      mockedListCachedFolders.mockResolvedValue({ folders: new Set(), elasticsearchUp: false });
+
+      const response = await request(app).get('/api/status');
+
+      expect(response.status).toBe(200);
+      const body = StatusResponseSchema.parse(response.body);
+      // The folder list, the configs and list.json presence all come from disk
+      expect(body.videosFolderPath).toEqual([FOLDER, OTHER_FOLDER]);
+      expect(body.listExists).toEqual({ [FOLDER]: true, [OTHER_FOLDER]: true });
+      // Nothing could be read, so no folder claims to be indexed and the
+      // response says why
+      expect(body.indexedFolders).toEqual([]);
+      expect(body.elasticsearch).toBe('down');
     });
   });
 

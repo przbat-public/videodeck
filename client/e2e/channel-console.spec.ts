@@ -29,6 +29,7 @@ const consoleStatus = () => ({
   indexedFolders: folderPaths.filter((_, index) => index >= 5),
   listExists: Object.fromEntries(folderPaths.map((folderPath, index) => [folderPath, index % 5 !== 0])),
   status: 'ok',
+  elasticsearch: 'ok',
 });
 
 const consoleSummaries = () => ({

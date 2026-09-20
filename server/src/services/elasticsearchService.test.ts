@@ -16,6 +16,7 @@ import {
   getVideoByBaseName,
   getVideoByFilePath,
   getVideoByVideoId,
+  indexCacheLogThrottle,
   indexVideo,
   listCachedFolders,
   listChannelNames,
@@ -215,9 +216,10 @@ describe('elasticsearchService', () => {
     it('returns the folders whose alias exists (a cache from a previous disk session)', async () => {
       mockClient.indices.existsAlias.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
-      const cached = await listCachedFolders([FOLDER_A, FOLDER_B]);
+      const lookup = await listCachedFolders([FOLDER_A, FOLDER_B]);
 
-      expect(cached).toEqual(new Set([FOLDER_A]));
+      expect(lookup.folders).toEqual(new Set([FOLDER_A]));
+      expect(lookup.elasticsearchUp).toBe(true);
       expect(mockClient.indices.existsAlias).toHaveBeenCalledWith({ name: ALIAS_A });
       expect(mockClient.indices.existsAlias).toHaveBeenCalledWith({ name: ALIAS_B });
     });
@@ -226,10 +228,35 @@ describe('elasticsearchService', () => {
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
         /* silence the expected warning */
       });
-      mockClient.indices.existsAlias.mockRejectedValueOnce(new Error('es down'));
+      mockClient.indices.existsAlias.mockRejectedValueOnce(new Error('alias lookup exploded'));
 
-      await expect(listCachedFolders([FOLDER_A])).resolves.toEqual(new Set());
+      const lookup = await listCachedFolders([FOLDER_A]);
+
+      expect(lookup.folders).toEqual(new Set());
+      // A single odd failure is not "the cluster is down"
+      expect(lookup.elasticsearchUp).toBe(true);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('Cannot check the index cache of /videos/a'));
+      warn.mockRestore();
+    });
+
+    it('reports an unreachable cluster once instead of warning per folder', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+        /* silence the expected warning */
+      });
+      const connectionError = (): Error =>
+        Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9200'), {
+          name: 'ConnectionError',
+          code: 'ECONNREFUSED',
+        });
+      mockClient.indices.existsAlias.mockRejectedValue(connectionError());
+      indexCacheLogThrottle.reset();
+
+      const lookup = await listCachedFolders([FOLDER_A, FOLDER_B]);
+
+      expect(lookup.folders).toEqual(new Set());
+      expect(lookup.elasticsearchUp).toBe(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain('Cannot check the index cache of 2 folder(s)');
       warn.mockRestore();
     });
   });

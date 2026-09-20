@@ -5,7 +5,9 @@ import type { RecreateIndicesStatus, SortOption, VideoListItem } from '@videodec
 import { SEARCH_DEFAULT_PAGE_SIZE } from '@videodeck/shared/schemas';
 import { ELASTICSEARCH_URL, getVideosFolderPaths } from '../config';
 import { logger } from '../utils/logger';
+import { LogThrottle } from '../utils/logThrottle';
 import { runPool } from '../utils/runPool';
+import { isElasticsearchUnavailable } from './elasticsearchErrors';
 
 /**
  * Index layout
@@ -303,22 +305,34 @@ const CACHE_CHECK_CONCURRENCY = 8;
  * A folder whose check fails (ES down mid-request) counts as uncached: the
  * status page should never 500 because of one hiccup.
  */
-export async function listCachedFolders(folderPaths: string[]): Promise<Set<string>> {
-  const cached = new Set<string>();
+export async function listCachedFolders(folderPaths: string[]): Promise<CachedFolderLookup> {
+  const folders = new Set<string>();
+  let unavailable = 0;
   await runPool(folderPaths, CACHE_CHECK_CONCURRENCY, async (folderPath) => {
     const alias = getIndexNameFromFolderPath(folderPath);
     try {
       const exists = await getProbeClient().indices.existsAlias({ name: alias });
       if (exists) {
-        cached.add(folderPath);
+        folders.add(folderPath);
       }
     } catch (error) {
+      if (isElasticsearchUnavailable(error)) {
+        // Every folder fails at once when the cluster is gone: count them and
+        // say it once, instead of one warning per folder
+        unavailable += 1;
+        return;
+      }
       logger.warn(
         `Cannot check the index cache of ${folderPath}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   });
-  return cached;
+  if (unavailable > 0 && indexCacheLogThrottle.shouldLog()) {
+    logger.warn(
+      `Cannot check the index cache of ${unavailable} folder(s): Elasticsearch is not reachable (further failures log once per 30s)`,
+    );
+  }
+  return { folders, elasticsearchUp: unavailable === 0 };
 }
 
 /**
@@ -812,6 +826,22 @@ function buildHighlights(highlight: Record<string, string[]> | undefined): Recor
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+export interface CachedFolderLookup {
+  /** Folders whose alias exists, so their index survives a disk swap */
+  folders: Set<string>;
+  /** False when the cluster could not be reached while checking */
+  elasticsearchUp: boolean;
+}
+
+/** One line per window for a cluster that fails every folder check at once */
+export const indexCacheLogThrottle = new LogThrottle(30_000);
+
+/**
+ * Channel metadata for the UI. One query answers both questions: the distinct
+ * names behind the search filter, and which channel each folder holds (a
+ * sub-aggregation per folder bucket), so the console can link to the search
+ * page with a value the search actually filters by.
+ */
 export interface ChannelNames {
   /** Distinct channel names across the configured folders, for the filter UI */
   channels: string[];
@@ -916,12 +946,16 @@ export async function refreshIndex(folderPath: string): Promise<void> {
   await esClient.indices.refresh({ index: getIndexNameFromFolderPath(folderPath) });
 }
 
+/**
+ * One cheap ping. It stays silent on purpose: `/health` is polled, and the
+ * caller decides what to log (the boot line, the throttled request line). A
+ * refused connection is immediate, so probing while down costs nothing.
+ */
 export async function checkElasticsearchConnection(): Promise<boolean> {
   try {
     await getProbeClient().ping();
     return true;
-  } catch (error) {
-    logger.error('Elasticsearch connection failed:', error);
+  } catch {
     return false;
   }
 }
