@@ -82,6 +82,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sticks under the queue bar so the columns keep their names while the
   library scrolls past
 
+### Added
+
+- The client says when Elasticsearch is unreachable instead of turning it into
+  a generic error per page: a banner under the top bar names what is off
+  (search and indexing) and what still works (downloads, the video list, the
+  queue), the search page reports the cluster rather than "no results", the
+  index actions in the gear menu are disabled while it is down, and the retry
+  clears the banner as soon as it answers again. A failed request reports the
+  outage itself, so the banner does not wait for the next poll.
+
 ### Fixed
 
 - A stopped Elasticsearch no longer floods the terminal or blanks the

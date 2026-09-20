@@ -7,6 +7,7 @@ import { useTheme } from '../hooks/useTheme';
 import { AppMenu } from './AppMenu';
 import type { AppMenuSectionSpec } from './appMenuRegistry';
 import { RegisterSectionsContext, SectionsContext, sectionsSignature } from './appMenuRegistry';
+import { ElasticsearchBanner } from './ElasticsearchBanner';
 
 /**
  * Holds the section registry and provides it to the top bar and the pages.
@@ -52,6 +53,7 @@ export function AppLayout(): JSX.Element {
         </div>
         <AppMenu theme={theme} onThemeChange={setTheme} />
       </header>
+      <ElasticsearchBanner />
       <Outlet />
     </AppMenuProvider>
   );

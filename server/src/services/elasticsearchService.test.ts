@@ -4,12 +4,14 @@ import {
   buildIndexVersionName,
   bulkIndexDocuments,
   bulkIndexVideos,
+  checkElasticsearchConnection,
   createIndex,
   createIndexVersion,
   deleteIndex,
   discardIndexVersion,
   estimateDocumentBytes,
   fromDocument,
+  getElasticsearchClient,
   getIndexNameFromFolderPath,
   getIndexVersions,
   getRecreateIndicesStatus,
@@ -20,6 +22,7 @@ import {
   indexVideo,
   listCachedFolders,
   listChannelNames,
+  noteElasticsearchUnavailable,
   promoteIndexVersion,
   recreateAllIndices,
   recreateIndex,
@@ -46,6 +49,7 @@ const mockClient = {
   count: jest.fn(),
   ping: jest.fn(),
   deleteByQuery: jest.fn(),
+  close: jest.fn().mockResolvedValue(undefined),
 };
 
 jest.mock('@elastic/elasticsearch', () => ({
@@ -258,6 +262,56 @@ describe('elasticsearchService', () => {
       expect(warn).toHaveBeenCalledTimes(1);
       expect(String(warn.mock.calls[0]?.[0])).toContain('Cannot check the index cache of 2 folder(s)');
       warn.mockRestore();
+    });
+  });
+
+  describe('checkElasticsearchConnection', () => {
+    it('replaces the long-lived client once a failed request is followed by a healthy probe', async () => {
+      const { Client } = jest.requireMock('@elastic/elasticsearch') as { Client: jest.Mock };
+      Client.mockClear();
+      mockClient.ping.mockResolvedValue({});
+      await checkElasticsearchConnection();
+      getElasticsearchClient();
+      // The probe client plus the long-lived one
+      const baseline = Client.mock.calls.length;
+
+      // A request failed, and the next probe finds the cluster back
+      noteElasticsearchUnavailable();
+      mockClient.ping.mockResolvedValue({});
+      expect(await checkElasticsearchConnection()).toBe(true);
+
+      // The app builds a fresh pool instead of reusing the one the outage left
+      // behind with its exponential resurrect backoff
+      getElasticsearchClient();
+      expect(Client.mock.calls.length).toBe(baseline + 1);
+
+      // A healthy probe without a failure in between does not rebuild it
+      expect(await checkElasticsearchConnection()).toBe(true);
+      getElasticsearchClient();
+      expect(Client.mock.calls.length).toBe(baseline + 1);
+    });
+
+    it('arms the reset when the probe itself fails', async () => {
+      const { Client } = jest.requireMock('@elastic/elasticsearch') as { Client: jest.Mock };
+      Client.mockClear();
+      mockClient.ping.mockResolvedValue({});
+      await checkElasticsearchConnection();
+      getElasticsearchClient();
+      const baseline = Client.mock.calls.length;
+
+      // The probe itself could not reach the cluster
+      mockClient.ping.mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:9200'));
+      expect(await checkElasticsearchConnection()).toBe(false);
+
+      // The next healthy probe rebuilds the long-lived client, once
+      mockClient.ping.mockResolvedValue({});
+      expect(await checkElasticsearchConnection()).toBe(true);
+      getElasticsearchClient();
+      expect(Client.mock.calls.length).toBe(baseline + 1);
+
+      expect(await checkElasticsearchConnection()).toBe(true);
+      getElasticsearchClient();
+      expect(Client.mock.calls.length).toBe(baseline + 1);
     });
   });
 

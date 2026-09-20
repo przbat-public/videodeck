@@ -320,6 +320,7 @@ export async function listCachedFolders(folderPaths: string[]): Promise<CachedFo
         // Every folder fails at once when the cluster is gone: count them and
         // say it once, instead of one warning per folder
         unavailable += 1;
+        noteElasticsearchUnavailable();
         return;
       }
       logger.warn(
@@ -946,18 +947,51 @@ export async function refreshIndex(folderPath: string): Promise<void> {
   await esClient.indices.refresh({ index: getIndexNameFromFolderPath(folderPath) });
 }
 
+/** When a request last found the cluster unreachable, null while it is fine */
+let unavailableSince: number | null = null;
+
+/**
+ * Record that a request could not reach the cluster. The error handler calls
+ * this for every classified failure, so the next successful probe knows it has
+ * a recovery on its hands (the probe runs on its own client and cannot see the
+ * other one's broken pool).
+ */
+export function noteElasticsearchUnavailable(now: number = Date.now()): void {
+  unavailableSince ??= now;
+}
+
+/** Drop the long-lived client so the next call opens fresh connections */
+export function resetElasticsearchClient(): void {
+  const previous = client;
+  client = null;
+  void previous?.close().catch(() => {
+    /* the client is being discarded either way */
+  });
+}
+
 /**
  * One cheap ping. It stays silent on purpose: `/health` is polled, and the
  * caller decides what to log (the boot line, the throttled request line). A
  * refused connection is immediate, so probing while down costs nothing.
+ *
+ * When the probe finds the cluster back, the long-lived client is replaced:
+ * its connection pool sat on dead sockets through the outage and backs off
+ * exponentially before trying again, which would fail the user's first search
+ * right after the banner cleared.
  */
 export async function checkElasticsearchConnection(): Promise<boolean> {
   try {
     await getProbeClient().ping();
-    return true;
   } catch {
+    noteElasticsearchUnavailable();
     return false;
   }
+  if (unavailableSince !== null) {
+    logger.info('Elasticsearch answered again — reconnecting with a fresh client');
+    unavailableSince = null;
+    resetElasticsearchClient();
+  }
+  return true;
 }
 
 /**

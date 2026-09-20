@@ -196,7 +196,8 @@
     "progressLabel": "Indeksowanie",
     "progressFolder": "folder {{folder}}/{{total}}",
     "progressFiles": "{{filesDone}}/{{filesTotal}} plików",
-    "progressIndexed": "{{count}} zindeksowanych"
+    "progressIndexed": "{{count}} zindeksowanych",
+    "elasticsearchDownTitle": "Elasticsearch nie odpowiada"
   },
   "toast": {
     "addedToQueue_one": "Dodano {{count}} film do {{target}}",
@@ -239,7 +240,13 @@
       "bot-wall": "YouTube żąda zalogowania (ściana antybotowa)",
       "age-gate": "Ten film jest dla dorosłych i wymaga zalogowanej sesji"
     },
-    "loadSummaries": "Nie udało się policzyć filmów w kanałach"
+    "loadSummaries": "Nie udało się policzyć filmów w kanałach",
+    "searchElasticsearch": "Nie udało się wyszukać filmów: Elasticsearch nie odpowiada",
+    "channelsElasticsearch": "Nie udało się wczytać listy kanałów: Elasticsearch nie odpowiada"
+  },
+  "health": {
+    "elasticsearchDown": "Elasticsearch nie odpowiada. Wyszukiwanie i indeksowanie są wyłączone, pobieranie i lista filmów działają dalej.",
+    "recheck": "Sprawdź ponownie"
   },
   "theme": {
     "system": "Systemowy",

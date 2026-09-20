@@ -15,6 +15,26 @@
   padding: 2rem;
 }
 
+/* Elasticsearch-down banner: a state of the stack, not of one page */
+.health-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0.6rem 2rem;
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.health-banner-text {
+  font-size: 0.95rem;
+}
+
 /* Search Bar */
 .search-bar {
   display: flex;

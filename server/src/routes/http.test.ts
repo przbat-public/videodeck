@@ -153,6 +153,18 @@ describe('createApp auth wiring', () => {
     expect(mockedCheckElasticsearch).not.toHaveBeenCalled();
   });
 
+  it('serves the same health answer under /api for the browser client', async () => {
+    mockedCheckElasticsearch.mockResolvedValue(false);
+    const app = createApp();
+
+    const response = await request(app).get('/api/health');
+
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual({ status: 'degraded', elasticsearch: 'down' });
+    // The API namespace is the one the dev proxy and nginx forward
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+
   it('caches the Elasticsearch check across consecutive /health probes', async () => {
     mockedCheckElasticsearch.mockResolvedValue(true);
     const app = createApp();

@@ -3,6 +3,7 @@ import type { StatusResponse } from '@videodeck/shared/api';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock, jsonResponse } from '../test/fetchMock';
+import { getElasticsearchState, resetElasticsearchState } from '../utils/elasticsearchStatus';
 import { useStatus } from './useStatus';
 
 const fetchMock = installFetchMock();
@@ -23,7 +24,18 @@ const statusResponse: StatusResponse = {
 describe('useStatus', () => {
   beforeEach(() => {
     fetchMock.mockReset();
+    resetElasticsearchState();
     fetchMock.mockResolvedValue(jsonResponse(statusResponse));
+  });
+
+  it('takes the Elasticsearch verdict from the status answer', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ...statusResponse, elasticsearch: 'down' }));
+
+    const { result } = renderHook(() => useStatus());
+
+    await waitFor(() => expect(result.current.state.statusData).not.toBeNull());
+    // The banner can come up before the first health poll answers
+    expect(getElasticsearchState()).toBe('down');
   });
 
   it('loads the status, flipping the loading flag along the way', async () => {

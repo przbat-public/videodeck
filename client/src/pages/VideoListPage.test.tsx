@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-rou
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppLayout } from '../components/AppLayout';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
+import { resetElasticsearchState } from '../utils/elasticsearchStatus';
 import VideoListPage from './VideoListPage';
 
 const CATEGORIES = ['fpv', 'lego'];
@@ -41,6 +42,8 @@ const reindexStatus = () => ({
 interface FetchHandlers {
   search?: (params: URLSearchParams) => unknown;
   categories?: string[];
+  /** Body of GET /health; a test sets a degraded stack with it */
+  health?: unknown;
 }
 
 function searchResponse(handlers: FetchHandlers, url: string): MockResponse {
@@ -60,21 +63,24 @@ function refreshCacheResponse(url: string): MockResponse {
  * answer differently per category or phrase.
  */
 function installFetch(handlers: FetchHandlers = {}): FetchMock {
+  /** The plain GETs, keyed by URL; the method-dependent ones are below */
+  const routes: Record<string, () => MockResponse> = {
+    '/api/health': () => json(handlers.health ?? { status: 'ok', elasticsearch: 'ok' }),
+    '/api/videos/categories': () => json({ categories: handlers.categories ?? CATEGORIES }),
+    '/api/videos/channels': () => json({ channels: ['Kanał A'] }),
+    '/api/videos/recreateIndices/status': () => json({ running: false, foldersDone: 1, foldersTotal: 1, errors: [] }),
+  };
+
   const fetchMock: FetchMock = vi.fn(async (url: string, init?: RequestInit): Promise<MockResponse> => {
     if (url.startsWith('/api/videos/search?')) {
       return searchResponse(handlers, url);
     }
-    if (url === '/api/videos/categories') {
-      return json({ categories: handlers.categories ?? CATEGORIES });
-    }
-    if (url === '/api/videos/channels') {
-      return json({ channels: ['Kanał A'] });
+    const route = routes[url];
+    if (route !== undefined) {
+      return route();
     }
     if (url === '/api/videos/recreateIndices' && init?.method === 'POST') {
       return json({ message: 'Recreation started' }, 202);
-    }
-    if (url === '/api/videos/recreateIndices/status') {
-      return json({ running: false, foldersDone: 1, foldersTotal: 1, errors: [] });
     }
     if (url.startsWith('/api/videos/refreshCache')) {
       return refreshCacheResponse(url);
@@ -144,6 +150,7 @@ describe('VideoListPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetElasticsearchState();
     fetchMock = installFetch();
   });
 
@@ -409,6 +416,20 @@ describe('VideoListPage', () => {
           signal: expect.any(AbortSignal),
         }),
       );
+    });
+
+    it('turns the index actions off while Elasticsearch is down', async () => {
+      installFetch({ health: { status: 'degraded', elasticsearch: 'down' } });
+      renderWithMenu('/');
+      await screen.findByText('First');
+      // The banner is rendered by the shell and names the state
+      await screen.findByText(/Elasticsearch nie odpowiada/);
+
+      await openMenu();
+
+      // Radix marks a disabled item with data-disabled, not the disabled property
+      expect(await screen.findByRole('menuitem', { name: 'Odśwież indeks' })).toHaveAttribute('data-disabled');
+      expect(await screen.findByRole('menuitem', { name: 'Odbuduj indeksy' })).toHaveAttribute('data-disabled');
     });
 
     it('Refresh cache can skip folders that already have an index (onlyMissing)', async () => {
