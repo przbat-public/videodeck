@@ -35,6 +35,8 @@ function installFetch(
     status?: () => MockResponse;
     queue?: () => MockResponse;
     summaries?: () => MockResponse;
+    /** `/api/folder/summaries?folderPath=`: the one-folder refresh */
+    folderSummary?: (folderPath: string) => MockResponse;
     list?: () => MockResponse;
   } = {},
 ): FetchMock {
@@ -67,6 +69,10 @@ function installFetch(
     }
     if (url.startsWith('/api/folder/list-exists')) {
       return json({ exists: false });
+    }
+    if (url.startsWith('/api/folder/summaries?folderPath=')) {
+      const folderPath = decodeURIComponent(url.slice('/api/folder/summaries?folderPath='.length));
+      return handlers.folderSummary?.(folderPath) ?? json({ summaries: {} });
     }
     throw new Error(`Unexpected fetch: ${init?.method ?? 'GET'} ${url}`);
   });
@@ -376,6 +382,53 @@ describe('StatusPage', () => {
     );
     await waitFor(() => expect(summariesCalls).toBeGreaterThan(0));
     expect(queueCalls).toBeGreaterThan(0);
+  });
+
+  it('refreshes the counts of a channel whose job just finished, and that channel alone', async () => {
+    // Real timers: the queue hook polls on its own interval, and the test
+    // waits for the poll to observe the finished job.
+    const running = {
+      id: 'job-1',
+      folderPath: '/videos/a',
+      videoId: 'v1',
+      videoUrl: 'https://yt/v1',
+      type: 'download',
+      status: 'running',
+      log: [],
+      logLineCount: 0,
+      createdAt: '2026-09-19T10:00:00.000Z',
+    };
+    let finished = false;
+    const refreshed: string[] = [];
+    const fetchMock = installFetch({
+      summaries: () =>
+        json({
+          summaries: {
+            '/videos/a': { videos: 3, downloaded: 1, notDownloaded: 2, stale: 0 },
+            '/videos/b': { videos: 2, downloaded: 2, notDownloaded: 0, stale: 0 },
+          },
+        }),
+      queue: () => json({ jobs: [finished ? { ...running, status: 'done' } : running], paused: false }),
+      folderSummary: (folderPath) => {
+        refreshed.push(folderPath);
+        return json({ summaries: { [folderPath]: { videos: 3, downloaded: 2, notDownloaded: 1, stale: 0 } } });
+      },
+    });
+    renderPage();
+
+    expect(await screen.findByText('2 niepobrane')).toBeInTheDocument();
+    expect(await screen.findByText('1 w toku')).toBeInTheDocument();
+
+    // The download finishes between two polls
+    finished = true;
+
+    expect(await screen.findByText('1 niepobrany', undefined, { timeout: 4000 })).toBeInTheDocument();
+    // Only the channel with the finished job was re-read, from its own endpoint
+    expect(refreshed).toEqual(['/videos/a']);
+    expect(fetchMock).toHaveBeenCalledWith('/api/folder/summaries?folderPath=%2Fvideos%2Fa', { cache: 'no-store' });
+    // The other channel keeps its counts, and the full list was not re-read
+    expect(screen.getByText('2 filmów')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/folder/summaries')).toHaveLength(1);
   });
 
   it('fetches a playlist from a row with no list and reloads the status', async () => {
