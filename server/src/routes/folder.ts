@@ -71,12 +71,17 @@ function requireAllowedFolder<Res>(value: unknown, res: Response<Res | ApiError>
     return null;
   }
   const normalized = normalizeFolderPath(folderPath);
-  if (!getVideosFolderPaths().some((allowed) => normalizeFolderPath(allowed) === normalized)) {
+  const allowed = getVideosFolderPaths().find((candidate) => normalizeFolderPath(candidate) === normalized);
+  if (allowed === undefined) {
     logger.warn(`Rejected folderPath not in the allowed list: ${folderPath}`);
     res.status(403).json({ error: `Folder path is not in the allowed list: ${folderPath}` });
     return null;
   }
-  return normalized;
+  // Hand back the configured entry, not the request value. The two strings
+  // are equal by the comparison above, but only the configured one is
+  // provably free of user input, which is what lets taint analysis (CodeQL
+  // js/path-injection) treat this check as the sanitizer it is.
+  return normalizeFolderPath(allowed);
 }
 
 /** Optional `folderPath` filter of the queue endpoints; false when malformed */
