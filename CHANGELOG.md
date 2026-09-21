@@ -94,6 +94,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `GET /api/videos/channels` no longer answers 500 while a configured folder
+  has no index yet. A freshly attached drive adds folders nobody has indexed,
+  and the channel filter failed as a whole until every one of them was
+  indexed; it now skips the missing aliases the way search already did
 - An outage no longer makes every search wait out the client's retry budget:
   while an outage is fresh (5 s) reads are refused immediately, and
   `/metrics` publishes `elasticsearch_up` (1/0) for a dashboard
