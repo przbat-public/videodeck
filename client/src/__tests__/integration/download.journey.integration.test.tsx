@@ -193,4 +193,25 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
       expect(state.jobs?.[0]).toMatchObject({ videoId: 'eeeeeeeeeee' });
     });
   });
+
+  it('moves the console counts of a channel as soon as its download lands', async () => {
+    // Continues the previous test: the paused queue holds the one job of
+    // channel-console-row, whose row counts one missing video.
+    const folderPath = env.folder('channel-console-row');
+    const page = await renderApp('/download');
+    const row = await channelRow(folderPath);
+    await within(row).findByText('1 niepobrany', undefined, { timeout: 15_000 });
+    await within(row).findByText('1 czeka');
+
+    // Resume: the fake yt-dlp writes the files and the post-job hook refreshes
+    // the folder index before the job reads as done.
+    await page.user.click(await screen.findByRole('button', { name: 'Wznów kolejkę' }));
+
+    // The row learns about it from the queue poll alone: no reload, no action
+    // taken on the page.
+    await waitFor(() => expect(within(row).queryByText('1 niepobrany')).toBeNull(), { timeout: 20_000 });
+    expect(within(row).getByText('2 filmów')).toBeInTheDocument();
+    expect(within(row).queryByText('1 czeka')).toBeNull();
+    expect(existsSync(`${folderPath}/20260101_Fake video eeeeeeeeeee.mp4`)).toBe(true);
+  });
 });

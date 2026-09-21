@@ -94,6 +94,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The "Filmy" column of the download console follows the downloads. The
+  counts were read once, when the page opened, and changed only after an
+  action taken on that page; a download finishing in the background never
+  moved them. The queue poll now spots a job leaving the queue and re-reads
+  that folder alone (`GET /api/folder/summaries?folderPath=`), two disk reads
+  instead of two per configured folder
 - `GET /api/videos/channels` no longer answers 500 while a configured folder
   has no index yet. A freshly attached drive adds folders nobody has indexed,
   and the channel filter failed as a whole until every one of them was

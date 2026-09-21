@@ -13,6 +13,7 @@ import type {
   FolderConfig,
   FolderListResponse,
   FolderSummariesResponse,
+  FolderSummary,
   ListExistsResponse,
   QueueJob,
   QueueListResponse,
@@ -70,12 +71,17 @@ function requireAllowedFolder<Res>(value: unknown, res: Response<Res | ApiError>
     return null;
   }
   const normalized = normalizeFolderPath(folderPath);
-  if (!getVideosFolderPaths().some((allowed) => normalizeFolderPath(allowed) === normalized)) {
+  const allowed = getVideosFolderPaths().find((candidate) => normalizeFolderPath(candidate) === normalized);
+  if (allowed === undefined) {
     logger.warn(`Rejected folderPath not in the allowed list: ${folderPath}`);
     res.status(403).json({ error: `Folder path is not in the allowed list: ${folderPath}` });
     return null;
   }
-  return normalized;
+  // Hand back the configured entry, not the request value. The two strings
+  // are equal by the comparison above, but only the configured one is
+  // provably free of user input, which is what lets taint analysis (CodeQL
+  // js/path-injection) treat this check as the sanitizer it is.
+  return normalizeFolderPath(allowed);
 }
 
 /** Optional `folderPath` filter of the queue endpoints; false when malformed */
@@ -199,6 +205,28 @@ function readSummaryCache(folderPaths: string[]): FolderSummariesResponse | unde
 
 function writeSummaryCache(folderPaths: string[], body: FolderSummariesResponse): void {
   summaryCache = { key: folderPaths.join('\n'), readAt: Date.now(), body };
+}
+
+/**
+ * Replace one folder's counts in the cached answer, if there is one. A single
+ * folder is read fresh right after its job finished; without this the next
+ * full answer inside the cache window would roll the folder back.
+ */
+function patchSummaryCache(folderPath: string, summary: FolderSummary): void {
+  if (summaryCache !== null) {
+    summaryCache.body.summaries[folderPath] = summary;
+  }
+}
+
+/** Counts of one folder; a folder that cannot be read reports zeroes */
+async function summarizeOne(folderPath: string): Promise<FolderSummary> {
+  try {
+    const [list, statuses] = await Promise.all([readListJson(folderPath), getDownloadStatuses(folderPath)]);
+    return summarizeFolder(list, statuses);
+  } catch (error) {
+    logger.error(`Cannot summarize ${folderPath}:`, error);
+    return { videos: 0, downloaded: 0, notDownloaded: 0, stale: 0 };
+  }
 }
 
 /** Tests: drop the summaries cache */
@@ -362,8 +390,21 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
    * are two reads per folder on disk, so the reads run through a pool and the
    * answer is cached for a few seconds; a folder that cannot be read reports
    * zeroes and never fails the whole response.
+   *
+   * With `?folderPath=` the answer holds that one folder, read fresh: the
+   * console asks for it when a job of that folder finishes, so the counts
+   * follow the downloads without re-reading every folder on every job.
    */
-  const getFolderSummaries: RouteHandler<NoParams, FolderSummariesResponse> = async (_req, res) => {
+  const getFolderSummaries: RouteHandler<NoParams, FolderSummariesResponse> = async (req, res) => {
+    if (req.query.folderPath !== undefined) {
+      const folderPath = requireAllowedFolder(req.query.folderPath, res);
+      if (!folderPath) return;
+      const summary = await summarizeOne(folderPath);
+      patchSummaryCache(folderPath, summary);
+      res.json({ summaries: { [folderPath]: summary } });
+      return;
+    }
+
     const videosFolderPaths = getVideosFolderPaths();
     const cached = readSummaryCache(videosFolderPaths);
     if (cached !== undefined) {
@@ -373,13 +414,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
 
     const summaries: FolderSummariesResponse['summaries'] = {};
     await runPool(videosFolderPaths, SUMMARY_READ_CONCURRENCY, async (folderPath) => {
-      try {
-        const [list, statuses] = await Promise.all([readListJson(folderPath), getDownloadStatuses(folderPath)]);
-        summaries[folderPath] = summarizeFolder(list, statuses);
-      } catch (error) {
-        logger.error(`Cannot summarize ${folderPath}:`, error);
-        summaries[folderPath] = { videos: 0, downloaded: 0, notDownloaded: 0, stale: 0 };
-      }
+      summaries[folderPath] = await summarizeOne(folderPath);
     });
 
     const body: FolderSummariesResponse = { summaries };
