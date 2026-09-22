@@ -32,6 +32,8 @@ const DEFAULT_POLL_MS = 1500;
  */
 export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOptions = {}) {
   const { pollIntervalMs = DEFAULT_POLL_MS, onJobFinished, onQueueDrained, onQueueChanged, enabled = true } = options;
+  const onQueueChangedRef = useRef(onQueueChanged);
+  onQueueChangedRef.current = onQueueChanged;
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,28 +89,35 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
       }
       const result = EnqueueJobsResponseSchema.parse(await response.json());
       await refresh();
-      onQueueChanged?.();
+      onQueueChangedRef.current?.();
       return result;
     },
-    [folderPath, onQueueChanged, refresh],
+    [folderPath, refresh],
   );
 
   const cancel = useCallback(
     async (jobId: string) => {
       await fetch(`/api/folder/queue/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
+      // Paint the cancelled row before the refresh: a superseded GET used to
+      // leave the row on "queued" until the next poll, and the console's
+      // follow-up read is what typically supersedes it.
+      setJobs((previous) =>
+        previous.map((job) => (job.id === jobId && isActiveJob(job) ? { ...job, status: 'cancelled' } : job)),
+      );
       await refresh();
-      onQueueChanged?.();
+      onQueueChangedRef.current?.();
     },
-    [onQueueChanged, refresh],
+    [refresh],
   );
 
   const cancelAll = useCallback(async () => {
     await fetch(`/api/folder/queue?folderPath=${encodeURIComponent(folderPath)}`, {
       method: 'DELETE',
     });
+    setJobs((previous) => previous.map((job) => (isActiveJob(job) ? { ...job, status: 'cancelled' } : job)));
     await refresh();
-    onQueueChanged?.();
-  }, [folderPath, onQueueChanged, refresh]);
+    onQueueChangedRef.current?.();
+  }, [folderPath, refresh]);
 
   // Reset per-folder tracking when the folder changes (adjusted during
   // render instead of in an effect — React docs pattern for resetting state).

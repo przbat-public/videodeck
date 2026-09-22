@@ -180,9 +180,7 @@ export default function StatusPage(): JSX.Element {
                       reload();
                       void refreshFolderSummaries([row.folderPath]);
                     }}
-                    onQueueChanged={() => {
-                      void refreshQueue();
-                    }}
+                    onQueueChanged={refreshQueue}
                   />
                 )}
               />
