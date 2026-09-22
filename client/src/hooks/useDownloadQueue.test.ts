@@ -234,6 +234,40 @@ describe('useDownloadQueue', () => {
     });
   });
 
+  it('reports every change it made to the queue, after its own refresh', async () => {
+    // The channel console polls the whole queue only while it sees something
+    // active, so it has to be told when this hook queued or cancelled a job.
+    const onQueueChanged = vi.fn();
+    fetchMock.mockResolvedValue(jsonResponse({ paused: false, jobs: [], skipped: [] }));
+    const { result } = renderHook(() => useDownloadQueue(FOLDER, { onQueueChanged }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(onQueueChanged).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.enqueue([{ videoId: 'v1' }], 'download');
+    });
+    expect(onQueueChanged).toHaveBeenCalledTimes(1);
+    // POST, then the refresh GET, then the report: the caller reads a queue
+    // this hook has already re-read.
+    expect(fetchMock.mock.calls.length).toBe(3);
+
+    await act(async () => {
+      await result.current.cancel('job-1');
+    });
+    expect(onQueueChanged).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await result.current.cancelAll();
+    });
+    expect(onQueueChanged).toHaveBeenCalledTimes(3);
+
+    // An empty enqueue never reached the server, so there is nothing to report
+    await act(async () => {
+      await result.current.enqueue([], 'download');
+    });
+    expect(onQueueChanged).toHaveBeenCalledTimes(3);
+  });
+
   it('reloads when the folder changes', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ paused: false, jobs: [] }));
     const { rerender } = renderHook(({ folder }) => useDownloadQueue(folder), {
