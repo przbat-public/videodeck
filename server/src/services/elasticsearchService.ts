@@ -864,12 +864,17 @@ interface TermsBucket {
  * names behind the search filter, and which channel each folder holds (a
  * sub-aggregation per folder bucket), so the console can link to the search
  * page with a value the search actually filters by.
+ *
+ * Like searchVideos, it skips aliases that do not exist yet: a freshly
+ * attached drive adds folders nobody has indexed, and the filter must keep
+ * working for the indexed ones instead of failing the whole request.
  */
 export async function listChannelNames(): Promise<ChannelNames> {
   assertElasticsearchReachable();
   const esClient = getElasticsearchClient();
   const response = await esClient.search<VideoDocument>({
     index: getIndexPattern(),
+    ignore_unavailable: true,
     size: 0,
     aggs: {
       channels: { terms: { field: 'channelName.keyword', size: 200 } },

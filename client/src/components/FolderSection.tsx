@@ -19,6 +19,10 @@ interface FolderSectionProps {
   /** The form closed itself: the console drops its "editing" state */
   onEditingFinished: () => void;
   onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
+  /** A playlist fetch rewrote `list.json`; the console re-reads the counts */
+  onListChanged?: () => void;
+  /** A job was queued or cancelled in the video list; the console re-reads the queue */
+  onQueueChanged?: () => void;
 }
 
 /**
@@ -37,6 +41,8 @@ export function FolderSection({
   editingConfig,
   onEditingFinished,
   onConfigUpdate,
+  onListChanged,
+  onQueueChanged,
 }: FolderSectionProps) {
   const [listExists, setListExists] = useState<boolean | null>(initialListExists);
   const videoListSectionRef = useRef<VideoListSectionHandle>(null);
@@ -74,6 +80,15 @@ export function FolderSection({
     onConfigUpdate(folderPath, config);
   };
 
+  const handlePlaylistDownloaded = useCallback(() => {
+    void checkListExists();
+    onListChanged?.();
+  }, [checkListExists, onListChanged]);
+
+  const handleQueueChanged = useCallback(() => {
+    onQueueChanged?.();
+  }, [onQueueChanged]);
+
   return (
     <>
       <FolderConfigEditor
@@ -90,11 +105,16 @@ export function FolderSection({
         folderPath={folderPath}
         config={initialConfig}
         listExists={listExists}
-        onPlaylistDownloaded={checkListExists}
+        onPlaylistDownloaded={handlePlaylistDownloaded}
         onLoadVideosList={() => videoListSectionRef.current?.loadVideos()}
       />
 
-      <VideoListSection ref={videoListSectionRef} folderPath={folderPath} listExists={listExists === true} />
+      <VideoListSection
+        ref={videoListSectionRef}
+        folderPath={folderPath}
+        listExists={listExists === true}
+        onQueueChanged={handleQueueChanged}
+      />
     </>
   );
 }

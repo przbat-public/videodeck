@@ -94,6 +94,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The header of a channel's video list keeps one shape: the counts and the
+  queue summary ("kolejka: 3 w toku, 326 czeka") share a line, and the bulk
+  buttons always start under them. The buttons used to slide next to the
+  counts on a wide row while the queue summary sat on a line of its own.
+  The list itself sits half a rhythm under the playlist actions, without the
+  divider line and the three rhythms of air it used to open with.
+- Updating a playlist or queueing videos from a channel's expanded section
+  now updates the "Filmy" and "Kolejka" columns on the same page. Those
+  actions used to refresh only the section itself; the console row above
+  kept the numbers it had when the page opened
+- The "Filmy" column of the download console follows the downloads. The
+  counts were read once, when the page opened, and changed only after an
+  action taken on that page; a download finishing in the background never
+  moved them. The queue poll now spots a job leaving the queue and re-reads
+  that folder alone (`GET /api/folder/summaries?folderPath=`), two disk reads
+  instead of two per configured folder
+- `GET /api/videos/channels` no longer answers 500 while a configured folder
+  has no index yet. A freshly attached drive adds folders nobody has indexed,
+  and the channel filter failed as a whole until every one of them was
+  indexed; it now skips the missing aliases the way search already did
 - An outage no longer makes every search wait out the client's retry budget:
   while an outage is fresh (5 s) reads are refused immediately, and
   `/metrics` publishes `elasticsearch_up` (1/0) for a dashboard
