@@ -176,6 +176,11 @@ export default function StatusPage(): JSX.Element {
                     editingConfig={editingFolder === row.folderPath}
                     onEditingFinished={closeConfigEditor}
                     onConfigUpdate={updateFolderConfig}
+                    onListChanged={() => {
+                      reload();
+                      void refreshFolderSummaries([row.folderPath]);
+                    }}
+                    onQueueChanged={refreshQueue}
                   />
                 )}
               />

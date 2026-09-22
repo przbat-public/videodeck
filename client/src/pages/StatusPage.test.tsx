@@ -25,25 +25,44 @@ const json = (body: unknown, status = 200): MockResponse => ({
   json: async () => body,
 });
 
+type FetchHandlers = {
+  status?: () => MockResponse;
+  queue?: () => MockResponse;
+  summaries?: () => MockResponse;
+  folderSummary?: (folderPath: string) => MockResponse;
+  list?: () => MockResponse;
+  enqueue?: () => MockResponse;
+};
+
+/** Query-string routes the exact-path table cannot name */
+function matchPrefixedRoute(url: string, handlers: FetchHandlers): MockResponse | undefined {
+  if (url.startsWith('/api/folder/list?')) {
+    return handlers.list?.() ?? json({ videos: [], downloadStatuses: {}, lastUpdatedDates: {} });
+  }
+  if (url.startsWith('/api/folder/list-exists')) {
+    return json({ exists: false });
+  }
+  // The expanded section polls its own folder; the same queue answers it
+  if (url.startsWith('/api/folder/queue?folderPath=')) {
+    return handlers.queue?.() ?? json({ jobs: [], paused: false });
+  }
+  if (url.startsWith('/api/folder/summaries?folderPath=')) {
+    const folderPath = decodeURIComponent(url.slice('/api/folder/summaries?folderPath='.length));
+    return handlers.folderSummary?.(folderPath) ?? json({ summaries: {} });
+  }
+  return undefined;
+}
+
 /**
  * StatusPage renders a FolderSection per configured path plus the global
  * queue controls — hence the routing mock rather than a single canned
  * response.
  */
-function installFetch(
-  handlers: {
-    status?: () => MockResponse;
-    queue?: () => MockResponse;
-    summaries?: () => MockResponse;
-    /** `/api/folder/summaries?folderPath=`: the one-folder refresh */
-    folderSummary?: (folderPath: string) => MockResponse;
-    list?: () => MockResponse;
-  } = {},
-): FetchMock {
+function installFetch(handlers: FetchHandlers = {}): FetchMock {
   // One table per method keeps the dispatcher flat: `/api/folder/queue` alone
   // answers a GET (the queue) and a POST (an enqueue).
   const methodRoutes: Record<string, () => MockResponse> = {
-    'POST /api/folder/queue': () => json({ jobs: [], skipped: [] }),
+    'POST /api/folder/queue': () => handlers.enqueue?.() ?? json({ jobs: [], skipped: [] }),
     'POST /api/folder/download-playlist': () => json({ output: 'ok' }),
     'DELETE /api/folder/queue/finished': () => json({ cleared: 2 }),
   };
@@ -60,19 +79,13 @@ function installFetch(
     if (byMethod !== undefined) {
       return byMethod();
     }
-    const handler = routes[url];
-    if (handler !== undefined) {
-      return handler();
+    const exact = routes[url];
+    if (exact !== undefined) {
+      return exact();
     }
-    if (url.startsWith('/api/folder/list?')) {
-      return handlers.list?.() ?? json({ videos: [], downloadStatuses: {}, lastUpdatedDates: {} });
-    }
-    if (url.startsWith('/api/folder/list-exists')) {
-      return json({ exists: false });
-    }
-    if (url.startsWith('/api/folder/summaries?folderPath=')) {
-      const folderPath = decodeURIComponent(url.slice('/api/folder/summaries?folderPath='.length));
-      return handlers.folderSummary?.(folderPath) ?? json({ summaries: {} });
+    const prefixed = matchPrefixedRoute(url, handlers);
+    if (prefixed !== undefined) {
+      return prefixed;
     }
     throw new Error(`Unexpected fetch: ${init?.method ?? 'GET'} ${url}`);
   });
@@ -461,5 +474,77 @@ describe('StatusPage', () => {
       ),
     );
     await waitFor(() => expect(statusCalls).toBeGreaterThan(1));
+  });
+
+  it('refreshes the counts of the expanded channel after its playlist is fetched from the section', async () => {
+    // The row menu already re-read the counts after a playlist fetch; the
+    // same button inside the expanded section left the "Filmy" column stale.
+    const user = userEvent.setup();
+    let statusCalls = 0;
+    const refreshed: string[] = [];
+    installFetch({
+      status: () => {
+        statusCalls += 1;
+        return json(statusResponse);
+      },
+      summaries: () => json({ summaries: { '/videos/a': { videos: 3, downloaded: 0, notDownloaded: 3, stale: 0 } } }),
+      folderSummary: (folderPath) => {
+        refreshed.push(folderPath);
+        return json({ summaries: { [folderPath]: { videos: 5, downloaded: 0, notDownloaded: 5, stale: 0 } } });
+      },
+    });
+    renderPage();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr') as HTMLElement;
+    expect(await within(rowA).findByText('3 filmów')).toBeInTheDocument();
+    statusCalls = 0;
+
+    await user.click(within(rowA).getByRole('button', { name: 'Pokaż filmy' }));
+    await user.click(await screen.findByRole('button', { name: 'Aktualizuj playlistę' }));
+
+    expect(await within(rowA).findByText('5 filmów')).toBeInTheDocument();
+    // That channel alone was re-read, and the status too (list.json may be new)
+    expect(refreshed).toEqual(['/videos/a']);
+    expect(statusCalls).toBeGreaterThan(0);
+  });
+
+  it('re-reads the queue after a download is queued from the expanded section', async () => {
+    // The console polls the whole queue only while it sees an active job, so
+    // a job queued from the section never reached the "Kolejka" column until
+    // the page was reloaded.
+    const user = userEvent.setup();
+    const queuedJob = {
+      id: 'job-1',
+      folderPath: '/videos/a',
+      videoId: 'v1',
+      videoUrl: 'https://yt/v1',
+      type: 'download',
+      status: 'queued',
+      log: [],
+      logLineCount: 0,
+      createdAt: '2026-09-22T07:00:00.000Z',
+    };
+    let queued = false;
+    installFetch({
+      queue: () => json({ jobs: queued ? [queuedJob] : [], paused: false }),
+      enqueue: () => {
+        queued = true;
+        return json({ jobs: [queuedJob], skipped: [] });
+      },
+      list: () =>
+        json({
+          videos: [{ id: 'v1', title: 'Film 1', url: 'https://yt/v1' }],
+          downloadStatuses: {},
+          lastUpdatedDates: {},
+        }),
+    });
+    renderPage();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr') as HTMLElement;
+
+    await user.click(within(rowA).getByRole('button', { name: 'Pokaż filmy' }));
+    await user.click(await screen.findByRole('button', { name: 'Pobierz listę filmów' }));
+    await screen.findByText('Film 1');
+    await user.click(screen.getByRole('button', { name: 'Pobierz' }));
+
+    expect(await within(rowA).findByText('1 czeka', undefined, { timeout: 3000 })).toBeInTheDocument();
   });
 });

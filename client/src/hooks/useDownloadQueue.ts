@@ -13,6 +13,12 @@ export interface UseDownloadQueueOptions {
   onJobFinished?: (job: QueueJob) => void;
   /** Called when the queue goes from having active jobs to being idle */
   onQueueDrained?: () => void;
+  /**
+   * Called after this hook queued or cancelled a job, once its own refresh
+   * has landed. The channel console polls the whole queue only while it
+   * already sees something active, so it has to be told about a first job.
+   */
+  onQueueChanged?: () => void;
 }
 
 export const isActiveJob = (job: QueueJob): boolean => job.status === 'queued' || job.status === 'running';
@@ -25,7 +31,9 @@ const DEFAULT_POLL_MS = 1500;
  * is queued/running, and exposes enqueue/cancel helpers.
  */
 export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOptions = {}) {
-  const { pollIntervalMs = DEFAULT_POLL_MS, onJobFinished, onQueueDrained, enabled = true } = options;
+  const { pollIntervalMs = DEFAULT_POLL_MS, onJobFinished, onQueueDrained, onQueueChanged, enabled = true } = options;
+  const onQueueChangedRef = useRef(onQueueChanged);
+  onQueueChangedRef.current = onQueueChanged;
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,6 +89,7 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
       }
       const result = EnqueueJobsResponseSchema.parse(await response.json());
       await refresh();
+      onQueueChangedRef.current?.();
       return result;
     },
     [folderPath, refresh],
@@ -89,7 +98,14 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
   const cancel = useCallback(
     async (jobId: string) => {
       await fetch(`/api/folder/queue/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
+      // Paint the cancelled row before the refresh: a superseded GET used to
+      // leave the row on "queued" until the next poll, and the console's
+      // follow-up read is what typically supersedes it.
+      setJobs((previous) =>
+        previous.map((job) => (job.id === jobId && isActiveJob(job) ? { ...job, status: 'cancelled' } : job)),
+      );
       await refresh();
+      onQueueChangedRef.current?.();
     },
     [refresh],
   );
@@ -98,7 +114,9 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
     await fetch(`/api/folder/queue?folderPath=${encodeURIComponent(folderPath)}`, {
       method: 'DELETE',
     });
+    setJobs((previous) => previous.map((job) => (isActiveJob(job) ? { ...job, status: 'cancelled' } : job)));
     await refresh();
+    onQueueChangedRef.current?.();
   }, [folderPath, refresh]);
 
   // Reset per-folder tracking when the folder changes (adjusted during
