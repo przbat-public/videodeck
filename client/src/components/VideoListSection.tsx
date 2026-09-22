@@ -30,6 +30,8 @@ const ROW_PROPS = {};
 interface VideoListSectionProps {
   folderPath: string;
   listExists: boolean;
+  /** A job was queued or cancelled here; the console re-reads the whole queue */
+  onQueueChanged?: () => void;
 }
 
 export interface VideoListSectionHandle {
@@ -42,6 +44,7 @@ export interface VideoListSectionHandle {
 export function VideoListSection({
   folderPath,
   listExists,
+  onQueueChanged,
   ref,
 }: VideoListSectionProps & { ref?: Ref<VideoListSectionHandle> }): JSX.Element | null {
   const [videos, setVideos] = useState<ChannelVideo[]>([]);
@@ -104,6 +107,10 @@ export function VideoListSection({
     fetchList().catch((err) => logError(err));
   }, [fetchList]);
 
+  const handleQueueChanged = useCallback(() => {
+    onQueueChanged?.();
+  }, [onQueueChanged]);
+
   // Destructured so the useCallback dependencies below reference the stable
   // members directly instead of the whole (freshly created) queue object
   const {
@@ -119,6 +126,7 @@ export function VideoListSection({
     enabled: listExists,
     onJobFinished: handleJobFinished,
     onQueueDrained: handleQueueDrained,
+    onQueueChanged: handleQueueChanged,
   });
 
   // Reset per-folder state when the folder or the existence of list.json

@@ -48,7 +48,12 @@ export function VideoListHeader({
         {notUpdatedCount > 0 && ` ${t('queue.notUpdated', { count: notUpdatedCount })}`}
         {downloadedCount > 0 && notDownloadedCount === 0 && notUpdatedCount === 0 && ` ${t('queue.allDownloaded')}`}
         {hasActive && (
-          <span className="queue-summary">{t('queue.inProgress', { running: runningCount, queued: queuedCount })}</span>
+          <>
+            {' '}
+            <span className="queue-summary">
+              {t('queue.inProgress', { running: runningCount, queued: queuedCount })}
+            </span>
+          </>
         )}
       </p>
       <div className="videos-list-buttons">

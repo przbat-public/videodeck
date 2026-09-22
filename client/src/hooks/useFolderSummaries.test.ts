@@ -93,4 +93,47 @@ describe('useFolderSummaries', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
+
+  it('refreshes the named folders alone and merges them into the counts', async () => {
+    const fresh = { videos: 10, downloaded: 9, notDownloaded: 1, stale: 0, newestUpdate: '2026-09-21T00:00:00.000Z' };
+    fetchMock.mockImplementation(async (url: string) =>
+      url === '/api/folder/summaries'
+        ? json({
+            summaries: {
+              ...body.summaries,
+              '/videos/b': { videos: 4, downloaded: 4, notDownloaded: 0, stale: 0 },
+            },
+          })
+        : json({ summaries: { '/videos/a': fresh } }),
+    );
+    const { result } = renderHook(() => useFolderSummaries());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.refreshFolders(['/videos/a']);
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/folder/summaries?folderPath=%2Fvideos%2Fa', { cache: 'no-store' });
+    expect(result.current.summaries['/videos/a']).toEqual(fresh);
+    // The other folder keeps the counts it had; the refresh replaces nothing else
+    expect(result.current.summaries['/videos/b']).toEqual({ videos: 4, downloaded: 4, notDownloaded: 0, stale: 0 });
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('keeps the previous counts of a folder whose refresh fails', async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      url === '/api/folder/summaries' ? json(body) : json({ error: 'boom' }, 500),
+    );
+    const { result } = renderHook(() => useFolderSummaries());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.refreshFolders(['/videos/a']);
+    });
+
+    // A background refresh that fails is not an outage: the table keeps the
+    // numbers it had and shows no banner
+    expect(result.current.summaries['/videos/a']).toEqual(body.summaries['/videos/a']);
+    expect(result.current.error).toBeNull();
+  });
 });

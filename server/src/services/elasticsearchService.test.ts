@@ -891,6 +891,21 @@ describe('elasticsearchService', () => {
       });
     });
 
+    it('lists channel names while a configured folder has no index yet', async () => {
+      // A freshly attached drive adds folders that nobody has indexed. Search
+      // already tolerates their missing aliases; the channel filter must too,
+      // otherwise the whole endpoint answers 500 until the drive is indexed.
+      mockClient.search.mockResolvedValue({
+        aggregations: { channels: { buckets: [{ key: 'Alpha' }] }, folders: { buckets: [] } },
+      });
+
+      await listChannelNames();
+
+      const request = mockClient.search.mock.calls[0][0];
+      expect(request.index).toEqual([ALIAS_A, ALIAS_B]);
+      expect(request.ignore_unavailable).toBe(true);
+    });
+
     it('clamps out-of-range paging values', async () => {
       await searchVideos('q', 'date-desc', undefined, { offset: -10, limit: 9999 });
 
