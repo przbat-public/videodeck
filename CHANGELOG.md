@@ -94,6 +94,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The header of a channel's video list keeps one shape: the counts and the
+  queue summary ("kolejka: 3 w toku, 326 czeka") share a line, and the bulk
+  buttons always start under them. The buttons used to slide next to the
+  counts on a wide row while the queue summary sat on a line of its own.
 - The "Filmy" column of the download console follows the downloads. The
   counts were read once, when the page opened, and changed only after an
   action taken on that page; a download finishing in the background never

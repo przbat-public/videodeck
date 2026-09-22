@@ -352,6 +352,39 @@ test.describe('reported layout defects', () => {
     expect(box.width).toBeGreaterThanOrEqual(44);
     expect(box.height).toBeGreaterThanOrEqual(44);
   });
+
+  test('the folder list header stacks the bulk buttons under the counts and keeps the queue summary inline', async ({
+    page,
+  }) => {
+    // The header put the buttons next to the counts whenever the row was wide
+    // enough, and the queue summary sat on its own line under the counts.
+    // Wanted the other way round: the counts and the queue summary share one
+    // line, the buttons always start under them.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await folderListPage(page);
+    const section = page.locator('.channel-expanded-row');
+    const layout = await section.locator('.videos-list-header').evaluate((header) => {
+      const count = header.querySelector('.videos-count');
+      const summary = header.querySelector('.queue-summary');
+      const buttons = header.querySelector('.videos-list-buttons');
+      const firstText = count?.firstChild;
+      if (!count || !summary || !buttons || !(firstText instanceof Text)) {
+        return null;
+      }
+      const range = document.createRange();
+      range.selectNodeContents(firstText);
+      const firstLine = range.getBoundingClientRect();
+      return {
+        summaryTop: summary.getBoundingClientRect().top,
+        firstLineTop: firstLine.top,
+        countBottom: count.getBoundingClientRect().bottom,
+        buttonsTop: buttons.getBoundingClientRect().top,
+      };
+    });
+    expect(layout).not.toBeNull();
+    expect(layout?.buttonsTop ?? 0).toBeGreaterThanOrEqual(layout?.countBottom ?? Number.POSITIVE_INFINITY);
+    expect(Math.abs((layout?.summaryTop ?? 0) - (layout?.firstLineTop ?? 0))).toBeLessThan(1);
+  });
 });
 
 test.describe('long unbroken content', () => {
