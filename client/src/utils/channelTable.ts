@@ -56,6 +56,26 @@ function folderName(folderPath: string): string {
   return separator === -1 ? trimmed : trimmed.slice(separator + 1);
 }
 
+function isActive(job: QueueJob): boolean {
+  return job.status === 'queued' || job.status === 'running';
+}
+
+/**
+ * Folders whose job was active at the previous poll and is not any more: it
+ * finished, failed, or was cancelled and swept. Their counts on disk may have
+ * changed, so the console re-reads these folders and no other.
+ */
+export function foldersWithFinishedJobs(previous: readonly QueueJob[], current: readonly QueueJob[]): string[] {
+  const stillActive = new Set(current.filter(isActive).map((job) => job.id));
+  const folders = new Set<string>();
+  for (const job of previous) {
+    if (isActive(job) && !stillActive.has(job.id)) {
+      folders.add(job.folderPath);
+    }
+  }
+  return [...folders];
+}
+
 /** Group the queue's jobs by folder and count what each channel is doing */
 function queueCountsByFolder(jobs: readonly QueueJob[]): Record<string, ChannelQueueCounts> {
   const byFolder: Record<string, ChannelQueueCounts> = {};

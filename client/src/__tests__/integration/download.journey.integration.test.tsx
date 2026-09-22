@@ -51,7 +51,10 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
   it('downloads the whole playlist through the queue and finds the videos in search without a reindex', async () => {
     const folderPath = env.folder('channel-integration');
     const page = await renderApp('/download');
+    const row = await channelRow(folderPath);
     const section = await folderSection(folderPath);
+    // No list.json yet: the console row has nothing to count
+    await within(row).findByText('0 filmów', undefined, { timeout: 15_000 });
 
     // 1. Pause the global queue first, so the enqueue below provably waits.
     await page.user.click(await screen.findByRole('button', { name: 'Pauza kolejki' }));
@@ -59,18 +62,22 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
 
     // 2. Pull the channel playlist (the fake yt-dlp answers --flat-playlist
     //    with two entries) and load the resulting list.json into the rows.
+    //    The console row above learns the new count from the same click.
     await page.user.click(within(section).getByRole('button', { name: 'Pobierz playlistę' }));
     await within(section).findByText(/Plik list\.json już istnieje/);
+    await within(row).findByText('2 filmów', undefined, { timeout: 15_000 });
     await page.user.click(within(section).getByRole('button', { name: 'Pobierz listę filmów' }));
     await within(section).findByText('Fake playlist video 1');
 
     // 3. Download everything while the queue is paused: both rows sit in
     //    the queued state and the header counts them. (The enqueue toast is
     //    incidental feedback — react-hot-toast renders unreliably in jsdom,
-    //    so the journeys assert the rows and the header instead.)
+    //    so the journeys assert the rows and the header instead.) The row's
+    //    "Kolejka" column follows without a page reload.
     await page.user.click(within(section).getByRole('button', { name: 'Pobierz wszystkie' }));
     expect(await within(section).findAllByText('Pobieranie: w kolejce')).toHaveLength(2);
     await within(section).findByText(/kolejka: 0 w toku, 2 czeka/);
+    await within(row).findByText('2 czeka', undefined, { timeout: 15_000 });
 
     // 4. The external world agrees: the persisted queue state records the
     //    pause and the two waiting jobs.
@@ -192,5 +199,26 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
       expect(state.jobs).toHaveLength(1);
       expect(state.jobs?.[0]).toMatchObject({ videoId: 'eeeeeeeeeee' });
     });
+  });
+
+  it('moves the console counts of a channel as soon as its download lands', async () => {
+    // Continues the previous test: the paused queue holds the one job of
+    // channel-console-row, whose row counts one missing video.
+    const folderPath = env.folder('channel-console-row');
+    const page = await renderApp('/download');
+    const row = await channelRow(folderPath);
+    await within(row).findByText('1 niepobrany', undefined, { timeout: 15_000 });
+    await within(row).findByText('1 czeka');
+
+    // Resume: the fake yt-dlp writes the files and the post-job hook refreshes
+    // the folder index before the job reads as done.
+    await page.user.click(await screen.findByRole('button', { name: 'Wznów kolejkę' }));
+
+    // The row learns about it from the queue poll alone: no reload, no action
+    // taken on the page.
+    await waitFor(() => expect(within(row).queryByText('1 niepobrany')).toBeNull(), { timeout: 20_000 });
+    expect(within(row).getByText('2 filmów')).toBeInTheDocument();
+    expect(within(row).queryByText('1 czeka')).toBeNull();
+    expect(existsSync(`${folderPath}/20260101_Fake video eeeeeeeeeee.mp4`)).toBe(true);
   });
 });

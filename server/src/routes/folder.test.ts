@@ -528,6 +528,48 @@ describe('folder router', () => {
       // window must not touch the disks again.
       expect(mockedFs.readFile.mock.calls.length).toBe(readsAfterFirst);
     });
+
+    it('summarizes one folder when asked for it', async () => {
+      const response = await request(app).get('/api/folder/summaries').query({ folderPath: OTHER_FOLDER });
+
+      expect(response.status).toBe(200);
+      expect(FolderSummariesResponseSchema.parse(response.body)).toEqual({
+        summaries: { [OTHER_FOLDER]: { videos: 1, downloaded: 0, notDownloaded: 1, stale: 0 } },
+      });
+      // Two reads for the one folder, not two per configured folder
+      expect(mockedFs.readFile).toHaveBeenCalledTimes(1);
+      expect(mockedGetDownloadStatuses).toHaveBeenCalledTimes(1);
+      expect(mockedGetDownloadStatuses).toHaveBeenCalledWith(OTHER_FOLDER);
+    });
+
+    it('reads one folder fresh and patches it into the cached answer for every folder', async () => {
+      // The console asks for one folder right after its job finished, so the
+      // answer must come from disk even inside the cache window, and the full
+      // answer served next must not roll the folder back to the stale counts.
+      await request(app).get('/api/folder/summaries');
+      mockedGetDownloadStatuses.mockImplementation((folderPath) =>
+        Promise.resolve(
+          folderPath === OTHER_FOLDER
+            ? { downloadStatuses: { w1: true }, lastUpdatedDates: { w1: '2026-09-20T00:00:00.000Z' } }
+            : { downloadStatuses: {}, lastUpdatedDates: {} },
+        ),
+      );
+
+      const one = await request(app).get('/api/folder/summaries').query({ folderPath: OTHER_FOLDER });
+      const all = await request(app).get('/api/folder/summaries');
+
+      const fresh = { videos: 1, downloaded: 1, notDownloaded: 0, stale: 0, newestUpdate: '2026-09-20T00:00:00.000Z' };
+      expect(one.body.summaries[OTHER_FOLDER]).toEqual(fresh);
+      expect(all.body.summaries[OTHER_FOLDER]).toEqual(fresh);
+      expect(all.body.summaries[FOLDER].videos).toBe(3);
+    });
+
+    it('refuses a folder outside the configured list', async () => {
+      const response = await request(app).get('/api/folder/summaries').query({ folderPath: '/etc' });
+
+      expect(response.status).toBe(403);
+      expect(mockedFs.readFile).not.toHaveBeenCalled();
+    });
   });
 
   describe('POST /api/folder/rebuild-index', () => {

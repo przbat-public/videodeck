@@ -1,6 +1,12 @@
 import type { QueueJob, StatusResponse } from '@videodeck/shared/api';
 import { describe, expect, it } from 'vitest';
-import { buildChannelRows, filterChannels, sortChannels, summarizeChannels } from './channelTable';
+import {
+  buildChannelRows,
+  filterChannels,
+  foldersWithFinishedJobs,
+  sortChannels,
+  summarizeChannels,
+} from './channelTable';
 
 const status: StatusResponse = {
   videosFolderPath: ['/videos/kanal-b', '/videos/kanal-a', '/videos/kanal-c'],
@@ -223,5 +229,40 @@ describe('summarizeChannels', () => {
       notDownloaded: 2,
       needsAttention: 2,
     });
+  });
+});
+
+describe('foldersWithFinishedJobs', () => {
+  it('names each folder once whose job left the queue since the previous poll', () => {
+    const previous = [
+      job({ id: 'a-1', folderPath: '/videos/kanal-a', status: 'running' }),
+      job({ id: 'a-2', folderPath: '/videos/kanal-a', status: 'queued' }),
+      job({ id: 'b-1', folderPath: '/videos/kanal-b', status: 'queued' }),
+      job({ id: 'c-1', folderPath: '/videos/kanal-c', status: 'done' }),
+    ];
+    const current = [
+      job({ id: 'a-1', folderPath: '/videos/kanal-a', status: 'done' }),
+      job({ id: 'a-2', folderPath: '/videos/kanal-a', status: 'error' }),
+      job({ id: 'b-1', folderPath: '/videos/kanal-b', status: 'running' }),
+      // c-1 was cleared from the queue, but it had already finished before
+      job({ id: 'd-1', folderPath: '/videos/kanal-d', status: 'done' }),
+    ];
+
+    expect(foldersWithFinishedJobs(previous, current)).toEqual(['/videos/kanal-a']);
+  });
+
+  it('counts a job that vanished while active as finished', () => {
+    // Cancelled and swept between two polls: the folder may still have
+    // changed on disk before the cancel landed
+    const previous = [job({ id: 'a-1', folderPath: '/videos/kanal-a', status: 'running' })];
+
+    expect(foldersWithFinishedJobs(previous, [])).toEqual(['/videos/kanal-a']);
+  });
+
+  it('reports nothing on the first poll and while nothing changes', () => {
+    const jobs = [job({ id: 'a-1', status: 'running' })];
+
+    expect(foldersWithFinishedJobs([], jobs)).toEqual([]);
+    expect(foldersWithFinishedJobs(jobs, jobs)).toEqual([]);
   });
 });
