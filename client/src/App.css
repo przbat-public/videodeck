@@ -812,11 +812,10 @@
   }
 }
 
-/* Videos List Section */
+/* Videos List Section: the expanded row already frames it, so half a rhythm
+   is all the air it needs above; no divider of its own. */
 .videos-list-section {
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--color-border);
+  margin-top: 0.5rem;
 }
 
 
