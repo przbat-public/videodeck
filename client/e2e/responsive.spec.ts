@@ -385,6 +385,19 @@ test.describe('reported layout defects', () => {
     expect(layout?.buttonsTop ?? 0).toBeGreaterThanOrEqual(layout?.countBottom ?? Number.POSITIVE_INFINITY);
     expect(Math.abs((layout?.summaryTop ?? 0) - (layout?.firstLineTop ?? 0))).toBeLessThan(1);
   });
+
+  test('the video list sits half a rhythm under the playlist actions, with no divider', async ({ page }) => {
+    // The section opened with a 1.5rem margin, 1.5rem padding and a border
+    // line above it: three rhythms of air inside a row that already sits in
+    // the table. A 0.5rem margin is all that separates it now.
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await folderListPage(page);
+    const spacing = await page.locator('.videos-list-section').evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { marginTop: style.marginTop, paddingTop: style.paddingTop, borderTopWidth: style.borderTopWidth };
+    });
+    expect(spacing).toEqual({ marginTop: '8px', paddingTop: '0px', borderTopWidth: '0px' });
+  });
 });
 
 test.describe('long unbroken content', () => {
