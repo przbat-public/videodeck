@@ -27,7 +27,7 @@
     "verify": "pnpm run format:check && pnpm run lint && pnpm run lint:types && pnpm run lint:scripts && pnpm run test:scripts && pnpm run knip && pnpm run lint:deps && pnpm run humanizer:gate && pnpm run typecheck && pnpm run test && pnpm run test:integration && cd client && pnpm run test:e2e",
     "prepare": "husky",
     "install:ci": "pnpm install --frozen-lockfile",
-    "humanizer:gate": "node scripts/humanizer/index.js scan README.md AGENTS.md DESIGN.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md RELEASING.md docs/DEPLOYMENT.md CHANGELOG.md chrome-extension/README.md chrome-extension/INSTALL.md chrome-extension/icons/README.md .github/pull_request_template.md --baseline scripts/humanizer-baseline.json --fail-on-regression --ignore-code --ignore-quotes"
+    "humanizer:gate": "node scripts/humanizer/index.js scan README.md AGENTS.md DESIGN.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md RELEASING.md docs/DEPLOYMENT.md docs/API.md docs/INSTALL.md docs/DEVELOPMENT.md docs/README.pl.md CHANGELOG.md chrome-extension/README.md chrome-extension/INSTALL.md chrome-extension/icons/README.md .github/pull_request_template.md --baseline scripts/humanizer-baseline.json --fail-on-regression --ignore-code --ignore-quotes"
   },
   "packageManager": "pnpm@12.4.2",
   "lint-staged": {
