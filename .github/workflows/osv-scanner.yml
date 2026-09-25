@@ -1,5 +1,8 @@
 name: OSV Scanner
 
+# Both reusable workflows are pinned to the v2.6.0 release commit: a retagged
+# `@v2` would otherwise change the scan without any diff to review.
+
 on:
   push:
     branches: [main]
@@ -22,7 +25,7 @@ jobs:
       actions: read
       security-events: write
       contents: read
-    uses: 'google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.6.0'
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
 
   # Compares the PR branch against main and only reports NEW vulnerabilities
   # introduced by the PR (warns by default — it does not block the merge).
@@ -32,4 +35,4 @@ jobs:
       actions: read
       security-events: write
       contents: read
-    uses: 'google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.6.0'
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
