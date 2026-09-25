@@ -1,10 +1,12 @@
 name: 'pnpm setup and install'
 description: 'Install pnpm, set up the pinned Node runtime with the pnpm cache, and run a frozen install. The job must run actions/checkout before this action, so the local action file exists on disk.'
+# Both steps are pinned to a release commit instead of a moving major tag: a
+# retagged action would otherwise run new code here without any diff to review.
 runs:
   using: composite
   steps:
-    - uses: pnpm/action-setup@v6
-    - uses: actions/setup-node@v7
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         # Read from .nvmrc: the runtime pin lives in one file, so CI, the
         # Docker images and local nvm users cannot drift apart.

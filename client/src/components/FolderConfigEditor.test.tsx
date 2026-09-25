@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { DownloadOptions, FolderConfig } from '@videodeck/shared/api';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
 import type { FetchMock } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
 import { FolderConfigEditor } from './FolderConfigEditor';
@@ -197,6 +198,28 @@ describe('FolderConfigEditor', () => {
     await user.click(screen.getByRole('button', { name: 'Zapisz' }));
 
     expect(await screen.findByText('Błąd: maxHeight must be an integer between 144 and 4320')).toBeInTheDocument();
+  });
+
+  it('falls back to its own message when the save fails without a body', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValue({ ok: false, json: async () => null });
+    renderEditor({ channelUrl: 'https://yt/@a' });
+
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    await user.click(screen.getByRole('button', { name: 'Zapisz' }));
+
+    expect(await screen.findByText(i18n.t('app.error', { message: i18n.t('errors.saveConfig') }))).toBeInTheDocument();
+  });
+
+  it('reports a save that failed without an Error', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockRejectedValue('boom');
+    renderEditor({ channelUrl: 'https://yt/@a' });
+
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    await user.click(screen.getByRole('button', { name: 'Zapisz' }));
+
+    expect(await screen.findByText(i18n.t('app.error', { message: i18n.t('errors.occurred') }))).toBeInTheDocument();
   });
 
   it('saves the category and suggests the ones other folders use', async () => {

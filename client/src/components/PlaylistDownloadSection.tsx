@@ -46,13 +46,13 @@ export function PlaylistDownloadSection({
 
       if (!response.ok) {
         const parsed = ApiErrorSchema.safeParse(await response.json().catch(() => null));
-        throw new Error(parsed.success ? (parsed.data.message ?? parsed.data.error) : 'Failed to download playlist');
+        throw new Error(parsed.success ? (parsed.data.message ?? parsed.data.error) : t('errors.downloadPlaylist'));
       }
 
       // Notify parent to refresh list existence status
       onPlaylistDownloaded();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      const errorMessage = err instanceof Error ? err.message : t('errors.occurred');
       setDownloadError(errorMessage);
     } finally {
       setIsDownloading(false);

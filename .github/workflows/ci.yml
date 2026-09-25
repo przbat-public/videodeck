@@ -17,6 +17,9 @@ on:
 permissions:
   contents: read
 
+# Every `uses:` below is pinned to a release commit (the trailing comment names
+# the version) so a retagged action cannot change what runs here unreviewed.
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -27,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The token is not needed after the clone; leaving it in .git/config
           # would let a later build step push with it.
@@ -51,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The token is not needed after the clone; leaving it in .git/config
           # would let a later build step push with it.
@@ -64,13 +67,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The token is not needed after the clone; leaving it in .git/config
           # would let a later build step push with it.
           persist-credentials: false
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
       # audit reads the committed lockfile; no install needed
@@ -81,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The token is not needed after the clone; leaving it in .git/config
           # would let a later build step push with it.
@@ -107,7 +110,7 @@ jobs:
             dir: chrome-extension
             run: pnpm run test
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The token is not needed after the clone; leaving it in .git/config
           # would let a later build step push with it.
@@ -122,7 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The token is not needed after the clone; leaving it in .git/config
           # would let a later build step push with it.
@@ -139,7 +142,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The token is not needed after the clone; leaving it in .git/config
           # would let a later build step push with it.
@@ -170,7 +173,7 @@ jobs:
           --health-timeout 5s
           --health-retries 24
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The token is not needed after the clone; leaving it in .git/config
           # would let a later build step push with it.
@@ -195,19 +198,19 @@ jobs:
     timeout-minutes: 15
     needs: [lint, format, typecheck, unit-tests]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The token is not needed after the clone; leaving it in .git/config
           # would let a later build step push with it.
           persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
       - run: pnpm run build:server && pnpm run build:client && pnpm run build:extension
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: client-dist
           path: client/dist/
           retention-days: 14
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: chrome-extension-build
           path: |
@@ -223,7 +226,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The token is not needed after the clone; leaving it in .git/config
           # would let a later build step push with it.
@@ -237,8 +240,46 @@ jobs:
         run: pnpm run test:e2e
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report
+          # Matches the `html` reporter output dir in client/playwright.config.ts
+          # (relative to that config's directory), which the `list`-only reporter
+          # never wrote, so this artifact used to be empty.
+          path: client/playwright-report/
+          retention-days: 14
+
+  # The default e2e job above runs the dev server and stays the fast feedback
+  # loop. This one is the addition from the same suite against the built
+  # bundle, so production-only breakage (chunking, minification, base path)
+  # cannot ship unnoticed. The local equivalent is `pnpm run test:e2e:preview`
+  # from the repo root.
+  e2e-preview:
+    name: Playwright E2E (production bundle)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
+      - uses: ./.github/actions/pnpm-setup
+      - name: Install Playwright browsers + OS deps
+        working-directory: client
+        run: pnpm exec playwright install --with-deps
+      - name: Build the client bundle
+        working-directory: client
+        run: pnpm run build
+      - name: Run Playwright tests against vite preview
+        working-directory: client
+        env:
+          E2E_TARGET: preview
+        run: pnpm run test:e2e
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-preview
           path: client/playwright-report/
           retention-days: 14
