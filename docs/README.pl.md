@@ -85,7 +85,7 @@ dodaje filmy do kolejki wprost z YouTube.
 
 - Node.js 24.x (corepack dostarcza pnpm 12.4.2, przypięty w `packageManager`)
 - Elasticsearch 8.x lub 9.x (lokalnie lub zdalnie)
-- Chrome 88+ (tylko dla rozszerzenia Chrome, zob. [chrome-extension/README.md](../chrome-extension/README.md))
+- Chrome 102+ (tylko dla rozszerzenia Chrome, zob. [chrome-extension/README.md](../chrome-extension/README.md))
 
 ## Konfiguracja
 

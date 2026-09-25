@@ -15,7 +15,7 @@ Dependency-free liveness probe: `200 { status: 'ok' }` when the server process r
 
 ### GET /metrics (public)
 
-Prometheus: `http_requests_total` and `http_request_duration_seconds` (method/route/status labels; unknown paths go to the `unmatched` label so as not to multiply series per URL), `download_queue_size`, and summary cost metrics: `openai_summary_requests_total`, `openai_summary_tokens_total`, `openai_summary_estimated_cost_cents_total` (a USD estimate based on approximate model pricing).
+Prometheus: `http_requests_total` and `http_request_duration_seconds` (method/route/status labels on the counter, method/route on the histogram; unknown paths go to the `unmatched` label so as not to multiply series per URL), `download_queue_size`, and summary cost metrics: `openai_summary_requests_total`, `openai_summary_tokens_total`, `openai_summary_estimated_cost_cents_total` (a USD estimate based on approximate model pricing).
 
 ### POST /api/videos/refreshCache
 
