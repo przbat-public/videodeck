@@ -102,6 +102,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The status page polls a small counters answer instead of the whole queue. On
+  a real instance the old poll shipped 5.6 MB every 1.5 seconds once the queue
+  held 6,808 jobs, because every job carried its log; the list is log-free and
+  capped now, a single job's log has its own endpoint, and the console and the
+  queue bar share one poller instead of running two
+- Cancelling a channel waits for the killed yt-dlp to actually exit before the
+  next job for that folder starts, so two processes never write into one
+  folder, and the partial-file cleanup only touches the files that job
+  announced
+- A long search session keeps the two pages you looked at last instead of every
+  page ever loaded, with a notice that takes you back to the top of the results
+
 - The search results load the next page by themselves when you scroll near
   the end of the list, so "Pokaż więcej" no longer needs a click. The button
   stays under the list: after a failed page the automatic loading stops, and
@@ -154,6 +166,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The extension declares Chrome 102 as its floor, which is what its use of `chrome.storage.session` requires
 ### Fixed
+
+- The queue reports the paused state it actually holds. After a restart with a
+  paused queue the API said "not paused" until someone touched the pause
+  button, because the router kept its own copy of the flag
+- The queue state file is written once per burst of job transitions instead of
+  once per transition, and it holds only what a restart reads. A 6,020-job
+  backlog used to rewrite the multi-megabyte snapshot on every enqueue,
+  finish, cancel and retry
 
 - "Anuluj wszystko" works on a channel with thousands of queued jobs. It
   used to re-scan the whole queue and hold one more copy of the state file
