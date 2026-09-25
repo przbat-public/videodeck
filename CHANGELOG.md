@@ -102,6 +102,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The search list remembers where you were reading. Opening a video and going
+  back restores the pages that were on screen and the scroll position instead
+  of dropping you at the top of a fresh first page
+
 - The search results load the next page by themselves when you scroll near
   the end of the list, so "Pokaż więcej" no longer needs a click. The button
   stays under the list: after a failed page the automatic loading stops, and
@@ -155,6 +159,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The extension declares Chrome 102 as its floor, which is what its use of `chrome.storage.session` requires
 - Dependabot watches the workspace once instead of once per directory, so its pull requests match the single lockfile again; the GitHub Actions it runs are pinned to commit SHAs
 ### Fixed
+
+- Loading the next page of results no longer re-announces "loading" to a
+  screen reader for every page: the results region carries `aria-busy`, the
+  page itself does not, and an incremental load is announced once, with how
+  many videos arrived
+- Error messages and the play overlay on a video card come from the
+  translation catalogs now, so the Polish UI no longer shows English text
+- Toast colors come from the design tokens (`--color-toast-bg`,
+  `--color-toast-text`), which gives them a dark-mode variant and keeps
+  `DESIGN.md` honest
 
 - "Anuluj wszystko" works on a channel with thousands of queued jobs. It
   used to re-scan the whole queue and hold one more copy of the state file

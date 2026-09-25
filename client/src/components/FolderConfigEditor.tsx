@@ -73,7 +73,7 @@ export function FolderConfigEditor({
 
       if (!response.ok) {
         const parsed = ApiErrorSchema.safeParse(await response.json().catch(() => null));
-        throw new Error(parsed.success ? (parsed.data.message ?? parsed.data.error) : 'Failed to save config');
+        throw new Error(parsed.success ? (parsed.data.message ?? parsed.data.error) : t('errors.saveConfig'));
       }
 
       const result = SaveFolderConfigResponseSchema.parse(await response.json());
@@ -81,7 +81,7 @@ export function FolderConfigEditor({
       onConfigUpdate(folderPath, result.config);
       onEditingFinished();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      const errorMessage = err instanceof Error ? err.message : t('errors.occurred');
       setError(errorMessage);
     } finally {
       setIsSaving(false);
