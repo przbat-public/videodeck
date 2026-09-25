@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
+import { QUEUE_SUMMARY_POLL_MS, resetQueueSummaryStore } from '../utils/queueSummaryStore';
 import { useQueueControls } from './useQueueControls';
 
 const fetchMock = installFetchMock();
@@ -12,6 +13,16 @@ const json = (body: unknown, status = 200): MockResponse => ({
   json: async () => body,
 });
 
+const EMPTY_COUNTS = { queued: 0, running: 0, done: 0, error: 0, cancelled: 0 };
+
+const summary = (overrides: Record<string, unknown> = {}) => ({
+  paused: false,
+  counts: EMPTY_COUNTS,
+  folders: {},
+  running: [],
+  ...overrides,
+});
+
 const deferred = (): { promise: Promise<MockResponse>; resolve: (body: MockResponse) => void } => {
   let resolve!: (body: MockResponse) => void;
   const promise = new Promise<MockResponse>((r) => {
@@ -20,17 +31,30 @@ const deferred = (): { promise: Promise<MockResponse>; resolve: (body: MockRespo
   return { promise, resolve };
 };
 
+/** Let a read triggered by the store settle inside act */
+const settle = async (): Promise<void> => {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+};
+
 describe('useQueueControls', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fetchMock.mockReset();
+    resetQueueSummaryStore();
   });
 
-  it('ignores a stale initial refresh that resolves after a pause click', async () => {
+  it('ignores a stale initial read that resolves after a pause click', async () => {
     const initial = deferred();
+    let reads = 0;
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/folder/queue') {
-        return initial.promise;
+      if (url === '/api/folder/queue/summaries') {
+        reads += 1;
+        // The first read hangs; the one after the pause reports the new state
+        return reads === 1 ? initial.promise : Promise.resolve(json(summary({ paused: true })));
       }
       if (url.startsWith('/api/folder/queue/pause')) {
         return Promise.resolve(json({ paused: true }));
@@ -45,19 +69,20 @@ describe('useQueueControls', () => {
     });
     expect(result.current.paused).toBe(true);
 
-    // the mount fetch resolves late with a stale value
+    // the mount read resolves late with a stale value
     await act(async () => {
-      initial.resolve(json({ jobs: [], paused: false }));
+      initial.resolve(json(summary()));
       await initial.promise;
     });
+    await settle();
 
     expect(result.current.paused).toBe(true); // must not flip back
   });
 
   it('surfaces a failed pause and stops the loading flag', async () => {
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/folder/queue') {
-        return Promise.resolve(json({ jobs: [], paused: false }));
+      if (url === '/api/folder/queue/summaries') {
+        return Promise.resolve(json(summary()));
       }
       if (url.startsWith('/api/folder/queue/pause')) {
         return Promise.resolve(json({ error: 'boom' }, 500));
@@ -66,6 +91,7 @@ describe('useQueueControls', () => {
     });
 
     const { result } = renderHook(() => useQueueControls());
+    await settle();
     await act(async () => {
       await result.current.setPaused(true);
     });
@@ -79,8 +105,8 @@ describe('useQueueControls', () => {
 
   it('surfaces a failed clear and stops the loading flag', async () => {
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-      if (url === '/api/folder/queue') {
-        return Promise.resolve(json({ jobs: [], paused: false }));
+      if (url === '/api/folder/queue/summaries') {
+        return Promise.resolve(json(summary()));
       }
       if (url === '/api/folder/queue/finished' && init?.method === 'DELETE') {
         return Promise.resolve(json({ error: 'boom' }, 500));
@@ -89,6 +115,7 @@ describe('useQueueControls', () => {
     });
 
     const { result } = renderHook(() => useQueueControls());
+    await settle();
     await act(async () => {
       await result.current.clearFinished();
     });
@@ -99,41 +126,35 @@ describe('useQueueControls', () => {
 
   it('reports a failed read instead of leaving the controls silently stale', async () => {
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/api/folder/queue') {
+      if (url === '/api/folder/queue/summaries') {
         return Promise.reject(new Error('Network error'));
       }
       throw new Error(`unexpected fetch ${url}`);
     });
 
     const { result } = renderHook(() => useQueueControls());
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await settle();
 
     expect(result.current.error).toBe('Network error');
   });
 
-  it('falls back to the generic message when the failure is not an Error', async () => {
+  it('falls back to the same message the console shows when the failure is not an Error', async () => {
     fetchMock.mockImplementation((url: string) =>
-      url === '/api/folder/queue' ? Promise.reject('boom') : Promise.reject(new Error(url)),
+      url === '/api/folder/queue/summaries' ? Promise.reject('boom') : Promise.reject(new Error(url)),
     );
 
     const { result } = renderHook(() => useQueueControls());
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await settle();
 
-    expect(result.current.error).toBe('Wystąpił błąd');
+    expect(result.current.error).toBe('Nie udało się wczytać kolejki');
   });
 
   it('re-reads the queue when the tab regains focus', async () => {
     fetchMock.mockImplementation((url: string) =>
-      url === '/api/folder/queue' ? Promise.resolve(json({ jobs: [], paused: false })) : Promise.reject(new Error(url)),
+      url === '/api/folder/queue/summaries' ? Promise.resolve(json(summary())) : Promise.reject(new Error(url)),
     );
     renderHook(() => useQueueControls());
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await settle();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     // Coming back to the tab should not wait out the poll interval.
@@ -154,39 +175,29 @@ describe('useQueueControls', () => {
         }),
     );
     const { result, unmount } = renderHook(() => useQueueControls());
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await settle();
 
     unmount();
     await act(async () => {
       rejectFetch(new Error('Network error'));
+      await Promise.resolve();
     });
 
     // The request belonged to an unmounted page: no error, no crash.
     expect(result.current.error).toBeNull();
   });
 
-  it('picks up a job that finished elsewhere without a reload', async () => {
+  it('counts the finished jobs the shared poll picks up elsewhere', async () => {
     vi.useFakeTimers();
     try {
       let reads = 0;
-      const doneJob = {
-        id: 'job-1',
-        folderPath: '/videos/a',
-        videoId: 'v1',
-        videoUrl: 'https://yt/v1',
-        type: 'download',
-        status: 'done',
-        log: [],
-        logLineCount: 0,
-        createdAt: '2026-01-01T10:00:00.000Z',
-        finishedAt: '2026-01-01T10:01:00.000Z',
-      };
       fetchMock.mockImplementation((url: string) => {
-        if (url === '/api/folder/queue') {
+        if (url === '/api/folder/queue/summaries') {
           reads += 1;
-          return Promise.resolve(json({ jobs: reads > 1 ? [doneJob] : [], paused: false }));
+          // The mount read saw an idle queue; a job finished in the meantime
+          // and the shared poll has to notice it.
+          const counts = reads > 1 ? { ...EMPTY_COUNTS, done: 1 } : { ...EMPTY_COUNTS, running: 1 };
+          return Promise.resolve(json(summary({ counts })));
         }
         throw new Error(`unexpected fetch ${url}`);
       });
@@ -197,10 +208,9 @@ describe('useQueueControls', () => {
       });
       expect(result.current.finishedCount).toBe(0);
 
-      // The mount read saw an empty queue; the poll has to notice the job the
-      // list page finished in the meantime.
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(4000);
+        await vi.advanceTimersByTimeAsync(QUEUE_SUMMARY_POLL_MS);
+        await vi.advanceTimersByTimeAsync(0);
       });
 
       expect(result.current.finishedCount).toBe(1);

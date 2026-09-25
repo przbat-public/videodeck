@@ -951,6 +951,19 @@ describe('folder router', () => {
       expect(bad.status).toBe(400);
     });
 
+    it('reports the paused state of the queue itself, not a copy the router keeps', async () => {
+      // The queue is paused by something other than the pause route — a restart
+      // restoring `paused: true` from the state file does exactly this.
+      downloadQueue.setPaused(true);
+      try {
+        const listing = await request(app).get('/api/folder/queue');
+
+        expect(QueueListResponseSchema.parse(listing.body).paused).toBe(true);
+      } finally {
+        downloadQueue.setPaused(false);
+      }
+    });
+
     it('clears the finished jobs the queue keeps in memory', async () => {
       await request(app)
         .post('/api/folder/queue')

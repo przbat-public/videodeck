@@ -118,11 +118,17 @@ describe('createApp auth wiring', () => {
   const fakeQueue = () => ({
     enqueue: jest.fn(),
     list: jest.fn(() => []),
+    summary: jest.fn(() => ({
+      counts: { queued: 0, running: 0, done: 0, error: 0, cancelled: 0 },
+      folders: {},
+      running: [],
+    })),
     get: jest.fn(),
     cancel: jest.fn(),
     cancelAll: jest.fn(() => 0),
     whenPersisted: jest.fn(() => Promise.resolve()),
     setPaused: jest.fn(),
+    isPaused: jest.fn(() => false),
     clearFinished: jest.fn(() => 0),
     on: jest.fn(),
     off: jest.fn(),
@@ -272,7 +278,7 @@ describe('createApp auth wiring', () => {
     const response = await request(app).get('/api/folder/queue').query({ folderPath: '/test/videos' });
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ jobs: [], paused: false });
+    expect(response.body).toEqual({ jobs: [], total: 0, paused: false });
     expect(queue.list).toHaveBeenCalledWith('/test/videos');
   });
 });

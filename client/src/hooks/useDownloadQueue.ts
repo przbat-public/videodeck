@@ -1,9 +1,9 @@
-import type { EnqueueJobsResponse, JobType, QueueJob, QueueVideoInput } from '@videodeck/shared/api';
+import type { EnqueueJobsResponse, JobType, QueueJob, QueueListJob, QueueVideoInput } from '@videodeck/shared/api';
 import { EnqueueJobsResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import i18n from '../i18n';
 import { apiSend } from '../utils/apiClient';
-import { fetchQueue } from './fetchQueue';
+import { fetchQueue, fetchQueueJobLog } from './fetchQueue';
 
 export interface UseDownloadQueueOptions {
   /** Poll interval while jobs are active (ms) */
@@ -43,12 +43,44 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
   const callbacksRef = useRef({ onJobFinished, onQueueDrained });
   callbacksRef.current = { onJobFinished, onQueueDrained };
   const abortRef = useRef<AbortController | null>(null);
+  /**
+   * Log tails fetched per job id. The queue list deliberately carries none
+   * (polling it with every log was megabytes), and a failed row is the only
+   * place that renders one.
+   */
+  const logsRef = useRef(new Map<string, string[]>());
 
   // Stop the last poll on unmount (a new refresh aborts the previous one)
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
     };
+  }, []);
+
+  /** Attach the logs already fetched for these jobs */
+  const applyJobs = useCallback((incoming: readonly QueueListJob[]): void => {
+    setJobs(
+      incoming.map((job) => ({
+        ...job,
+        log: logsRef.current.get(job.id) ?? [],
+        logLineCount: 0,
+      })),
+    );
+  }, []);
+
+  /** Fetch the log tail of every failed job that has none yet, once per job */
+  const loadErrorLogs = useCallback(async (incoming: readonly QueueListJob[], signal: AbortSignal): Promise<void> => {
+    const missing = incoming.filter((job) => job.status === 'error' && !logsRef.current.has(job.id));
+    await Promise.all(
+      missing.map(async (job) => {
+        const log = await fetchQueueJobLog(job.id, signal);
+        if (log === null || signal.aborted) {
+          return;
+        }
+        logsRef.current.set(job.id, log);
+        setJobs((previous) => previous.map((entry) => (entry.id === job.id ? { ...entry, log } : entry)));
+      }),
+    );
   }, []);
 
   const refresh = useCallback(async () => {
@@ -58,15 +90,16 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
 
     try {
       const data = await fetchQueue(controller.signal, folderPath);
-      setJobs(Array.isArray(data.jobs) ? data.jobs : []);
+      applyJobs(Array.isArray(data.jobs) ? data.jobs : []);
       setError(null);
+      await loadErrorLogs(data.jobs ?? [], controller.signal);
     } catch (err) {
       if (controller.signal.aborted) {
         return; // superseded poll or unmount — nothing to report
       }
       setError(err instanceof Error ? err.message : i18n.t('errors.loadQueue'));
     }
-  }, [folderPath]);
+  }, [folderPath, applyJobs, loadErrorLogs]);
 
   const enqueue = useCallback(
     async (videos: QueueVideoInput[], type: JobType): Promise<EnqueueJobsResponse> => {
@@ -118,6 +151,7 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
     setJobsFolder(folderPath);
     seenFinishedRef.current = new Set();
     wasActiveRef.current = false;
+    logsRef.current = new Map();
     setJobs([]);
   }
 
