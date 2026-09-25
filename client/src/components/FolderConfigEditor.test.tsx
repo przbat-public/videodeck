@@ -229,6 +229,24 @@ describe('FolderConfigEditor', () => {
     });
   });
 
+  it('turns a folder into a collection and hides the channel URL for it', async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(async (_url, init) => ({
+      ok: true,
+      json: async () => ({ success: true, config: JSON.parse(String(init?.body)).config }),
+    }));
+    renderEditor({ writeComments: true });
+
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    expect(screen.getByLabelText('Adres kanału YouTube:')).toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: /Kolekcja pojedynczych pobrań/ }));
+    expect(screen.queryByLabelText('Adres kanału YouTube:')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Zapisz' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(lastPutBody(fetchMock).config).toMatchObject({ kind: 'collection' });
+  });
+
   it('clearing the category drops it from config.json', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(async (_url, init) => ({

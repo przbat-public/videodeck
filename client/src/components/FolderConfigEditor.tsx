@@ -121,16 +121,26 @@ export function FolderConfigEditor({
       {editing && (
         <div className="config-edit">
           <div className="config-field">
-            <label htmlFor={id('channelUrl')}>{t('config.channelUrl')}</label>
-            <input
-              id={id('channelUrl')}
-              type="text"
-              value={form.channelUrl}
-              onChange={(e) => updateForm({ channelUrl: e.target.value })}
-              placeholder={t('config.channelUrlPlaceholder')}
-              className="config-input"
+            <Checkbox
+              checked={form.collection}
+              onChange={(checked) => updateForm({ collection: checked })}
+              label={t('config.collection')}
             />
           </div>
+
+          {!form.collection && (
+            <div className="config-field">
+              <label htmlFor={id('channelUrl')}>{t('config.channelUrl')}</label>
+              <input
+                id={id('channelUrl')}
+                type="text"
+                value={form.channelUrl}
+                onChange={(e) => updateForm({ channelUrl: e.target.value })}
+                placeholder={t('config.channelUrlPlaceholder')}
+                className="config-input"
+              />
+            </div>
+          )}
 
           <div className="config-field">
             <label htmlFor={id('category')}>{t('config.category')}</label>

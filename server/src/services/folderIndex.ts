@@ -9,7 +9,7 @@ import { runPool } from '../utils/runPool';
  *
  * Replaces the previous approach of reading and JSON-parsing every `.info.json`
  * in a folder on each request. The index is a small hidden file
- * (`.videos-index.json`) mapping YouTube video id -> { baseName, infoMtime }.
+ * (`.videos-index.json`) mapping YouTube video id -> { baseName, infoMtime, title }.
  * Alongside it we maintain yt-dlp's `archive.txt` (`youtube <id>` per line)
  * so yt-dlp itself never re-downloads a video whose title changed.
  *
@@ -31,6 +31,8 @@ export interface FolderIndexEntry {
   videoFile: string;
   /** ISO mtime of the .info.json — used as "last updated" */
   infoMtime: string;
+  /** Video title from the info.json; absent in entries written before titles were recorded */
+  title?: string;
 }
 
 export interface FolderIndex {
@@ -54,14 +56,45 @@ export function extractVideoIdFromHead(head: string): string | null {
   return match?.[1] ?? null;
 }
 
-async function readVideoId(infoPath: string): Promise<string | null> {
+/** The `title` string literal when it directly follows the leading `id` */
+const TITLE_AFTER_ID_RE = /^\s*\{\s*"id"\s*:\s*"[^"]+"\s*,\s*"title"\s*:\s*("(?:[^"\\]|\\.)*")/;
+
+/**
+ * Extract the `title` yt-dlp writes right after `id`, unescaped. Null when it
+ * is somewhere else or cut off by the head; the caller then records no title
+ * rather than parsing a multi-megabyte file for it.
+ */
+export function extractTitleFromHead(head: string): string | null {
+  const literal = head.match(TITLE_AFTER_ID_RE)?.[1];
+  if (literal === undefined) {
+    return null;
+  }
+  try {
+    const title: unknown = JSON.parse(literal);
+    return typeof title === 'string' ? title : null;
+  } catch {
+    return null;
+  }
+}
+
+interface VideoHead {
+  id: string;
+  title?: string;
+}
+
+function toVideoHead(id: string, title: unknown): VideoHead {
+  return typeof title === 'string' ? { id, title } : { id };
+}
+
+async function readVideoHead(infoPath: string): Promise<VideoHead | null> {
   const handle = await fs.open(infoPath, 'r');
   try {
     const buffer = Buffer.alloc(ID_HEAD_BYTES);
     const { bytesRead } = await handle.read(buffer, 0, ID_HEAD_BYTES, 0);
-    const fromHead = extractVideoIdFromHead(buffer.subarray(0, bytesRead).toString('utf-8'));
+    const head = buffer.subarray(0, bytesRead).toString('utf-8');
+    const fromHead = extractVideoIdFromHead(head);
     if (fromHead) {
-      return fromHead;
+      return toVideoHead(fromHead, extractTitleFromHead(head));
     }
   } finally {
     await handle.close();
@@ -73,10 +106,21 @@ async function readVideoId(infoPath: string): Promise<string | null> {
     if (typeof parsed !== 'object' || parsed === null || !('id' in parsed)) {
       return null;
     }
-    return typeof parsed.id === 'string' && parsed.id.length > 0 ? parsed.id : null;
+    if (typeof parsed.id !== 'string' || parsed.id.length === 0) {
+      return null;
+    }
+    return toVideoHead(parsed.id, 'title' in parsed ? parsed.title : undefined);
   } catch {
     return null;
   }
+}
+
+function toIndexEntry(head: VideoHead, baseName: string, videoFile: string, infoMtime: Date): FolderIndexEntry {
+  const entry: FolderIndexEntry = { baseName, videoFile, infoMtime: infoMtime.toISOString() };
+  if (head.title !== undefined) {
+    entry.title = head.title;
+  }
+  return entry;
 }
 
 function findVideoFile(baseName: string, files: Set<string>): string | undefined {
@@ -208,12 +252,12 @@ export async function rebuildIndex(folderPath: string): Promise<FolderIndex> {
     }
     const infoPath = path.join(folderPath, file);
     try {
-      const id = await readVideoId(infoPath);
-      if (!id) {
+      const head = await readVideoHead(infoPath);
+      if (!head) {
         return;
       }
       const stats = await fs.stat(infoPath);
-      entries[id] = { baseName, videoFile, infoMtime: stats.mtime.toISOString() };
+      entries[head.id] = toIndexEntry(head, baseName, videoFile, stats.mtime);
     } catch (error) {
       logger.error(`folderIndex: skipping ${infoPath}:`, error);
     }
@@ -255,6 +299,31 @@ export interface RefreshResult {
  * mass-wipe of the index would be worse than stale entries.
  */
 export async function refreshIndex(folderPath: string, sinceMs: number): Promise<RefreshResult> {
+  // A small tolerance covers filesystems with coarse mtime resolution (exFAT: 2 s)
+  const threshold = sinceMs - 2000;
+  return refreshEntries(folderPath, () => (_baseName, mtimeMs) => mtimeMs >= threshold);
+}
+
+/**
+ * Add the videos the index has never seen, whatever their mtime. Downloads
+ * made outside the queue (yt-dlp in a terminal) never trigger the post-job
+ * refresh, and files moved in from another folder keep mtimes older than the
+ * index, so refreshIndex would skip both. Same sweep and fallback as there.
+ */
+export async function indexUntrackedVideos(folderPath: string): Promise<RefreshResult> {
+  return refreshEntries(folderPath, (index) => {
+    const tracked = new Set(Object.values(index.entries).map((entry) => entry.baseName));
+    return (baseName) => !tracked.has(baseName);
+  });
+}
+
+/** Decides whether an info.json (by file stem and mtime) is re-read into the index */
+type EntryFilter = (baseName: string, mtimeMs: number) => boolean;
+
+async function refreshEntries(
+  folderPath: string,
+  filterFor: (index: FolderIndex) => EntryFilter,
+): Promise<RefreshResult> {
   const existing = await readIndexFile(folderPath);
   if (!existing) {
     const index = await rebuildIndex(folderPath);
@@ -262,7 +331,7 @@ export async function refreshIndex(folderPath: string, sinceMs: number): Promise
   }
 
   const files = await listVisibleFiles(folderPath);
-  const changed = await collectChangedEntries(folderPath, files, sinceMs, existing);
+  const changed = await collectChangedEntries(folderPath, files, existing, filterFor(existing));
 
   const removed = sweepDeletedEntries(existing, files);
   if (removed.length > 0) {
@@ -276,40 +345,35 @@ export async function refreshIndex(folderPath: string, sinceMs: number): Promise
   return { index: existing, changed, removed };
 }
 
-/**
- * Inspect the info.json files modified at or after `sinceMs` and update the
- * index in place. A small tolerance covers filesystems with coarse mtime
- * resolution (exFAT: 2 s).
- */
+/** Re-read the info.json files the filter selects and update the index in place */
 async function collectChangedEntries(
   folderPath: string,
   files: Set<string>,
-  sinceMs: number,
   existing: FolderIndex,
+  isChanged: EntryFilter,
 ): Promise<string[]> {
   const changed: string[] = [];
-  const threshold = sinceMs - 2000;
   for (const file of files) {
     if (!file.endsWith(INFO_SUFFIX)) {
       continue;
     }
     const infoPath = path.join(folderPath, file);
+    const baseName = file.slice(0, -INFO_SUFFIX.length);
     const stats = await statOrNull(infoPath);
-    if (!stats || stats.mtimeMs < threshold) {
+    if (!stats || !isChanged(baseName, stats.mtimeMs)) {
       continue;
     }
-    const baseName = file.slice(0, -INFO_SUFFIX.length);
     const videoFile = findVideoFile(baseName, files);
     if (!videoFile) {
       continue;
     }
     try {
-      const id = await readVideoId(infoPath);
-      if (!id) {
+      const head = await readVideoHead(infoPath);
+      if (!head) {
         continue;
       }
-      existing.entries[id] = { baseName, videoFile, infoMtime: stats.mtime.toISOString() };
-      changed.push(id);
+      existing.entries[head.id] = toIndexEntry(head, baseName, videoFile, stats.mtime);
+      changed.push(head.id);
     } catch (error) {
       logger.error(`folderIndex: skipping ${infoPath}:`, error);
     }

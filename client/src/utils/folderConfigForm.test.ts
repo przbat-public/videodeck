@@ -33,6 +33,7 @@ describe('toFormState', () => {
       impersonate: false,
       sponsorblockRemove: false,
       concurrentFragments: '',
+      collection: false,
     });
   });
 
@@ -63,11 +64,17 @@ describe('toFormState', () => {
       impersonate: true,
       sponsorblockRemove: true,
       concurrentFragments: '4',
+      collection: false,
     });
   });
 
   it('shows subtitles as disabled for an empty subLangs array', () => {
     expect(toFormState({ subLangs: [] }, defaults).subtitlesEnabled).toBe(false);
+  });
+
+  it('ticks the collection box only for a collection folder', () => {
+    expect(toFormState({ kind: 'collection' }, defaults).collection).toBe(true);
+    expect(toFormState({ kind: 'channel' }, defaults).collection).toBe(false);
   });
 
   it('takes the yt-dlp feature defaults from the server defaults', () => {
@@ -100,6 +107,7 @@ describe('buildConfig', () => {
         impersonate: false,
         sponsorblockRemove: false,
         concurrentFragments: '',
+        collection: false,
       },
       null,
     );
@@ -123,6 +131,7 @@ describe('buildConfig', () => {
         impersonate: false,
         sponsorblockRemove: false,
         concurrentFragments: '',
+        collection: false,
       },
       null,
     );
@@ -150,6 +159,7 @@ describe('buildConfig', () => {
         impersonate: true,
         sponsorblockRemove: true,
         concurrentFragments: '4',
+        collection: false,
       },
       null,
     );
@@ -176,6 +186,7 @@ describe('buildConfig', () => {
         impersonate: false,
         sponsorblockRemove: false,
         concurrentFragments: '',
+        collection: false,
       },
       null,
     );
@@ -193,6 +204,7 @@ describe('buildConfig', () => {
         impersonate: false,
         sponsorblockRemove: false,
         concurrentFragments: '',
+        collection: false,
       },
       { extraArgs: ['--proxy', 'http://p'] },
     );
@@ -212,10 +224,19 @@ describe('buildConfig', () => {
         impersonate: false,
         sponsorblockRemove: false,
         concurrentFragments: '',
+        collection: false,
       },
       null,
     );
     expect(config.subLangs).toEqual([]);
+  });
+
+  it('writes the collection kind when ticked and drops it when not', () => {
+    const form = { ...toFormState(null, defaults), collection: true };
+
+    expect(buildConfig(form, null)).toMatchObject({ kind: 'collection' });
+    // A channel is the default, so unticking leaves no kind behind
+    expect(buildConfig({ ...form, collection: false }, { kind: 'collection' })).not.toHaveProperty('kind');
   });
 
   it('preserves unknown keys and removes cleared ones', () => {
@@ -237,6 +258,7 @@ describe('buildConfig', () => {
         impersonate: false,
         sponsorblockRemove: false,
         concurrentFragments: '',
+        collection: false,
       },
       existing,
     );

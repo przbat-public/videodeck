@@ -11,12 +11,26 @@ const row = (overrides: Partial<ChannelRow> = {}): ChannelRow => ({
   folderPath: '/videos/kanal-a',
   name: 'kanal-a',
   configured: true,
+  collection: false,
   indexed: true,
   listExists: true,
   queue: { running: 0, queued: 0, failed: 0 },
   attention: [],
   ...overrides,
 });
+
+/** A folder of single downloads, e.g. ~/Downloads/youtube */
+const collectionRow = (overrides: Partial<ChannelRow> = {}): ChannelRow =>
+  row({
+    folderPath: '/videos/youtube',
+    name: 'youtube',
+    configured: false,
+    collection: true,
+    listExists: false,
+    channelName: 'Creative Ideas Maker',
+    summary: { videos: 264, downloaded: 264, notDownloaded: 0, stale: 10 },
+    ...overrides,
+  });
 
 const renderTable = (
   rows: ChannelRow[],
@@ -360,6 +374,28 @@ describe('ChannelTable', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Pobierz playlistę' }));
 
     expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'playlist');
+  });
+
+  it('offers a collection the updates and its queue, none of the channel actions', async () => {
+    const user = userEvent.setup();
+    const { onAction } = renderTable([collectionRow()]);
+
+    await openRowMenu(user);
+
+    // No playlist to fetch, nothing missing to download, and the top channel
+    // of a mixed folder is not what the folder holds
+    const labels = screen.getAllByRole('menuitem').map((item) => item.textContent?.trim());
+    expect(labels).toEqual(['Aktualizuj stare', 'Aktualizuj wszystkie', 'Anuluj zadania kanału', 'Edytuj config.json']);
+    await user.click(screen.getByRole('menuitem', { name: 'Aktualizuj stare' }));
+
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/youtube' }), 'update-stale');
+  });
+
+  it('labels a collection instead of chipping it', () => {
+    renderTable([collectionRow()]);
+
+    expect(screen.getByText('kolekcja')).toBeInTheDocument();
+    expect(screen.queryByText('brak channelUrl')).toBeNull();
   });
 
   it('disables the playlist entry for a channel without a channel URL', async () => {

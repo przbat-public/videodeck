@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
@@ -87,6 +88,39 @@ describe('FolderSection', () => {
     await waitFor(() => expect(onListChanged).toHaveBeenCalledTimes(1));
     // The section still refreshes its own list.json flag as before
     expect(fetchMock).toHaveBeenCalledWith('/api/folder/list-exists?folderPath=%2Fvideos%2Fa');
+  });
+
+  it('lists a collection right away, with no playlist block and no list.json check', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/folder/list?')) {
+        return json({
+          videos: [{ id: 'Dube38fpLtc', title: 'Home built SMD Reflow Oven', url: 'https://yt/watch?v=Dube38fpLtc' }],
+          downloadStatuses: { Dube38fpLtc: true },
+          lastUpdatedDates: { Dube38fpLtc: '2026-09-01T00:00:00.000Z' },
+        });
+      }
+      return json({ paused: false, jobs: [] });
+    });
+    render(
+      <MemoryRouter>
+        <FolderSection
+          folderPath="/videos/youtube"
+          initialConfig={{ kind: 'collection' }}
+          downloadDefaults={downloadDefaults}
+          initialListExists={false}
+          editingConfig={false}
+          onEditingFinished={vi.fn()}
+          onConfigUpdate={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    // Single downloads have no playlist behind them: the section goes
+    // straight to the videos the folder holds
+    expect(await screen.findByText(/Liczba filmów: 1/)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith('/api/folder/list?folderPath=%2Fvideos%2Fyoutube');
+    expect(screen.queryByRole('button', { name: /playlist/i })).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/api/folder/list-exists'));
   });
 
   it('survives a failed existence check (best effort)', async () => {

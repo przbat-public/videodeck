@@ -121,6 +121,26 @@ describe('buildChannelRows', () => {
     expect(built[2]?.attention).toEqual(['noChannelUrl', 'noList', 'noIndex']);
   });
 
+  it('never asks a collection for a channel URL or a list.json', () => {
+    const collectionStatus: StatusResponse = {
+      ...status,
+      folderConfigs: { ...status.folderConfigs, '/videos/kanal-c': { kind: 'collection' } },
+    };
+    const built = buildChannelRows(
+      collectionStatus,
+      {
+        '/videos/kanal-c': { videos: 4, downloaded: 4, notDownloaded: 0, stale: 1 },
+      },
+      [job({ id: 'job-9', folderPath: '/videos/kanal-c', status: 'error', error: 'gone' })],
+    );
+
+    expect(built[2]).toMatchObject({ collection: true, configured: false });
+    // Single downloads have no channel behind them; the index, failures and
+    // stale metadata still matter
+    expect(built[2]?.attention).toEqual(['noIndex', 'failed', 'stale']);
+    expect(built[0]?.collection).toBe(false);
+  });
+
   it('leaves the category out when the config has none', () => {
     const built = buildChannelRows(status, summaries.summaries, []);
 

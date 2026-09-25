@@ -19,6 +19,7 @@ import type express from 'express';
 import request from 'supertest';
 import { createApp as createRealApp } from '../app';
 import { getVideosFolderPaths } from '../config';
+import { readCollection } from '../services/collection';
 import type { SpawnedProcess } from '../services/downloadQueue';
 import { downloadQueue } from '../services/downloadQueue';
 import { listCachedFolders } from '../services/elasticsearchService';
@@ -40,6 +41,7 @@ jest.mock('../config', () => {
   return { ...actual, getVideosFolderPaths: jest.fn() };
 });
 jest.mock('../services/folderIndex');
+jest.mock('../services/collection');
 jest.mock('../services/elasticsearchService', () => ({
   listCachedFolders: jest.fn(),
 }));
@@ -111,6 +113,7 @@ const mockedRebuildIndex = rebuildIndex as jest.MockedFunction<typeof rebuildInd
 const mockedReadFolderConfig = readFolderConfig as jest.MockedFunction<typeof readFolderConfig>;
 const mockedLoadDownloadOptions = loadDownloadOptions as jest.MockedFunction<typeof loadDownloadOptions>;
 const mockedListCachedFolders = listCachedFolders as jest.MockedFunction<typeof listCachedFolders>;
+const mockedReadCollection = readCollection as jest.MockedFunction<typeof readCollection>;
 
 const FOLDER = '/videos/channel-a';
 const OTHER_FOLDER = '/videos/channel-b';
@@ -454,6 +457,26 @@ describe('folder router', () => {
       expect(response.body.downloadStatuses).toEqual({});
       expect(response.body.lastUpdatedDates).toEqual({});
     });
+
+    it('serves a collection from its folder index instead of list.json', async () => {
+      mockedReadFolderConfig.mockResolvedValue({ kind: 'collection' });
+      mockedFs.readFile.mockRejectedValue(enoent());
+      mockedReadCollection.mockResolvedValue({
+        videos: [{ id: 'v1', title: 'One', url: 'https://www.youtube.com/watch?v=v1' }],
+        downloadStatuses: { v1: true },
+        lastUpdatedDates: { v1: '2024-01-01T00:00:00.000Z' },
+      });
+
+      const response = await request(app).get('/api/folder/list').query({ folderPath: FOLDER });
+
+      expect(response.status).toBe(200);
+      expect(FolderListResponseSchema.parse(response.body)).toEqual({
+        videos: [{ id: 'v1', title: 'One', url: 'https://www.youtube.com/watch?v=v1' }],
+        downloadStatuses: { v1: true },
+        lastUpdatedDates: { v1: '2024-01-01T00:00:00.000Z' },
+      });
+      expect(mockedReadCollection).toHaveBeenCalledWith(FOLDER);
+    });
   });
 
   describe('GET /api/folder/summaries', () => {
@@ -562,6 +585,33 @@ describe('folder router', () => {
       expect(one.body.summaries[OTHER_FOLDER]).toEqual(fresh);
       expect(all.body.summaries[OTHER_FOLDER]).toEqual(fresh);
       expect(all.body.summaries[FOLDER].videos).toBe(3);
+    });
+
+    it('counts a collection from its folder index, with nothing left to download', async () => {
+      mockedReadFolderConfig.mockImplementation((folderPath) =>
+        Promise.resolve(folderPath === OTHER_FOLDER ? { kind: 'collection' } : null),
+      );
+      mockedReadCollection.mockResolvedValue({
+        videos: [
+          { id: 'c1', title: 'One', url: 'https://www.youtube.com/watch?v=c1' },
+          { id: 'c2', title: 'Two', url: 'https://www.youtube.com/watch?v=c2' },
+        ],
+        downloadStatuses: { c1: true, c2: true },
+        lastUpdatedDates: { c1: '2026-09-20T00:00:00.000Z', c2: '2020-01-01T00:00:00.000Z' },
+      });
+
+      const response = await request(app).get('/api/folder/summaries');
+
+      expect(response.body.summaries[OTHER_FOLDER]).toEqual({
+        videos: 2,
+        downloaded: 2,
+        notDownloaded: 0,
+        stale: 1,
+        newestUpdate: '2026-09-20T00:00:00.000Z',
+      });
+      expect(response.body.summaries[FOLDER].videos).toBe(3);
+      expect(mockedReadCollection).toHaveBeenCalledTimes(1);
+      expect(mockedReadCollection).toHaveBeenCalledWith(OTHER_FOLDER);
     });
 
     it('refuses a folder outside the configured list', async () => {
