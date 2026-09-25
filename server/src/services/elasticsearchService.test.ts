@@ -801,6 +801,38 @@ describe('elasticsearchService', () => {
       expect(request.size).toBe(25);
     });
 
+    it('shortens a page whose end would cross the result window', async () => {
+      // 10000 is Elasticsearch's default index.max_result_window: a request
+      // with from + size above it is rejected, so the page is cut at the end.
+      await searchVideos('q', 'date-desc', undefined, { offset: 9990, limit: 20 });
+
+      const request = mockClient.search.mock.calls[0][0];
+      expect(request.from).toBe(9990);
+      expect(request.size).toBe(10);
+    });
+
+    it('leaves a page that ends exactly at the result window untouched', async () => {
+      await searchVideos('q', 'date-desc', undefined, { offset: 9900, limit: 100 });
+
+      const request = mockClient.search.mock.calls[0][0];
+      expect(request.from).toBe(9900);
+      expect(request.size).toBe(100);
+    });
+
+    it('answers an offset past the result window with a count-only page', async () => {
+      mockClient.search.mockResolvedValue({ hits: { total: { value: 37438, relation: 'eq' }, hits: [] } });
+
+      const result = await searchVideosWithTotal('q', 'date-desc', undefined, { offset: 10_000, limit: 20 });
+
+      // Asking for hits there would 400; a size-0 query at the start keeps the
+      // total honest and returns no page to repeat.
+      const request = mockClient.search.mock.calls[0][0];
+      expect(request.from).toBe(0);
+      expect(request.size).toBe(0);
+      expect(result.videos).toEqual([]);
+      expect(result.total).toBe(37438);
+    });
+
     it('filters by channel', async () => {
       await searchVideos('q', 'date-desc', undefined, {
         channel: 'Jordan B Peterson',
