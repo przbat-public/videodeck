@@ -14,9 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   package shared by the server and client test suites
 - **Client integration suite** in the vita-tracker style: the real `<App />`
   renders against the REAL backend booted in-process (fake Elasticsearch,
-  mock OpenAI server, fake yt-dlp writing real files, seeded temp folders) ,
-  no spawned processes, no Playwright for this layer; Playwright remains the
-  thin mocked-API browser suite
+  mock OpenAI server, fake yt-dlp writing real files, seeded temp folders)
+  with no spawned processes and no Playwright at this layer; Playwright stays
+  the thin mocked-API browser suite
 - Download queue persists active jobs across server restarts (jobs resume as
   queued after reboot; paused state is kept) and graceful shutdown now waits
   for yt-dlp children to stop and closes open SSE streams before exiting
@@ -157,6 +157,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.queue-state.json` cannot point yt-dlp at `file://` or an internal address
 
 - The extension declares Chrome 102 as its floor, which is what its use of `chrome.storage.session` requires
+- Dependabot watches the workspace once instead of once per directory, so its pull requests match the single lockfile again; the GitHub Actions it runs are pinned to commit SHAs
 ### Fixed
 
 - Loading the next page of results no longer re-announces "loading" to a
@@ -304,6 +305,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The Chrome extension recognises Shorts, `youtu.be`, embed and live links. It matched only `watch` and `youtu.be` before, and its content script never ran on `youtu.be` at all
 - Clearing the API token in the extension options removes the stored one instead of leaving the old value behind
+- The Playwright HTML report CI uploads is written again (the list reporter produced no report), and a second CI job runs the same suite against the production bundle, where build-only failures show up
+- jsdom is pinned to the version the client suite passes on: 30.1.0 broke 27 tests in the Radix menus
+- The API docs point at `POST /api/videos/refreshCache` (they said GET, which answers 404), and the stray ", " fragments left by an earlier edit are gone. The prose gate now also scans `docs/API.md`, `docs/INSTALL.md`, `docs/DEVELOPMENT.md` and `docs/README.pl.md`
 ## [1.0.0] - 2026-09-14
 
 First public release.

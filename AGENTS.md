@@ -197,8 +197,12 @@ Playwright stays the thin mocked-API browser layer (`client/e2e/`).
 - **jest-dom 7** does not support computed-style assertions (e.g. `toHaveStyle`
   against stylesheet rules). Assert what the component renders, or use
   `getComputedStyle` where truly needed.
-- **Major-version holds**: Dependabot ignores semver-major bumps for
-  `typescript`, `zod` and `react-window` (API migrations needed first).
+- **Major-version holds**: Dependabot ignores semver-major bumps of the type
+  and compiler toolchain, naming `typescript` and `@types/node` today. Both
+  waits are deliberate: a TypeScript major breaks the test toolchain until
+  ts-jest and the vitest plugins move with it, and an `@types/node` major has
+  to follow a Node runtime bump (`.nvmrc`), not lead it. Do those upgrades by
+  hand, together, as one change.
 - **jest + the shared test infra**: `@videodeck/test-infra/*` and
   `@videodeck/shared/*` resolve through the pnpm workspace symlinks and each
   package's `exports` (no tsconfig paths, jest mapper or vite aliases — the
