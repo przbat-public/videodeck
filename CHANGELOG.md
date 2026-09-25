@@ -290,6 +290,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The Chrome extension recognises Shorts, `youtu.be`, embed and live links. It matched only `watch` and `youtu.be` before, and its content script never ran on `youtu.be` at all
 - Clearing the API token in the extension options removes the stored one instead of leaving the old value behind
+- Search no longer breaks past the 10,000th result. Elasticsearch refuses a page that crosses its result window, and the server asked for one anyway, so scrolling deep into a large library ended in a 500. Pages are now shortened at the window edge, the client stops loading there, and the count stays honest
 ## [1.0.0] - 2026-09-14
 
 First public release.
