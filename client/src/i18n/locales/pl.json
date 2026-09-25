@@ -35,7 +35,9 @@
     "loadedMore_one": "Wczytano {{count}} film więcej (na liście: {{loaded}})",
     "loadedMore_few": "Wczytano {{count}} filmy więcej (na liście: {{loaded}})",
     "loadedMore_many": "Wczytano {{count}} filmów więcej (na liście: {{loaded}})",
-    "loadedMore_other": "Wczytano {{count}} filmów więcej (na liście: {{loaded}})"
+    "loadedMore_other": "Wczytano {{count}} filmów więcej (na liście: {{loaded}})",
+    "trimmedNotice": "Wcześniejsze wyniki ({{count}}) usunięto, aby przewijanie było płynne",
+    "backToTop": "Wróć na początek wyników"
   },
   "sortOption": {
     "relevance": "Trafność",

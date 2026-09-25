@@ -33,7 +33,9 @@
     "loading": "Loading videos...",
     "noResults": "No videos. Try a different query.",
     "loadedMore_one": "Loaded {{count}} more video ({{loaded}} in the list)",
-    "loadedMore_other": "Loaded {{count}} more videos ({{loaded}} in the list)"
+    "loadedMore_other": "Loaded {{count}} more videos ({{loaded}} in the list)",
+    "trimmedNotice": "Earlier results ({{count}}) were removed to keep scrolling fast",
+    "backToTop": "Back to the top of the results"
   },
   "sortOption": {
     "relevance": "Relevance",

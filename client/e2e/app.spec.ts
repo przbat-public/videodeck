@@ -336,6 +336,7 @@ test.describe('status page', () => {
       if (route.request().method() === 'GET') {
         return route.fulfill(
           json({
+            total: 1,
             jobs: [
               {
                 id: 'job-1',

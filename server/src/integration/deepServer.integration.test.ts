@@ -1,5 +1,7 @@
 import { existsSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import type { QueueJob } from '@videodeck/shared/api';
+import { QueueJobResponseSchema, QueueListResponseSchema, QueueSummaryResponseSchema } from '@videodeck/shared/schemas';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import {
   createDeepServerTestEnv,
@@ -362,6 +364,109 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(downloadCall?.args[0]).toBe('--ignore-config');
     expect(downloadCall?.cwd).toBe(folderPath);
     expect(existsSync(`${folderPath}/pwned-from-conf`)).toBe(false);
+  });
+
+  it('reports the queue as paused after a restart restores the paused state', async () => {
+    // A restart with `paused: true` on disk: the queue stops, and the API must
+    // say so. The router used to answer from its own copy of the flag, which a
+    // restart never touches.
+    const stateFile = process.env.QUEUE_STATE_FILE;
+    if (!stateFile) {
+      throw new Error('the deep env must point QUEUE_STATE_FILE at its temp root');
+    }
+    await writeFile(stateFile, JSON.stringify({ paused: true, jobs: [] }));
+    // Loaded lazily: the queue module reads QUEUE_STATE_FILE when it loads, and
+    // the deep env sets that variable right before the app module loads.
+    const { restoreQueueState } =
+      jest.requireActual<typeof import('../services/downloadQueue')>('../services/downloadQueue');
+
+    await expect(restoreQueueState()).resolves.toBe(0);
+
+    const listing = await env.agent.get('/api/folder/queue').expect(200);
+    expect(listing.body.paused).toBe(true);
+
+    // Leave the shared queue running for the tests that follow
+    const resumed = await env.agent.post('/api/folder/queue/resume?paused=0').expect(200);
+    expect(resumed.body).toEqual({ paused: false });
+  });
+
+  it('serves the queue as counters and a log-free list, with the log behind the job endpoint', async () => {
+    const folderPath = await env.seedFolder('queue-summary', {
+      'config.json': folderConfig('https://www.youtube.com/@queuesummary'),
+    });
+    env.setFolders('queue-summary');
+
+    await env.agent
+      .post('/api/folder/queue')
+      .send({
+        folderPath,
+        type: 'download',
+        videos: [{ videoUrl: 'https://www.youtube.com/watch?v=queuesum001' }],
+      })
+      .expect(202);
+    const job = (await waitForJobStatus(folderPath, 'queuesum001', 'done')) as QueueJob;
+    // The list the poller sees carries no log, so the log tail is read back
+    // one job at a time — where the fake yt-dlp announced the file it wrote.
+    const list = await env.agent.get('/api/folder/queue').expect(200);
+    const listed = QueueListResponseSchema.parse(list.body);
+    expect(listed.total).toBeGreaterThanOrEqual(1);
+    const listedJob = listed.jobs.find((entry) => entry.videoId === 'queuesum001');
+    if (!listedJob) {
+      throw new Error('the finished job is missing from the queue list');
+    }
+    expect(listedJob.id).toBe(job.id);
+    expect(listedJob).not.toHaveProperty('log');
+    expect(listedJob).not.toHaveProperty('logLineCount');
+    expect(JSON.stringify(list.body).length).toBeLessThan(4096);
+
+    // The log is reachable, one job at a time
+    const detail = await env.agent.get(`/api/folder/queue/${listedJob.id}`).expect(200);
+    const detailJob = QueueJobResponseSchema.parse(detail.body).job;
+    expect(detailJob.log.join('\n')).toContain('[download] Destination:');
+    await env.agent.get('/api/folder/queue/does-not-exist').expect(404);
+
+    // The summary carries the counters per status and per folder, the running
+    // jobs without logs, and no job list at all
+    const summary = QueueSummaryResponseSchema.parse(
+      (await env.agent.get('/api/folder/queue/summaries').expect(200)).body,
+    );
+    expect(summary.paused).toBe(false);
+    expect(summary.counts.done).toBeGreaterThanOrEqual(1);
+    expect(summary.folders[folderPath]).toMatchObject({ running: 0, queued: 0, failed: 0 });
+    expect(summary.running.every((entry) => !('log' in entry))).toBe(true);
+    expect(summary).not.toHaveProperty('jobs');
+  });
+
+  it('caps the unfiltered queue list and reports the total it left out', async () => {
+    const folderPath = await env.seedFolder('queue-cap', {
+      'config.json': folderConfig('https://www.youtube.com/@queuecap'),
+    });
+    env.setFolders('queue-cap');
+    // Paused: the jobs stay queued, so the snapshot below is stable
+    await env.agent.post('/api/folder/queue/pause?paused=1').expect(200);
+    try {
+      const videos = Array.from({ length: 250 }, (_, index) => ({
+        videoUrl: `https://www.youtube.com/watch?v=cap${String(index).padStart(8, '0')}`,
+      }));
+      await env.agent.post('/api/folder/queue').send({ folderPath, type: 'download', videos }).expect(202);
+
+      const list = QueueListResponseSchema.parse((await env.agent.get('/api/folder/queue').expect(200)).body);
+      // The queue also holds the jobs of the tests above, so the total is at
+      // least this folder's 250 — and the page is capped at 200 of them.
+      expect(list.total).toBeGreaterThanOrEqual(250);
+      expect(list.jobs).toHaveLength(200);
+
+      // One folder's own jobs are all there: the video rows read their status
+      // from this call, and a cap would hide the queued ones.
+      const folderList = QueueListResponseSchema.parse(
+        (await env.agent.get(`/api/folder/queue?folderPath=${encodeURIComponent(folderPath)}`).expect(200)).body,
+      );
+      expect(folderList.total).toBe(250);
+      expect(folderList.jobs).toHaveLength(250);
+    } finally {
+      await env.agent.delete('/api/folder/queue').query({ folderPath }).expect(200);
+      await env.agent.post('/api/folder/queue/resume?paused=0').expect(200);
+    }
   });
 
   it('reports an unreachable Elasticsearch and recovers when it comes back', async () => {

@@ -336,9 +336,53 @@ export const EnqueueJobsResponseSchema = z.object({
   skipped: z.array(SkippedVideoSchema),
 });
 
+/**
+ * A job as a queue LIST reports it. The bounded log tail stays behind
+ * GET /api/folder/queue/:jobId: the list is polled, and on a real instance
+ * with thousands of jobs the logs were the megabytes nobody rendered.
+ */
+export const QueueListJobSchema = QueueJobSchema.omit({ log: true, logLineCount: true });
+
 export const QueueListResponseSchema = z.object({
-  jobs: z.array(QueueJobSchema),
+  jobs: z.array(QueueListJobSchema),
+  /** Jobs the queue holds in total, before the list cap */
+  total: z.number().int().nonnegative(),
   /** Whether the queue is paused (queued jobs wait; running ones finish) */
+  paused: z.boolean(),
+});
+
+/** GET /api/folder/queue/:jobId — the full job, log tail included */
+export const QueueJobResponseSchema = z.object({
+  job: QueueJobSchema,
+});
+
+/** Per-folder counters the channel console renders on one row */
+export const QueueFolderCountsSchema = z.object({
+  running: z.number().int().nonnegative(),
+  queued: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  /** Message of the first failed job in the folder, for the row's hint */
+  firstError: z.string().optional(),
+});
+
+/** Counters of the whole queue, one per status */
+export const QueueCountsSchema = z.object({
+  queued: z.number().int().nonnegative(),
+  running: z.number().int().nonnegative(),
+  done: z.number().int().nonnegative(),
+  error: z.number().int().nonnegative(),
+  cancelled: z.number().int().nonnegative(),
+});
+
+/**
+ * GET /api/folder/queue/summaries — the small answer a console polls: the
+ * counters per status, the per-folder counters and the jobs running right now
+ * (a handful, bounded by the concurrency limits), never the job list.
+ */
+export const QueueSummaryResponseSchema = z.object({
+  counts: QueueCountsSchema,
+  folders: z.record(z.string(), QueueFolderCountsSchema),
+  running: z.array(QueueListJobSchema),
   paused: z.boolean(),
 });
 
@@ -426,9 +470,14 @@ export type FolderListResponse = z.infer<typeof FolderListResponseSchema>;
 export type FolderSummary = z.infer<typeof FolderSummarySchema>;
 export type FolderSummariesResponse = z.infer<typeof FolderSummariesResponseSchema>;
 export type QueueJob = z.infer<typeof QueueJobSchema>;
+export type QueueListJob = z.infer<typeof QueueListJobSchema>;
 export type SkippedVideo = z.infer<typeof SkippedVideoSchema>;
 export type EnqueueJobsResponse = z.infer<typeof EnqueueJobsResponseSchema>;
 export type QueueListResponse = z.infer<typeof QueueListResponseSchema>;
+export type QueueJobResponse = z.infer<typeof QueueJobResponseSchema>;
+export type QueueFolderCounts = z.infer<typeof QueueFolderCountsSchema>;
+export type QueueCounts = z.infer<typeof QueueCountsSchema>;
+export type QueueSummaryResponse = z.infer<typeof QueueSummaryResponseSchema>;
 export type QueuePauseResponse = z.infer<typeof QueuePauseResponseSchema>;
 export type ClearFinishedResponse = z.infer<typeof ClearFinishedResponseSchema>;
 export type ListExistsResponse = z.infer<typeof ListExistsResponseSchema>;

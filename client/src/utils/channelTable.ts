@@ -1,4 +1,4 @@
-import type { FolderSummary, QueueJob, StatusResponse } from '@videodeck/shared/api';
+import type { FolderSummary, QueueFolderCounts, StatusResponse } from '@videodeck/shared/api';
 
 /**
  * Rows of the download page's channel console. Everything here is pure: the
@@ -18,13 +18,11 @@ export type ChannelSort = 'name' | 'attention' | 'updated' | 'missing';
 export const ATTENTION_REASONS = ['noChannelUrl', 'noList', 'noIndex', 'failed', 'stale'] as const;
 export type AttentionReason = (typeof ATTENTION_REASONS)[number];
 
-export interface ChannelQueueCounts {
-  running: number;
-  queued: number;
-  failed: number;
-  /** Message of the first failed job, for the row's hint */
-  firstError?: string;
-}
+/** What one channel's queue is doing, as GET /api/folder/queue/summaries reports it */
+export type ChannelQueueCounts = QueueFolderCounts;
+
+/** The queue of a channel with nothing in it */
+export const NO_QUEUE_COUNTS: ChannelQueueCounts = { running: 0, queued: 0, failed: 0 };
 
 export interface ChannelRow {
   folderPath: string;
@@ -61,47 +59,28 @@ function folderName(folderPath: string): string {
   return separator === -1 ? trimmed : trimmed.slice(separator + 1);
 }
 
-function isActive(job: QueueJob): boolean {
-  return job.status === 'queued' || job.status === 'running';
+/** Active jobs of a channel: queued plus running */
+function activeJobs(counts: ChannelQueueCounts | undefined): number {
+  return (counts?.running ?? 0) + (counts?.queued ?? 0);
 }
 
 /**
- * Folders whose job was active at the previous poll and is not any more: it
- * finished, failed, or was cancelled and swept. Their counts on disk may have
- * changed, so the console re-reads these folders and no other.
+ * Folders whose queue lost work since the previous poll: a job finished,
+ * failed, or was cancelled and swept. Their counts on disk may have changed,
+ * so the console re-reads these folders and no other.
  */
-export function foldersWithFinishedJobs(previous: readonly QueueJob[], current: readonly QueueJob[]): string[] {
-  const stillActive = new Set(current.filter(isActive).map((job) => job.id));
-  const folders = new Set<string>();
-  for (const job of previous) {
-    if (isActive(job) && !stillActive.has(job.id)) {
-      folders.add(job.folderPath);
+export function foldersWithFinishedJobs(
+  previous: Readonly<Record<string, ChannelQueueCounts>>,
+  current: Readonly<Record<string, ChannelQueueCounts>>,
+): string[] {
+  const folders: string[] = [];
+  for (const [folderPath, counts] of Object.entries(previous)) {
+    const before = activeJobs(counts);
+    if (before > 0 && before > activeJobs(current[folderPath])) {
+      folders.push(folderPath);
     }
   }
-  return [...folders];
-}
-
-/** Group the queue's jobs by folder and count what each channel is doing */
-function queueCountsByFolder(jobs: readonly QueueJob[]): Record<string, ChannelQueueCounts> {
-  const byFolder: Record<string, ChannelQueueCounts> = {};
-  for (const job of jobs) {
-    let counts = byFolder[job.folderPath];
-    if (counts === undefined) {
-      counts = { running: 0, queued: 0, failed: 0 };
-      byFolder[job.folderPath] = counts;
-    }
-    if (job.status === 'running') {
-      counts.running += 1;
-    } else if (job.status === 'queued') {
-      counts.queued += 1;
-    } else if (job.status === 'error') {
-      counts.failed += 1;
-      if (counts.firstError === undefined && job.error !== undefined) {
-        counts.firstError = job.error;
-      }
-    }
-  }
-  return byFolder;
+  return folders;
 }
 
 /**
@@ -134,11 +113,9 @@ function attentionReasons(row: Omit<ChannelRow, 'attention'>): AttentionReason[]
 export function buildChannelRows(
   status: StatusResponse,
   summaries: Record<string, FolderSummary>,
-  jobs: readonly QueueJob[],
+  queueByFolder: Readonly<Record<string, ChannelQueueCounts>>,
   channelsByFolder: Record<string, string> = {},
 ): ChannelRow[] {
-  const queueByFolder = queueCountsByFolder(jobs);
-
   return status.videosFolderPath.map((folderPath) => {
     const config = status.folderConfigs[folderPath] ?? null;
     const category = config?.category?.trim();
@@ -154,7 +131,7 @@ export function buildChannelRows(
       indexed: status.elasticsearch === 'down' ? null : status.indexedFolders.includes(folderPath),
       listExists: status.listExists[folderPath] ?? null,
       ...(summary ? { summary } : {}),
-      queue: queueByFolder[folderPath] ?? { running: 0, queued: 0, failed: 0 },
+      queue: queueByFolder[folderPath] ?? NO_QUEUE_COUNTS,
     };
     return { ...base, attention: attentionReasons(base) };
   });

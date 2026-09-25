@@ -16,8 +16,10 @@ import type {
   FolderSummary,
   ListExistsResponse,
   QueueJob,
+  QueueJobResponse,
   QueueListResponse,
   QueuePauseResponse,
+  QueueSummaryResponse,
   RebuildIndexResponse,
   SaveFolderConfigResponse,
   SkippedVideo,
@@ -33,7 +35,7 @@ import { sseStreamsOpen } from '../metrics';
 import { ListJsonError, readListJson } from '../services/channelList';
 import { readCollection } from '../services/collection';
 import type { DownloadQueue, EnqueueRequest } from '../services/downloadQueue';
-import { downloadQueue } from '../services/downloadQueue';
+import { downloadQueue, toListJob } from '../services/downloadQueue';
 import { listCachedFolders } from '../services/elasticsearchService';
 import {
   DEFAULT_DOWNLOAD_OPTIONS,
@@ -162,8 +164,26 @@ function toEnqueueRequest(
 
 export type DownloadQueueLike = Pick<
   DownloadQueue,
-  'enqueue' | 'list' | 'get' | 'cancel' | 'cancelAll' | 'whenPersisted' | 'on' | 'off' | 'setPaused' | 'clearFinished'
+  | 'enqueue'
+  | 'list'
+  | 'summary'
+  | 'get'
+  | 'cancel'
+  | 'cancelAll'
+  | 'whenPersisted'
+  | 'on'
+  | 'off'
+  | 'setPaused'
+  | 'isPaused'
+  | 'clearFinished'
 >;
+
+/**
+ * Jobs one unfiltered GET /api/folder/queue page returns. The console polls
+ * /summaries instead, so this cap only bounds a direct or debugging read of a
+ * queue that can hold thousands of jobs; `total` says what was left out.
+ */
+const QUEUE_LIST_LIMIT = 200;
 
 /**
  * The folder routes are a factory so the application can inject the download
@@ -247,10 +267,6 @@ export function invalidateSummaryCache(): void {
 }
 
 export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): express.Router {
-  // Paused state is mirrored here so listJobs can report it (the injected
-  // queue only exposes setPaused)
-  let queueIsPaused = false;
-
   const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, res) => {
     const videosFolderPaths = getVideosFolderPaths();
 
@@ -589,10 +605,35 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     res.status(202).json({ jobs, skipped });
   };
 
+  /**
+   * The queue as a list. The log tail does not travel with it (a real instance
+   * carried megabytes of log lines on a poll that renders none of them) and the
+   * answer is capped: `total` says how many jobs the queue actually holds. The
+   * console polls /summaries instead; this endpoint serves a filtered view and
+   * API consumers. `?folderPath=` keeps every job of that one folder, because
+   * the video rows read their own status from it.
+   */
   const listJobs: RouteHandler<NoParams, QueueListResponse> = (req, res) => {
     const folderPath = readFolderFilter(req.query.folderPath, res);
     if (folderPath === false) return;
-    res.json({ jobs: queue.list(folderPath), paused: queueIsPaused });
+    const jobs = queue.list(folderPath);
+    const page = folderPath === undefined ? jobs.slice(0, QUEUE_LIST_LIMIT) : jobs;
+    res.json({ jobs: page.map(toListJob), total: jobs.length, paused: queue.isPaused() });
+  };
+
+  /** Counters plus the running jobs, without the list and without logs */
+  const getQueueSummary: RouteHandler<NoParams, QueueSummaryResponse> = (_req, res) => {
+    res.json({ ...queue.summary(), paused: queue.isPaused() });
+  };
+
+  /** One job with its full log tail — what the list deliberately leaves out */
+  const getJob: RouteHandler<{ jobId: string }, QueueJobResponse> = (req, res) => {
+    const job = queue.get(req.params.jobId);
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+    res.json({ job });
   };
 
   const setQueuePaused: RouteHandler<NoParams, QueuePauseResponse> = (req, res) => {
@@ -601,9 +642,10 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
       res.status(400).json({ error: 'paused must be 1 or 0' });
       return;
     }
-    queueIsPaused = value === '1' || value === 'true';
-    queue.setPaused(queueIsPaused);
-    res.json({ paused: queueIsPaused });
+    // The queue owns the flag (restore sets it at boot too) — read it back
+    // instead of answering from a copy the router would have to keep in sync.
+    queue.setPaused(value === '1' || value === 'true');
+    res.json({ paused: queue.isPaused() });
   };
 
   const clearFinishedJobs: RouteHandler<NoParams, ClearFinishedResponse> = (_req, res) => {
@@ -719,6 +761,9 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
   router.post('/folder/queue', enqueueJobs);
   router.get('/folder/queue', listJobs);
   router.delete('/folder/queue', cancelAllJobs);
+  // registered before /:jobId so "summaries" is not read as a job id
+  router.get('/folder/queue/summaries', getQueueSummary);
+  router.get('/folder/queue/:jobId', getJob);
   router.post('/folder/queue/pause', setQueuePaused);
   router.post('/folder/queue/resume', setQueuePaused);
   // registered before /:jobId so "finished" is not read as a job id

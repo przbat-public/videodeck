@@ -11,7 +11,7 @@
  * JSON has no `undefined`.
  */
 
-import type { ApiError, FolderConfig, QueueJob, ReindexStatus } from './schemas';
+import type { ApiError, FolderConfig, QueueJob, QueueSummaryResponse, ReindexStatus } from './schemas';
 
 export type {
   ApiError,
@@ -31,9 +31,14 @@ export type {
   FolderSummary,
   HealthResponse,
   ListExistsResponse,
+  QueueCounts,
+  QueueFolderCounts,
   QueueJob,
+  QueueJobResponse,
+  QueueListJob,
   QueueListResponse,
   QueuePauseResponse,
+  QueueSummaryResponse,
   RebuildIndexResponse,
   RecreateIndicesStatus,
   ReindexStatus,
@@ -113,6 +118,12 @@ export interface EnqueueJobsRequest extends FolderPathRequest {
 
 export type JobType = 'download' | 'update';
 export type JobStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled';
+
+/**
+ * GET /api/folder/queue/summaries without the paused flag: what the queue
+ * itself can answer, and what the route turns into the response body.
+ */
+export type QueueSummary = Omit<QueueSummaryResponse, 'paused'>;
 
 /** DELETE /api/folder/queue?folderPath= */
 export interface CancelAllResponse {
