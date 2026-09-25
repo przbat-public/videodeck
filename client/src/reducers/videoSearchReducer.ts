@@ -7,6 +7,12 @@ export interface VideoSearchState {
   loadedCount: number;
   totalCount: number;
   loading: boolean;
+  /**
+   * A "load more" page is in flight. Kept apart from `loading` because the
+   * cards on screen already answer the current query: only the list region is
+   * busy, and the page must not announce a fresh load for every page.
+   */
+  loadingMore: boolean;
   error: string | null;
 }
 
@@ -27,7 +33,7 @@ export const VideoSearchActionType = {
 export type VideoSearchActionType = (typeof VideoSearchActionType)[keyof typeof VideoSearchActionType];
 
 export type VideoSearchAction =
-  | { type: 'SEARCH_START' }
+  | { type: 'SEARCH_START'; payload: { append: boolean } }
   | {
       type: 'SEARCH_SUCCESS';
       payload: { videos: VideoListItem[]; totalCount: number; append?: boolean };
@@ -39,6 +45,7 @@ export const initialState: VideoSearchState = {
   loadedCount: 0,
   totalCount: 0,
   loading: false,
+  loadingMore: false,
   error: null,
 };
 
@@ -47,7 +54,8 @@ export function videoSearchReducer(state: VideoSearchState, action: VideoSearchA
     case VideoSearchActionType.SEARCH_START:
       return {
         ...state,
-        loading: true,
+        loading: !action.payload.append,
+        loadingMore: action.payload.append,
         error: null,
       };
     case VideoSearchActionType.SEARCH_SUCCESS: {
@@ -61,6 +69,7 @@ export function videoSearchReducer(state: VideoSearchState, action: VideoSearchA
         loadedCount: action.payload.append ? state.loadedCount + action.payload.videos.length : videos.length,
         totalCount: action.payload.totalCount,
         loading: false,
+        loadingMore: false,
       };
     }
     case VideoSearchActionType.SEARCH_ERROR:
@@ -73,6 +82,7 @@ export function videoSearchReducer(state: VideoSearchState, action: VideoSearchA
         loadedCount: action.payload.append ? state.loadedCount : 0,
         totalCount: action.payload.append ? state.totalCount : 0,
         loading: false,
+        loadingMore: false,
       };
     default:
       return state;

@@ -4,6 +4,7 @@ import { videoFiles } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import i18n from '../../i18n';
 import { MAX_RETAINED_VIDEOS } from '../../reducers/videoSearchReducer';
+import { clearListPositions } from '../../utils/listScrollMemory';
 import {
   categorySelect,
   channelSelect,
@@ -37,6 +38,10 @@ afterAll(async () => {
 
 afterEach(() => {
   cleanup();
+  // The list remembers a reader's place per search URL: a test that leaves the
+  // page would hand its position to the next one, and that next search would
+  // restore pages nobody asked for. Every journey starts from a clean session.
+  clearListPositions();
 });
 
 interface SearchBody {

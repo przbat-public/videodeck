@@ -74,18 +74,20 @@ files automatically.
 
 ## Dependency version holds
 
-Dependabot deliberately ignores some updates (`.github/dependabot.yml`) ,
-upgrade these together, manually, when the time comes:
+Dependabot deliberately ignores semver-major bumps of two packages
+(`.github/dependabot.yml`). Upgrade each one by hand, when the time comes:
 
-- **`typescript` (semver-major)**: TS 7 breaks the test toolchain first
+- **`typescript` (semver-major)**: a TS major breaks the test toolchain first
   (ts-jest peer range, vitest plugins). Upgrade TS + ts-jest + eslint
-  toolchain in one PR. Same history for **zod** (4.x API migration done
-  manually) and **react-window** (v2 API migration done manually).
+  toolchain in one PR.
 - **`@types/node` (semver-major)**: the runtime is pinned to **Node 24**
   (`.nvmrc`, the `engines` fields, the CI setup action and the Docker
   images); type majors must follow a Node upgrade, not lead it. Bump
   `@types/node` in the same change that moves the runtime. Node 24 is an LTS
   line: plan the next hop before its maintenance window closes.
+
+Everything else, including `zod` and `react-window`, is open to a Dependabot
+major PR; their 4.x and 2.x API migrations are already done.
 
 ## Pull requests
 

@@ -31,6 +31,7 @@ import { extractYoutubeVideoId, isYoutubeChannelUrl, isYoutubeVideoId, toWatchUr
 import type { Response } from 'express';
 import express from 'express';
 import { getVideosFolderPaths } from '../config';
+import { sseStreamsOpen } from '../metrics';
 import { ListJsonError, readListJson } from '../services/channelList';
 import { readCollection } from '../services/collection';
 import type { DownloadQueue, EnqueueRequest } from '../services/downloadQueue';
@@ -733,7 +734,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
       if (!job) {
         throw new Error('Queue did not return a job');
       }
-      streamJobProgress(req, res, queue, job);
+      streamJobProgress(res, queue, job);
     } catch (error) {
       if (!res.headersSent) {
         sendError(res, 500, 'Failed to start video download', error);
@@ -778,12 +779,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
  * cancelled) or the client disconnects. The job keeps running server-side
  * either way — closing the stream never cancels the download.
  */
-function streamJobProgress(
-  req: { on(event: 'close', listener: () => void): void },
-  res: Response,
-  queue: DownloadQueueLike,
-  job: QueueJob,
-): void {
+function streamJobProgress(res: Response, queue: DownloadQueueLike, job: QueueJob): void {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -793,6 +789,7 @@ function streamJobProgress(
   // Track the stream so graceful shutdown can end it and let server.close()
   // finish instead of waiting on the keep-alive connection.
   const unregister = registerSseStream(res);
+  sseStreamsOpen.inc();
 
   // Every event is validated against the shared contract before it reaches
   // the wire: a malformed event would corrupt the client's stream parser.
@@ -809,6 +806,7 @@ function streamJobProgress(
 
   let seenLogCount = 0;
   let finished = false;
+  let cleanedUp = false;
 
   // SSE comment lines keep the connection alive during quiet merge phases
   // without being parsed as events — the extension's service worker depends
@@ -819,21 +817,36 @@ function streamJobProgress(
     }
   }, 15_000);
 
-  const finish = (snapshot: QueueJob) => {
-    if (finished) {
+  /**
+   * Release everything the stream holds. Idempotent: a finished job ends the
+   * response and the client disconnect that follows emits the same 'close'
+   * event, and either order must decrement the gauge exactly once.
+   */
+  const cleanup = () => {
+    if (cleanedUp) {
       return;
     }
+    cleanedUp = true;
     finished = true;
     clearInterval(heartbeat);
     unregister();
     queue.off('job', onJob);
     queue.off('progress', onProgress);
+    sseStreamsOpen.dec();
+  };
+
+  const finish = (snapshot: QueueJob) => {
+    if (finished) {
+      return;
+    }
+    finished = true;
     sendEvent(
       snapshot.status === 'done'
         ? { type: 'downloadComplete', message: 'Download completed successfully' }
         : { type: 'downloadError', error: snapshot.error ?? `Download ${snapshot.status}` },
     );
     res.end();
+    cleanup();
   };
 
   const onJob = (snapshot: QueueJob) => {
@@ -876,11 +889,10 @@ function streamJobProgress(
     onJob(current);
   }
 
-  req.on('close', () => {
-    finished = true;
-    clearInterval(heartbeat);
-    unregister();
-    queue.off('job', onJob);
-    queue.off('progress', onProgress);
-  });
+  // The response, not the request: since Node 16 the request's 'close' fires
+  // once its body has been consumed, not when the client goes away, so an
+  // aborted download kept the heartbeat interval and both queue listeners
+  // alive until the job happened to settle. The download itself still runs
+  // server-side; only the stream is released.
+  res.on('close', cleanup);
 }

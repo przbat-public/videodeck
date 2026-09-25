@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { SearchResponseSchema } from '@videodeck/shared/schemas';
 
 /** One video for the mocked search responses */
 export interface E2eVideo {
@@ -99,7 +100,14 @@ export async function mockApi(page: Page, handlers: MockApiHandlers = {}): Promi
   await context.route('**/api/videos/search**', async (route) => {
     const url = new URL(route.request().url());
     const body = handlers.search?.(url.searchParams) ?? { videos: [], totalCount: 0 };
-    await route.fulfill(json(body));
+    // The fixtures are hand-written JSON, so they are parsed through the same
+    // contract the backend answers with: a drifting fixture fails here, with
+    // the field name, instead of in a UI assertion three steps later.
+    const parsed = SearchResponseSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new Error(`e2e search fixture does not match the contract: ${parsed.error.message}`);
+    }
+    await route.fulfill(json(parsed.data));
   });
   await context.route('**/api/videos/categories', (route) =>
     route.fulfill(json({ categories: handlers.categories ?? ['fpv', 'lego'] })),

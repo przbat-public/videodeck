@@ -42,6 +42,11 @@ warning `#ffc107`/`#e0a800` (update button), secondary `#5a6268`/`#495057`
 `--color-info-bg`, `--color-warning-*`), as do the danger and warning text
 tokens.
 
+Toasts carry their own pair, because they sit above the page rather than in
+it: `--color-toast-bg` (`#363636`, dark `#2b2f36`) and `--color-toast-text`
+(`#fff`, dark `#e6e6e6`). Their icon colors reuse `--color-success` and
+`--color-danger`, so a toast never spells a color of its own.
+
 Rules:
 
 - White text on `--color-primary` must stay at least 4.5:1 (WCAG AA). That

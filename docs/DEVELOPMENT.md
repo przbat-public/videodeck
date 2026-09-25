@@ -15,7 +15,7 @@ formatting (single quotes, line width 120) and for the strict lint rules
 (`noExplicitAny`, `noNonNullAssertion`, cognitive complexity ≤ 15,
 `noConsole`, …). ESLint's flat config (`eslint.config.mjs`) covers `server/`,
 `client/`, `shared/`, and `chrome-extension/src/` (the generated `*.js` files
-of the extension are ignored) and carries only the rules Biome cannot ,
+of the extension are ignored) and carries only the rules Biome cannot handle:
 type-aware TypeScript checks, React hooks and Playwright. Flat config only
 lints files below its own directory, and `shared/` sits outside both
 workspaces, which is why lint and formatting are run from the root. The
@@ -89,7 +89,7 @@ cd chrome-extension && pnpm run test:watch  # Watch mode
 ```
 
 **Integration tests with a real Elasticsearch** (reindex flow with
-alias switching, diacritic folding, searching transcripts ,
+alias switching, diacritic folding, searching transcripts; they are
 skipped in the regular `pnpm test`):
 
 ```bash
@@ -225,6 +225,6 @@ A short overview of the client's architectural decisions and what was consciousl
   typechecks the whole `../shared` directory, not selected files.
 - **Husky + commitlint + lint-staged**: `pre-commit` formats and lints
   changed files (biome check --write), `commit-msg` enforces
-  the conventional commits convention (`feat:`, `fix:`, `chore(tooling):`, …) ,
-  the end of mixed styles in the history.
+  the conventional commits convention (`feat:`, `fix:`, `chore(tooling):`, …),
+  which ends the mixed styles in the history.
 

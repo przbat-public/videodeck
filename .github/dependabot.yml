@@ -1,5 +1,10 @@
 version: 2
 updates:
+  # ONE npm entry for the whole workspace. The repo has a single lockfile at
+  # the root, so a per-directory entry made Dependabot propose versions the
+  # pnpm lockfile never resolves (empty PRs) or an inconsistent state (broken
+  # PR). The groups, schedule and ignore rules below cover every workspace
+  # package at once; Dependabot matches `dependency-name` across all of them.
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -17,80 +22,19 @@ updates:
         dependency-type: development
     ignore:
       # TypeScript majors break the test toolchain (ts-jest, vitest plugins)
-      # until they are upgraded together — let that be a manual change.
+      # until they are upgraded together; let that be a manual change.
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
       # The runtime is pinned to Node 24 (.nvmrc); type majors must follow a
       # Node upgrade, not lead it.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
-
-  - package-ecosystem: npm
-    directory: /server
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    versioning-strategy: increase
-    commit-message:
-      prefix: 'chore(deps)'
-    labels: [dependencies]
-    groups:
-      prod-deps:
-        dependency-type: production
-      dev-deps:
-        dependency-type: development
-    ignore:
-      # TypeScript majors break the test toolchain (ts-jest, vitest plugins)
-      # until they are upgraded together — let that be a manual change.
-      - dependency-name: 'typescript'
-        update-types: ['version-update:semver-major']
-      # The runtime is pinned to Node 24 (.nvmrc); type majors must follow a
-      # Node upgrade, not lead it.
-      - dependency-name: '@types/node'
-        update-types: ['version-update:semver-major']
-
-  - package-ecosystem: npm
-    directory: /client
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    versioning-strategy: increase
-    commit-message:
-      prefix: 'chore(deps)'
-    labels: [dependencies]
-    groups:
-      prod-deps:
-        dependency-type: production
-      dev-deps:
-        dependency-type: development
-    ignore:
-      # TypeScript majors break the test toolchain (ts-jest, vitest plugins)
-      # until they are upgraded together — let that be a manual change.
-      - dependency-name: 'typescript'
-        update-types: ['version-update:semver-major']
-
-  - package-ecosystem: npm
-    directory: /chrome-extension
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    versioning-strategy: increase
-    commit-message:
-      prefix: 'chore(deps)'
-    labels: [dependencies]
-    groups:
-      prod-deps:
-        dependency-type: production
-      dev-deps:
-        dependency-type: development
-    ignore:
-      # TypeScript majors break the test toolchain (ts-jest, vitest plugins)
-      # until they are upgraded together — let that be a manual change.
-      - dependency-name: 'typescript'
-        update-types: ['version-update:semver-major']
+      # jsdom 30.1.0 breaks 27 client tests (Radix menus), so the suite-passing
+      # version is pinned exactly in client/package.json. The minor rule covers
+      # patch releases too, which leaves every update below a major to a human
+      # who re-runs the client suite before moving the pin.
+      - dependency-name: 'jsdom'
+        update-types: ['version-update:semver-minor']
 
   - package-ecosystem: github-actions
     directory: /

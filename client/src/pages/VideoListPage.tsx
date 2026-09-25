@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import { useRegisterMenuSections } from '../components/appMenuRegistry';
 import { LoadMore } from '../components/LoadMore';
 import SearchBar from '../components/SearchBar';
@@ -10,6 +11,7 @@ import VideoList from '../components/VideoList';
 import { useCacheRefresh } from '../hooks/useCacheRefresh';
 import { useCategories } from '../hooks/useCategories';
 import { useChannelNames } from '../hooks/useChannelNames';
+import { useListScrollRestoration } from '../hooks/useListScrollRestoration';
 import { usePageFocus } from '../hooks/usePageFocus';
 import { useRecreateIndices } from '../hooks/useRecreateIndices';
 import { useSearchUrlState } from '../hooks/useSearchUrlState';
@@ -22,18 +24,23 @@ export default function VideoListPage(): JSX.Element {
   const {
     videos,
     loading: videoLoading,
+    loadingMore: videoLoadingMore,
     error: videoError,
     hasMore,
     droppedCount,
     search,
     loadMore,
   } = useVideoSearch();
+  // Whatever is in flight makes the results busy; the page itself stays usable
+  const resultsBusy = videoLoading || videoLoadingMore;
   const { loading: refreshLoading, refreshCache } = useCacheRefresh();
   const { categories } = useCategories();
   const { channels } = useChannelNames();
   const { loading: recreateIndicesLoading, recreateIndices } = useRecreateIndices();
   const elasticsearchDown = useElasticsearchState() === 'down';
   const [onlyMissing, setOnlyMissing] = useState(false);
+  // What the last "load more" brought, as a line for the live region below
+  const [loadedMoreAnnouncement, setLoadedMoreAnnouncement] = useState('');
   const { t } = useTranslation();
   const focusPage = usePageFocus<HTMLElement>();
   // The landmark doubles as the target of "back to the top of the results":
@@ -46,6 +53,17 @@ export default function VideoListPage(): JSX.Element {
     },
     [focusPage],
   );
+  const { pathname, search: searchParams } = useLocation();
+
+  // The reader's place in the results survives a trip into a video: the
+  // offset and the pages come back with the same search URL.
+  useListScrollRestoration({
+    key: `${pathname}${searchParams}`,
+    loadedCount: videos.length,
+    hasMore,
+    busy: resultsBusy,
+    loadMore,
+  });
 
   // The URL drives the results: a deep link, a reload and a change made in
   // the search bar all arrive here the same way.
@@ -67,9 +85,15 @@ export default function VideoListPage(): JSX.Element {
     await recreateIndices();
   }, [recreateIndices]);
 
+  // An incremental load announces what it brought, once: repeating the
+  // "loading" line for every page told a screen reader nothing new.
   const handleLoadMore = useCallback(() => {
-    void loadMore();
-  }, [loadMore]);
+    void loadMore().then((appended) => {
+      if (appended > 0) {
+        setLoadedMoreAnnouncement(t('search.loadedMore', { count: appended, loaded: videos.length + appended }));
+      }
+    });
+  }, [loadMore, videos.length, t]);
 
   // The released rows are gone for good, so the way back to the start of the
   // results is a fresh search: it asks for offset 0 and replaces the window.
@@ -129,7 +153,7 @@ export default function VideoListPage(): JSX.Element {
   const showEmptyState = !videoError;
 
   return (
-    <main className="app-main" ref={setMainRef} tabIndex={-1} aria-busy={videoLoading}>
+    <main className="app-main" ref={setMainRef} tabIndex={-1}>
       <SearchBar
         query={query}
         sort={sort}
@@ -152,10 +176,24 @@ export default function VideoListPage(): JSX.Element {
               {t('search.loading')}
             </p>
           )}
-          {(videos.length > 0 || showEmptyState) && (
-            <VideoList videos={videos} searchQuery={query} droppedCount={droppedCount} onBackToTop={handleBackToTop} />
-          )}
-          {hasMore && <LoadMore loading={videoLoading} failed={videoError !== null} onLoadMore={handleLoadMore} />}
+          {/* The busy region is the results, never the whole page: the search
+              form stays usable and is not announced as busy per page. */}
+          <div className="search-results" aria-busy={resultsBusy}>
+            {(videos.length > 0 || showEmptyState) && (
+              <VideoList
+                videos={videos}
+                searchQuery={query}
+                droppedCount={droppedCount}
+                onBackToTop={handleBackToTop}
+              />
+            )}
+            {hasMore && (
+              <LoadMore loading={videoLoadingMore} failed={videoError !== null} onLoadMore={handleLoadMore} />
+            )}
+          </div>
+          <p className="visually-hidden" role="status">
+            {loadedMoreAnnouncement}
+          </p>
         </>
       )}
     </main>

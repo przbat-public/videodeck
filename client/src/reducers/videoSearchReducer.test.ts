@@ -31,6 +31,7 @@ describe('videoSearchReducer', () => {
       loadedCount: 0,
       totalCount: 0,
       loading: false,
+      loadingMore: false,
       error: null,
     });
   });

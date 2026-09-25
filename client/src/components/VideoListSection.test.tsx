@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { QueueJob } from '@videodeck/shared/api';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
 import { toast } from '../test/toastMock';
 import { isOlderThanMonth } from '../utils/videoDates';
@@ -176,7 +177,7 @@ describe('VideoListSection', () => {
       await loadVideosViaRef(ref);
     });
 
-    expect(await screen.findByText('Błąd: Failed to load videos')).toBeInTheDocument();
+    expect(await screen.findByText(i18n.t('app.error', { message: i18n.t('errors.loadVideos') }))).toBeInTheDocument();
   });
 
   it('does nothing when the folder has no list.json', async () => {

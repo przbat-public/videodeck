@@ -119,6 +119,44 @@ test.describe('search page', () => {
     await expect(page.getByRole('button', { name: 'Pokaż więcej' })).toBeHidden();
   });
 
+  test('coming back from a video restores the place in the results', async ({ page }) => {
+    const firstPage = Array.from({ length: 30 }, (_, index) => video(`v${index}`, `Film ${index + 1}`));
+    await mockApi(page, {
+      search: (params) =>
+        params.get('offset') === '30'
+          ? { videos: [video('v30', 'Ostatni film', { videoId: 'e2eid30' })], totalCount: 31 }
+          : { videos: firstPage, totalCount: 31 },
+    });
+
+    await page.goto('/');
+    await expect(page.getByText('Film 1', { exact: true })).toBeVisible();
+
+    // A long session: two pages read, so the place has something to come back to
+    await page.getByRole('button', { name: 'Pokaż więcej' }).scrollIntoViewIfNeeded();
+    await expect(page.getByText('Ostatni film')).toBeVisible();
+
+    // The reader stops halfway down the list and opens a result from there
+    const target = page.getByRole('link', { name: /Film 12/ });
+    await target.scrollIntoViewIfNeeded();
+    const { leftAt, max } = await page.evaluate(() => ({
+      leftAt: window.scrollY,
+      max: document.body.scrollHeight - window.innerHeight,
+    }));
+    // Neither the top nor the bottom: a restore that clamps lands elsewhere
+    expect(leftAt).toBeGreaterThan(100);
+    expect(leftAt).toBeLessThan(max);
+    await target.click();
+    await expect(page.getByTestId('video-player')).toBeVisible();
+
+    // Back, the way a reader goes back: browser history, URL intact
+    await page.goBack();
+
+    // The page comes back with the second page of results and with the offset
+    // the reader left, in a real layout this time (jsdom asserts the call only)
+    await expect(page.getByText('Ostatni film')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(leftAt);
+  });
+
   test('an empty phrase shows the no-results message', async ({ page }) => {
     await mockApi(page, { search: () => ({ videos: [], totalCount: 0 }) });
 
