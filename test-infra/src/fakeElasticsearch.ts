@@ -61,6 +61,34 @@ const ASCII_FOLD_SPECIALS: Record<string, string> = {
   ſ: 's',
 };
 
+/**
+ * The cluster's default `index.max_result_window`. Deliberately hardcoded:
+ * the fake has to refuse pages the real cluster refuses, so it must not
+ * follow the constant the code under test derives its paging from.
+ */
+const RESULT_WINDOW = 10_000;
+
+/** The 400 body a real cluster answers a page past the window with */
+function resultWindowError(target: string, requested: number): Record<string, unknown> {
+  const reason =
+    `Result window is too large, from + size must be less than or equal to: [${RESULT_WINDOW}] but was [${requested}]. ` +
+    'See the scroll api for a more efficient way to request large data sets. This limit can be set by changing the ' +
+    '[index.max_result_window] index level setting.';
+  return {
+    error: {
+      root_cause: [{ type: 'illegal_argument_exception', reason }],
+      type: 'search_phase_execution_exception',
+      reason: 'all shards failed',
+      phase: 'query',
+      grouped: true,
+      failed_shards: [
+        { shard: 0, index: target, node: 'fake-node', reason: { type: 'illegal_argument_exception', reason } },
+      ],
+    },
+    status: 400,
+  };
+}
+
 /** Strip diacritics + lowercase, mirroring the search analyzer's asciifolding */
 function fold(value: string): string {
   return value
@@ -470,11 +498,13 @@ export class FakeElasticsearch {
       .split('\n')
       .filter((line) => line.trim().length > 0);
     const items: unknown[] = [];
+    let errors = false;
     for (let i = 0; i + 1 < lines.length; i += 2) {
       const op = JSON.parse(lines[i] ?? '') as { index?: { _index?: string; _id?: string } };
       const doc = JSON.parse(lines[i + 1] ?? '{}') as Record<string, unknown>;
       const entry = this.resolve(op.index?._index ?? '');
       if (!entry) {
+        errors = true;
         items.push({ index: { _id: op.index?._id, status: 404, error: { type: 'index_not_found_exception' } } });
         continue;
       }
@@ -482,7 +512,7 @@ export class FakeElasticsearch {
       entry.documents.set(id, { id, source: doc });
       items.push({ index: { _id: id, status: 201 } });
     }
-    this.json(res, 200, { took: 0, errors: false, items });
+    this.json(res, 200, { took: 0, errors, items });
   }
 
   private count(res: ServerResponse, target: string): void {
@@ -515,13 +545,17 @@ export class FakeElasticsearch {
   }
 
   private search(res: ServerResponse, target: string, body: SearchBody): void {
+    const from = body.from ?? 0;
+    const size = body.size ?? 10;
+    if (from + size > RESULT_WINDOW) {
+      this.json(res, 400, resultWindowError(target, from + size));
+      return;
+    }
     const sources = this.resolveTargets(target).flatMap((entry) => [...entry.documents.values()]);
     const matches = sources.filter((doc) => this.matches(doc, body.query ?? {}));
     const scored = matches
       .map((doc) => ({ doc, score: this.score(doc, body.query ?? {}) }))
       .sort((a, b) => this.compare(a, b, body.sort));
-    const from = body.from ?? 0;
-    const size = body.size ?? 10;
     const page = scored.slice(from, from + size);
     const excludes = new Set<string>(
       body._source && typeof body._source === 'object' ? (body._source.excludes ?? []) : [],

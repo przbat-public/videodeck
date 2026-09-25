@@ -48,24 +48,49 @@ export const json = (body: unknown, status = 200) => ({
  * Routes are registered on the browser context, so popups (the video card
  * opens a new tab) inherit them too.
  */
-export async function mockApi(
-  page: Page,
-  handlers: {
-    search?: (params: URLSearchParams) => unknown;
-    categories?: string[];
-    details?: unknown;
-    status?: unknown;
-    list?: unknown;
-    /** Body of GET /api/videos/channels: the filter names and the folder map */
-    channels?: unknown;
-    /** Body of GET /api/health; a degraded stack is `{ status: 'degraded', elasticsearch: 'down' }` */
-    health?: unknown;
-    /** Body of the queue GET; defaults to an empty, unpaused queue */
-    queue?: unknown;
-    /** Body of GET /api/folder/summaries; defaults to no counts at all */
-    summaries?: unknown;
-  } = {},
-): Promise<void> {
+/** What a test can pin down; everything else gets the default answer */
+export interface MockApiHandlers {
+  search?: (params: URLSearchParams) => unknown;
+  categories?: string[];
+  details?: unknown;
+  status?: unknown;
+  list?: unknown;
+  /** Body of GET /api/videos/channels: the filter names and the folder map */
+  channels?: unknown;
+  /** Body of GET /api/health; a degraded stack is `{ status: 'degraded', elasticsearch: 'down' }` */
+  health?: unknown;
+  /** Body of the folder queue GET (log-free, capped); defaults to an empty queue */
+  queue?: unknown;
+  /** Body of GET /api/folder/queue/summaries; defaults to zeroed counters */
+  queueSummary?: unknown;
+  /** Body of GET /api/folder/queue/:jobId (one job with its log tail) */
+  queueJob?: unknown;
+  /** Body of GET /api/folder/summaries; defaults to no counts at all */
+  summaries?: unknown;
+}
+
+/**
+ * The three GETs under the queue prefix: the counters the console polls, one
+ * job with its log tail, or the capped, log-free list.
+ */
+function queueGetBody(path: string, handlers: MockApiHandlers, queuePaused: boolean): unknown {
+  if (path.endsWith('/queue/summaries')) {
+    return (
+      handlers.queueSummary ?? {
+        paused: queuePaused,
+        counts: { queued: 0, running: 0, done: 0, error: 0, cancelled: 0 },
+        folders: {},
+        running: [],
+      }
+    );
+  }
+  if (/\/queue\/[^/]+$/.test(path)) {
+    return handlers.queueJob ?? { job: null };
+  }
+  return handlers.queue ?? { jobs: [], total: 0, paused: queuePaused };
+}
+
+export async function mockApi(page: Page, handlers: MockApiHandlers = {}): Promise<void> {
   const context = page.context();
   // The readiness probe behind the outage banner (see ElasticsearchBanner)
   await context.route('**/api/health', async (route) => {
@@ -167,7 +192,7 @@ export async function mockApi(
     const request = route.request();
     const url = request.url();
     if (request.method() === 'GET') {
-      return route.fulfill(json(handlers.queue ?? { jobs: [], paused: queuePaused }));
+      return route.fulfill(json(queueGetBody(new URL(url).pathname, handlers, queuePaused)));
     }
     if (request.method() === 'POST' && /queue\/(pause|resume)/.test(url)) {
       // Match the PATH segment: the resume URL carries `?paused=0` in its

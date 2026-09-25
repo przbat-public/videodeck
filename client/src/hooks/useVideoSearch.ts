@@ -1,5 +1,5 @@
 import type { VideoListItem } from '@videodeck/shared/api';
-import { SEARCH_DEFAULT_PAGE_SIZE, SearchResponseSchema } from '@videodeck/shared/schemas';
+import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULT_WINDOW, SearchResponseSchema } from '@videodeck/shared/schemas';
 import type { Dispatch } from 'react';
 import { useCallback, useReducer, useRef } from 'react';
 import toast from 'react-hot-toast';
@@ -51,14 +51,23 @@ function reportSearchError(
 interface UseVideoSearchResult {
   videos: VideoListItem[];
   totalCount: number;
+  /** A fresh search is in flight: what is on screen is not the answer yet */
   loading: boolean;
+  /** The next page is being appended to the results already on screen */
+  loadingMore: boolean;
   error: string | null;
   /** True while the server knows about more videos than are loaded */
   hasMore: boolean;
+  /** Rows the window released from the front because it was full */
+  droppedCount: number;
   /** Runs a search from scratch; the caller decides when (the page runs one per URL change) */
   search: (state: SearchState) => Promise<void>;
-  /** Fetches the next page and appends it to the current results */
-  loadMore: () => Promise<void>;
+  /**
+   * Fetches the next page and appends it to the current results, resolving
+   * with how many videos arrived (0 when the page failed or was ignored) so
+   * the caller can announce what a "load more" actually brought.
+   */
+  loadMore: () => Promise<number>;
 }
 
 /** The message a failed search deserves: an unreachable cluster gets its own */
@@ -73,7 +82,7 @@ export function useVideoSearch(): UseVideoSearchResult {
   // newest one may touch the results, or a slow early response would
   // overwrite the answer to the question the URL is actually asking.
   const latestRequestRef = useRef(0);
-  // The search the next loadMore call continues (offset = videos.length)
+  // The search the next loadMore call continues (offset = the rows loaded so far)
   const searchStateRef = useRef<SearchState>(DEFAULT_SEARCH_STATE);
   // The request in flight; a new one aborts it so typing fast does not leave
   // a trail of doomed fetches behind
@@ -82,7 +91,7 @@ export function useVideoSearch(): UseVideoSearchResult {
   // too late to prevent two pages with the same offset)
   const inFlightRef = useRef(false);
 
-  const runSearch = useCallback(async (searchState: SearchState, offset: number, append: boolean): Promise<void> => {
+  const runSearch = useCallback(async (searchState: SearchState, offset: number, append: boolean): Promise<number> => {
     const requestId = ++latestRequestRef.current;
     const isCurrent = () => requestId === latestRequestRef.current;
 
@@ -91,7 +100,7 @@ export function useVideoSearch(): UseVideoSearchResult {
     abortRef.current = controller;
     inFlightRef.current = true;
 
-    dispatch({ type: VideoSearchActionType.SEARCH_START });
+    dispatch({ type: VideoSearchActionType.SEARCH_START, payload: { append } });
 
     try {
       const params = buildSearchParams(searchState, offset);
@@ -103,18 +112,21 @@ export function useVideoSearch(): UseVideoSearchResult {
       }
       const data = SearchResponseSchema.parse(await response.json());
       if (!isCurrent()) {
-        return;
+        return 0;
       }
+      const videos = data.videos || [];
       dispatch({
         type: VideoSearchActionType.SEARCH_SUCCESS,
         payload: {
-          videos: data.videos || [],
+          videos,
           totalCount: data.totalCount || 0,
           ...(append ? { append } : {}),
         },
       });
+      return append ? videos.length : 0;
     } catch (err) {
       reportSearchError(err, controller.signal.aborted, isCurrent, dispatch, append);
+      return 0;
     } finally {
       if (isCurrent()) {
         inFlightRef.current = false;
@@ -130,19 +142,28 @@ export function useVideoSearch(): UseVideoSearchResult {
     [runSearch],
   );
 
-  const loadMore = useCallback(async (): Promise<void> => {
+  const loadMore = useCallback(async (): Promise<number> => {
     if (inFlightRef.current) {
-      return;
+      return 0;
     }
-    await runSearch(searchStateRef.current, state.videos.length, true);
-  }, [runSearch, state.videos.length]);
+    // The offset counts the rows the server has handed over, not the rows on
+    // screen: the window releases old rows as new pages arrive, and asking
+    // from the array length would re-fetch pages already seen.
+    return runSearch(searchStateRef.current, state.loadedCount, true);
+  }, [runSearch, state.loadedCount]);
 
   return {
     videos: state.videos,
     totalCount: state.totalCount,
     loading: state.loading,
+    loadingMore: state.loadingMore,
     error: state.error,
-    hasMore: state.videos.length < state.totalCount,
+    // Counted from what loaded, so a window holding fewer rows than the server
+    // has handed over does not keep offering a page that is not there, and
+    // capped at the index window: Elasticsearch cannot serve offset pages past
+    // index.max_result_window, so counts above it are real but unreachable.
+    hasMore: state.loadedCount < Math.min(state.totalCount, SEARCH_MAX_RESULT_WINDOW),
+    droppedCount: state.loadedCount - state.videos.length,
     search,
     loadMore,
   };

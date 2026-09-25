@@ -3,7 +3,7 @@ import type { estypes } from '@elastic/elasticsearch';
 import { Client } from '@elastic/elasticsearch';
 import { Gauge } from '@prometheus-io/client';
 import type { RecreateIndicesStatus, SortOption, VideoListItem } from '@videodeck/shared/api';
-import { SEARCH_DEFAULT_PAGE_SIZE } from '@videodeck/shared/schemas';
+import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULT_WINDOW } from '@videodeck/shared/schemas';
 import { ELASTICSEARCH_URL, getVideosFolderPaths } from '../config';
 import { metricsRegistry } from '../metricsRegistry';
 import { logger } from '../utils/logger';
@@ -396,10 +396,36 @@ export async function discardIndexVersion(indexName: string): Promise<void> {
 }
 
 /**
+ * First-time creations in flight, per folder. Two callers that both see "no
+ * alias" would each create a physical index, and the later promote deletes
+ * the version the first caller is writing into: the document is then missing
+ * from search until the next full reindex. Callers that arrive while a
+ * creation runs share its result instead of starting a second one.
+ */
+const indexCreationsInFlight = new Map<string, Promise<void>>();
+
+/**
  * Make sure the folder has a searchable (possibly empty) index behind its
  * alias. No-op when the alias already exists.
  */
 export async function createIndex(folderPath: string): Promise<void> {
+  const pending = indexCreationsInFlight.get(folderPath);
+  if (pending) {
+    return pending;
+  }
+
+  const creation = createFolderIndex(folderPath).finally(() => {
+    // Only clear our own entry: a failed attempt must not be cached, and a
+    // newer creation may already have replaced it.
+    if (indexCreationsInFlight.get(folderPath) === creation) {
+      indexCreationsInFlight.delete(folderPath);
+    }
+  });
+  indexCreationsInFlight.set(folderPath, creation);
+  return creation;
+}
+
+async function createFolderIndex(folderPath: string): Promise<void> {
   const esClient = getElasticsearchClient();
   const alias = getIndexNameFromFolderPath(folderPath);
 
@@ -705,10 +731,25 @@ export interface SearchOptions {
 const HIGHLIGHT_OPEN = '\u0001';
 const HIGHLIGHT_CLOSE = '\u0002';
 
+/**
+ * Page start and size for one search, kept inside Elasticsearch's result
+ * window. The cluster rejects `from + size > index.max_result_window` with a
+ * 400 (search_phase_execution_exception), which reached the user as a 500 on
+ * deep pages.
+ *
+ * A page whose end would cross the window comes back shortened, and an offset
+ * at or past it becomes a size-0 query: no hits, but the total still describes
+ * the query honestly. The page start is never pulled back to the window edge,
+ * because a shifted page would repeat documents the caller already holds and a
+ * client appending pages would never reach the end of the list.
+ */
 function normalizePaging(options: SearchOptions): { from: number; size: number } {
   const from = Math.max(0, Math.trunc(options.offset ?? 0));
   const size = Math.min(SEARCH_MAX_LIMIT, Math.max(1, Math.trunc(options.limit ?? SEARCH_DEFAULT_LIMIT)));
-  return { from, size };
+  if (from >= SEARCH_MAX_RESULT_WINDOW) {
+    return { from: 0, size: 0 };
+  }
+  return { from, size: Math.min(size, SEARCH_MAX_RESULT_WINDOW - from) };
 }
 
 /**

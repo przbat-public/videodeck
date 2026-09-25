@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
 import { toast } from '../test/toastMock';
@@ -109,7 +110,7 @@ describe('useVideoSummary', () => {
     });
 
     expect(toast.error).toHaveBeenCalledWith('Nie udało się wygenerować streszczenia', { id: LOADING_TOAST_ID });
-    expect(result.current.state.error).toBe('Failed to load summary');
+    expect(result.current.state.error).toBe(i18n.t('errors.loadSummary'));
   });
 
   it('handles network errors', async () => {

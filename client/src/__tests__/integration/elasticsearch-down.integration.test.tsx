@@ -1,7 +1,7 @@
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { findCardByTitle, queryCardByTitle } from './drivers/searchDrivers';
+import { findCardByTitle, queryCardByTitle, typeAndCommitPhrase } from './drivers/searchDrivers';
 import { folderSection } from './drivers/statusDrivers';
 import { refreshCacheAndWait, renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
@@ -41,9 +41,11 @@ describe('Elasticsearch goes away and comes back', () => {
     const page = await renderApp('/download');
     const section = await folderSection(folderPath);
 
-    // Healthy first: the channel row is there and no banner is up
+    // Healthy first: the channel row is there and no banner is up. The
+    // banner's own retry names it, because the results page carries a status
+    // region of its own (the "loaded N more" announcement).
     await within(section).findByRole('button', { name: 'Pobierz playlistę' });
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sprawdź ponownie' })).toBeNull();
 
     await env.fakeEs.stop();
 
@@ -61,9 +63,9 @@ describe('Elasticsearch goes away and comes back', () => {
     ).toBeInTheDocument();
     expect(queryCardByTitle('Głęboka integracja')).not.toBeInTheDocument();
 
-    // ... and the shell says it once for the whole app
-    const banner = await screen.findByRole('status', undefined, { timeout: WAIT_MS });
-    expect(banner).toHaveTextContent(DOWN_MESSAGE);
+    // ... and the shell says it once for the whole app, in the banner's strip
+    const retry = await screen.findByRole('button', { name: 'Sprawdź ponownie' }, { timeout: WAIT_MS });
+    expect(retry.closest('.health-banner')).toHaveTextContent(DOWN_MESSAGE);
 
     // The index actions cannot work while the cluster is down
     await page.user.click(screen.getByRole('button', { name: 'Menu aplikacji' }));
@@ -77,17 +79,31 @@ describe('Elasticsearch goes away and comes back', () => {
     // The banner's retry is the user-visible way back, and the banner clears
     // itself as soon as the probe answers again
     await page.user.click(screen.getByRole('button', { name: 'Sprawdź ponownie' }));
-    await waitFor(() => expect(screen.queryByRole('status')).toBeNull(), { timeout: WAIT_MS });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Sprawdź ponownie' })).toBeNull(), {
+      timeout: WAIT_MS,
+    });
 
     // Search works again without a page reload. A different phrase, because
     // re-submitting the failed one leaves the URL unchanged and the page would
     // keep its old error (the results area has a clear button, not a retry).
-    await page.user.clear(screen.getByLabelText('Fraza wyszukiwania'));
-    await page.user.type(screen.getByLabelText('Fraza wyszukiwania'), 'kosmos');
-    await page.user.keyboard('{Enter}');
-    // The matched phrase is wrapped in <mark>, so the card is matched by its
-    // whole title rather than by a text node
-    await findCardByTitle('Historia kosmosu', WAIT_MS);
+    //
+    // The first search after a restart can still be refused in a millisecond:
+    // the server remembers a fresh outage in a fail-fast window, every 503
+    // re-arms it, and a read that lands inside answers "not reachable" while
+    // the cluster is already back. The journey retries the phrase the way a
+    // user does, inside the same budget; a cluster that never recovers still
+    // fails here. Clearing the input first commits the empty phrase, so the
+    // retry is a fresh search instead of a no-op on an unchanged URL.
+    await waitFor(
+      async () => {
+        await page.user.clear(screen.getByLabelText('Fraza wyszukiwania'));
+        await typeAndCommitPhrase(page.user, 'kosmos');
+        // The matched phrase is wrapped in <mark>, so the card is matched by
+        // its whole title rather than by a text node
+        await findCardByTitle('Historia kosmosu', 5_000);
+      },
+      { timeout: WAIT_MS },
+    );
   }, 90_000);
 
   it('serves the download console from disk while the cluster is down', async () => {

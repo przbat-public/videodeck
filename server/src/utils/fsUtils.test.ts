@@ -21,7 +21,7 @@ describe('removePartialDownloads', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it('removes yt-dlp temporary files and leaves real files alone', async () => {
+  it('removes the temporary files of the announced destinations and leaves real files alone', async () => {
     await Promise.all([
       write('video.mp4.part'),
       write('video.f137.mp4.part'),
@@ -33,13 +33,31 @@ describe('removePartialDownloads', () => {
       write('archive.txt'),
     ]);
 
-    await removePartialDownloads(dir);
+    await removePartialDownloads(dir, ['video.mp4', 'video.f137.mp4']);
 
     expect(await fs.readdir(dir)).toEqual(['archive.txt', 'video.info.json', 'video.mp4']);
   });
 
+  it('leaves the partial files of another job in the same folder alone', async () => {
+    await Promise.all([write('video.mp4.part'), write('other.mp4.part'), write('other.f137.mp4.part')]);
+
+    // Only the files yt-dlp announced for this job may go: the folder holds
+    // the half-written file of the download that starts next.
+    await removePartialDownloads(dir, ['video.mp4']);
+
+    expect((await fs.readdir(dir)).sort()).toEqual(['other.f137.mp4.part', 'other.mp4.part']);
+  });
+
+  it('does nothing when the job announced no destination files', async () => {
+    await write('video.mp4.part');
+
+    await removePartialDownloads(dir, []);
+
+    expect(await fs.readdir(dir)).toEqual(['video.mp4.part']);
+  });
+
   it('does nothing on a missing or unreadable folder', async () => {
-    await expect(removePartialDownloads(path.join(dir, 'nope'))).resolves.toBeUndefined();
+    await expect(removePartialDownloads(path.join(dir, 'nope'), ['video.mp4'])).resolves.toBeUndefined();
   });
 
   it('keeps going when a single unlink fails', async () => {
@@ -47,7 +65,7 @@ describe('removePartialDownloads', () => {
     const unlink = jest.spyOn(fs, 'unlink').mockRejectedValueOnce(new Error('busy'));
     await write('video.mp4.part');
 
-    await removePartialDownloads(dir);
+    await removePartialDownloads(dir, ['video.mp4', 'other.mp4']);
 
     // readdir order: other.ytdl first → its unlink was the one that failed
     expect(await fs.readdir(dir)).toEqual(['other.ytdl']);

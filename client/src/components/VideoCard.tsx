@@ -1,6 +1,7 @@
 import type { VideoListItem } from '@videodeck/shared/api';
 import type { JSX } from 'react';
 import React, { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { keyedByOccurrence } from '../utils/keyedByOccurrence';
 import { formatUploadDate } from '../utils/videoDates';
@@ -64,6 +65,7 @@ const renderMarkedFragment = (fragment: string): React.ReactNode => {
 };
 
 function VideoCardInner({ video, searchQuery, index }: VideoCardProps): JSX.Element {
+  const { t } = useTranslation();
   const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}?folder=${encodeURIComponent(video.folderPath)}`;
 
   const videoIdentifier = video.videoId || video.baseName;
@@ -89,7 +91,7 @@ function VideoCardInner({ video, searchQuery, index }: VideoCardProps): JSX.Elem
           />
           <div className="play-overlay">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="white">
-              <title>Play</title>
+              <title>{t('video.play')}</title>
               <path d="M8 5v14l11-7z" />
             </svg>
           </div>

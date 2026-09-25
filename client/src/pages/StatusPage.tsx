@@ -1,4 +1,3 @@
-import type { QueueJob } from '@videodeck/shared/api';
 import type { JSX } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -19,7 +18,7 @@ import { usePageFocus } from '../hooks/usePageFocus';
 import { useStatus } from '../hooks/useStatus';
 import { useStickyOffset } from '../hooks/useStickyOffset';
 import type { ChannelConsoleState } from '../utils/channelConsoleState';
-import type { ChannelRow } from '../utils/channelTable';
+import type { ChannelQueueCounts, ChannelRow } from '../utils/channelTable';
 import { buildChannelRows, filterChannels, foldersWithFinishedJobs, sortChannels } from '../utils/channelTable';
 import { collectCategories } from '../utils/folderConfigForm';
 
@@ -39,20 +38,20 @@ export default function StatusPage(): JSX.Element {
     reload: reloadSummaries,
     refreshFolders: refreshFolderSummaries,
   } = useFolderSummaries();
-  const { jobs, refresh: refreshQueue } = useChannelQueue();
+  const { queueByFolder, refresh: refreshQueue } = useChannelQueue();
 
   // A finished download changes the counts of its folder on disk. The queue
-  // poll is what notices the job finishing, so compare each snapshot with the
-  // previous one and re-read the folders that just lost an active job, and
+  // summary is what notices the job finishing, so compare each snapshot with
+  // the previous one and re-read the folders that just lost active work, and
   // only those: the full read costs two disk reads per configured folder.
-  const previousJobsRef = useRef<readonly QueueJob[]>([]);
+  const previousQueueRef = useRef<Record<string, ChannelQueueCounts>>({});
   useEffect(() => {
-    const finishedFolders = foldersWithFinishedJobs(previousJobsRef.current, jobs);
-    previousJobsRef.current = jobs;
+    const finishedFolders = foldersWithFinishedJobs(previousQueueRef.current, queueByFolder);
+    previousQueueRef.current = queueByFolder;
     if (finishedFolders.length > 0) {
       void refreshFolderSummaries(finishedFolders);
     }
-  }, [jobs, refreshFolderSummaries]);
+  }, [queueByFolder, refreshFolderSummaries]);
   const { folders: channelsByFolder } = useChannelNames();
   const { pending, run } = useChannelActions({
     // A queue change can already have moved a video to "downloaded", and a
@@ -83,8 +82,8 @@ export default function StatusPage(): JSX.Element {
   const statusData = state.statusData;
 
   const rows = useMemo(
-    () => (statusData ? buildChannelRows(statusData, summaries, jobs, channelsByFolder) : []),
-    [statusData, summaries, jobs, channelsByFolder],
+    () => (statusData ? buildChannelRows(statusData, summaries, queueByFolder, channelsByFolder) : []),
+    [statusData, summaries, queueByFolder, channelsByFolder],
   );
 
   const visibleRows = useMemo(
