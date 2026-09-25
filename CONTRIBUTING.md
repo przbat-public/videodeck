@@ -8,7 +8,7 @@ tool for searching, browsing and managing YouTube videos downloaded with
 
 Prerequisites:
 
-- Node.js 22 (`.nvmrc` pins it) + corepack/pnpm 12.4.2 (`packageManager`)
+- Node.js 24 (`.nvmrc` pins it, the `engines` fields enforce it) + corepack/pnpm 12.4.2 (`packageManager`)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) in `PATH` (downloads; the
   **nightly** channel is recommended: YouTube breaks old releases regularly)
 - Elasticsearch (Docker: `docker run -p 127.0.0.1:9200:9200 -e "discovery.type=single-node" -e "xpack.security.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.5.1`)
@@ -81,10 +81,11 @@ upgrade these together, manually, when the time comes:
   (ts-jest peer range, vitest plugins). Upgrade TS + ts-jest + eslint
   toolchain in one PR. Same history for **zod** (4.x API migration done
   manually) and **react-window** (v2 API migration done manually).
-- **`@types/node` (semver-major)**: the runtime is pinned to **Node 22**
-  (`.nvmrc`, Docker images); type majors must follow a Node upgrade, not
-  lead it. Node 24 is a candidate for the next runtime bump (Node 22 EOL is
-  April 2027). Then bump `@types/node` to match in the same change.
+- **`@types/node` (semver-major)**: the runtime is pinned to **Node 24**
+  (`.nvmrc`, the `engines` fields, the CI setup action and the Docker
+  images); type majors must follow a Node upgrade, not lead it. Bump
+  `@types/node` in the same change that moves the runtime. Node 24 is an LTS
+  line: plan the next hop before its maintenance window closes.
 
 ## Pull requests
 

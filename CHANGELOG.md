@@ -98,6 +98,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the end of the list, so "Pokaż więcej" no longer needs a click. The button
   stays under the list: after a failed page the automatic loading stops, and
   the button retries
+- The runtime moved to **Node 24**: `.nvmrc`, the `engines` fields, the
+  server image and the CI jobs all read the same pin, and `@types/node`
+  follows it. Node 22 support ends in April 2027, so the move lands well
+  before the date
 
 ### Fixed
 

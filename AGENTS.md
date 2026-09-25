@@ -14,7 +14,8 @@ Monorepo with **pnpm workspaces** (`pnpm-workspace.yaml`), like vita-tracker:
 | `shared/`           | zod API contract + helpers (the `@videodeck/shared` package)     |                                  |
 | `test-infra/`       | shared test infrastructure (fake ES, mock OpenAI, backend env)   | imported by both test suites      |
 
-Node 22 (`.nvmrc`), pnpm 12.4.2 (pinned in `packageManager`).
+Node 24 (`.nvmrc`, mirrored by the `engines` fields), pnpm 12.4.2 (pinned in
+`packageManager`).
 
 ## Commands
 
