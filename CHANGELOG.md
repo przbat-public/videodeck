@@ -153,6 +153,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.queue-state.json` cannot point yt-dlp at `file://` or an internal address
 
 - The extension declares Chrome 102 as its floor, which is what its use of `chrome.storage.session` requires
+- The client talks to the API through one helper instead of repeating the fetch, status check and schema parse in every hook, which is where a shared retry, de-duplication or timeout would go next
+- The server build leaves `test-infra` out of `dist`, so a local build produces only what the server ships
 ### Fixed
 
 - "Anuluj wszystko" works on a channel with thousands of queued jobs. It
@@ -290,6 +292,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The Chrome extension recognises Shorts, `youtu.be`, embed and live links. It matched only `watch` and `youtu.be` before, and its content script never ran on `youtu.be` at all
 - Clearing the API token in the extension options removes the stored one instead of leaving the old value behind
+
 ## [1.0.0] - 2026-09-14
 
 First public release.
