@@ -153,6 +153,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.queue-state.json` cannot point yt-dlp at `file://` or an internal address
 
 - The extension declares Chrome 102 as its floor, which is what its use of `chrome.storage.session` requires
+- Dependabot watches the workspace once instead of once per directory, so its pull requests match the single lockfile again; the GitHub Actions it runs are pinned to commit SHAs
 ### Fixed
 
 - "Anuluj wszystko" works on a channel with thousands of queued jobs. It
@@ -290,6 +291,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The Chrome extension recognises Shorts, `youtu.be`, embed and live links. It matched only `watch` and `youtu.be` before, and its content script never ran on `youtu.be` at all
 - Clearing the API token in the extension options removes the stored one instead of leaving the old value behind
+- The Playwright HTML report CI uploads is written again (the list reporter produced no report), and a second CI job runs the same suite against the production bundle, where build-only failures show up
+- jsdom is pinned to the version the client suite passes on: 30.1.0 broke 27 tests in the Radix menus
 ## [1.0.0] - 2026-09-14
 
 First public release.
