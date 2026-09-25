@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { DownloadOptions, FolderConfig } from '@videodeck/shared/api';
+import { FolderKindSchema } from '@videodeck/shared/schemas';
 import { isYoutubeChannelUrl } from '@videodeck/shared/youtube';
 import { getVideosFolderPaths } from '../config';
 import { logger } from '../utils/logger';
@@ -237,8 +238,14 @@ function validateCategory(value: unknown): string | null {
   return null;
 }
 
+/** Error message when `value` is not a folder kind, or null when it is */
+function validateKind(value: unknown): string | null {
+  return FolderKindSchema.safeParse(value).success ? null : 'kind must be "channel" or "collection"';
+}
+
 /** `config.json` fields validated in the order their errors win */
 const CONFIG_FIELD_VALIDATORS: Array<[key: string, validate: (value: unknown) => string | null]> = [
+  ['kind', validateKind],
   ['maxHeight', validateMaxHeight],
   ['subLangs', validateSubLangs],
   ['writeComments', validateBooleanField('writeComments')],

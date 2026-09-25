@@ -81,6 +81,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reachable by URL (`q`, `filter`, `sort`, `folder`), and its header row
   sticks under the queue bar so the columns keep their names while the
   library scrolls past
+- **Collection folders** for single downloads (the browser extension, yt-dlp
+  in a terminal): `"kind": "collection"` in `config.json`, or the new box in
+  the config form, turns a folder into a collection. Its console row says
+  "kolekcja" instead of "brak channelUrl" and "brak list.json", its menu
+  keeps the updates and drops the playlist and "Pobierz wszystkie", and
+  opening the row lists the downloaded videos right away. That list comes
+  from the folder index, which now records video titles and adds videos
+  downloaded outside the queue each time the collection is read
 
 ### Added
 

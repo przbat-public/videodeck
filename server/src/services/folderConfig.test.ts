@@ -192,6 +192,13 @@ describe('folderConfig', () => {
       expect(validateFolderConfig({ category: 'a\nb' })).toMatch(/single line/);
     });
 
+    it('validates the folder kind', () => {
+      expect(validateFolderConfig({ kind: 'channel' })).toBeNull();
+      expect(validateFolderConfig({ kind: 'collection' })).toBeNull();
+      expect(validateFolderConfig({ kind: 'playlist' })).toBe('kind must be "channel" or "collection"');
+      expect(validateFolderConfig({ kind: true })).toBe('kind must be "channel" or "collection"');
+    });
+
     it('validates the yt-dlp feature toggles', () => {
       expect(
         validateFolderConfig({

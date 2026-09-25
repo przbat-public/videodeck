@@ -30,6 +30,7 @@ import type { Response } from 'express';
 import express from 'express';
 import { getVideosFolderPaths } from '../config';
 import { ListJsonError, readListJson } from '../services/channelList';
+import { readCollection } from '../services/collection';
 import type { DownloadQueue, EnqueueRequest } from '../services/downloadQueue';
 import { downloadQueue } from '../services/downloadQueue';
 import { listCachedFolders } from '../services/elasticsearchService';
@@ -221,7 +222,17 @@ function patchSummaryCache(folderPath: string, summary: FolderSummary): void {
 /** Counts of one folder; a folder that cannot be read reports zeroes */
 async function summarizeOne(folderPath: string): Promise<FolderSummary> {
   try {
-    const [list, statuses] = await Promise.all([readListJson(folderPath), getDownloadStatuses(folderPath)]);
+    // Read in parallel: nearly every folder is a channel, and the config read
+    // must not add a disk round trip to each of them
+    const [config, list, statuses] = await Promise.all([
+      readFolderConfig(folderPath),
+      readListJson(folderPath),
+      getDownloadStatuses(folderPath),
+    ]);
+    if (config?.kind === 'collection') {
+      const collection = await readCollection(folderPath);
+      return summarizeFolder(collection.videos, collection);
+    }
     return summarizeFolder(list, statuses);
   } catch (error) {
     logger.error(`Cannot summarize ${folderPath}:`, error);
@@ -351,11 +362,17 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
 
   /**
    * list.json content plus download statuses. Statuses come from the folder
-   * index (`.videos-index.json`) instead of parsing every info.json.
+   * index (`.videos-index.json`) instead of parsing every info.json. A
+   * collection has no list.json, so its list is the index itself.
    */
   const getFolderList: RouteHandler<NoParams, FolderListResponse> = async (req, res) => {
     const folderPath = requireAllowedFolder(req.query.folderPath, res);
     if (!folderPath) return;
+
+    if ((await readFolderConfig(folderPath))?.kind === 'collection') {
+      res.json(await readCollection(folderPath));
+      return;
+    }
 
     let videos: ChannelVideo[] | null;
     try {

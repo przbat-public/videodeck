@@ -57,6 +57,8 @@ export interface FormState {
   sponsorblockRemove: boolean;
   /** '' means "use default" */
   concurrentFragments: string;
+  /** `kind: "collection"`: single downloads, no channel URL and no list.json */
+  collection: boolean;
 }
 
 export const toFormState = (config: FolderConfig | null, defaults: DownloadOptions): FormState => ({
@@ -70,6 +72,7 @@ export const toFormState = (config: FolderConfig | null, defaults: DownloadOptio
   impersonate: config?.impersonate ?? defaults.impersonate ?? false,
   sponsorblockRemove: config?.sponsorblockRemove ?? defaults.sponsorblockRemove ?? false,
   concurrentFragments: config?.concurrentFragments !== undefined ? String(config.concurrentFragments) : '',
+  collection: config?.kind === 'collection',
 });
 
 /**
@@ -135,6 +138,13 @@ export const buildConfig = (form: FormState, existing: FolderConfig | null): Fol
 
   applyNumberChoice(next, 'concurrentFragments', form.concurrentFragments);
   applyExtraArgs(next, form.extraArgs);
+
+  // A channel is the default, so only a collection is written down
+  if (form.collection) {
+    next.kind = 'collection';
+  } else {
+    delete next.kind;
+  }
 
   return next;
 };

@@ -4,10 +4,12 @@ import path from 'node:path';
 import { entry } from '../test-utils';
 import {
   ARCHIVE_FILE,
+  extractTitleFromHead,
   extractVideoIdFromHead,
   findEntryByVideoId,
   getDownloadStatuses,
   INDEX_FILE,
+  indexUntrackedVideos,
   loadIndex,
   readArchiveIds,
   rebuildIndex,
@@ -56,6 +58,20 @@ describe('folderIndex', () => {
     });
   });
 
+  describe('extractTitleFromHead', () => {
+    it('reads the title yt-dlp writes right after the id, unescaped', () => {
+      expect(extractTitleFromHead('{"id": "a1", "title": "Oven \\"v2\\" \\u0142\\u00f3d\\u017a", "formats": []')).toBe(
+        'Oven "v2" łódź',
+      );
+    });
+
+    it('returns null when the title is not the second key or is cut off by the head', () => {
+      expect(extractTitleFromHead('{"id": "a1", "formats": [], "title": "late"}')).toBeNull();
+      expect(extractTitleFromHead('{"id": "a1", "title": "cut off mid')).toBeNull();
+      expect(extractTitleFromHead('not json')).toBeNull();
+    });
+  });
+
   describe('rebuildIndex', () => {
     it('indexes only info.json files that have a matching video file', async () => {
       await writeVideo(dir, '20240101_First', 'id-first');
@@ -72,6 +88,20 @@ describe('folderIndex', () => {
       });
       expect(entry(index.entries, 'id-second').videoFile).toBe('20240102_Second.mkv');
       expect(new Date(entry(index.entries, 'id-first').infoMtime).getTime()).not.toBeNaN();
+    });
+
+    it('records the video title from the info.json', async () => {
+      await writeVideo(dir, '20240101_Oven', 'id-oven', {
+        infoPrefix: JSON.stringify({ id: 'id-oven', title: 'Home built SMD Reflow Oven (v2)' }),
+      });
+      await writeVideo(dir, '20240102_Reordered', 'id-reordered', {
+        infoPrefix: JSON.stringify({ description: 'd', title: 'Late title', id: 'id-reordered' }),
+      });
+
+      const index = await rebuildIndex(dir);
+
+      expect(entry(index.entries, 'id-oven').title).toBe('Home built SMD Reflow Oven (v2)');
+      expect(entry(index.entries, 'id-reordered').title).toBe('Late title');
     });
 
     it('writes the index file and archive.txt reflecting disk state', async () => {
@@ -249,6 +279,41 @@ describe('folderIndex', () => {
 
       const archive = await fs.readFile(path.join(dir, ARCHIVE_FILE), 'utf-8');
       expect(archive.split('\n').filter(Boolean)).toEqual(['youtube id-old', 'youtube id-new']);
+    });
+  });
+
+  describe('indexUntrackedVideos', () => {
+    it('adds videos the index has never seen, however old their files are', async () => {
+      await writeVideo(dir, '20240101_Tracked', 'id-tracked');
+      await rebuildIndex(dir);
+      // downloaded by yt-dlp in a terminal long ago, then moved in: the
+      // mtime predates the index, so an mtime-based refresh would miss it
+      await writeVideo(dir, '20200101_MovedIn', 'id-moved');
+      const past = new Date('2020-01-02T00:00:00Z');
+      await fs.utimes(path.join(dir, '20200101_MovedIn.info.json'), past, past);
+
+      const result = await indexUntrackedVideos(dir);
+
+      expect(result.changed).toEqual(['id-moved']);
+      expect(entry(result.index.entries, 'id-moved')).toMatchObject({
+        baseName: '20200101_MovedIn',
+        title: '20200101_MovedIn',
+        infoMtime: past.toISOString(),
+      });
+      expect(await readArchiveIds(dir)).toEqual(new Set(['id-tracked', 'id-moved']));
+    });
+
+    it('leaves the index file alone when every video is already tracked', async () => {
+      await writeVideo(dir, '20240101_Tracked', 'id-tracked');
+      await rebuildIndex(dir);
+      const indexPath = path.join(dir, INDEX_FILE);
+      const past = new Date('2024-01-01T00:00:00Z');
+      await fs.utimes(indexPath, past, past);
+
+      const result = await indexUntrackedVideos(dir);
+
+      expect(result.changed).toEqual([]);
+      expect((await fs.stat(indexPath)).mtimeMs).toBe(past.getTime());
     });
   });
 

@@ -118,6 +118,57 @@ interface ChannelRowMenuProps {
   onEditConfig: (row: ChannelRow) => void;
 }
 
+/** What can be bulk-done with the folder, above the menu's first separator */
+function ChannelBulkItems({ row, busy, onAction }: Omit<ChannelRowMenuProps, 'onEditConfig'>): JSX.Element {
+  const { t } = useTranslation();
+  const { summary } = row;
+  // Counts arrive after the table and may never arrive at all. They only
+  // decide what looks pointless; the actions themselves read list.json, which
+  // is the authority, so an unknown count disables nothing.
+  const countsKnown = summary !== undefined;
+
+  if (row.listExists === false && !row.collection) {
+    return (
+      <>
+        {/* Without list.json there is nothing to update or download, so
+            the playlist is the only bulk entry on offer. Without a
+            channel URL there is not even that. */}
+        <MenuItem disabled={busy || !row.configured} onSelect={() => onAction(row, 'playlist')}>
+          {t('channelConsole.actions.downloadPlaylist')}
+        </MenuItem>
+        <MenuSeparator />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <MenuItem
+        disabled={busy || (countsKnown && (summary?.stale ?? 0) === 0)}
+        onSelect={() => onAction(row, 'update-stale')}
+      >
+        {t('channelConsole.actions.updateStale')}
+      </MenuItem>
+      <MenuItem
+        disabled={busy || (countsKnown && (summary?.downloaded ?? 0) === 0)}
+        onSelect={() => onAction(row, 'update')}
+      >
+        {t('channelConsole.actions.updateAll')}
+      </MenuItem>
+      {/* A collection holds downloads only: there is nothing to fetch */}
+      {!row.collection && (
+        <MenuItem
+          disabled={busy || (countsKnown && summary?.notDownloaded === 0)}
+          onSelect={() => onAction(row, 'download')}
+        >
+          {t('channelConsole.actions.downloadAll')}
+        </MenuItem>
+      )}
+      <MenuSeparator />
+    </>
+  );
+}
+
 /**
  * The row's queue actions behind the ⋯ trigger: what can be bulk-done with the
  * channel, cancelling its jobs, the config form and the search link. Every one
@@ -125,11 +176,7 @@ interface ChannelRowMenuProps {
  */
 function ChannelRowMenu({ row, busy, onAction, onEditConfig }: ChannelRowMenuProps): JSX.Element {
   const { t } = useTranslation();
-  const { summary, queue } = row;
-  // Counts arrive after the table and may never arrive at all. They only
-  // decide what looks pointless; the actions themselves read list.json, which
-  // is the authority, so an unknown count disables nothing.
-  const countsKnown = summary !== undefined;
+  const { queue } = row;
   const activeJobs = queue.running + queue.queued;
 
   return (
@@ -138,46 +185,15 @@ function ChannelRowMenu({ row, busy, onAction, onEditConfig }: ChannelRowMenuPro
         <Ellipsis aria-hidden="true" focusable="false" className="channel-menu-icon" />
       </MenuTrigger>
       <MenuContent>
-        {row.listExists === false ? (
-          <>
-            {/* Without list.json there is nothing to update or download, so
-                the playlist is the only bulk entry on offer. Without a
-                channel URL there is not even that. */}
-            <MenuItem disabled={busy || !row.configured} onSelect={() => onAction(row, 'playlist')}>
-              {t('channelConsole.actions.downloadPlaylist')}
-            </MenuItem>
-            <MenuSeparator />
-          </>
-        ) : (
-          <>
-            <MenuItem
-              disabled={busy || (countsKnown && (summary?.stale ?? 0) === 0)}
-              onSelect={() => onAction(row, 'update-stale')}
-            >
-              {t('channelConsole.actions.updateStale')}
-            </MenuItem>
-            <MenuItem
-              disabled={busy || (countsKnown && (summary?.downloaded ?? 0) === 0)}
-              onSelect={() => onAction(row, 'update')}
-            >
-              {t('channelConsole.actions.updateAll')}
-            </MenuItem>
-            <MenuItem
-              disabled={busy || (countsKnown && summary?.notDownloaded === 0)}
-              onSelect={() => onAction(row, 'download')}
-            >
-              {t('channelConsole.actions.downloadAll')}
-            </MenuItem>
-            <MenuSeparator />
-          </>
-        )}
+        <ChannelBulkItems row={row} busy={busy} onAction={onAction} />
         <MenuItem disabled={busy || activeJobs === 0} onSelect={() => onAction(row, 'cancel')}>
           {t('channelConsole.actions.cancel')}
         </MenuItem>
         <MenuItem onSelect={() => onEditConfig(row)}>{t('channelConsole.actions.editConfig')}</MenuItem>
         {/* The search filters by channel name, so a folder whose videos are
-            not indexed yet has nothing to link to */}
-        {row.channelName !== undefined && row.channelName !== '' && (
+            not indexed yet has nothing to link to. A collection mixes
+            channels, so its most frequent one would be the wrong filter. */}
+        {!row.collection && row.channelName !== undefined && row.channelName !== '' && (
           <MenuLinkItem>
             <Link to={`/?channel=${encodeURIComponent(row.channelName)}`}>{t('channelConsole.searchInChannel')}</Link>
           </MenuLinkItem>
@@ -248,8 +264,9 @@ function ChannelRowItem({
         <td data-label={t('channelConsole.column.channel')}>
           <span className="channel-name">{row.name}</span>
           <span className="channel-path">{row.folderPath}</span>
-          {cellReasons.length > 0 && (
+          {(row.collection || cellReasons.length > 0) && (
             <span className="channel-badges">
+              {row.collection && <span className="channel-badge">{t('channelConsole.collection')}</span>}
               {cellReasons.map((reason) => (
                 <span key={reason} className="channel-badge channel-badge--warn">
                   {t(ATTENTION_LABEL_KEYS[reason])}
