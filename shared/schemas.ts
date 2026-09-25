@@ -224,9 +224,18 @@ export const DownloadOptionsSchema = z.object({
   sponsorblockRemove: z.boolean().optional(),
 });
 
+/**
+ * What a folder holds. A `channel` (the default when the key is missing)
+ * mirrors one YouTube channel through its list.json; a `collection` gathers
+ * single downloads, so it has no channel URL and no list.json, and its
+ * videos come from the folder index instead.
+ */
+export const FolderKindSchema = z.enum(['channel', 'collection']);
+
 export const FolderConfigSchema = z
   .object({
     channelUrl: z.string().optional(),
+    kind: FolderKindSchema.optional(),
     category: z.string().optional(),
     maxHeight: z.number().optional(),
     subLangs: z.array(z.string()).optional(),
