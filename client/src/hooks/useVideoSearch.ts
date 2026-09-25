@@ -10,7 +10,8 @@ import {
   VideoSearchActionType,
   videoSearchReducer,
 } from '../reducers/videoSearchReducer';
-import { readApiFailure } from '../utils/apiFailure';
+import { apiGet } from '../utils/apiClient';
+import type { ApiFailure } from '../utils/apiFailure';
 import type { SearchState } from '../utils/searchUrlState';
 import { DEFAULT_SEARCH_STATE, toSearchParams } from '../utils/searchUrlState';
 
@@ -62,8 +63,7 @@ interface UseVideoSearchResult {
 }
 
 /** The message a failed search deserves: an unreachable cluster gets its own */
-async function searchFailureMessage(response: Response): Promise<string> {
-  const failure = await readApiFailure(response);
+function searchFailureMessage(failure: ApiFailure): string {
   return i18n.t(failure.elasticsearchDown ? 'errors.searchElasticsearch' : 'errors.search');
 }
 
@@ -95,13 +95,10 @@ export function useVideoSearch(): UseVideoSearchResult {
 
     try {
       const params = buildSearchParams(searchState, offset);
-      const response = await fetch(`/api/videos/search?${params.toString()}`, {
+      const data = await apiGet(`/api/videos/search?${params.toString()}`, SearchResponseSchema, {
         signal: controller.signal,
+        failureMessage: searchFailureMessage,
       });
-      if (!response.ok) {
-        throw new Error(await searchFailureMessage(response));
-      }
-      const data = SearchResponseSchema.parse(await response.json());
       if (!isCurrent()) {
         return;
       }
