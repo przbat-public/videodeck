@@ -31,6 +31,12 @@ export const downloadQueueSize = new Gauge({
   registers: [metricsRegistry],
 });
 
+export const sseStreamsOpen = new Gauge({
+  name: 'sse_streams_open',
+  help: 'SSE streams currently held open by clients',
+  registers: [metricsRegistry],
+});
+
 /** Record one finished request (called by the request logger) */
 export function recordRequest(method: string, route: string, status: number, durationMs: number): void {
   httpRequestsTotal.inc({ method, route, status });

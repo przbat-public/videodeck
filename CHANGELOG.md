@@ -90,6 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the folder index, which now records video titles and adds videos
   downloaded outside the queue each time the collection is read
 
+- `sse_streams_open` on `/metrics`: how many download streams the server is holding open right now
 ### Added
 
 - The client says when Elasticsearch is unreachable instead of turning it into
@@ -305,6 +306,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The Chrome extension recognises Shorts, `youtu.be`, embed and live links. It matched only `watch` and `youtu.be` before, and its content script never ran on `youtu.be` at all
 - Clearing the API token in the extension options removes the stored one instead of leaving the old value behind
+- A video-download stream that loses its client releases everything it held: the queue listeners, the keep-alive heartbeat and the open-stream gauge. The cleanup waited for the request to close, which happens when its body arrives, not when the browser goes away
+- Starting an index rebuild while a recreation runs is refused, and the other way round, instead of interleaving alias promotions and leaving orphaned indices behind
+- Two first-time index creations for one folder can no longer delete each other: the second caller joins the first instead of racing it
 - The Playwright HTML report CI uploads is written again (the list reporter produced no report), and a second CI job runs the same suite against the production bundle, where build-only failures show up
 - jsdom is pinned to the version the client suite passes on: 30.1.0 broke 27 tests in the Radix menus
 - The API docs point at `POST /api/videos/refreshCache` (they said GET, which answers 404), and the stray ", " fragments left by an earlier edit are gone. The prose gate now also scans `docs/API.md`, `docs/INSTALL.md`, `docs/DEVELOPMENT.md` and `docs/README.pl.md`
