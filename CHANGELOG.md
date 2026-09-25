@@ -102,6 +102,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The whole channel now goes in a third of a second, with one write. A
   graceful stop (Ctrl+C, `docker compose restart`) no longer saves the jobs
   it kills as cancelled, so the next boot resumes them
+- After a restart, "Anuluj wszystko" on one channel stays cancelled. Writing
+  `.queue-state.json` made `tsx watch` kill the server before the rename
+  finished, so the next boot restored the old queue and the button did
+  nothing. The watcher now ignores that file, and the cancel response waits
+  until the snapshot is on disk
 - The header of a channel's video list keeps one shape: the counts and the
   queue summary ("kolejka: 3 w toku, 326 czeka") share a line, and the bulk
   buttons always start under them. The buttons used to slide next to the

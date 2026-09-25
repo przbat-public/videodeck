@@ -1402,6 +1402,40 @@ describe('queue state persistence', () => {
     });
   });
 
+  it('a folder cancelled after restore stays cancelled on the next boot', async () => {
+    await fs.writeFile(
+      stateFile,
+      JSON.stringify({
+        paused: true,
+        jobs: [
+          { folderPath: '/videos/channel-a', videoId: 'a', type: 'download' },
+          { folderPath: '/videos/channel-a', videoId: 'b', type: 'download' },
+          { folderPath: '/videos/channel-b', videoId: 'c', type: 'download' },
+        ],
+      }),
+    );
+
+    const first = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    await expect(restoreQueueState(first, stateFile)).resolves.toBe(3);
+    expect(first.cancelAll('/videos/channel-a')).toBe(2);
+    await first.whenPersisted();
+
+    const second = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    await expect(restoreQueueState(second, stateFile)).resolves.toBe(1);
+    expect(second.list('/videos/channel-a')).toEqual([]);
+    expect(second.list('/videos/channel-b').map((job) => job.videoId)).toEqual(['c']);
+  });
+
   it('waitForIdle resolves once the last child process is gone', async () => {
     const spawn = createFakeSpawn();
     const queue = new DownloadQueue({

@@ -160,7 +160,7 @@ function toEnqueueRequest(
 
 export type DownloadQueueLike = Pick<
   DownloadQueue,
-  'enqueue' | 'list' | 'get' | 'cancel' | 'cancelAll' | 'on' | 'off' | 'setPaused' | 'clearFinished'
+  'enqueue' | 'list' | 'get' | 'cancel' | 'cancelAll' | 'whenPersisted' | 'on' | 'off' | 'setPaused' | 'clearFinished'
 >;
 
 /**
@@ -592,19 +592,22 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     res.json({ cleared: queue.clearFinished() });
   };
 
-  const cancelAllJobs: RouteHandler<NoParams, CancelAllResponse> = (req, res) => {
+  const cancelAllJobs: RouteHandler<NoParams, CancelAllResponse> = async (req, res) => {
     const folderPath = readFolderFilter(req.query.folderPath, res);
     if (folderPath === false) return;
-    res.json({ cancelled: queue.cancelAll(folderPath) });
+    const cancelled = queue.cancelAll(folderPath);
+    await queue.whenPersisted();
+    res.json({ cancelled });
   };
 
-  const cancelJob: RouteHandler<{ jobId: string }, CancelJobResponse> = (req, res) => {
+  const cancelJob: RouteHandler<{ jobId: string }, CancelJobResponse> = async (req, res) => {
     const job = queue.get(req.params.jobId);
     if (!job) {
       res.status(404).json({ error: 'Job not found' });
       return;
     }
     const cancelled = queue.cancel(job.id);
+    await queue.whenPersisted();
     res.json(stripUndefined<CancelJobResponse>({ cancelled, job: queue.get(job.id) }));
   };
 

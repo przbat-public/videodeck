@@ -254,6 +254,15 @@ export class DownloadQueue extends EventEmitter {
       });
   }
 
+  /**
+   * Resolves when every persist started so far has finished (or failed).
+   * Cancel routes wait on this so a reboot right after the response cannot
+   * restore jobs the user just dropped.
+   */
+  whenPersisted(): Promise<void> {
+    return this.persistChain;
+  }
+
   /** Resolve once every process is gone (or the timeout passes) */
   async waitForIdle(timeoutMs: number): Promise<void> {
     const deadline = Date.now() + timeoutMs;
