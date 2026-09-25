@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 import { List, type RowComponentProps, useDynamicRowHeight, useListRef } from 'react-window';
 import { useDownloadQueue } from '../hooks/useDownloadQueue';
+import { apiGet } from '../utils/apiClient';
 import { logError } from '../utils/logError';
 import { selectDownloadable, selectDownloaded, selectStale } from '../utils/videoSelection';
 import { ErrorMessage } from './ui/ErrorMessage';
@@ -63,11 +64,13 @@ export function VideoListSection({
   });
 
   const fetchList = useCallback(async () => {
-    const response = await fetch(`/api/folder/list?folderPath=${encodeURIComponent(folderPath)}`);
-    if (!response.ok) {
-      throw new Error(t('errors.loadVideos'));
-    }
-    const data = FolderListResponseSchema.parse(await response.json());
+    const data = await apiGet(
+      `/api/folder/list?folderPath=${encodeURIComponent(folderPath)}`,
+      FolderListResponseSchema,
+      {
+        message: t('errors.loadVideos'),
+      },
+    );
     setVideos(data.videos);
     setDownloadStatuses(data.downloadStatuses);
     setLastUpdatedDates(data.lastUpdatedDates);

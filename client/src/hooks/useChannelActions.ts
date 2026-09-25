@@ -1,8 +1,9 @@
 import type { FolderListResponse } from '@videodeck/shared/api';
-import { ApiErrorSchema, EnqueueJobsResponseSchema, FolderListResponseSchema } from '@videodeck/shared/schemas';
+import { EnqueueJobsResponseSchema, FolderListResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useState } from 'react';
 import toast from 'react-hot-toast';
 import i18n from '../i18n';
+import { apiGet, apiSend } from '../utils/apiClient';
 import { selectDownloadable, selectDownloaded, selectStale } from '../utils/videoSelection';
 
 /** Every queue action a console row can start */
@@ -23,13 +24,11 @@ export interface UseChannelActionsResult {
 }
 
 /** Read one channel's videos and download state, for a bulk action */
-async function loadChannelVideos(folderPath: string): Promise<FolderListResponse | null> {
-  const response = await fetch(`/api/folder/list?folderPath=${encodeURIComponent(folderPath)}`, { cache: 'no-store' });
-  if (!response.ok) {
-    toast.error(i18n.t('channelConsole.actions.listFailed'));
-    return null;
-  }
-  return FolderListResponseSchema.parse(await response.json());
+async function loadChannelVideos(folderPath: string): Promise<FolderListResponse> {
+  return apiGet(`/api/folder/list?folderPath=${encodeURIComponent(folderPath)}`, FolderListResponseSchema, {
+    cache: 'no-store',
+    message: i18n.t('channelConsole.actions.listFailed'),
+  });
 }
 
 /** The videos one bulk action works on, read from the channel's own list */
@@ -46,20 +45,12 @@ function selectVideos(
   return selectStale(list.videos, list.downloadStatuses, list.lastUpdatedDates);
 }
 
-/** Server-supplied reason for a rejected request, or the fallback key */
-async function failureMessage(
-  response: Response,
-  fallbackKey: 'toast.enqueueFailed' | 'channelConsole.actions.listFailed',
-): Promise<string> {
-  const parsed = ApiErrorSchema.safeParse(await response.json().catch(() => null));
-  return parsed.success ? (parsed.data.message ?? parsed.data.error) : i18n.t(fallbackKey);
-}
-
 /**
  * The per-row actions of the channel console. Each one reads what it needs
  * from the folder's own endpoints and then talks to the existing queue API,
  * so the console needs no new server route and no SSE change. At most one
- * action runs per folder; the row disables itself meanwhile.
+ * action runs per folder; the row disables itself meanwhile. A rejected
+ * request throws, and `run` reports its message in one place.
  */
 export function useChannelActions(options: UseChannelActionsOptions = {}): UseChannelActionsResult {
   const { onQueueChanged, onListChanged } = options;
@@ -80,9 +71,6 @@ export function useChannelActions(options: UseChannelActionsOptions = {}): UseCh
   const enqueueSelection = useCallback(
     async (folderPath: string, action: 'download' | 'update' | 'update-stale'): Promise<void> => {
       const loaded = await loadChannelVideos(folderPath);
-      if (loaded === null) {
-        return;
-      }
       const selected = selectVideos(action, loaded);
       if (selected.length === 0) {
         toast.error(i18n.t('channelConsole.actions.nothingToDo'));
@@ -90,16 +78,13 @@ export function useChannelActions(options: UseChannelActionsOptions = {}): UseCh
       }
 
       const type = action === 'download' ? 'download' : 'update';
-      const response = await fetch('/api/folder/queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folderPath, type, videos: selected.map((video) => ({ videoId: video.id })) }),
-      });
-      if (!response.ok) {
-        toast.error(await failureMessage(response, 'toast.enqueueFailed'));
-        return;
-      }
-      const result = EnqueueJobsResponseSchema.parse(await response.json());
+      const result = await apiSend(
+        'POST',
+        '/api/folder/queue',
+        EnqueueJobsResponseSchema,
+        { folderPath, type, videos: selected.map((video) => ({ videoId: video.id })) },
+        { failureMessage: (failure) => failure.message ?? i18n.t('toast.enqueueFailed') },
+      );
       const target = i18n.t(type === 'update' ? 'toast.updateTarget' : 'toast.downloadTarget');
       toast.success(i18n.t('toast.addedToQueue', { count: result.jobs.length, target }));
       const [firstSkipped] = result.skipped;
@@ -113,13 +98,9 @@ export function useChannelActions(options: UseChannelActionsOptions = {}): UseCh
 
   const cancelFolderQueue = useCallback(
     async (folderPath: string): Promise<void> => {
-      const response = await fetch(`/api/folder/queue?folderPath=${encodeURIComponent(folderPath)}`, {
-        method: 'DELETE',
+      await apiSend('DELETE', `/api/folder/queue?folderPath=${encodeURIComponent(folderPath)}`, null, undefined, {
+        failureMessage: (failure) => failure.message ?? i18n.t('toast.enqueueFailed'),
       });
-      if (!response.ok) {
-        toast.error(await failureMessage(response, 'toast.enqueueFailed'));
-        return;
-      }
       toast.success(i18n.t('channelConsole.actions.cancelled'));
       await onQueueChanged?.();
     },
@@ -128,15 +109,15 @@ export function useChannelActions(options: UseChannelActionsOptions = {}): UseCh
 
   const downloadPlaylist = useCallback(
     async (folderPath: string): Promise<void> => {
-      const response = await fetch('/api/folder/download-playlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folderPath }),
-      });
-      if (!response.ok) {
-        toast.error(await failureMessage(response, 'channelConsole.actions.listFailed'));
-        return;
-      }
+      await apiSend(
+        'POST',
+        '/api/folder/download-playlist',
+        null,
+        { folderPath },
+        {
+          failureMessage: (failure) => failure.message ?? i18n.t('channelConsole.actions.listFailed'),
+        },
+      );
       toast.success(i18n.t('channelConsole.actions.playlistQueued'));
       await onListChanged?.();
     },
@@ -155,8 +136,8 @@ export function useChannelActions(options: UseChannelActionsOptions = {}): UseCh
           await enqueueSelection(folderPath, action);
         }
       } catch (err) {
-        // A throw here is a network or parse failure: report it once, in the
-        // same shape as the server-side failures above.
+        // A rejected request, a network failure or a bad body: reported once,
+        // with the message the server sent when there was one
         toast.error(err instanceof Error ? err.message : i18n.t('errors.occurred'));
       } finally {
         setFolderPending(folderPath, null);

@@ -173,6 +173,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The extension declares Chrome 102 as its floor, which is what its use of `chrome.storage.session` requires
 - Dependabot watches the workspace once instead of once per directory, so its pull requests match the single lockfile again; the GitHub Actions it runs are pinned to commit SHAs
+- The client talks to the API through one helper instead of repeating the fetch, status check and schema parse in every hook, which is where a shared retry, de-duplication or timeout would go next
+- The server build leaves `test-infra` out of `dist`, so a local build produces only what the server ships
 ### Fixed
 
 - The queue reports the paused state it actually holds. After a restart with a
@@ -334,6 +336,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Playwright HTML report CI uploads is written again (the list reporter produced no report), and a second CI job runs the same suite against the production bundle, where build-only failures show up
 - jsdom is pinned to the version the client suite passes on: 30.1.0 broke 27 tests in the Radix menus
 - The API docs point at `POST /api/videos/refreshCache` (they said GET, which answers 404), and the stray ", " fragments left by an earlier edit are gone. The prose gate now also scans `docs/API.md`, `docs/INSTALL.md`, `docs/DEVELOPMENT.md` and `docs/README.pl.md`
+
 ## [1.0.0] - 2026-09-14
 
 First public release.

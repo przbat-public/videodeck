@@ -3,5 +3,7 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/test-utils.ts"]
+  // test-infra is test-only: the build must not emit it into dist (tests keep
+  // type-checking against it through tsconfig.json)
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/test-utils.ts", "../test-infra/**"]
 }

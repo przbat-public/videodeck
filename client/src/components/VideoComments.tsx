@@ -3,6 +3,7 @@ import { COMMENTS_PAGE_SIZE, CommentsResponseSchema } from '@videodeck/shared/sc
 import type { JSX } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { apiGet } from '../utils/apiClient';
 import CommentComponent from './CommentComponent';
 import { Button } from './ui/Button';
 import { ErrorMessage } from './ui/ErrorMessage';
@@ -55,14 +56,11 @@ export default function VideoComments({ videoId, comments, commentCount }: Video
     setLoadingMore(true);
     setLoadError(false);
     try {
-      const response = await fetch(
+      const page = await apiGet(
         `/api/videos/${encodeURIComponent(videoId)}/comments?offset=${items.length}&limit=${COMMENTS_PAGE_SIZE}`,
-        { signal: controller.signal },
+        CommentsResponseSchema,
+        { signal: controller.signal, message: (status) => `HTTP ${status}` },
       );
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const page = CommentsResponseSchema.parse(await response.json());
       setItems((current) => [...current, ...page.comments]);
     } catch {
       if (controller.signal.aborted) {

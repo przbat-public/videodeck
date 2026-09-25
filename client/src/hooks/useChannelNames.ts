@@ -1,6 +1,6 @@
 import { ChannelsResponseSchema } from '@videodeck/shared/schemas';
 import { useEffect, useState } from 'react';
-import { readApiFailure } from '../utils/apiFailure';
+import { apiGet } from '../utils/apiClient';
 
 interface UseChannelNamesResult {
   /** Distinct channel names from Elasticsearch, for the channel filter */
@@ -20,16 +20,13 @@ export function useChannelNames(): UseChannelNamesResult {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch('/api/videos/channels', { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          await readApiFailure(response);
-          throw new Error(`channels fetch failed (HTTP ${response.status})`);
-        }
-        return response.json();
-      })
-      .then((data: unknown) => {
-        const parsed = ChannelsResponseSchema.parse(data);
+    apiGet('/api/videos/channels', ChannelsResponseSchema, {
+      signal: controller.signal,
+      // The failure is swallowed below, but reading it still tells the health
+      // store that the cluster is gone
+      failureMessage: (_failure, status) => `channels fetch failed (HTTP ${status})`,
+    })
+      .then((parsed) => {
         setChannels(parsed.channels);
         setFolders(parsed.folders);
       })
