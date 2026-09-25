@@ -1,5 +1,5 @@
 # Client image: static build served by nginx with /api proxied to the server.
-FROM node:22-slim AS build
+FROM node:24-slim AS build
 
 RUN corepack enable
 
