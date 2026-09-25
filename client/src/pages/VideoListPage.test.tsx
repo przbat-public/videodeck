@@ -1,10 +1,11 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { VideoListItem } from '@videodeck/shared/api';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppLayout } from '../components/AppLayout';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
+import { installIntersectionObserver } from '../test/intersectionObserverMock';
 import { resetElasticsearchState } from '../utils/elasticsearchStatus';
 import VideoListPage from './VideoListPage';
 
@@ -472,6 +473,49 @@ describe('VideoListPage', () => {
   });
 
   describe('load more', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('loads the next page by itself when the end of the list scrolls into view', async () => {
+      const observers = installIntersectionObserver();
+      fetchMock = installFetch({
+        search: (params) =>
+          params.get('offset') === '1'
+            ? { videos: [video('v2', 'Second')], totalCount: 2 }
+            : { videos: [video('v1', 'First')], totalCount: 2 },
+      });
+      renderAt('/');
+      expect(await screen.findByText('First')).toBeInTheDocument();
+
+      act(() => observers.at(-1)?.trigger(true));
+
+      expect(await screen.findByText('Second')).toBeInTheDocument();
+      expect(searchUrls(fetchMock).at(-1)).toBe('/api/videos/search?offset=1&limit=100');
+      // Everything is loaded: nothing is left to watch
+      expect(observers.every((observer) => observer.disconnected)).toBe(true);
+    });
+
+    it('stops loading by itself after a failed page and leaves the retry to the button', async () => {
+      const observers = installIntersectionObserver();
+      const base = installFetch({
+        search: () => ({ videos: [video('v1', 'First')], totalCount: 3 }),
+      });
+      fetchMock = vi.fn(async (url: string, init?: RequestInit) =>
+        url.includes('offset=1') ? json({ error: 'boom' }, 500) : base(url, init),
+      );
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      renderAt('/');
+      expect(await screen.findByText('First')).toBeInTheDocument();
+
+      act(() => observers.at(-1)?.trigger(true));
+
+      expect(await screen.findByText('Błąd: Nie udało się wyszukać filmów')).toBeInTheDocument();
+      // A server that just failed would be hammered by a retry per scroll
+      expect(observers.every((observer) => observer.disconnected)).toBe(true);
+      expect(screen.getByRole('button', { name: 'Pokaż więcej' })).toBeInTheDocument();
+    });
+
     it('offers Show more while results remain and appends the next page on click', async () => {
       fetchMock = installFetch({
         search: (params) =>
