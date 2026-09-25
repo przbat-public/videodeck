@@ -4,9 +4,11 @@ import type { VideoListItem } from '@videodeck/shared/api';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppLayout } from '../components/AppLayout';
+import i18n from '../i18n';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
 import { installIntersectionObserver } from '../test/intersectionObserverMock';
 import { resetElasticsearchState } from '../utils/elasticsearchStatus';
+import { clearListPositions } from '../utils/listScrollMemory';
 import VideoListPage from './VideoListPage';
 
 const CATEGORIES = ['fpv', 'lego'];
@@ -142,6 +144,14 @@ const searchUrls = (fetchMock: FetchMock): string[] =>
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** The scroll call the page made to put the reader back where they were */
+const scrollTo = vi.fn();
+
+/** jsdom never lays anything out, so the scroll offset is pinned by hand */
+function setScrollY(value: number): void {
+  Object.defineProperty(window, 'scrollY', { configurable: true, value });
+}
+
 // Real timers here (the page debounces), so interactions go through userEvent
 // — fireEvent stays reserved for the fake-timer suites (SearchBar).
 const user = userEvent.setup();
@@ -152,7 +162,66 @@ describe('VideoListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetElasticsearchState();
+    // The scroll memory outlives a component on purpose, so every test starts
+    // from a clean session and with a jsdom scroll call it can assert on
+    clearListPositions();
+    scrollTo.mockClear();
+    vi.stubGlobal('scrollTo', scrollTo);
     fetchMock = installFetch();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(window, 'scrollY');
+  });
+
+  describe('coming back to the results', () => {
+    it('restores the offset and re-loads the pages the reader had', async () => {
+      fetchMock = installFetch({
+        search: (params) =>
+          params.get('offset') === '1'
+            ? { videos: [video('v2', 'Second')], totalCount: 3 }
+            : { videos: [video('v1', 'First')], totalCount: 3 },
+      });
+      renderAt('/?q=drone');
+      expect(await screen.findByText('First')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Pokaż więcej' }));
+      expect(await screen.findByText('Second')).toBeInTheDocument();
+
+      setScrollY(1500);
+      await user.click(screen.getByRole('button', { name: 'go-elsewhere' }));
+      await waitFor(() => expect(currentUrl()).toBe('/?category=fpv&sort=likes-desc'));
+      await user.click(screen.getByRole('button', { name: 'back' }));
+
+      // The URL the reader left comes back with the pages that were on screen
+      await waitFor(() => expect(currentUrl()).toBe('/?q=drone'));
+      expect(await screen.findByText('First')).toBeInTheDocument();
+      expect(await screen.findByText('Second')).toBeInTheDocument();
+      expect(scrollTo).toHaveBeenCalledWith(0, 1500);
+    });
+
+    it('restores the offset without fetching pages that were never loaded', async () => {
+      fetchMock = installFetch({ search: () => ({ videos: [video('v1', 'First')], totalCount: 1 }) });
+      renderAt('/?q=drone');
+      expect(await screen.findByText('First')).toBeInTheDocument();
+
+      setScrollY(700);
+      await user.click(screen.getByRole('button', { name: 'go-elsewhere' }));
+      await waitFor(() => expect(currentUrl()).toBe('/?category=fpv&sort=likes-desc'));
+      await user.click(screen.getByRole('button', { name: 'back' }));
+      await waitFor(() => expect(currentUrl()).toBe('/?q=drone'));
+      expect(await screen.findByText('First')).toBeInTheDocument();
+
+      await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(0, 700));
+      expect(searchUrls(fetchMock).filter((url) => url.includes('offset=1'))).toEqual([]);
+    });
+
+    it('leaves a search the reader has never opened at the top', async () => {
+      renderAt('/?q=fresh');
+
+      expect(await screen.findByText('First')).toBeInTheDocument();
+      expect(scrollTo).not.toHaveBeenCalled();
+    });
   });
 
   describe('opening a URL', () => {
@@ -564,7 +633,7 @@ describe('VideoListPage', () => {
       expect(screen.getByRole('button', { name: 'Pokaż więcej' })).toBeInTheDocument();
     });
 
-    it('marks the results busy and announces the search while the next page loads', async () => {
+    it('keeps the busy state on the results list instead of the whole page', async () => {
       let releaseSecondPage: (() => void) | undefined;
       const base = installFetch({
         search: (params) =>
@@ -586,12 +655,48 @@ describe('VideoListPage', () => {
 
       await user.click(screen.getByRole('button', { name: 'Pokaż więcej' }));
 
-      expect(await screen.findByText('Ładowanie filmów...')).toBeInTheDocument();
-      expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'true');
+      // The results are the busy region, not the page: the search form stays
+      // usable and is not announced as busy with every page.
+      const main = screen.getByRole('main');
+      const results = main.querySelector('[aria-busy]');
+      expect(main).not.toHaveAttribute('aria-busy');
+      expect(results).toHaveAttribute('aria-busy', 'true');
+      expect(within(results as HTMLElement).getByText('First')).toBeInTheDocument();
+      expect(within(results as HTMLElement).queryByLabelText('Fraza wyszukiwania')).toBeNull();
 
       releaseSecondPage?.();
       expect(await screen.findByText('Second')).toBeInTheDocument();
-      await waitFor(() => expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'false'));
+      await waitFor(() => expect(results).toHaveAttribute('aria-busy', 'false'));
+    });
+
+    it('announces what an incremental load brought instead of the loading text per page', async () => {
+      const titles = ['First', 'Second', 'Third'];
+      fetchMock = installFetch({
+        search: (params) => {
+          const offset = Number(params.get('offset') ?? '0');
+          return { videos: [video(`v${offset + 1}`, titles[offset] ?? 'Later')], totalCount: 3 };
+        },
+      });
+      renderAt('/');
+      expect(await screen.findByText('First')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Pokaż więcej' }));
+
+      expect(await screen.findByText('Second')).toBeInTheDocument();
+      // The incremental load never repeats the "loading" announcement ...
+      expect(screen.queryByText(i18n.t('search.loading'))).toBeNull();
+      // ... it announces what arrived, once
+      expect(within(screen.getByRole('main')).getByRole('status')).toHaveTextContent(
+        i18n.t('search.loadedMore', { count: 1, loaded: 2 }),
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Pokaż więcej' }));
+
+      expect(await screen.findByText('Third')).toBeInTheDocument();
+      expect(screen.queryByText(i18n.t('search.loading'))).toBeNull();
+      expect(within(screen.getByRole('main')).getByRole('status')).toHaveTextContent(
+        i18n.t('search.loadedMore', { count: 1, loaded: 3 }),
+      );
     });
   });
 });

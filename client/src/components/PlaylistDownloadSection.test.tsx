@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
 import { PlaylistDownloadSection } from './PlaylistDownloadSection';
@@ -105,7 +106,9 @@ describe('PlaylistDownloadSection', () => {
 
     await user.click(screen.getByRole('button', { name: 'Aktualizuj playlistę' }));
 
-    expect(await screen.findByText('Błąd: Failed to download playlist')).toBeInTheDocument();
+    expect(
+      await screen.findByText(i18n.t('app.error', { message: i18n.t('errors.downloadPlaylist') })),
+    ).toBeInTheDocument();
   });
 
   it('reports a network failure that is not an Error', async () => {
@@ -115,6 +118,6 @@ describe('PlaylistDownloadSection', () => {
 
     await user.click(screen.getByRole('button', { name: 'Aktualizuj playlistę' }));
 
-    expect(await screen.findByText('Błąd: An error occurred')).toBeInTheDocument();
+    expect(await screen.findByText(i18n.t('app.error', { message: i18n.t('errors.occurred') }))).toBeInTheDocument();
   });
 });

@@ -31,7 +31,9 @@
     "clear": "Clear",
     "loadMore": "Show more",
     "loading": "Loading videos...",
-    "noResults": "No videos. Try a different query."
+    "noResults": "No videos. Try a different query.",
+    "loadedMore_one": "Loaded {{count}} more video ({{loaded}} in the list)",
+    "loadedMore_other": "Loaded {{count}} more videos ({{loaded}} in the list)"
   },
   "sortOption": {
     "relevance": "Relevance",
@@ -118,7 +120,8 @@
     "updatedTitle": "{{title}} (updated: {{date}})",
     "summaryTitle": "Summary",
     "invalidId": "Invalid video identifier",
-    "summaryTruncated": "This summary was generated from truncated subtitles — the source text was too long for the model."
+    "summaryTruncated": "This summary was generated from truncated subtitles — the source text was too long for the model.",
+    "play": "Play"
   },
   "config": {
     "save": "Save",
@@ -221,7 +224,11 @@
     },
     "loadSummaries": "Could not count the videos per channel",
     "searchElasticsearch": "Failed to search videos: Elasticsearch is not responding",
-    "channelsElasticsearch": "Failed to load the channel list: Elasticsearch is not responding"
+    "channelsElasticsearch": "Failed to load the channel list: Elasticsearch is not responding",
+    "loadVideos": "Failed to load videos",
+    "loadSummary": "Failed to load the summary",
+    "downloadPlaylist": "Failed to download the playlist",
+    "saveConfig": "Failed to save config.json"
   },
   "health": {
     "elasticsearchDown": "Elasticsearch is not responding. Search and indexing are off; downloads and the video list still work.",

@@ -41,9 +41,11 @@ describe('Elasticsearch goes away and comes back', () => {
     const page = await renderApp('/download');
     const section = await folderSection(folderPath);
 
-    // Healthy first: the channel row is there and no banner is up
+    // Healthy first: the channel row is there and no banner is up. The
+    // banner's own retry names it, because the results page carries a status
+    // region of its own (the "loaded N more" announcement).
     await within(section).findByRole('button', { name: 'Pobierz playlistę' });
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sprawdź ponownie' })).toBeNull();
 
     await env.fakeEs.stop();
 
@@ -61,9 +63,9 @@ describe('Elasticsearch goes away and comes back', () => {
     ).toBeInTheDocument();
     expect(queryCardByTitle('Głęboka integracja')).not.toBeInTheDocument();
 
-    // ... and the shell says it once for the whole app
-    const banner = await screen.findByRole('status', undefined, { timeout: WAIT_MS });
-    expect(banner).toHaveTextContent(DOWN_MESSAGE);
+    // ... and the shell says it once for the whole app, in the banner's strip
+    const retry = await screen.findByRole('button', { name: 'Sprawdź ponownie' }, { timeout: WAIT_MS });
+    expect(retry.closest('.health-banner')).toHaveTextContent(DOWN_MESSAGE);
 
     // The index actions cannot work while the cluster is down
     await page.user.click(screen.getByRole('button', { name: 'Menu aplikacji' }));
@@ -77,7 +79,9 @@ describe('Elasticsearch goes away and comes back', () => {
     // The banner's retry is the user-visible way back, and the banner clears
     // itself as soon as the probe answers again
     await page.user.click(screen.getByRole('button', { name: 'Sprawdź ponownie' }));
-    await waitFor(() => expect(screen.queryByRole('status')).toBeNull(), { timeout: WAIT_MS });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Sprawdź ponownie' })).toBeNull(), {
+      timeout: WAIT_MS,
+    });
 
     // Search works again without a page reload. A different phrase, because
     // re-submitting the failed one leaves the URL unchanged and the page would
