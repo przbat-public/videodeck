@@ -3,6 +3,7 @@ import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv'
 import { videoFiles } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearListPositions } from '../../utils/listScrollMemory';
+import { findCardByTitle } from './drivers/searchDrivers';
 import { refreshCacheAndWait, renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
 
@@ -13,6 +14,11 @@ import { startBackend, stopBackend } from './test-env';
  * short and dropped the reader at the top. jsdom has no layout, so the
  * assertions are on what the app really controls: the scroll target it asks
  * for, the pages it re-fetches and the element it focuses.
+ *
+ * Every step waits on a signal the app itself produces, with the journey
+ * suite's budget. The detail page is lazy and its data arrives over the
+ * network; neither is what this journey is about, so nothing here waits for
+ * the details request to land.
  */
 
 let env: DeepServerTestEnv;
@@ -71,9 +77,22 @@ describe('scroll restoration journey — a real list, a real video, a real Back'
     // the detail page can read.
     setScrollY(1500);
     await page.user.click(screen.getByRole('link', { name: /Historia kosmosu/ }));
-    // The detail page's own h1, not the card heading the list already shows
-    expect(await screen.findByRole('heading', { level: 1, name: 'Historia kosmosu' })).toBeInTheDocument();
-    expect(await screen.findByText('Deep test description.', undefined, { timeout: 10_000 })).toBeInTheDocument();
+
+    // The route change is the signal this journey needs, and the app reports
+    // it itself: the URL is the video's, the top bar only carries the back
+    // link on a detail page, and the results list (its search form and its
+    // cards) is gone. Waiting on the detail page's own heading instead costs
+    // the lazy chunk plus the details request, and a slow runner spent more
+    // than the default async budget on those two and reported a list that had
+    // simply not navigated yet.
+    await waitFor(
+      () => {
+        expect(page.router.state.location.pathname).toBe('/video/deepE2e0002');
+        expect(screen.getByRole('link', { name: /Wróć do listy/ })).toBeInTheDocument();
+        expect(screen.queryByLabelText('Fraza wyszukiwania')).toBeNull();
+      },
+      { timeout: 15_000 },
+    );
 
     // Back, the way a reader goes back: browser history, URL intact
     await act(async () => {
@@ -82,12 +101,17 @@ describe('scroll restoration journey — a real list, a real video, a real Back'
 
     // Both pages come back, so the reader is not dropped into a short
     // document, and the offset they left is asked for
-    expect(await screen.findByText('Głęboka integracja', undefined, { timeout: 15_000 })).toBeInTheDocument();
-    expect(await screen.findByText('Film pokazowy 105', undefined, { timeout: 15_000 })).toBeInTheDocument();
-    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(0, 1500));
-    expect(page.router.state.location.pathname).toBe('/');
+    expect(await findCardByTitle('Głęboka integracja')).toBeInTheDocument();
+    expect(await findCardByTitle('Film pokazowy 105')).toBeInTheDocument();
+    await waitFor(
+      () => {
+        expect(scrollTo).toHaveBeenCalledWith(0, 1500);
+        expect(page.router.state.location.pathname).toBe('/');
+      },
+      { timeout: 15_000 },
+    );
 
     // The route change still hands the keyboard a landmark to land on
-    expect(screen.getByRole('main')).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole('main')).toHaveFocus(), { timeout: 15_000 });
   });
 });
