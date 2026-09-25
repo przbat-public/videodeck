@@ -76,6 +76,31 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(body.folders[folderPath]).toBe('Kanał Alfa');
   });
 
+  it('refuses cross-site browser requests on the real API and keeps the local client working', async () => {
+    // The Docker UI proxies the API with the token attached, so a request may
+    // carry the token and still come from a page nobody trusts. The browser
+    // marker decides, before the token is even looked at.
+    const crossSite = await env.agent.get('/api/status').set('Sec-Fetch-Site', 'cross-site');
+    expect(crossSite.status).toBe(403);
+
+    // Another port on this host is same-site, not cross-site, and is refused
+    // unless its origin is on the trusted list.
+    const sameSiteUntrusted = await env.agent
+      .get('/api/status')
+      .set('Sec-Fetch-Site', 'same-site')
+      .set('Origin', 'http://localhost:4000');
+    expect(sameSiteUntrusted.status).toBe(403);
+
+    const localClient = await env.agent
+      .get('/api/status')
+      .set('Sec-Fetch-Site', 'same-site')
+      .set('Origin', 'http://localhost:3000');
+    expect(localClient.status).toBe(200);
+
+    // Clients without the marker (curl, the extension worker) are unaffected
+    await env.agent.get('/api/status').expect(200);
+  });
+
   it('saves a folder config and serves it back through /api/status', async () => {
     const folderPath = await env.seedFolder('channel-a', {});
     env.setFolders('channel-a');

@@ -83,24 +83,64 @@ function tokenMatches(provided: string, expected: string): boolean {
 }
 
 /**
+ * Origins that may drive the API from a browser context, beyond the built-in
+ * local client list: `CORS_ORIGINS` and, when set, the exact extension ids.
+ */
+export interface AuthMiddlewareOptions {
+  extraOrigins?: readonly string[];
+  extensionOrigins?: readonly string[] | undefined;
+}
+
+/** The request's Origin header, or an empty string when it has none */
+function readOrigin(req: Request): string {
+  const origin = req.headers.origin;
+  return typeof origin === 'string' ? origin : '';
+}
+
+/**
  * Guard for /api.
  *
- * With a configured token every request needs `Authorization: Bearer <token>`
- * (the Chrome extension sends it from its options). With `requireToken` the
- * open mode below is disabled entirely.
+ * Browser requests are judged by the `Sec-Fetch-Site` marker first, in every
+ * mode:
+ * - `cross-site` is refused outright. A token does not change that: the nginx
+ *   side injects the token into everything it proxies, so a request carrying
+ *   it may still come from a page the operator never trusted.
+ * - `same-site` (another port or subdomain on this host) is refused unless the
+ *   `Origin` is on the trusted list, which is the local dev clients plus
+ *   `CORS_ORIGINS` and the allowed extension ids.
  *
- * Without a token the API stays open for non-browser clients (curl, the
- * server itself) and for the local web client, but browser requests coming
- * from other websites are rejected: browsers mark them with
- * `Sec-Fetch-Site: cross-site`, which stops a malicious page from driving
- * endpoints with side effects (reindex, queue, config writes) on localhost.
- * The Vite dev proxy forwards the client's `same-origin` marker untouched.
+ * What is left for the token check: non-browser clients (curl, the server
+ * itself) send no `Sec-Fetch-Site` at all.
+ *
+ * With a configured token every remaining request needs
+ * `Authorization: Bearer <token>` (the Chrome extension sends it from its
+ * options). With `requireToken` the open mode below is disabled entirely.
+ * Without a token the API stays open for non-browser clients and for the local
+ * web client.
  */
 export function createAuthMiddleware(
   token: string | undefined,
   requireToken = false,
+  options: AuthMiddlewareOptions = {},
 ): (req: Request, res: Response, next: NextFunction) => void {
+  const extraOrigins = options.extraOrigins ?? [];
   return (req, res, next) => {
+    const site = req.headers['sec-fetch-site'];
+    if (site === 'cross-site') {
+      res.status(403).json({
+        error: 'Forbidden',
+        message: 'Cross-site requests are not allowed.',
+      });
+      return;
+    }
+    if (site === 'same-site' && !isAllowedCorsOrigin(readOrigin(req), extraOrigins, options.extensionOrigins)) {
+      res.status(403).json({
+        error: 'Forbidden',
+        message: 'Requests from another origin on this host are not allowed. List yours in CORS_ORIGINS.',
+      });
+      return;
+    }
+
     if (token) {
       const header = req.headers.authorization;
       const provided = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
@@ -117,14 +157,6 @@ export function createAuthMiddleware(
       return;
     }
 
-    // Open mode: only browser cross-site requests are refused (CSRF guard).
-    if (req.headers['sec-fetch-site'] === 'cross-site') {
-      res.status(403).json({
-        error: 'Forbidden',
-        message: 'Cross-site requests are not allowed. Set API_TOKEN to allow remote clients.',
-      });
-      return;
-    }
     next();
   };
 }

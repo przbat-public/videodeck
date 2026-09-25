@@ -36,12 +36,55 @@ describe('createAuthMiddleware', () => {
     expect(response.status).toBe(403);
   });
 
-  it('accepts same-origin and same-site browser requests when no token is configured', async () => {
+  it('refuses cross-site browser requests even with a valid token', async () => {
+    // nginx injects the token for the proxied UI, so "has a token" says
+    // nothing about who sent the request: a page on another origin would
+    // otherwise drive the API as the token owner.
+    const response = await request(buildApp('secret'))
+      .get('/test')
+      .set('Authorization', 'Bearer secret')
+      .set('Sec-Fetch-Site', 'cross-site');
+    expect(response.status).toBe(403);
+  });
+
+  it('refuses a same-site request from an origin that is not trusted', async () => {
+    // Another port on this host is same-site, not cross-site. Only the known
+    // client origins and CORS_ORIGINS may drive the API.
+    const response = await request(buildApp())
+      .get('/test')
+      .set('Sec-Fetch-Site', 'same-site')
+      .set('Origin', 'http://localhost:4000');
+    expect(response.status).toBe(403);
+  });
+
+  it('accepts same-origin and trusted same-site browser requests', async () => {
     const sameOrigin = await request(buildApp()).get('/test').set('Sec-Fetch-Site', 'same-origin');
     expect(sameOrigin.status).toBe(200);
 
-    const sameSite = await request(buildApp()).get('/test').set('Sec-Fetch-Site', 'same-site');
-    expect(sameSite.status).toBe(200);
+    const devClient = await request(buildApp())
+      .get('/test')
+      .set('Sec-Fetch-Site', 'same-site')
+      .set('Origin', 'http://localhost:5173');
+    expect(devClient.status).toBe(200);
+
+    const extension = await request(buildApp())
+      .get('/test')
+      .set('Sec-Fetch-Site', 'same-site')
+      .set('Origin', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop');
+    expect(extension.status).toBe(200);
+  });
+
+  it('accepts a CORS_ORIGINS entry as same-site', async () => {
+    const app = express();
+    app.use(createAuthMiddleware(undefined, false, { extraOrigins: ['https://deck.example'] }));
+    app.get('/test', (_req, res) => {
+      res.json({ ok: true });
+    });
+
+    expect((await request(app).get('/test').set('Sec-Fetch-Site', 'cross-site')).status).toBe(403);
+    expect(
+      (await request(app).get('/test').set('Sec-Fetch-Site', 'same-site').set('Origin', 'https://deck.example')).status,
+    ).toBe(200);
   });
 
   it('rejects requests without an Authorization header', async () => {

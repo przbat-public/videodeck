@@ -129,6 +129,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   channel folder, so anyone who could write into that folder (a network share,
   a NAS, a synced drive) could hand it an `--exec`. Every yt-dlp call now
   passes `--ignore-config`, the playlist fetch included
+- The server image builds in two stages and runs as the unprivileged `node`
+  user, and the yt-dlp version it ships is pinned with a build argument
+  instead of following the nightly channel. Check that the mounted video
+  folders are writable by uid 1000 (see `docs/DEPLOYMENT.md`)
+- The download queue state moved to `/app/state` in the image, mounted as the
+  `queue-state` volume, so queued jobs outlive a container recreate
+- Behind a proxy the rate limit can count the real client again: set
+  `TRUST_PROXY` to the number of hops (the compose stack defaults to one) or
+  leave it unset when the server is reached directly
+
+### Security
+
+- **Cross-site requests are refused on every path, token or not.** The Docker
+  UI receives the API token from nginx, so a request carrying the token said
+  nothing about who sent it: a page on another origin could reindex, drain the
+  download queue or rewrite a folder config. A `Sec-Fetch-Site: cross-site`
+  request is now answered 403 before the token is even read, nginx refuses it
+  as well, and a `same-site` request (another port on this host) needs an
+  origin from the trusted list instead of an open door
+- **The download queue no longer trusts the URL in its own state file.** The
+  queue rebuilds the video URL from the video id on restore, so a hand-edited
+  `.queue-state.json` cannot point yt-dlp at `file://` or an internal address
 
 - The extension declares Chrome 102 as its floor, which is what its use of `chrome.storage.session` requires
 ### Fixed

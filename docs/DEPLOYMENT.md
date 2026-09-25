@@ -30,6 +30,13 @@ points at `http://<host>:3001`.
    proxies, so the web UI works without the browser ever holding the token.
    Configure the same token in the Chrome extension options: the extension
    talks to the API directly.
+   That makes the `client` port as powerful as the token. Reaching it is
+   enough to drive the whole API through the proxy: reindex the library,
+   drain the download queue, rewrite a folder config. The shipped compose
+   file binds both ports to `127.0.0.1` for that reason. Publish them wider
+   only behind something that authenticates first, and keep `API_TOKEN` out
+   of reach. A random website cannot do it from a browser, because nginx and
+   the server both turn cross-site requests away, token or no token.
 
 3. Bring the stack up:
    ```bash
@@ -53,13 +60,33 @@ store of record.
 
 ### Restarts and the download queue
 
-The queue persists its active jobs to `.queue-state.json` (in the server
-working directory) and re-enqueues them on boot, so `docker compose restart`
-resumes interrupted work automatically: downloads dedup against `archive.txt`
-and index updates are idempotent re-scans. The state file lives in the
-container filesystem. Recreating the container (`docker compose down` +
-`up`) discards it, which only cancels queued jobs; already downloaded videos
-are unaffected.
+The queue persists its active jobs to `.queue-state.json` and re-enqueues them
+on boot, so `docker compose restart` resumes interrupted work automatically:
+downloads dedup against `archive.txt` and index updates are idempotent
+re-scans. In the image the file lives in `/app/state`, which the compose file
+mounts as the `queue-state` volume, so `docker compose down` + `up` keeps the
+queue too. Drop that volume to discard it, which only cancels queued jobs;
+already downloaded videos are unaffected.
+
+### File ownership
+
+The server runs as the unprivileged `node` user (uid 1000), in the image and
+in the compose stack alike. Whatever folder you mount has to be writable by
+that account. The server writes several files next to the videos:
+
+- `.videos-index.json`: the local download index
+- `archive.txt`: the dedup file that stops re-downloads
+- the video files themselves
+- `config.json` and `list.json`, when you edit a channel from the console
+
+On a Linux host, the usual fix is one command:
+
+```bash
+sudo chown -R 1000:1000 /path/to/videos
+```
+
+On a network share, map every client onto one account instead of chasing
+ownership of individual files: set the share's `uid` and `gid` mount options.
 
 ## Backups
 

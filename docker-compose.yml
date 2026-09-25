@@ -10,6 +10,9 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.5.1
     environment:
       - discovery.type=single-node
+      # Security is off and the port below is bound to loopback: anything that
+      # can reach 9200 can read and delete every index. Keep the binding on
+      # loopback, or turn on xpack security and give the server credentials.
       - xpack.security.enabled=false
       # Elasticsearch is a rebuildable cache for this app, not the store of
       # record (the video folders are) — replicas are wasted I/O.
@@ -41,9 +44,17 @@ services:
       - REQUIRE_API_TOKEN=${REQUIRE_API_TOKEN:-true}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
+      # One proxy hop (the client container) sits in front of the server, and
+      # the rate limit counts per client IP. Remove this if you reach the
+      # server directly and let a header decide who the client is.
+      - TRUST_PROXY=${TRUST_PROXY:-1}
     volumes:
-      # Replace /path/to/videos with your library root.
+      # Replace /path/to/videos with your library root. The container user
+      # (uid 1000) needs write access: the folder index, the archive and the
+      # videos live there.
       - /path/to/videos:/videos
+      # Queued jobs survive a container recreate, not just a restart.
+      - queue-state:/app/state
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -65,3 +76,4 @@ services:
 
 volumes:
   es-data:
+  queue-state:
