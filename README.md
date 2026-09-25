@@ -89,7 +89,7 @@ videos straight from YouTube.
 
 ## Requirements
 
-- Node.js 22.x (corepack provides pnpm 12.4.2, pinned in `packageManager`)
+- Node.js 24.x (corepack provides pnpm 12.4.2, pinned in `packageManager`)
 - Elasticsearch 8.x or 9.x (local or remote)
 - Chrome 88+ (only for the Chrome extension)
 

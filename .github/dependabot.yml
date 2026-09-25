@@ -20,7 +20,7 @@ updates:
       # until they are upgraded together — let that be a manual change.
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
-      # The runtime is pinned to Node 22 (.nvmrc); type majors must follow a
+      # The runtime is pinned to Node 24 (.nvmrc); type majors must follow a
       # Node upgrade, not lead it.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
@@ -45,7 +45,7 @@ updates:
       # until they are upgraded together — let that be a manual change.
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
-      # The runtime is pinned to Node 22 (.nvmrc); type majors must follow a
+      # The runtime is pinned to Node 24 (.nvmrc); type majors must follow a
       # Node upgrade, not lead it.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
