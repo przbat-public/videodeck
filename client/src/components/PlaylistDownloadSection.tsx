@@ -1,7 +1,7 @@
 import type { FolderConfig } from '@videodeck/shared/api';
-import { ApiErrorSchema } from '@videodeck/shared/schemas';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { apiSend } from '../utils/apiClient';
 import { Button } from './ui/Button';
 import { ErrorMessage } from './ui/ErrorMessage';
 
@@ -34,20 +34,15 @@ export function PlaylistDownloadSection({
       setDownloadError(null);
       setIsDownloading(true);
 
-      const response = await fetch('/api/folder/download-playlist', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      await apiSend(
+        'POST',
+        '/api/folder/download-playlist',
+        null,
+        { folderPath },
+        {
+          failureMessage: (failure) => failure.message ?? 'Failed to download playlist',
         },
-        body: JSON.stringify({
-          folderPath,
-        }),
-      });
-
-      if (!response.ok) {
-        const parsed = ApiErrorSchema.safeParse(await response.json().catch(() => null));
-        throw new Error(parsed.success ? (parsed.data.message ?? parsed.data.error) : 'Failed to download playlist');
-      }
+      );
 
       // Notify parent to refresh list existence status
       onPlaylistDownloaded();

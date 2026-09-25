@@ -1,7 +1,8 @@
 import type { DownloadOptions, FolderConfig } from '@videodeck/shared/api';
-import { ApiErrorSchema, SaveFolderConfigResponseSchema } from '@videodeck/shared/schemas';
+import { SaveFolderConfigResponseSchema } from '@videodeck/shared/schemas';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { apiSend } from '../utils/apiClient';
 import type { FormState } from '../utils/folderConfigForm';
 import { buildConfig, FRAGMENT_CHOICES, MAX_HEIGHT_CHOICES, toFormState } from '../utils/folderConfigForm';
 import { Button } from './ui/Button';
@@ -60,23 +61,14 @@ export function FolderConfigEditor({
       setIsSaving(true);
       const newConfig = buildConfig(form, config);
 
-      const response = await fetch('/api/folder/config', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          folderPath,
-          config: newConfig,
-        }),
-      });
+      const result = await apiSend(
+        'PUT',
+        '/api/folder/config',
+        SaveFolderConfigResponseSchema,
+        { folderPath, config: newConfig },
+        { failureMessage: (failure) => failure.message ?? 'Failed to save config' },
+      );
 
-      if (!response.ok) {
-        const parsed = ApiErrorSchema.safeParse(await response.json().catch(() => null));
-        throw new Error(parsed.success ? (parsed.data.message ?? parsed.data.error) : 'Failed to save config');
-      }
-
-      const result = SaveFolderConfigResponseSchema.parse(await response.json());
       setConfig(result.config);
       onConfigUpdate(folderPath, result.config);
       onEditingFinished();

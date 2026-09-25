@@ -1,6 +1,7 @@
 import { ClearFinishedResponseSchema, QueuePauseResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import i18n from '../i18n';
+import { apiSend } from '../utils/apiClient';
 import { fetchQueue } from './fetchQueue';
 
 /** How often the controls re-read the queue while the status page is open */
@@ -83,17 +84,19 @@ export function useQueueControls(): UseQueueControlsResult {
     mutationVersionRef.current += 1;
     setLoading(true);
     try {
-      const response = await fetch(`/api/folder/queue/${next ? 'pause' : 'resume'}?paused=${next ? '1' : '0'}`, {
-        method: 'POST',
-      });
-      if (!response.ok) {
-        throw new Error(
-          i18n.t(next ? 'errors.pauseQueue' : 'errors.resumeQueue', {
-            status: response.status,
-          }),
-        );
-      }
-      setIsPaused(QueuePauseResponseSchema.parse(await response.json()).paused);
+      const result = await apiSend(
+        'POST',
+        `/api/folder/queue/${next ? 'pause' : 'resume'}?paused=${next ? '1' : '0'}`,
+        QueuePauseResponseSchema,
+        undefined,
+        {
+          message: (status) =>
+            i18n.t(next ? 'errors.pauseQueue' : 'errors.resumeQueue', {
+              status,
+            }),
+        },
+      );
+      setIsPaused(result.paused);
       setError(null);
     } catch (err) {
       setError(failureMessage(err));
@@ -106,11 +109,9 @@ export function useQueueControls(): UseQueueControlsResult {
     mutationVersionRef.current += 1;
     setLoading(true);
     try {
-      const response = await fetch('/api/folder/queue/finished', { method: 'DELETE' });
-      if (!response.ok) {
-        throw new Error(i18n.t('errors.clearFinishedJobs', { status: response.status }));
-      }
-      ClearFinishedResponseSchema.parse(await response.json());
+      await apiSend('DELETE', '/api/folder/queue/finished', ClearFinishedResponseSchema, undefined, {
+        message: (status) => i18n.t('errors.clearFinishedJobs', { status }),
+      });
       await refresh();
     } catch (err) {
       setError(failureMessage(err));
