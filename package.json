@@ -23,6 +23,7 @@
     "test": "cd server && pnpm run test && cd ../client && pnpm run test:run && cd ../chrome-extension && pnpm run test",
     "test:coverage": "cd server && pnpm run test:coverage && cd ../client && pnpm run test:coverage",
     "test:e2e": "cd client && pnpm run test:e2e",
+    "test:e2e:preview": "cd client && pnpm run build && E2E_TARGET=preview pnpm run test:e2e",
     "test:integration": "cd client && pnpm run test:integration",
     "verify": "pnpm run format:check && pnpm run lint && pnpm run lint:types && pnpm run lint:scripts && pnpm run test:scripts && pnpm run knip && pnpm run lint:deps && pnpm run humanizer:gate && pnpm run typecheck && pnpm run test && pnpm run test:integration && cd client && pnpm run test:e2e",
     "prepare": "husky",
