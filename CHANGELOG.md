@@ -306,6 +306,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The Chrome extension recognises Shorts, `youtu.be`, embed and live links. It matched only `watch` and `youtu.be` before, and its content script never ran on `youtu.be` at all
 - Clearing the API token in the extension options removes the stored one instead of leaving the old value behind
+- Search no longer breaks past the 10,000th result. Elasticsearch refuses a page that crosses its result window, and the server asked for one anyway, so scrolling deep into a large library ended in a 500. Pages are now shortened at the window edge, the client stops loading there, and the count stays honest
 - A video-download stream that loses its client releases everything it held: the queue listeners, the keep-alive heartbeat and the open-stream gauge. The cleanup waited for the request to close, which happens when its body arrives, not when the browser goes away
 - Starting an index rebuild while a recreation runs is refused, and the other way round, instead of interleaving alias promotions and leaving orphaned indices behind
 - Two first-time index creations for one folder can no longer delete each other: the second caller joins the first instead of racing it

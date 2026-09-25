@@ -3,7 +3,7 @@ import type { estypes } from '@elastic/elasticsearch';
 import { Client } from '@elastic/elasticsearch';
 import { Gauge } from '@prometheus-io/client';
 import type { RecreateIndicesStatus, SortOption, VideoListItem } from '@videodeck/shared/api';
-import { SEARCH_DEFAULT_PAGE_SIZE } from '@videodeck/shared/schemas';
+import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULT_WINDOW } from '@videodeck/shared/schemas';
 import { ELASTICSEARCH_URL, getVideosFolderPaths } from '../config';
 import { metricsRegistry } from '../metricsRegistry';
 import { logger } from '../utils/logger';
@@ -731,10 +731,25 @@ export interface SearchOptions {
 const HIGHLIGHT_OPEN = '\u0001';
 const HIGHLIGHT_CLOSE = '\u0002';
 
+/**
+ * Page start and size for one search, kept inside Elasticsearch's result
+ * window. The cluster rejects `from + size > index.max_result_window` with a
+ * 400 (search_phase_execution_exception), which reached the user as a 500 on
+ * deep pages.
+ *
+ * A page whose end would cross the window comes back shortened, and an offset
+ * at or past it becomes a size-0 query: no hits, but the total still describes
+ * the query honestly. The page start is never pulled back to the window edge,
+ * because a shifted page would repeat documents the caller already holds and a
+ * client appending pages would never reach the end of the list.
+ */
 function normalizePaging(options: SearchOptions): { from: number; size: number } {
   const from = Math.max(0, Math.trunc(options.offset ?? 0));
   const size = Math.min(SEARCH_MAX_LIMIT, Math.max(1, Math.trunc(options.limit ?? SEARCH_DEFAULT_LIMIT)));
-  return { from, size };
+  if (from >= SEARCH_MAX_RESULT_WINDOW) {
+    return { from: 0, size: 0 };
+  }
+  return { from, size: Math.min(size, SEARCH_MAX_RESULT_WINDOW - from) };
 }
 
 /**
