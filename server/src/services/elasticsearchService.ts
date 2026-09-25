@@ -1001,6 +1001,9 @@ export async function refreshIndex(folderPath: string): Promise<void> {
 /** When a request last found the cluster unreachable, null while it is fine */
 let unavailableSince: number | null = null;
 
+/** When a probe last cleared an outage, null until one does */
+let recoveredAt: number | null = null;
+
 /**
  * How long a fresh outage keeps reads from even trying. The regular client
  * retries transient failures for up to two minutes, and nothing in a stopped
@@ -1008,6 +1011,18 @@ let unavailableSince: number | null = null;
  * still failing should return at once.
  */
 const FAIL_FAST_WINDOW_MS = 5_000;
+
+/**
+ * How long a recovery outranks a failure that arrives right after it.
+ *
+ * A probe that finds the cluster back replaces the client, but requests that
+ * failed on the old one can still land afterwards and arm the window again.
+ * The next read then answered "not reachable" in a millisecond while the
+ * cluster had answered seconds before, and the user saw an empty search.
+ * Within this grace period, and only after a recovery, a read tries instead of
+ * being refused. A fresh outage is unaffected: nothing was recovered there.
+ */
+const RECOVERY_GRACE_MS = 10_000;
 
 /** 1 when the last observation reached the cluster, 0 after a failure */
 export const elasticsearchUpGauge = new Gauge({
@@ -1030,6 +1045,7 @@ export function noteElasticsearchUnavailable(now: number = Date.now()): void {
 /** The cluster answered: forget the outage (the probe calls this) */
 export function clearElasticsearchOutage(): void {
   unavailableSince = null;
+  recoveredAt = null;
   elasticsearchUpGauge.set(1);
 }
 
@@ -1038,10 +1054,18 @@ export function clearElasticsearchOutage(): void {
  * client's retry budget. Only reads use this: a write that is skipped here
  * would lose its batch, and the queue already retries those.
  */
-function assertElasticsearchReachable(): void {
-  if (unavailableSince !== null && Date.now() - unavailableSince < FAIL_FAST_WINDOW_MS) {
-    throw new ElasticsearchUnavailableError();
+function assertElasticsearchReachable(now: number = Date.now()): void {
+  if (unavailableSince === null || now - unavailableSince >= FAIL_FAST_WINDOW_MS) {
+    return;
   }
+  // A probe that just reached the cluster outranks a failure that came from
+  // the client it replaced. Refusing here would answer "not reachable" for a
+  // cluster that answered moments ago, and the user would see an empty search
+  // instead of results.
+  if (recoveredAt !== null && now - recoveredAt < RECOVERY_GRACE_MS) {
+    return;
+  }
+  throw new ElasticsearchUnavailableError();
 }
 
 /** Drop the long-lived client so the next call opens fresh connections */
@@ -1072,7 +1096,10 @@ export async function checkElasticsearchConnection(): Promise<boolean> {
   }
   if (unavailableSince !== null) {
     logger.info('Elasticsearch answered again — reconnecting with a fresh client');
+    // Marked after the clear, which resets it, so the grace survives the very
+    // probe that proves the cluster is back.
     clearElasticsearchOutage();
+    recoveredAt = Date.now();
     resetElasticsearchClient();
   } else {
     elasticsearchUpGauge.set(1);
