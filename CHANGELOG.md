@@ -90,6 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the folder index, which now records video titles and adds videos
   downloaded outside the queue each time the collection is read
 
+- `sse_streams_open` on `/metrics`: how many download streams the server is holding open right now
 ### Added
 
 - The client says when Elasticsearch is unreachable instead of turning it into
@@ -102,6 +103,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The status page polls counters now, not the whole queue. On a real instance
+  the old poll shipped 5.6 MB every 1.5 seconds once 6,808 jobs sat in the
+  queue, because every job carried its log. The list is log-free and capped, a
+  single job's log has its own endpoint, and the console and the queue bar
+  share one poller instead of running two
+- Cancelling a channel waits for the killed yt-dlp to exit. The next job for
+  that folder used to start while the old process was still merging, so two
+  processes wrote into one folder, and the partial-file cleanup deleted the
+  fresh job's `.part`. The cleanup now touches only the files the cancelled
+  job announced
+- A long search session keeps the two pages you looked at last instead of
+  every page ever loaded. A notice offers the way back to the top of the
+  results, and the rows that were released stop growing the document
 - The search list remembers where you were reading. Opening a video and going
   back restores the pages that were on screen and the scroll position instead
   of dropping you at the top of a fresh first page
@@ -114,6 +128,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server image and the CI jobs all read the same pin, and `@types/node`
   follows it. Node 22 support ends in April 2027, so the move lands well
   before the date
+
 - `extraArgs` in a folder's `config.json` is an allowlist now. A config may
   still throttle a channel, cap retries, skip Shorts and drop sidecars, and
   the editor hint lists exactly which flags those are. Everything else is
@@ -160,6 +175,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependabot watches the workspace once instead of once per directory, so its pull requests match the single lockfile again; the GitHub Actions it runs are pinned to commit SHAs
 ### Fixed
 
+- The queue reports the paused state it actually holds. After a restart with a
+  paused queue the API said "not paused" until someone touched the pause
+  button, because the router kept its own copy of the flag
+- The queue state file is written once per burst of transitions, not once per
+  transition, and it holds only what a restart reads. A 6,020-job backlog
+  rewrote the multi-megabyte snapshot on every enqueue, finish, cancel and
+  retry
 - Loading the next page of results no longer re-announces "loading" to a
   screen reader for every page: the results region carries `aria-busy`, the
   page itself does not, and an incremental load is announced once, with how
@@ -305,6 +327,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The Chrome extension recognises Shorts, `youtu.be`, embed and live links. It matched only `watch` and `youtu.be` before, and its content script never ran on `youtu.be` at all
 - Clearing the API token in the extension options removes the stored one instead of leaving the old value behind
+- Search no longer breaks past the 10,000th result. Elasticsearch refuses a page that crosses its result window, and the server asked for one anyway, so scrolling deep into a large library ended in a 500. Pages are now shortened at the window edge, the client stops loading there, and the count stays honest
+- A video-download stream that loses its client releases everything it held: the queue listeners, the keep-alive heartbeat and the open-stream gauge. The cleanup waited for the request to close, which happens when its body arrives, not when the browser goes away
+- Starting an index rebuild while a recreation runs is refused, and the other way round, instead of interleaving alias promotions and leaving orphaned indices behind
+- Two first-time index creations for one folder can no longer delete each other: the second caller joins the first instead of racing it
 - The Playwright HTML report CI uploads is written again (the list reporter produced no report), and a second CI job runs the same suite against the production bundle, where build-only failures show up
 - jsdom is pinned to the version the client suite passes on: 30.1.0 broke 27 tests in the Radix menus
 - The API docs point at `POST /api/videos/refreshCache` (they said GET, which answers 404), and the stray ", " fragments left by an earlier edit are gone. The prose gate now also scans `docs/API.md`, `docs/INSTALL.md`, `docs/DEVELOPMENT.md` and `docs/README.pl.md`

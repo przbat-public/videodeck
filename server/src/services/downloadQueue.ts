@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { DownloadOptions, JobStatus, JobType, QueueJob } from '@videodeck/shared/api';
+import type { DownloadOptions, JobStatus, JobType, QueueJob, QueueListJob, QueueSummary } from '@videodeck/shared/api';
 import { extractYtDlpProgress, isYtDlpProgressLine } from '@videodeck/shared/progress';
 import { DownloadOptionsSchema } from '@videodeck/shared/schemas';
 import { toWatchUrl } from '@videodeck/shared/youtube';
@@ -109,6 +109,56 @@ function isActive(job: QueueJob): boolean {
 }
 
 /**
+ * Coalescing window of the state file: transitions inside it share one
+ * snapshot, which holds the whole queue.
+ */
+const PERSIST_COALESCE_MS = 200;
+
+/**
+ * What a restart needs from a job: exactly the fields `restoreQueueState`
+ * reads back. Status, progress, timestamps and the log tail describe the run,
+ * not the work to re-enqueue, and the snapshot is rewritten on every
+ * transition.
+ */
+function toPersistedJob(job: QueueJob): EnqueueRequest {
+  return stripUndefined<EnqueueRequest>({
+    folderPath: job.folderPath,
+    videoId: job.videoId,
+    videoUrl: job.videoUrl,
+    title: job.title,
+    type: job.type,
+    baseName: job.baseName,
+    options: job.options,
+  });
+}
+
+/**
+ * The job without its log tail: what the queue list endpoints send. The log
+ * stays behind GET /api/folder/queue/:jobId, because the list is polled and on
+ * a real instance the logs were the megabytes it carried.
+ */
+export function toListJob(job: QueueJob): QueueListJob {
+  const { log, logLineCount, ...rest } = job;
+  void log;
+  void logLineCount;
+  return rest;
+}
+
+/** `[download] Destination: <file>` — the file yt-dlp announces it is writing */
+const DESTINATION_LINE = /^\[download\] Destination: (.+)$/;
+
+/** The file a destination line points at, or undefined when it is not in the job's folder */
+function destinationFileName(line: string): string | undefined {
+  const match = DESTINATION_LINE.exec(line.trim());
+  if (!match) {
+    return undefined;
+  }
+  const name = path.basename(match[1] ?? '');
+  // Only names written into the job's own folder are swept later
+  return name.length === 0 || name.startsWith('.') ? undefined : name;
+}
+
+/**
  * Default post-job hook: refresh the folder's `.videos-index.json` and push
  * the videos whose files changed during the job into Elasticsearch, so a
  * download or metadata update is searchable without a full reindex.
@@ -203,6 +253,10 @@ export class DownloadQueue extends EventEmitter {
   private readonly lastOutputAt = new Map<string, number>();
   /** Jobs killed by the watchdog (retried as transient failures) */
   private readonly hungJobs = new Map<string, true>();
+  /** Files a job announced with `[download] Destination:` (partial-sweep input) */
+  private readonly jobFiles = new Map<string, Set<string>>();
+  /** Chunk tail a job has not terminated with a newline yet (destination lines can be split) */
+  private readonly logRemainder = new Map<string, string>();
   /** While paused, queued jobs wait; running ones finish (cancel still works) */
   private paused = false;
   /** Set by stopForShutdown: the state file keeps the last snapshot taken before it */
@@ -232,35 +286,75 @@ export class DownloadQueue extends EventEmitter {
   /**
    * Persist the active jobs and the paused flag, so a reboot can re-enqueue
    * them (archive.txt dedups downloads; updates are idempotent re-scans).
-   * Writes are chained: atomic renames race when they run in parallel, and
-   * an older snapshot landing last would resurrect stale jobs or a stale
-   * paused flag. A failed write must never break the queue or the chain.
+   *
+   * The snapshot holds the whole queue, so transitions are coalesced: a burst
+   * (a 6,000-job cancelAll, a queue draining, a retry storm) writes once per
+   * window instead of once per event, and a snapshot identical to the last one
+   * written is skipped. `whenPersisted()` forces a pending write out for the
+   * callers that must not lose a reboot race.
+   *
+   * Writes are chained: atomic renames race when they run in parallel, and an
+   * older snapshot landing last would resurrect stale jobs or a stale paused
+   * flag. A failed write must never break the queue or the chain.
    */
   private persistChain: Promise<void> = Promise.resolve();
+  /** Pending coalesced write; the snapshot is taken when the timer fires */
+  private persistTimer: NodeJS.Timeout | undefined;
+  /** Payload of the last write that landed, so an unchanged snapshot is not rewritten */
+  private lastPersistedText = '';
 
   private persistState(): void {
-    const stateFile = this.stateFile;
-    if (!stateFile || this.shuttingDown) {
+    if (!this.stateFile || this.shuttingDown || this.persistTimer !== undefined) {
       return;
     }
-    const jobs = Array.from(this.jobs.values())
-      .filter(isActive)
-      .map((job) => ({ ...job, log: [], logLineCount: 0 }));
+    const timer = setTimeout(() => {
+      this.persistTimer = undefined;
+      // A snapshot taken after the shutdown began would drop the interrupted
+      // jobs the state file exists to keep
+      if (!this.shuttingDown) {
+        this.writeState();
+      }
+    }, PERSIST_COALESCE_MS);
+    timer.unref();
+    this.persistTimer = timer;
+  }
+
+  /** Take the snapshot now and chain its write behind the writes in flight */
+  private writeState(): void {
+    const stateFile = this.stateFile;
+    if (!stateFile) {
+      return;
+    }
+    const jobs = Array.from(this.jobs.values()).filter(isActive).map(toPersistedJob);
     const text = JSON.stringify({ paused: this.paused, jobs });
+    if (text === this.lastPersistedText) {
+      return; // a transition the file does not record (a retry, a fresh log line)
+    }
     this.persistChain = this.persistChain
       .catch(() => undefined)
       .then(() => writeTextAtomic(stateFile, text))
+      .then(() => {
+        this.lastPersistedText = text;
+      })
       .catch((error: unknown) => {
         logger.warn(`Cannot persist queue state: ${error instanceof Error ? error.message : String(error)}`);
       });
   }
 
   /**
-   * Resolves when every persist started so far has finished (or failed).
-   * Cancel routes wait on this so a reboot right after the response cannot
-   * restore jobs the user just dropped.
+   * Resolves when every persist started so far has finished (or failed). A
+   * snapshot still waiting out the coalescing window goes out at once: cancel
+   * routes wait on this, and a reboot right after the response must not restore
+   * jobs the user just dropped.
    */
   whenPersisted(): Promise<void> {
+    if (this.persistTimer !== undefined) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = undefined;
+      if (!this.shuttingDown) {
+        this.writeState();
+      }
+    }
     return this.persistChain;
   }
 
@@ -319,6 +413,48 @@ export class DownloadQueue extends EventEmitter {
     this.prune();
     const jobs = Array.from(this.jobs.values()).filter((job) => !folderPath || job.folderPath === folderPath);
     return jobs.map((job) => this.snapshot(job));
+  }
+
+  /**
+   * Counters of the whole queue, the per-folder counters the channel console
+   * renders, and the jobs running right now. This is what a poller asks for:
+   * the job list can hold thousands of entries, the counters fit in a small
+   * answer with no log lines in it.
+   */
+  summary(): QueueSummary {
+    this.prune();
+    const counts: Record<JobStatus, number> = { queued: 0, running: 0, done: 0, error: 0, cancelled: 0 };
+    const folders: QueueSummary['folders'] = {};
+    const running: QueueListJob[] = [];
+    for (const job of this.jobs.values()) {
+      counts[job.status] += 1;
+      let folder = folders[job.folderPath];
+      if (folder === undefined) {
+        folder = { running: 0, queued: 0, failed: 0 };
+        folders[job.folderPath] = folder;
+      }
+      if (job.status === 'running') {
+        folder.running += 1;
+        running.push(this.listSnapshot(job));
+      } else if (job.status === 'queued') {
+        folder.queued += 1;
+      } else if (job.status === 'error') {
+        folder.failed += 1;
+        if (folder.firstError === undefined && job.error !== undefined) {
+          folder.firstError = job.error;
+        }
+      }
+    }
+    return { counts, folders, running };
+  }
+
+  /**
+   * The job without its log tail: what a list endpoint sends. The log stays
+   * behind GET /api/folder/queue/:jobId, because the list is polled and the
+   * logs were the megabytes it carried.
+   */
+  private listSnapshot(job: QueueJob): QueueListJob {
+    return toListJob(job);
   }
 
   /**
@@ -389,6 +525,10 @@ export class DownloadQueue extends EventEmitter {
 
   /** Cancel everything and forget all jobs (used by tests). */
   clear(): void {
+    if (this.persistTimer !== undefined) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = undefined;
+    }
     this.cancelAll();
     for (const timer of this.retryTimers.values()) {
       clearTimeout(timer);
@@ -401,6 +541,8 @@ export class DownloadQueue extends EventEmitter {
     this.watchdogs.clear();
     this.lastOutputAt.clear();
     this.hungJobs.clear();
+    this.jobFiles.clear();
+    this.logRemainder.clear();
     this.attempts.clear();
     this.jobs.clear();
     this.processes.clear();
@@ -432,6 +574,17 @@ export class DownloadQueue extends EventEmitter {
   }
 
   /**
+   * Downloads that still hold a yt-dlp process, whatever their status: a
+   * cancelled job keeps its slot until the process really closes, because a
+   * SIGTERMed yt-dlp may still be merging or appending to archive.txt.
+   */
+  private liveDownloads(): QueueJob[] {
+    return Array.from(this.jobs.values()).filter(
+      (job) => job.type === 'download' && (job.status === 'running' || this.processes.has(job.id)),
+    );
+  }
+
+  /**
    * Whether a queued job may start now. Downloads and updates are counted
    * against separate limits; only downloads are exclusive within a folder,
    * because only they append to the folder's archive.txt.
@@ -440,7 +593,7 @@ export class DownloadQueue extends EventEmitter {
     if (job.type === 'update') {
       return this.running('update').length < this.maxConcurrentUpdates;
     }
-    const downloads = this.running('download');
+    const downloads = this.liveDownloads();
     return downloads.length < this.maxConcurrent && !downloads.some((running) => running.folderPath === job.folderPath);
   }
 
@@ -466,6 +619,11 @@ export class DownloadQueue extends EventEmitter {
     if (!paused) {
       this.pump();
     }
+  }
+
+  /** Whether queued jobs wait for a resume (running ones always finish) */
+  isPaused(): boolean {
+    return this.paused;
   }
 
   /** Forget finished (done/error/cancelled) jobs; returns how many were dropped */
@@ -512,7 +670,22 @@ export class DownloadQueue extends EventEmitter {
       }
     });
 
-    child.on('close', (code) => this.onJobClose(job, code));
+    child.on('close', (code) => {
+      void this.onJobClose(job, code);
+    });
+  }
+
+  /**
+   * Remove the temporary files of a cancelled job. The names come from the
+   * `[download] Destination:` lines yt-dlp printed, so the sweep touches only
+   * this job's half-written files and never the ones another job started.
+   * A job killed before it printed any destination has nothing to sweep.
+   */
+  private async sweepPartialDownloads(job: QueueJob): Promise<void> {
+    const destinations = Array.from(this.jobFiles.get(job.id) ?? []);
+    this.jobFiles.delete(job.id);
+    this.logRemainder.delete(job.id);
+    await removePartialDownloads(job.folderPath, destinations);
   }
 
   /**
@@ -579,16 +752,18 @@ export class DownloadQueue extends EventEmitter {
    * Handle the process `close` of a job: success runs the post-job hook,
    * permanent failures fail right away, everything else is retried.
    */
-  private onJobClose(job: QueueJob, code: number | null): void {
+  private async onJobClose(job: QueueJob, code: number | null): Promise<void> {
     this.processes.delete(job.id);
     this.disarmWatchdog(job.id);
     const hung = this.hungJobs.has(job.id);
     this.hungJobs.delete(job.id);
     if (job.status !== 'running') {
       // Already cancelled or failed via 'error'. A cancelled download was
-      // killed mid-write: sweep the temporary files yt-dlp left behind.
+      // killed mid-write: sweep the temporary files yt-dlp left for THIS job,
+      // and only then let the next job in the folder start — the sweep must
+      // never run next to a download that is writing its own partial file.
       if (job.status === 'cancelled' && job.type === 'download') {
-        void removePartialDownloads(job.folderPath);
+        await this.sweepPartialDownloads(job);
       }
       this.pump();
       return;
@@ -705,6 +880,8 @@ export class DownloadQueue extends EventEmitter {
     job.exitCode = code;
     job.finishedAt = new Date().toISOString();
     this.attempts.delete(job.id);
+    this.jobFiles.delete(job.id);
+    this.logRemainder.delete(job.id);
     this.emitJob(job);
     this.persistState();
     this.pump();
@@ -712,6 +889,7 @@ export class DownloadQueue extends EventEmitter {
 
   private appendLog(job: QueueJob, text: string): void {
     this.lastOutputAt.set(job.id, Date.now());
+    this.recordJobFiles(job, text);
     const lines = text.split(/\r\n|\r|\n/).filter((line) => line.trim().length > 0);
     if (lines.length === 0) {
       return;
@@ -742,6 +920,31 @@ export class DownloadQueue extends EventEmitter {
 
   private emitJob(job: QueueJob): void {
     this.emit('job', this.snapshot(job));
+  }
+
+  /**
+   * Remember the files a job announces it is writing. The partial-file sweep
+   * after a cancel needs those names; the job log keeps only a bounded tail,
+   * so a destination line can be long gone by the time the job is killed.
+   * Data arrives in chunks that may split a line, hence the carried remainder.
+   */
+  private recordJobFiles(job: QueueJob, text: string): void {
+    const pending = `${this.logRemainder.get(job.id) ?? ''}${text}`;
+    const segments = pending.split(/\r\n|\r|\n/);
+    const rest = segments.pop() ?? '';
+    this.logRemainder.set(job.id, rest);
+    for (const segment of [...segments, rest]) {
+      const name = destinationFileName(segment);
+      if (name === undefined) {
+        continue;
+      }
+      const files = this.jobFiles.get(job.id);
+      if (files === undefined) {
+        this.jobFiles.set(job.id, new Set([name]));
+      } else {
+        files.add(name);
+      }
+    }
   }
 
   private snapshot(job: QueueJob): QueueJob {

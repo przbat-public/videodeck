@@ -198,6 +198,21 @@ async function listSubtitles(folderPath: string, baseName: string): Promise<Subt
 // Handlers
 // ---------------------------------------------------------------------------
 
+/**
+ * One index maintenance job at a time. A reindex and an index recreation both
+ * rewrite the folder aliases, so running them together interleaves the alias
+ * promotions and orphans the index the other job is writing into. The service
+ * flags cover the running job itself; `indexMaintenanceRunning` also covers
+ * the window between accepting a request and the service reporting itself as
+ * running, and the service flags also catch a job started outside these routes.
+ */
+let indexMaintenanceRunning = false;
+
+/** True while a reindex or an index recreation is under way */
+function isIndexMaintenanceRunning(): boolean {
+  return indexMaintenanceRunning || isReindexRunning() || isRecreateIndicesRunning();
+}
+
 // GET /api/videos/refreshCache/status - Progress of the running/last reindex
 const getRefreshStatus: RouteHandler<NoParams, ReindexStatus> = (_req, res) => {
   res.json(getReindexStatus());
@@ -211,7 +226,7 @@ const getRefreshStatus: RouteHandler<NoParams, ReindexStatus> = (_req, res) => {
 // triggered by a cross-site navigation in browsers that do not send
 // Sec-Fetch-Site.
 const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictResponse> = (req, res) => {
-  if (isReindexRunning()) {
+  if (isIndexMaintenanceRunning()) {
     res.status(409).json({
       error: 'Reindex already running',
       message: 'A reindex is already in progress',
@@ -225,9 +240,14 @@ const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictRes
   logger.info(`Cache refresh requested${onlyMissing ? ' (onlyMissing)' : ''}...`);
 
   // Start the refresh process asynchronously (fire and forget)
-  refreshVideosCache(onlyMissing ? { onlyMissing: true } : undefined).catch((error: unknown) => {
-    logger.error('Error refreshing cache in background:', error);
-  });
+  indexMaintenanceRunning = true;
+  refreshVideosCache(onlyMissing ? { onlyMissing: true } : undefined)
+    .catch((error: unknown) => {
+      logger.error('Error refreshing cache in background:', error);
+    })
+    .finally(() => {
+      indexMaintenanceRunning = false;
+    });
 
   // Return immediately
   res.status(202).json({
@@ -243,7 +263,7 @@ const getRecreateIndicesStatusHandler: RouteHandler<NoParams, RecreateIndicesSta
 
 // POST /api/videos/recreateIndices - Recreate all Elasticsearch indices
 const recreateIndices: RouteHandler<NoParams, AcceptedResponse | ApiError> = (_req, res) => {
-  if (isRecreateIndicesRunning()) {
+  if (isIndexMaintenanceRunning()) {
     res.status(409).json({
       error: 'Index recreation already running',
       message: 'Index recreation is already in progress',
@@ -254,9 +274,14 @@ const recreateIndices: RouteHandler<NoParams, AcceptedResponse | ApiError> = (_r
 
   // Start the recreate process asynchronously (fire and forget); the client
   // polls /api/videos/recreateIndices/status until it finishes.
-  recreateAllIndices().catch((error: unknown) => {
-    logger.error('Error recreating indices in background:', error);
-  });
+  indexMaintenanceRunning = true;
+  recreateAllIndices()
+    .catch((error: unknown) => {
+      logger.error('Error recreating indices in background:', error);
+    })
+    .finally(() => {
+      indexMaintenanceRunning = false;
+    });
 
   // Return immediately
   res.status(202).json({

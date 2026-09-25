@@ -1,82 +1,35 @@
-import type { QueueJob } from '@videodeck/shared/api';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import i18n from '../i18n';
-import { fetchQueue } from './fetchQueue';
-import { isActiveJob } from './useDownloadQueue';
+import type { QueueCounts, QueueFolderCounts } from '@videodeck/shared/api';
+import { useCallback } from 'react';
+import { refreshQueueSummary, useQueueSummary } from '../utils/queueSummaryStore';
 
-const DEFAULT_POLL_MS = 1500;
+/** The empty answers, so a consumer without a summary yet reads zeroes */
+const NO_JOBS_BY_FOLDER: Record<string, QueueFolderCounts> = {};
+const NO_COUNTS: QueueCounts = { queued: 0, running: 0, done: 0, error: 0, cancelled: 0 };
 
 interface UseChannelQueueResult {
-  /** Every job the server holds, across folders */
-  jobs: QueueJob[];
-  /** Jobs grouped by folder path, ready for the console's rows */
-  jobsByFolder: Record<string, QueueJob[]>;
+  /** Counters per status, for the whole queue */
+  counts: QueueCounts;
+  /** Counters per folder path, ready for the console's rows */
+  queueByFolder: Record<string, QueueFolderCounts>;
   error: string | null;
   refresh: () => Promise<void>;
 }
 
 /**
- * The whole queue, for the channel console's one row per channel. One request
- * covers every channel, replacing the per-folder poll the stacked sections
- * used to run; polling continues only while something is queued or running.
+ * The queue's counters for the channel console's one row per channel. One
+ * shared poller covers every channel and both consumers (this hook and the
+ * queue bar), and it keeps asking only while something is queued or running.
+ * The job list itself is never pulled here: a folder's own jobs are read by
+ * the folder section that renders them.
  */
-export function useChannelQueue(enabled = true, pollIntervalMs = DEFAULT_POLL_MS): UseChannelQueueResult {
-  const [jobs, setJobs] = useState<QueueJob[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+export function useChannelQueue(enabled = true): UseChannelQueueResult {
+  const { summary, error } = useQueueSummary(enabled);
+  const refresh = useCallback(() => refreshQueueSummary(), []);
 
-  const refresh = useCallback(async (): Promise<void> => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      const data = await fetchQueue(controller.signal);
-      setJobs(data.jobs);
-      setError(null);
-    } catch (err) {
-      if (controller.signal.aborted) {
-        return; // superseded poll or unmount
-      }
-      setError(err instanceof Error ? err.message : i18n.t('errors.loadQueue'));
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!enabled) {
-      return;
-    }
-    void refresh();
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, [enabled, refresh]);
-
-  const hasActive = useMemo(() => jobs.some(isActiveJob), [jobs]);
-
-  useEffect(() => {
-    if (!enabled || !hasActive) {
-      return;
-    }
-    const timer = setInterval(() => {
-      if (document.visibilityState !== 'hidden') {
-        void refresh();
-      }
-    }, pollIntervalMs);
-    return () => clearInterval(timer);
-  }, [enabled, hasActive, pollIntervalMs, refresh]);
-
-  const jobsByFolder = useMemo(() => {
-    const grouped: Record<string, QueueJob[]> = {};
-    for (const job of jobs) {
-      const existing = grouped[job.folderPath];
-      if (existing === undefined) {
-        grouped[job.folderPath] = [job];
-      } else {
-        existing.push(job);
-      }
-    }
-    return grouped;
-  }, [jobs]);
-
-  return { jobs, jobsByFolder, error, refresh };
+  return {
+    counts: summary?.counts ?? NO_COUNTS,
+    queueByFolder: summary?.folders ?? NO_JOBS_BY_FOLDER,
+    error,
+    refresh,
+  };
 }

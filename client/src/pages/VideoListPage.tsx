@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import { useRegisterMenuSections } from '../components/appMenuRegistry';
@@ -27,6 +27,7 @@ export default function VideoListPage(): JSX.Element {
     loadingMore: videoLoadingMore,
     error: videoError,
     hasMore,
+    droppedCount,
     search,
     loadMore,
   } = useVideoSearch();
@@ -41,7 +42,17 @@ export default function VideoListPage(): JSX.Element {
   // What the last "load more" brought, as a line for the live region below
   const [loadedMoreAnnouncement, setLoadedMoreAnnouncement] = useState('');
   const { t } = useTranslation();
-  const mainRef = usePageFocus<HTMLElement>();
+  const focusPage = usePageFocus<HTMLElement>();
+  // The landmark doubles as the target of "back to the top of the results":
+  // focusing it brings the window, and a keyboard user, back to the first row.
+  const mainRef = useRef<HTMLElement | null>(null);
+  const setMainRef = useCallback(
+    (node: HTMLElement | null) => {
+      mainRef.current = node;
+      focusPage(node);
+    },
+    [focusPage],
+  );
   const { pathname, search: searchParams } = useLocation();
 
   // The reader's place in the results survives a trip into a video: the
@@ -83,6 +94,13 @@ export default function VideoListPage(): JSX.Element {
       }
     });
   }, [loadMore, videos.length, t]);
+
+  // The released rows are gone for good, so the way back to the start of the
+  // results is a fresh search: it asks for offset 0 and replaces the window.
+  const handleBackToTop = useCallback(() => {
+    void search({ query, sort, category, channel });
+    mainRef.current?.focus();
+  }, [search, query, sort, category, channel]);
 
   // The list page owns these actions, the top bar menu shows them: reload,
   // the two reindex actions and the only-missing switch.
@@ -135,7 +153,7 @@ export default function VideoListPage(): JSX.Element {
   const showEmptyState = !videoError;
 
   return (
-    <main className="app-main" ref={mainRef} tabIndex={-1}>
+    <main className="app-main" ref={setMainRef} tabIndex={-1}>
       <SearchBar
         query={query}
         sort={sort}
@@ -161,7 +179,14 @@ export default function VideoListPage(): JSX.Element {
           {/* The busy region is the results, never the whole page: the search
               form stays usable and is not announced as busy per page. */}
           <div className="search-results" aria-busy={resultsBusy}>
-            {(videos.length > 0 || showEmptyState) && <VideoList videos={videos} searchQuery={query} />}
+            {(videos.length > 0 || showEmptyState) && (
+              <VideoList
+                videos={videos}
+                searchQuery={query}
+                droppedCount={droppedCount}
+                onBackToTop={handleBackToTop}
+              />
+            )}
             {hasMore && (
               <LoadMore loading={videoLoadingMore} failed={videoError !== null} onLoadMore={handleLoadMore} />
             )}

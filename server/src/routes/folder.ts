@@ -16,8 +16,10 @@ import type {
   FolderSummary,
   ListExistsResponse,
   QueueJob,
+  QueueJobResponse,
   QueueListResponse,
   QueuePauseResponse,
+  QueueSummaryResponse,
   RebuildIndexResponse,
   SaveFolderConfigResponse,
   SkippedVideo,
@@ -29,10 +31,11 @@ import { extractYoutubeVideoId, isYoutubeChannelUrl, isYoutubeVideoId, toWatchUr
 import type { Response } from 'express';
 import express from 'express';
 import { getVideosFolderPaths } from '../config';
+import { sseStreamsOpen } from '../metrics';
 import { ListJsonError, readListJson } from '../services/channelList';
 import { readCollection } from '../services/collection';
 import type { DownloadQueue, EnqueueRequest } from '../services/downloadQueue';
-import { downloadQueue } from '../services/downloadQueue';
+import { downloadQueue, toListJob } from '../services/downloadQueue';
 import { listCachedFolders } from '../services/elasticsearchService';
 import {
   DEFAULT_DOWNLOAD_OPTIONS,
@@ -161,8 +164,26 @@ function toEnqueueRequest(
 
 export type DownloadQueueLike = Pick<
   DownloadQueue,
-  'enqueue' | 'list' | 'get' | 'cancel' | 'cancelAll' | 'whenPersisted' | 'on' | 'off' | 'setPaused' | 'clearFinished'
+  | 'enqueue'
+  | 'list'
+  | 'summary'
+  | 'get'
+  | 'cancel'
+  | 'cancelAll'
+  | 'whenPersisted'
+  | 'on'
+  | 'off'
+  | 'setPaused'
+  | 'isPaused'
+  | 'clearFinished'
 >;
+
+/**
+ * Jobs one unfiltered GET /api/folder/queue page returns. The console polls
+ * /summaries instead, so this cap only bounds a direct or debugging read of a
+ * queue that can hold thousands of jobs; `total` says what was left out.
+ */
+const QUEUE_LIST_LIMIT = 200;
 
 /**
  * The folder routes are a factory so the application can inject the download
@@ -246,10 +267,6 @@ export function invalidateSummaryCache(): void {
 }
 
 export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): express.Router {
-  // Paused state is mirrored here so listJobs can report it (the injected
-  // queue only exposes setPaused)
-  let queueIsPaused = false;
-
   const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, res) => {
     const videosFolderPaths = getVideosFolderPaths();
 
@@ -588,10 +605,35 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
     res.status(202).json({ jobs, skipped });
   };
 
+  /**
+   * The queue as a list. The log tail does not travel with it (a real instance
+   * carried megabytes of log lines on a poll that renders none of them) and the
+   * answer is capped: `total` says how many jobs the queue actually holds. The
+   * console polls /summaries instead; this endpoint serves a filtered view and
+   * API consumers. `?folderPath=` keeps every job of that one folder, because
+   * the video rows read their own status from it.
+   */
   const listJobs: RouteHandler<NoParams, QueueListResponse> = (req, res) => {
     const folderPath = readFolderFilter(req.query.folderPath, res);
     if (folderPath === false) return;
-    res.json({ jobs: queue.list(folderPath), paused: queueIsPaused });
+    const jobs = queue.list(folderPath);
+    const page = folderPath === undefined ? jobs.slice(0, QUEUE_LIST_LIMIT) : jobs;
+    res.json({ jobs: page.map(toListJob), total: jobs.length, paused: queue.isPaused() });
+  };
+
+  /** Counters plus the running jobs, without the list and without logs */
+  const getQueueSummary: RouteHandler<NoParams, QueueSummaryResponse> = (_req, res) => {
+    res.json({ ...queue.summary(), paused: queue.isPaused() });
+  };
+
+  /** One job with its full log tail — what the list deliberately leaves out */
+  const getJob: RouteHandler<{ jobId: string }, QueueJobResponse> = (req, res) => {
+    const job = queue.get(req.params.jobId);
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+    res.json({ job });
   };
 
   const setQueuePaused: RouteHandler<NoParams, QueuePauseResponse> = (req, res) => {
@@ -600,9 +642,10 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
       res.status(400).json({ error: 'paused must be 1 or 0' });
       return;
     }
-    queueIsPaused = value === '1' || value === 'true';
-    queue.setPaused(queueIsPaused);
-    res.json({ paused: queueIsPaused });
+    // The queue owns the flag (restore sets it at boot too) — read it back
+    // instead of answering from a copy the router would have to keep in sync.
+    queue.setPaused(value === '1' || value === 'true');
+    res.json({ paused: queue.isPaused() });
   };
 
   const clearFinishedJobs: RouteHandler<NoParams, ClearFinishedResponse> = (_req, res) => {
@@ -691,7 +734,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
       if (!job) {
         throw new Error('Queue did not return a job');
       }
-      streamJobProgress(req, res, queue, job);
+      streamJobProgress(res, queue, job);
     } catch (error) {
       if (!res.headersSent) {
         sendError(res, 500, 'Failed to start video download', error);
@@ -718,6 +761,9 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
   router.post('/folder/queue', enqueueJobs);
   router.get('/folder/queue', listJobs);
   router.delete('/folder/queue', cancelAllJobs);
+  // registered before /:jobId so "summaries" is not read as a job id
+  router.get('/folder/queue/summaries', getQueueSummary);
+  router.get('/folder/queue/:jobId', getJob);
   router.post('/folder/queue/pause', setQueuePaused);
   router.post('/folder/queue/resume', setQueuePaused);
   // registered before /:jobId so "finished" is not read as a job id
@@ -733,12 +779,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
  * cancelled) or the client disconnects. The job keeps running server-side
  * either way — closing the stream never cancels the download.
  */
-function streamJobProgress(
-  req: { on(event: 'close', listener: () => void): void },
-  res: Response,
-  queue: DownloadQueueLike,
-  job: QueueJob,
-): void {
+function streamJobProgress(res: Response, queue: DownloadQueueLike, job: QueueJob): void {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -748,6 +789,7 @@ function streamJobProgress(
   // Track the stream so graceful shutdown can end it and let server.close()
   // finish instead of waiting on the keep-alive connection.
   const unregister = registerSseStream(res);
+  sseStreamsOpen.inc();
 
   // Every event is validated against the shared contract before it reaches
   // the wire: a malformed event would corrupt the client's stream parser.
@@ -764,6 +806,7 @@ function streamJobProgress(
 
   let seenLogCount = 0;
   let finished = false;
+  let cleanedUp = false;
 
   // SSE comment lines keep the connection alive during quiet merge phases
   // without being parsed as events — the extension's service worker depends
@@ -774,21 +817,36 @@ function streamJobProgress(
     }
   }, 15_000);
 
-  const finish = (snapshot: QueueJob) => {
-    if (finished) {
+  /**
+   * Release everything the stream holds. Idempotent: a finished job ends the
+   * response and the client disconnect that follows emits the same 'close'
+   * event, and either order must decrement the gauge exactly once.
+   */
+  const cleanup = () => {
+    if (cleanedUp) {
       return;
     }
+    cleanedUp = true;
     finished = true;
     clearInterval(heartbeat);
     unregister();
     queue.off('job', onJob);
     queue.off('progress', onProgress);
+    sseStreamsOpen.dec();
+  };
+
+  const finish = (snapshot: QueueJob) => {
+    if (finished) {
+      return;
+    }
+    finished = true;
     sendEvent(
       snapshot.status === 'done'
         ? { type: 'downloadComplete', message: 'Download completed successfully' }
         : { type: 'downloadError', error: snapshot.error ?? `Download ${snapshot.status}` },
     );
     res.end();
+    cleanup();
   };
 
   const onJob = (snapshot: QueueJob) => {
@@ -831,11 +889,10 @@ function streamJobProgress(
     onJob(current);
   }
 
-  req.on('close', () => {
-    finished = true;
-    clearInterval(heartbeat);
-    unregister();
-    queue.off('job', onJob);
-    queue.off('progress', onProgress);
-  });
+  // The response, not the request: since Node 16 the request's 'close' fires
+  // once its body has been consumed, not when the client goes away, so an
+  // aborted download kept the heartbeat interval and both queue listeners
+  // alive until the job happened to settle. The download itself still runs
+  // server-side; only the stream is released.
+  res.on('close', cleanup);
 }

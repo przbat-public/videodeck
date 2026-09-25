@@ -1,7 +1,8 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { VideoListItem } from '@videodeck/shared/api';
+import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULT_WINDOW } from '@videodeck/shared/schemas';
 import { act } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock, jsonResponse } from '../test/fetchMock';
 import { toast } from '../test/toastMock';
@@ -9,6 +10,9 @@ import type { SearchState } from '../utils/searchUrlState';
 import { useVideoSearch } from './useVideoSearch';
 
 const fetchMock = installFetchMock();
+
+/** Rows the results window keeps, whatever the number of pages loaded */
+const WINDOW_ROWS = 2 * SEARCH_DEFAULT_PAGE_SIZE;
 
 const video = (baseName: string): VideoListItem => ({
   baseName,
@@ -19,6 +23,31 @@ const video = (baseName: string): VideoListItem => ({
   folderPath: '/videos',
   comments: [],
 });
+
+/** A page of `count` rows starting at `start`, each named after its position */
+const page = (start: number, count: number = SEARCH_DEFAULT_PAGE_SIZE): VideoListItem[] =>
+  Array.from({ length: count }, (_, index) => video(`v${start + index}`));
+
+/** The offset of a search URL */
+const offsetOf = (url: string): number => Number(new URL(url, 'http://localhost').searchParams.get('offset'));
+
+/**
+ * Answer every page with the rows at the offset it asks for, so a wrong
+ * offset shows up as the wrong rows rather than a guess. Returns the offsets
+ * the hook asked for, oldest first.
+ */
+function servePages(totalCount: number): number[] {
+  const offsets: number[] = [];
+  fetchMock.mockImplementation(async (url: string) => {
+    const offset = offsetOf(url);
+    offsets.push(offset);
+    return jsonResponse({
+      videos: page(offset, Math.max(0, Math.min(SEARCH_DEFAULT_PAGE_SIZE, totalCount - offset))),
+      totalCount,
+    });
+  });
+  return offsets;
+}
 
 const state = (overrides: Partial<SearchState> = {}): SearchState => ({
   query: '',
@@ -199,6 +228,23 @@ describe('useVideoSearch', () => {
       await act(() => result.current.search(state()));
 
       expect(result.current.videos).toHaveLength(1);
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it('reports hasMore=false at the result window even though the index holds more', async () => {
+      // Elasticsearch serves at most SEARCH_MAX_RESULT_WINDOW results by
+      // offset: the next page can only come back empty, so the auto-load has
+      // to stop here instead of spinning on it. The results window keeps the
+      // rows loaded last, so what is on screen is bounded by that window even
+      // when a single answer is larger than it.
+      const atWindow = Array.from({ length: SEARCH_MAX_RESULT_WINDOW }, (_, index) => video(`v${index}`));
+      fetchMock.mockResolvedValueOnce(jsonResponse({ videos: atWindow, totalCount: 37_438 }));
+      const { result } = renderHook(() => useVideoSearch());
+
+      await act(() => result.current.search(state()));
+
+      expect(result.current.videos).toHaveLength(Math.min(SEARCH_MAX_RESULT_WINDOW, WINDOW_ROWS));
+      expect(result.current.totalCount).toBe(37_438);
       expect(result.current.hasMore).toBe(false);
     });
 
@@ -386,6 +432,70 @@ describe('useVideoSearch', () => {
       second.resolve({ videos: [video('new')], totalCount: 1 });
       await waitFor(() => expect(result.current.loading).toBe(false));
       expect(result.current.videos).toEqual([video('new')]);
+    });
+  });
+
+  describe('results window', () => {
+    // servePages leaves a default implementation behind, so the tests after
+    // this block get the mock back the way they expect it
+    afterEach(() => {
+      fetchMock.mockReset();
+    });
+
+    it('keeps asking for the rows after everything loaded while the window stops growing', async () => {
+      const totalCount = 12 * SEARCH_DEFAULT_PAGE_SIZE;
+      const offsets = servePages(totalCount);
+      const { result } = renderHook(() => useVideoSearch());
+
+      await act(() => result.current.search(state()));
+      for (let loaded = 1; loaded < 12; loaded += 1) {
+        await act(() => result.current.loadMore());
+        // However many pages are in, the window on screen stays the same size.
+        expect(result.current.videos.length).toBeLessThanOrEqual(WINDOW_ROWS);
+      }
+
+      // Twelve pages asked for, each one the page after the last: releasing
+      // rows must never make the hook ask for rows it already released.
+      expect(offsets).toEqual(Array.from({ length: 12 }, (_, index) => index * SEARCH_DEFAULT_PAGE_SIZE));
+      expect(result.current.videos).toHaveLength(WINDOW_ROWS);
+      expect(result.current.videos.at(0)?.title).toBe(`Title v${totalCount - WINDOW_ROWS}`);
+      expect(result.current.videos.at(-1)?.title).toBe(`Title v${totalCount - 1}`);
+      expect(result.current.droppedCount).toBe(totalCount - WINDOW_ROWS);
+      expect(result.current.totalCount).toBe(totalCount);
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it('stops offering more once every row is loaded, though the window keeps only the last ones', async () => {
+      const offsets = servePages(320);
+      const { result } = renderHook(() => useVideoSearch());
+
+      await act(() => result.current.search(state()));
+      for (let loaded = 1; loaded < 4; loaded += 1) {
+        await act(() => result.current.loadMore());
+      }
+
+      expect(offsets).toEqual([0, 100, 200, 300]);
+      expect(result.current.totalCount).toBe(320);
+      // hasMore counts the rows the server handed over, so a window holding
+      // 200 of 320 rows does not keep offering a page that is not there.
+      expect(result.current.videos).toHaveLength(WINDOW_ROWS);
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it('starts a new window when a fresh search lands', async () => {
+      servePages(300);
+      const { result } = renderHook(() => useVideoSearch());
+
+      await act(() => result.current.search(state()));
+      await act(() => result.current.loadMore());
+      await act(() => result.current.loadMore());
+      expect(result.current.droppedCount).toBe(100);
+
+      await act(() => result.current.search(state({ query: 'other' })));
+
+      expect(result.current.videos).toEqual(page(0));
+      expect(result.current.droppedCount).toBe(0);
+      expect(result.current.hasMore).toBe(true);
     });
   });
 });

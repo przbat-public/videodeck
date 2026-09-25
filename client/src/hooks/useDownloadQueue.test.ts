@@ -26,6 +26,12 @@ const jsonResponse = (body: unknown, ok = true, status = 200) => ({
   json: async () => body,
 });
 
+/**
+ * GET /api/folder/queue answer: the list is capped and carries no log tails,
+ * so every entry has a job count (`total`) instead.
+ */
+const queueResponse = (jobs: QueueJob[], paused = false) => ({ jobs, total: jobs.length, paused });
+
 describe('useDownloadQueue', () => {
   let fetchMock: FetchMock;
 
@@ -39,7 +45,7 @@ describe('useDownloadQueue', () => {
   });
 
   it('loads the queue for the folder on mount', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ paused: false, jobs: [makeJob({ status: 'done' })] }));
+    fetchMock.mockResolvedValue(jsonResponse(queueResponse([makeJob({ status: 'done' })])));
 
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
 
@@ -62,9 +68,9 @@ describe('useDownloadQueue', () => {
 
   it('enqueues videos and refreshes the list', async () => {
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ paused: false, jobs: [] })) // mount
+      .mockResolvedValueOnce(jsonResponse(queueResponse([]))) // mount
       .mockResolvedValueOnce(jsonResponse({ paused: false, jobs: [makeJob({})], skipped: [] }, true, 202)) // POST
-      .mockResolvedValueOnce(jsonResponse({ paused: false, jobs: [makeJob({ status: 'running' })] })); // refresh
+      .mockResolvedValueOnce(jsonResponse(queueResponse([makeJob({ status: 'running' })]))); // refresh
 
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -92,7 +98,7 @@ describe('useDownloadQueue', () => {
   });
 
   it('does not call the server when enqueueing an empty list', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ paused: false, jobs: [] }));
+    fetchMock.mockResolvedValue(jsonResponse(queueResponse([])));
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
@@ -104,7 +110,7 @@ describe('useDownloadQueue', () => {
 
   it('throws the server error message when enqueue fails', async () => {
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ paused: false, jobs: [] }))
+      .mockResolvedValueOnce(jsonResponse(queueResponse([])))
       .mockResolvedValueOnce(jsonResponse({ error: 'Folder path is not in the allowed list' }, false, 403));
 
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
@@ -118,9 +124,9 @@ describe('useDownloadQueue', () => {
   it('polls while jobs are active and stops when they finish', async () => {
     vi.useFakeTimers();
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ paused: false, jobs: [makeJob({ status: 'running' })] }))
-      .mockResolvedValueOnce(jsonResponse({ paused: false, jobs: [makeJob({ status: 'running', progress: 50 })] }))
-      .mockResolvedValue(jsonResponse({ paused: false, jobs: [makeJob({ status: 'done' })] }));
+      .mockResolvedValueOnce(jsonResponse(queueResponse([makeJob({ status: 'running' })])))
+      .mockResolvedValueOnce(jsonResponse(queueResponse([makeJob({ status: 'running', progress: 50 })])))
+      .mockResolvedValue(jsonResponse(queueResponse([makeJob({ status: 'done' })])));
 
     const { result } = renderHook(() => useDownloadQueue(FOLDER, { pollIntervalMs: 1000 }));
 
@@ -154,12 +160,11 @@ describe('useDownloadQueue', () => {
     const onJobFinished = vi.fn();
     const onQueueDrained = vi.fn();
     const running = makeJob({ status: 'running' });
-    fetchMock.mockResolvedValueOnce(jsonResponse({ paused: false, jobs: [running] })).mockResolvedValue(
-      jsonResponse({
-        paused: false,
-        jobs: [{ ...running, status: 'done', finishedAt: '2024-01-01T00:01:00.000Z' }],
-      }),
-    );
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(queueResponse([running])))
+      .mockResolvedValue(
+        jsonResponse(queueResponse([{ ...running, status: 'done', finishedAt: '2024-01-01T00:01:00.000Z' }])),
+      );
 
     renderHook(() => useDownloadQueue(FOLDER, { pollIntervalMs: 1000, onJobFinished, onQueueDrained }));
 
@@ -185,15 +190,14 @@ describe('useDownloadQueue', () => {
 
   it('prefers the active job per video, otherwise the newest one', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({
-        paused: false,
-        jobs: [
+      jsonResponse(
+        queueResponse([
           makeJob({ id: 'old-error', status: 'error', createdAt: '2024-01-01T00:00:00.000Z' }),
           makeJob({ id: 'newer-done', status: 'done', createdAt: '2024-01-02T00:00:00.000Z' }),
           makeJob({ id: 'active', status: 'queued', createdAt: '2024-01-01T12:00:00.000Z' }),
           makeJob({ id: 'other', videoId: 'v2', status: 'done' }),
-        ],
-      }),
+        ]),
+      ),
     );
 
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
@@ -205,9 +209,9 @@ describe('useDownloadQueue', () => {
 
   it('cancels a job and refreshes', async () => {
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ paused: false, jobs: [makeJob({ status: 'running' })] }))
+      .mockResolvedValueOnce(jsonResponse(queueResponse([makeJob({ status: 'running' })])))
       .mockResolvedValueOnce(jsonResponse({ cancelled: true }))
-      .mockResolvedValue(jsonResponse({ paused: false, jobs: [makeJob({ status: 'cancelled' })] }));
+      .mockResolvedValue(jsonResponse(queueResponse([makeJob({ status: 'cancelled' })])));
 
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
     await waitFor(() => expect(result.current.hasActive).toBe(true));
@@ -221,7 +225,7 @@ describe('useDownloadQueue', () => {
   });
 
   it('cancelAll targets the folder', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ paused: false, jobs: [] }));
+    fetchMock.mockResolvedValue(jsonResponse(queueResponse([])));
     const { result } = renderHook(() => useDownloadQueue(FOLDER));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
@@ -238,7 +242,8 @@ describe('useDownloadQueue', () => {
     // The channel console polls the whole queue only while it sees something
     // active, so it has to be told when this hook queued or cancelled a job.
     const onQueueChanged = vi.fn();
-    fetchMock.mockResolvedValue(jsonResponse({ paused: false, jobs: [], skipped: [] }));
+    // One body serves the list read and the enqueue POST of this test
+    fetchMock.mockResolvedValue(jsonResponse({ jobs: [], total: 0, paused: false, skipped: [] }));
     const { result } = renderHook(() => useDownloadQueue(FOLDER, { onQueueChanged }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(onQueueChanged).not.toHaveBeenCalled();
@@ -268,8 +273,38 @@ describe('useDownloadQueue', () => {
     expect(onQueueChanged).toHaveBeenCalledTimes(3);
   });
 
+  it('reads the log tail of a failed job from its own endpoint, once', async () => {
+    // The queue list deliberately carries no logs: the row that renders one
+    // asks for it separately.
+    const failed = makeJob({ id: 'job-error', status: 'error', error: 'yt-dlp exited with code 1' });
+    const detail = { ...failed, log: ['[download] Destination: Film.mp4', 'ERROR: nope'], logLineCount: 2 };
+    let detailReads = 0;
+    fetchMock.mockImplementation((url: string) => {
+      if (url.startsWith('/api/folder/queue?')) {
+        return Promise.resolve(jsonResponse(queueResponse([failed])));
+      }
+      if (url === '/api/folder/queue/job-error') {
+        detailReads += 1;
+        return Promise.resolve(jsonResponse({ job: detail }));
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    const { result } = renderHook(() => useDownloadQueue(FOLDER, { pollIntervalMs: 10 }));
+
+    await waitFor(() => expect(result.current.jobs[0]?.log).toEqual(detail.log));
+    expect(result.current.jobs[0]?.status).toBe('error');
+    expect(detailReads).toBe(1);
+
+    // A later poll returns the same failed job: its log is not read again
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(detailReads).toBe(1);
+  });
+
   it('reloads when the folder changes', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ paused: false, jobs: [] }));
+    fetchMock.mockResolvedValue(jsonResponse(queueResponse([])));
     const { rerender } = renderHook(({ folder }) => useDownloadQueue(folder), {
       initialProps: { folder: FOLDER },
     });

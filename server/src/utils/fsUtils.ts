@@ -15,6 +15,24 @@ export async function listVisibleFiles(folderPath: string): Promise<string[]> {
 /** yt-dlp temporary files left behind when a download is killed */
 const PARTIAL_FILE_PATTERNS = [/\.part$/, /\.part-/, /\.ytdl$/, /\.temp$/];
 
+/**
+ * Whether `name` is a temporary file yt-dlp may leave for a file it announced
+ * as `destination`. The check is anchored on the announced name: yt-dlp writes
+ * the partial next to the file (`Video.mp4.part`, `Video.f137.mp4.part`,
+ * `Video.mp4.part-Frag1`) and names the resume/temp sidecars after the output
+ * template stem (`Video.ytdl`, `Video.temp`).
+ */
+function isPartialOf(name: string, destination: string): boolean {
+  if (!PARTIAL_FILE_PATTERNS.some((pattern) => pattern.test(name))) {
+    return false;
+  }
+  if (name.startsWith(`${destination}.`)) {
+    return true;
+  }
+  const stem = destination.replace(/\.[^.]+$/, '');
+  return stem !== destination && name.startsWith(`${stem}.`);
+}
+
 /** `folderPath` resolved and normalized, with a trailing separator */
 function folderRootOf(folderPath: string): string {
   const resolved = path.resolve(folderPath);
@@ -95,12 +113,17 @@ export async function writeTextAtomic(filePath: string, text: string): Promise<v
 }
 
 /**
- * Remove the temporary files yt-dlp leaves in a folder when a download is
- * cancelled (`.mp4.part`, fragment files, `.ytdl`). Safe to run any time: at
- * most one `download` job runs per folder, and updates never write partials.
+ * Remove the temporary files yt-dlp left behind for the files it announced as
+ * `destinations` before the download was cancelled (`.mp4.part`, fragment
+ * files, `.ytdl`). Only files that continue one of those names are touched:
+ * the folder may already hold the half-written file of the download that
+ * starts next, and sweeping the whole folder used to delete exactly that.
  * Errors are logged, never thrown — cleanup must not break the queue.
  */
-export async function removePartialDownloads(folderPath: string): Promise<void> {
+export async function removePartialDownloads(folderPath: string, destinations: readonly string[]): Promise<void> {
+  if (destinations.length === 0) {
+    return;
+  }
   let names: string[];
   try {
     names = (await fs.readdir(folderPath)) ?? [];
@@ -109,7 +132,7 @@ export async function removePartialDownloads(folderPath: string): Promise<void> 
   }
   await Promise.all(
     names
-      .filter((name) => PARTIAL_FILE_PATTERNS.some((pattern) => pattern.test(name)))
+      .filter((name) => destinations.some((destination) => isPartialOf(name, destination)))
       .map((name) =>
         fs.unlink(path.join(folderPath, name)).catch((error: unknown) => {
           logger.warn(

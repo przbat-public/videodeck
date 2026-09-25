@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { VideoListItem } from '@videodeck/shared/api';
 import { BrowserRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
 import VideoList from './VideoList';
 
 const mockVideos: VideoListItem[] = [
@@ -47,5 +49,29 @@ describe('VideoList', () => {
     renderWithRouter(<VideoList videos={mockVideos} />);
     const links = screen.getAllByRole('link');
     expect(links).toHaveLength(2);
+  });
+
+  it('offers no way back to the first page while the whole result set is on screen', () => {
+    renderWithRouter(<VideoList videos={mockVideos} droppedCount={0} onBackToTop={() => undefined} />);
+
+    expect(screen.queryByRole('button', { name: i18n.t('search.backToTop') })).toBeNull();
+  });
+
+  it('leaves the notice out when the list has no way back to offer', () => {
+    renderWithRouter(<VideoList videos={mockVideos} droppedCount={250} />);
+
+    expect(screen.queryByText(i18n.t('search.trimmedNotice', { count: 250 }))).toBeNull();
+  });
+
+  it('reports the released results and offers the way back to the first page', async () => {
+    const user = userEvent.setup();
+    const onBackToTop = vi.fn();
+    renderWithRouter(<VideoList videos={mockVideos} droppedCount={250} onBackToTop={onBackToTop} />);
+
+    expect(screen.getByText(i18n.t('search.trimmedNotice', { count: 250 }))).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: i18n.t('search.backToTop') }));
+
+    expect(onBackToTop).toHaveBeenCalledTimes(1);
   });
 });
