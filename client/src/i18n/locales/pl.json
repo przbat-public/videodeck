@@ -31,7 +31,9 @@
     "clear": "Wyczyść",
     "loadMore": "Pokaż więcej",
     "loading": "Ładowanie filmów...",
-    "noResults": "Brak filmów. Spróbuj innego zapytania."
+    "noResults": "Brak filmów. Spróbuj innego zapytania.",
+    "trimmedNotice": "Wcześniejsze wyniki ({{count}}) usunięto, aby przewijanie było płynne",
+    "backToTop": "Wróć na początek wyników"
   },
   "sortOption": {
     "relevance": "Trafność",

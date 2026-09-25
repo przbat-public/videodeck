@@ -31,7 +31,9 @@
     "clear": "Clear",
     "loadMore": "Show more",
     "loading": "Loading videos...",
-    "noResults": "No videos. Try a different query."
+    "noResults": "No videos. Try a different query.",
+    "trimmedNotice": "Earlier results ({{count}}) were removed to keep scrolling fast",
+    "backToTop": "Back to the top of the results"
   },
   "sortOption": {
     "relevance": "Relevance",

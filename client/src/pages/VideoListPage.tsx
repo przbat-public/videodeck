@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRegisterMenuSections } from '../components/appMenuRegistry';
 import { LoadMore } from '../components/LoadMore';
@@ -19,7 +19,15 @@ import { useElasticsearchState } from '../utils/elasticsearchStatus';
 export default function VideoListPage(): JSX.Element {
   const { searchState, setSearchState } = useSearchUrlState();
   const { query, sort, category, channel } = searchState;
-  const { videos, loading: videoLoading, error: videoError, hasMore, search, loadMore } = useVideoSearch();
+  const {
+    videos,
+    loading: videoLoading,
+    error: videoError,
+    hasMore,
+    droppedCount,
+    search,
+    loadMore,
+  } = useVideoSearch();
   const { loading: refreshLoading, refreshCache } = useCacheRefresh();
   const { categories } = useCategories();
   const { channels } = useChannelNames();
@@ -27,7 +35,17 @@ export default function VideoListPage(): JSX.Element {
   const elasticsearchDown = useElasticsearchState() === 'down';
   const [onlyMissing, setOnlyMissing] = useState(false);
   const { t } = useTranslation();
-  const mainRef = usePageFocus<HTMLElement>();
+  const focusPage = usePageFocus<HTMLElement>();
+  // The landmark doubles as the target of "back to the top of the results":
+  // focusing it brings the window, and a keyboard user, back to the first row.
+  const mainRef = useRef<HTMLElement | null>(null);
+  const setMainRef = useCallback(
+    (node: HTMLElement | null) => {
+      mainRef.current = node;
+      focusPage(node);
+    },
+    [focusPage],
+  );
 
   // The URL drives the results: a deep link, a reload and a change made in
   // the search bar all arrive here the same way.
@@ -52,6 +70,13 @@ export default function VideoListPage(): JSX.Element {
   const handleLoadMore = useCallback(() => {
     void loadMore();
   }, [loadMore]);
+
+  // The released rows are gone for good, so the way back to the start of the
+  // results is a fresh search: it asks for offset 0 and replaces the window.
+  const handleBackToTop = useCallback(() => {
+    void search({ query, sort, category, channel });
+    mainRef.current?.focus();
+  }, [search, query, sort, category, channel]);
 
   // The list page owns these actions, the top bar menu shows them: reload,
   // the two reindex actions and the only-missing switch.
@@ -104,7 +129,7 @@ export default function VideoListPage(): JSX.Element {
   const showEmptyState = !videoError;
 
   return (
-    <main className="app-main" ref={mainRef} tabIndex={-1} aria-busy={videoLoading}>
+    <main className="app-main" ref={setMainRef} tabIndex={-1} aria-busy={videoLoading}>
       <SearchBar
         query={query}
         sort={sort}
@@ -127,7 +152,9 @@ export default function VideoListPage(): JSX.Element {
               {t('search.loading')}
             </p>
           )}
-          {(videos.length > 0 || showEmptyState) && <VideoList videos={videos} searchQuery={query} />}
+          {(videos.length > 0 || showEmptyState) && (
+            <VideoList videos={videos} searchQuery={query} droppedCount={droppedCount} onBackToTop={handleBackToTop} />
+          )}
           {hasMore && <LoadMore loading={videoLoading} failed={videoError !== null} onLoadMore={handleLoadMore} />}
         </>
       )}
