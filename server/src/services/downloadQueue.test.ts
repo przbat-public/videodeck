@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -31,6 +32,8 @@ jest.mock('../utils/fsUtils', () => ({
 }));
 
 const realWriteTextAtomic = jest.requireActual<typeof import('../utils/fsUtils')>('../utils/fsUtils').writeTextAtomic;
+const realRemovePartialDownloads =
+  jest.requireActual<typeof import('../utils/fsUtils')>('../utils/fsUtils').removePartialDownloads;
 
 const mockedRefreshIndex = refreshIndex as jest.MockedFunction<typeof refreshIndex>;
 const mockedIndexVideosFromDisk = indexVideosFromDisk as jest.MockedFunction<typeof indexVideosFromDisk>;
@@ -73,6 +76,17 @@ function createFakeSpawn() {
 }
 
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+/** Wait until the file system reaches the expected state (the sweep is async) */
+async function waitForFile(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('file system never reached the expected state');
+}
 
 const request = (videoId: string, overrides: Partial<EnqueueRequest> = {}): EnqueueRequest => ({
   folderPath: '/videos/channel-a',
@@ -363,6 +377,7 @@ describe('DownloadQueue', () => {
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {
       /* silence expected error logs */
     });
+    mockedRemovePartialDownloads.mockClear();
     spawn = createFakeSpawn();
     afterJob = jest.fn().mockResolvedValue(undefined);
     queue = new DownloadQueue({
@@ -956,8 +971,9 @@ describe('DownloadQueue', () => {
     expect(mockedRemovePartialDownloads).not.toHaveBeenCalled();
   });
 
-  it('kills a running job on cancel, sweeps partial files and moves on to the next one', async () => {
+  it('kills a running job on cancel, sweeps its partial files and moves on to the next one', async () => {
     const running = at(queue.enqueue([request('a'), request('b')]), 0);
+    spawned().process.output('[download] Destination: Video a.mp4\n');
 
     expect(queue.cancel(running.id)).toBe(true);
     expect(spawned().process.kill).toHaveBeenCalledWith('SIGTERM');
@@ -967,7 +983,73 @@ describe('DownloadQueue', () => {
     expect(queue.get(running.id)?.status).toBe('cancelled');
     expect(spawn.calls).toHaveLength(2);
     expect(afterJob).not.toHaveBeenCalled();
-    expect(mockedRemovePartialDownloads).toHaveBeenCalledWith('/videos/channel-a');
+    // Only the files this job announced: the folder holds no other job's
+    // partial files at this point, and the sweep must never guess.
+    expect(mockedRemovePartialDownloads).toHaveBeenCalledWith('/videos/channel-a', ['Video a.mp4']);
+  });
+
+  it('holds the folder slot until the cancelled process really exits', async () => {
+    const enqueued = queue.enqueue([request('a'), request('b')]);
+    const child = spawned(0).process;
+    // SIGTERM was sent, but the process is still merging: it has not closed yet
+    child.kill = jest.fn(() => true);
+
+    expect(queue.cancel(at(enqueued, 0).id)).toBe(true);
+
+    // The next download in the folder appends to the same archive.txt, so it
+    // waits for the process that is still alive instead of starting now.
+    expect(spawn.calls).toHaveLength(1);
+
+    child.exit(null);
+    await flush();
+
+    expect(spawn.calls).toHaveLength(2);
+  });
+
+  it('sweeps only the partial files of the cancelled job, not the next job ones', async () => {
+    const folderPath = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-cancel-'));
+    mockedRemovePartialDownloads.mockImplementation(realRemovePartialDownloads);
+    try {
+      const enqueued = queue.enqueue([request('a', { folderPath }), request('b', { folderPath })]);
+      // yt-dlp announces the file it is writing before it starts writing
+      spawned(0).process.output('[download] Destination: Job a.mp4\n');
+      const partialOf = (name: string) => path.join(folderPath, name);
+      await Promise.all([
+        fs.writeFile(partialOf('Job a.mp4.part'), 'a'),
+        fs.writeFile(partialOf('Job b.mp4.part'), 'b'),
+      ]);
+
+      queue.cancel(at(enqueued, 0).id);
+      await waitForFile(() => !existsSync(partialOf('Job a.mp4.part')));
+
+      expect(existsSync(partialOf('Job b.mp4.part'))).toBe(true);
+    } finally {
+      mockedRemovePartialDownloads.mockReset();
+      await fs.rm(folderPath, { recursive: true, force: true });
+    }
+  });
+
+  it('sweeps the partial files of a destination line split across two chunks', async () => {
+    const folderPath = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-cancel-split-'));
+    mockedRemovePartialDownloads.mockImplementation(realRemovePartialDownloads);
+    try {
+      const enqueued = queue.enqueue([request('a', { folderPath }), request('b', { folderPath })]);
+      const child = spawned(0).process;
+      child.output('[download] Destin');
+      child.output('ation: Job a.mp4\n');
+      const partialPath = path.join(folderPath, 'Job a.mp4.part');
+      const otherPath = path.join(folderPath, 'Job b.mp4.part');
+      await Promise.all([fs.writeFile(partialPath, 'a'), fs.writeFile(otherPath, 'b')]);
+
+      queue.cancel(at(enqueued, 0).id);
+
+      await waitForFile(() => !existsSync(partialPath));
+
+      expect(existsSync(otherPath)).toBe(true);
+    } finally {
+      mockedRemovePartialDownloads.mockReset();
+      await fs.rm(folderPath, { recursive: true, force: true });
+    }
   });
 
   it('kills a hung job after the idle timeout and retries it as a transient failure', async () => {
