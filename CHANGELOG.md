@@ -99,6 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stays under the list: after a failed page the automatic loading stops, and
   the button retries
 
+- The extension declares Chrome 102 as its floor, which is what its use of `chrome.storage.session` requires
 ### Fixed
 
 - "Anuluj wszystko" works on a channel with thousands of queued jobs. It
@@ -234,7 +235,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rewritten the URL inside the mounted router logged `/api/videos/search`
   as `/search`
 
-
+- The Chrome extension recognises Shorts, `youtu.be`, embed and live links. It matched only `watch` and `youtu.be` before, and its content script never ran on `youtu.be` at all
+- Clearing the API token in the extension options removes the stored one instead of leaving the old value behind
 ## [1.0.0] - 2026-09-14
 
 First public release.
