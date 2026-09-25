@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { VideoListItem } from '@videodeck/shared/api';
-import { SEARCH_DEFAULT_PAGE_SIZE } from '@videodeck/shared/schemas';
+import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULT_WINDOW } from '@videodeck/shared/schemas';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
@@ -228,6 +228,23 @@ describe('useVideoSearch', () => {
       await act(() => result.current.search(state()));
 
       expect(result.current.videos).toHaveLength(1);
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it('reports hasMore=false at the result window even though the index holds more', async () => {
+      // Elasticsearch serves at most SEARCH_MAX_RESULT_WINDOW results by
+      // offset: the next page can only come back empty, so the auto-load has
+      // to stop here instead of spinning on it. The results window keeps the
+      // rows loaded last, so what is on screen is bounded by that window even
+      // when a single answer is larger than it.
+      const atWindow = Array.from({ length: SEARCH_MAX_RESULT_WINDOW }, (_, index) => video(`v${index}`));
+      fetchMock.mockResolvedValueOnce(jsonResponse({ videos: atWindow, totalCount: 37_438 }));
+      const { result } = renderHook(() => useVideoSearch());
+
+      await act(() => result.current.search(state()));
+
+      expect(result.current.videos).toHaveLength(Math.min(SEARCH_MAX_RESULT_WINDOW, WINDOW_ROWS));
+      expect(result.current.totalCount).toBe(37_438);
       expect(result.current.hasMore).toBe(false);
     });
 

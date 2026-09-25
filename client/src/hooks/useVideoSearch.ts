@@ -1,5 +1,5 @@
 import type { VideoListItem } from '@videodeck/shared/api';
-import { SEARCH_DEFAULT_PAGE_SIZE, SearchResponseSchema } from '@videodeck/shared/schemas';
+import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULT_WINDOW, SearchResponseSchema } from '@videodeck/shared/schemas';
 import type { Dispatch } from 'react';
 import { useCallback, useReducer, useRef } from 'react';
 import toast from 'react-hot-toast';
@@ -159,8 +159,10 @@ export function useVideoSearch(): UseVideoSearchResult {
     loadingMore: state.loadingMore,
     error: state.error,
     // Counted from what loaded, so a window holding fewer rows than the server
-    // has handed over does not keep offering a page that is not there.
-    hasMore: state.loadedCount < state.totalCount,
+    // has handed over does not keep offering a page that is not there, and
+    // capped at the index window: Elasticsearch cannot serve offset pages past
+    // index.max_result_window, so counts above it are real but unreachable.
+    hasMore: state.loadedCount < Math.min(state.totalCount, SEARCH_MAX_RESULT_WINDOW),
     droppedCount: state.loadedCount - state.videos.length,
     search,
     loadMore,

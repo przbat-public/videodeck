@@ -29,6 +29,21 @@ describe('FakeElasticsearch controls', () => {
       body: JSON.stringify({ query: { match_all: {} } }),
     });
 
+  const searchPage = (from: number, size: number) =>
+    fetch(`${baseUrl}/videos_x/_search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: { match_all: {} }, from, size }),
+    });
+
+  /** `_bulk` NDJSON: alternating action and document lines */
+  const bulk = (lines: unknown[]) =>
+    fetch(`${baseUrl}/_bulk`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-ndjson' },
+      body: `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`,
+    });
+
   it('logs every request with method, path and parsed body', async () => {
     await search();
     const last = fake.requestLog.at(-1);
@@ -109,5 +124,56 @@ describe('FakeElasticsearch controls', () => {
     expect(await hitsFor('lodz', 'channelName')).toBe(1); // ł only through the table
     expect(await hitsFor('gleboka integracja', 'title')).toBe(1);
     expect(await hitsFor('kosmosu', 'title')).toBe(0);
+  });
+
+  it('refuses a page past the result window the way Elasticsearch does', async () => {
+    // A real cluster rejects `from + size > index.max_result_window` (10000 by
+    // default) with this 400 body; a fake that slices happily hides the bug.
+    const response = await searchPage(9990, 20);
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as {
+      error: {
+        type: string;
+        reason: string;
+        root_cause: Array<{ type: string; reason: string }>;
+        failed_shards: Array<{ reason: { type: string } }>;
+      };
+      status: number;
+    };
+    expect(body.error.type).toBe('search_phase_execution_exception');
+    expect(body.error.reason).toBe('all shards failed');
+    expect(body.error.root_cause[0]?.type).toBe('illegal_argument_exception');
+    expect(body.error.root_cause[0]?.reason).toContain('Result window is too large');
+    expect(body.error.root_cause[0]?.reason).toContain('[10000] but was [10010]');
+    expect(body.error.failed_shards[0]?.reason.type).toBe('illegal_argument_exception');
+    expect(body.status).toBe(400);
+  });
+
+  it('still serves a page that ends exactly at the result window', async () => {
+    expect((await searchPage(9900, 100)).status).toBe(200);
+  });
+
+  it('reports errors: false when every bulk item succeeded', async () => {
+    const response = await bulk([{ index: { _index: 'videos_x', _id: 'bulk-ok' } }, { title: 'Stored' }]);
+
+    const body = (await response.json()) as { errors: boolean; items: Array<{ index: { status: number } }> };
+    expect(body.errors).toBe(false);
+    expect(body.items[0]?.index.status).toBe(201);
+  });
+
+  it('reports errors: true when any bulk item failed', async () => {
+    // The service decides per item off `errors`; a fake that always says false
+    // lets a caller ignore a failure it should have counted.
+    const response = await bulk([
+      { index: { _index: 'videos_x', _id: 'bulk-ok-2' } },
+      { title: 'Stored' },
+      { index: { _index: 'videos_missing', _id: 'bulk-bad' } },
+      { title: 'No such index' },
+    ]);
+
+    const body = (await response.json()) as { errors: boolean; items: Array<{ index: { status: number } }> };
+    expect(body.errors).toBe(true);
+    expect(body.items[1]?.index.status).toBe(404);
   });
 });

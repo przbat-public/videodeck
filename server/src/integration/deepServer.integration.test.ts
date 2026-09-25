@@ -151,6 +151,44 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(env.mockOpenai.requests).toHaveLength(1); // cache hit — no second call
   });
 
+  it('answers a search whose page crosses the result window with a short page, not a 500', async () => {
+    await env.seedFolder('window', videoFiles('vid00000010', 'Okno wyników'));
+    env.setFolders('window');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    // from + size = 10010: a real cluster rejects that page with
+    // search_phase_execution_exception, which used to reach the user as a 500.
+    const response = await env.agent.get('/api/videos/search?offset=9990&limit=20').expect(200);
+
+    expect(response.body.videos).toEqual([]);
+    // The total still describes the query, so a client can tell where the
+    // window ends rather than guessing from an empty page
+    expect(response.body.totalCount).toBe(1);
+
+    const searches = env.fakeEs.requestLog.filter((request) => request.path.includes('_search'));
+    const lastBody = searches.at(-1)?.body as { from?: number; size?: number };
+    expect((lastBody.from ?? 0) + (lastBody.size ?? 0)).toBeLessThanOrEqual(10_000);
+  });
+
+  it('answers an offset past the result window with an empty page and the real total', async () => {
+    await env.seedFolder('window-past', videoFiles('vid00000011', 'Za oknem'));
+    env.setFolders('window-past');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const response = await env.agent.get('/api/videos/search?offset=10000&limit=20').expect(200);
+
+    expect(response.body.videos).toEqual([]);
+    expect(response.body.totalCount).toBe(1);
+
+    // A size-0 query is the one shape a real cluster still answers there, and
+    // it keeps the total honest instead of guessing
+    const searches = env.fakeEs.requestLog.filter((request) => request.path.includes('_search'));
+    const lastBody = searches.at(-1)?.body as { size?: number } | undefined;
+    expect(lastBody?.size).toBe(0);
+  });
+
   it('walks the model fallback chain when the primary model is rate limited', async () => {
     await env.seedFolder('channel-c', videoFiles('vid00000002', 'Historia filmu'));
     env.setFolders('channel-c');

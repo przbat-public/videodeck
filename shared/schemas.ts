@@ -156,6 +156,14 @@ export const SearchResponseSchema = z.object({
 
 /** Default page size of the search endpoint (client and server share it) */
 export const SEARCH_DEFAULT_PAGE_SIZE = 100;
+/**
+ * Elasticsearch's default `index.max_result_window`: any search whose
+ * `from + size` goes above it is rejected by the cluster. Offset paging ends
+ * at this result, so the server keeps its pages inside the window and the
+ * client stops loading there. Reaching deeper needs `search_after` or a
+ * point-in-time cursor.
+ */
+export const SEARCH_MAX_RESULT_WINDOW = 10_000;
 /** Top-level comments per page (details response and /comments endpoint) */
 export const COMMENTS_PAGE_SIZE = 50;
 
