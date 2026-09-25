@@ -78,7 +78,7 @@ dodaje filmy do kolejki wprost z YouTube.
 
 5. Zaindeksuj filmy raz. Na liście filmów otwórz menu zębatki w górnym
    pasku i wybierz **„Odśwież indeks"** (en: "Refresh index") albo wywołaj
-   `GET /api/videos/refreshCache`. Duże biblioteki chwilę trwają; postęp
+   `POST /api/videos/refreshCache`. Duże biblioteki chwilę trwają; postęp
    widać w toaście.
 
 ## Wymagania

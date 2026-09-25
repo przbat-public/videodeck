@@ -84,7 +84,7 @@ videos straight from YouTube.
 
 5. Index the videos once. On the film list, open the gear menu in the top
    bar and pick **"Refresh index"** (pl: „Odśwież indeks"), or call
-   `GET /api/videos/refreshCache`. Large libraries take a while; progress
+   `POST /api/videos/refreshCache`. Large libraries take a while; progress
    shows in a toast.
 
 ## Requirements
