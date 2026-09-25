@@ -303,6 +303,38 @@ describe('elasticsearchService', () => {
       expect(mockClient.search).toHaveBeenCalled();
     });
 
+    it('lets a read through when a stale failure lands right after a healthy probe', async () => {
+      // The status page and the queue keep polling, so a request that failed
+      // on the client the probe just replaced can land after the outage was
+      // cleared and arm the window again. The cluster answered moments ago, so
+      // the next read has to try: refusing it showed an empty search for a
+      // cluster that was up.
+      noteElasticsearchUnavailable();
+      mockClient.ping.mockResolvedValue({});
+      await checkElasticsearchConnection();
+      // ... and a request that failed on the client it replaced lands after
+      noteElasticsearchUnavailable();
+      mockClient.search.mockResolvedValue({ hits: { hits: [], total: { value: 0 } } });
+
+      await searchVideosWithTotal('robot arm');
+
+      expect(mockClient.search).toHaveBeenCalled();
+    });
+
+    it('still refuses a read when the failure is not stale', async () => {
+      // Same shape without the healthy probe in between: no grace applies, so
+      // the fail-fast behaviour the window exists for is untouched.
+      const now = jest.spyOn(Date, 'now');
+      now.mockReturnValue(50_000);
+      clearElasticsearchOutage();
+      noteElasticsearchUnavailable();
+      mockClient.search.mockReset();
+
+      await expect(searchVideosWithTotal('robot arm')).rejects.toThrow('Elasticsearch is not reachable');
+      expect(mockClient.search).not.toHaveBeenCalled();
+      now.mockRestore();
+    });
+
     it('publishes the state as a metric', async () => {
       const gauge = metricsRegistry.getSingleMetric('elasticsearch_up') as {
         get: () => Promise<{ values: Array<{ value: number }> }>;
