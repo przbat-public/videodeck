@@ -499,6 +499,11 @@ export class DownloadQueue extends EventEmitter {
     }
   }
 
+  /** Whether queued jobs wait for a resume (running ones always finish) */
+  isPaused(): boolean {
+    return this.paused;
+  }
+
   /** Forget finished (done/error/cancelled) jobs; returns how many were dropped */
   clearFinished(): number {
     let cleared = 0;

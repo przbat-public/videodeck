@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import type { QueueJob } from '@videodeck/shared/api';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import {
@@ -324,6 +325,30 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(downloadCall?.args[0]).toBe('--ignore-config');
     expect(downloadCall?.cwd).toBe(folderPath);
     expect(existsSync(`${folderPath}/pwned-from-conf`)).toBe(false);
+  });
+
+  it('reports the queue as paused after a restart restores the paused state', async () => {
+    // A restart with `paused: true` on disk: the queue stops, and the API must
+    // say so. The router used to answer from its own copy of the flag, which a
+    // restart never touches.
+    const stateFile = process.env.QUEUE_STATE_FILE;
+    if (!stateFile) {
+      throw new Error('the deep env must point QUEUE_STATE_FILE at its temp root');
+    }
+    await writeFile(stateFile, JSON.stringify({ paused: true, jobs: [] }));
+    // Loaded lazily: the queue module reads QUEUE_STATE_FILE when it loads, and
+    // the deep env sets that variable right before the app module loads.
+    const { restoreQueueState } =
+      jest.requireActual<typeof import('../services/downloadQueue')>('../services/downloadQueue');
+
+    await expect(restoreQueueState()).resolves.toBe(0);
+
+    const listing = await env.agent.get('/api/folder/queue').expect(200);
+    expect(listing.body.paused).toBe(true);
+
+    // Leave the shared queue running for the tests that follow
+    const resumed = await env.agent.post('/api/folder/queue/resume?paused=0').expect(200);
+    expect(resumed.body).toEqual({ paused: false });
   });
 
   it('reports an unreachable Elasticsearch and recovers when it comes back', async () => {

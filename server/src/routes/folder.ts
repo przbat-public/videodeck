@@ -161,7 +161,17 @@ function toEnqueueRequest(
 
 export type DownloadQueueLike = Pick<
   DownloadQueue,
-  'enqueue' | 'list' | 'get' | 'cancel' | 'cancelAll' | 'whenPersisted' | 'on' | 'off' | 'setPaused' | 'clearFinished'
+  | 'enqueue'
+  | 'list'
+  | 'get'
+  | 'cancel'
+  | 'cancelAll'
+  | 'whenPersisted'
+  | 'on'
+  | 'off'
+  | 'setPaused'
+  | 'isPaused'
+  | 'clearFinished'
 >;
 
 /**
@@ -246,10 +256,6 @@ export function invalidateSummaryCache(): void {
 }
 
 export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): express.Router {
-  // Paused state is mirrored here so listJobs can report it (the injected
-  // queue only exposes setPaused)
-  let queueIsPaused = false;
-
   const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, res) => {
     const videosFolderPaths = getVideosFolderPaths();
 
@@ -591,7 +597,7 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
   const listJobs: RouteHandler<NoParams, QueueListResponse> = (req, res) => {
     const folderPath = readFolderFilter(req.query.folderPath, res);
     if (folderPath === false) return;
-    res.json({ jobs: queue.list(folderPath), paused: queueIsPaused });
+    res.json({ jobs: queue.list(folderPath), paused: queue.isPaused() });
   };
 
   const setQueuePaused: RouteHandler<NoParams, QueuePauseResponse> = (req, res) => {
@@ -600,9 +606,10 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
       res.status(400).json({ error: 'paused must be 1 or 0' });
       return;
     }
-    queueIsPaused = value === '1' || value === 'true';
-    queue.setPaused(queueIsPaused);
-    res.json({ paused: queueIsPaused });
+    // The queue owns the flag (restore sets it at boot too) — read it back
+    // instead of answering from a copy the router would have to keep in sync.
+    queue.setPaused(value === '1' || value === 'true');
+    res.json({ paused: queue.isPaused() });
   };
 
   const clearFinishedJobs: RouteHandler<NoParams, ClearFinishedResponse> = (_req, res) => {
