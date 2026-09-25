@@ -143,6 +143,7 @@
     "saving": "Zapisywanie...",
     "cancel": "Anuluj",
     "missingFile": "Plik config.json nie istnieje w tym folderze.",
+    "collection": "Kolekcja pojedynczych pobrań (bez kanału i list.json)",
     "channelUrl": "Adres kanału YouTube:",
     "channelUrlPlaceholder": "https://www.youtube.com/@channel",
     "category": "Kategoria kanału:",

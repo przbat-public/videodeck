@@ -30,7 +30,8 @@ interface FolderSectionProps {
  * actions and the channel's videos. It renders as a flat list of sections, not
  * as a card of its own: the row above already names the channel, shows the
  * warnings and carries the actions, so a second header and border would only
- * repeat them.
+ * repeat them. A collection has no playlist, so it gets the form and its
+ * videos, loaded as soon as the row opens.
  */
 export function FolderSection({
   folderPath,
@@ -50,6 +51,7 @@ export function FolderSection({
   // The config prop is the single source of truth (StatusPage holds it); the
   // editor reports saves through onConfigUpdate, which flows back down here.
   const hasChannelUrl = Boolean(initialConfig?.channelUrl);
+  const isCollection = initialConfig?.kind === 'collection';
 
   // Reset the flag when the channel URL disappears from the config.
   if (!hasChannelUrl && listExists !== null) {
@@ -76,6 +78,14 @@ export function FolderSection({
     }
   }, [hasChannelUrl, checkListExists, initialListExists]);
 
+  // A channel waits for "load videos" because its list.json can hold
+  // thousands of entries; a collection has no playlist step to wait for
+  useEffect(() => {
+    if (isCollection) {
+      void videoListSectionRef.current?.loadVideos();
+    }
+  }, [isCollection]);
+
   const handleConfigUpdate = (folderPath: string, config: FolderConfig | null) => {
     onConfigUpdate(folderPath, config);
   };
@@ -101,18 +111,20 @@ export function FolderSection({
         onConfigUpdate={handleConfigUpdate}
       />
 
-      <PlaylistDownloadSection
-        folderPath={folderPath}
-        config={initialConfig}
-        listExists={listExists}
-        onPlaylistDownloaded={handlePlaylistDownloaded}
-        onLoadVideosList={() => videoListSectionRef.current?.loadVideos()}
-      />
+      {!isCollection && (
+        <PlaylistDownloadSection
+          folderPath={folderPath}
+          config={initialConfig}
+          listExists={listExists}
+          onPlaylistDownloaded={handlePlaylistDownloaded}
+          onLoadVideosList={() => videoListSectionRef.current?.loadVideos()}
+        />
+      )}
 
       <VideoListSection
         ref={videoListSectionRef}
         folderPath={folderPath}
-        listExists={listExists === true}
+        listExists={isCollection || listExists === true}
         onQueueChanged={handleQueueChanged}
       />
     </>
