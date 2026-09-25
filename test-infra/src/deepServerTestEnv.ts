@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,6 +24,13 @@ import { MockOpenai } from './mockOpenai';
 // shimmed by vite-node alike, so one form serves both runners.
 const REPO_ROOT = path.resolve(__dirname, '../..');
 export const FAKE_YTDLP = path.join(REPO_ROOT, 'scripts/fake-bin/yt-dlp');
+
+/**
+ * File the fake yt-dlp appends its cwd + argv to when it exists in the folder
+ * a run starts from. Seed it through `seedFolder` to record what the queue
+ * handed to the process boundary; see scripts/fake-bin/yt-dlp.
+ */
+export const YTDLP_ARGV_LOG_NAME = '.fake-ytdlp-argv.jsonl';
 
 type AppModule = typeof import('../../server/src/app.js');
 
@@ -56,6 +64,12 @@ export interface DeepServerTestEnv {
   seedFolder(name: string, files: Record<string, string>): Promise<string>;
   /** Point VIDEOS_FOLDER_PATH at the named folders (config caches per raw value) */
   setFolders(...names: string[]): void;
+  /**
+   * Every yt-dlp invocation that started in `folderPath`, oldest first, as the
+   * process boundary saw it (cwd + argv). Only recorded for folders seeded
+   * with `YTDLP_ARGV_LOG_NAME`.
+   */
+  ytDlpCalls(folderPath: string): Array<{ cwd: string; args: string[] }>;
   dispose(): Promise<void>;
 }
 
@@ -119,6 +133,16 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
   const setFolders = (...names: string[]): void => {
     process.env.VIDEOS_FOLDER_PATH = names.map(folder).join(';');
   };
+  const ytDlpCalls = (folderPath: string): Array<{ cwd: string; args: string[] }> => {
+    try {
+      return readFileSync(path.join(folderPath, YTDLP_ARGV_LOG_NAME), 'utf-8')
+        .split('\n')
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line) as { cwd: string; args: string[] });
+    } catch {
+      return []; // the folder was not seeded with the log file
+    }
+  };
 
   return {
     agent: request(app),
@@ -131,6 +155,7 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
     folder,
     seedFolder,
     setFolders,
+    ytDlpCalls,
     async dispose() {
       if (httpServer) {
         await new Promise<void>((resolve, reject) => httpServer.close((error) => (error ? reject(error) : resolve())));

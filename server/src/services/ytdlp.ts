@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { DownloadOptions, JobType } from '@videodeck/shared/api';
-import { DEFAULT_DOWNLOAD_OPTIONS, isForbiddenExtraArg, isReservedExtraArg } from './folderConfig';
+import { assertExtraArgsAllowed, DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 
 /**
  * Everything the server says to yt-dlp lives here, behind a small, testable
@@ -61,10 +61,9 @@ export function buildFormatSelector(maxHeight: number): string {
 
 /**
  * Metadata flags shared by downloads and updates. `extraArgs` (per-folder
- * config.json) are appended last, just before the URL, so a hand-written
- * option overrides nothing structural: flags the pipeline depends on
- * (`-f`, `-o`, `--download-archive`, `--merge-output-format`, `--paths`) are
- * rejected by `validateFolderConfig` before they ever get here.
+ * config.json) are appended last, just before the URL; anything outside the
+ * allowlist in `folderConfig.ts` is refused here, which is the last check
+ * before spawn.
  */
 function buildMetadataArgs(options: DownloadOptions): string[] {
   const args = ['--write-thumbnail', '--write-description', '--write-info-json'];
@@ -89,11 +88,7 @@ function buildMetadataArgs(options: DownloadOptions): string[] {
   if (options.extraArgs) {
     // Config validation and resolveExtraArgs already drop these. The queue
     // state file is parsed by hand, so this is the last line before spawn.
-    for (const arg of options.extraArgs) {
-      if (isReservedExtraArg(arg) || isForbiddenExtraArg(arg)) {
-        throw new Error(`refusing restricted yt-dlp argument: ${arg}`);
-      }
-    }
+    assertExtraArgsAllowed(options.extraArgs);
     args.push(...options.extraArgs);
   }
   return args;
@@ -121,6 +116,7 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
       throw new Error('update job requires baseName');
     }
     return [
+      '--ignore-config',
       '-i',
       '--no-playlist',
       '--newline',
@@ -133,6 +129,7 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
     ];
   }
   return [
+    '--ignore-config',
     '-c',
     '-i',
     '--no-playlist',
@@ -159,7 +156,7 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
  * answer 500 even though every remaining video was fetched.
  */
 export function buildPlaylistArgs(channelUrl: string): string[] {
-  return ['--flat-playlist', '-i', '-j', channelUrl];
+  return ['--ignore-config', '--flat-playlist', '-i', '-j', channelUrl];
 }
 
 /** Wall-clock limit for a playlist fetch (huge channels are slow) */

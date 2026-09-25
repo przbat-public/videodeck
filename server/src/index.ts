@@ -33,7 +33,7 @@ async function startServer() {
       logger.info(`Restored ${restored} queued job(s) from the previous run`);
     }
 
-    logger.info('Server ready. Use GET /api/videos/refreshCache to index videos.');
+    logger.info('Server ready. Use POST /api/videos/refreshCache to index videos.');
 
     // YouTube changes break old yt-dlp releases regularly — the version in the
     // boot log is the first thing to check when downloads start failing.

@@ -4,6 +4,7 @@ import { buildPlaylistArgs, buildYtDlpArgs, getYtDlpVersion } from './ytdlp';
 describe('buildPlaylistArgs', () => {
   it('fetches the flat playlist as NDJSON and ignores per-video errors', () => {
     expect(buildPlaylistArgs('https://www.youtube.com/@a/videos')).toEqual([
+      '--ignore-config',
       '--flat-playlist',
       '-i',
       '-j',
@@ -18,7 +19,16 @@ describe('buildYtDlpArgs', () => {
     videoUrl: 'https://www.youtube.com/watch?v=abc',
   };
 
-  it('passes harmless extraArgs through to yt-dlp', () => {
+  it('ignores every yt-dlp config file, wherever the process starts', () => {
+    // yt-dlp reads yt-dlp.conf from the working directory, which for a
+    // download is the channel folder: anyone who can write a file there
+    // (network share, NAS) would otherwise get an --exec hook.
+    expect(buildYtDlpArgs(job)[0]).toBe('--ignore-config');
+    expect(buildYtDlpArgs({ ...job, type: 'update', baseName: '20260101_x' })[0]).toBe('--ignore-config');
+    expect(buildPlaylistArgs('https://www.youtube.com/@a')).toContain('--ignore-config');
+  });
+
+  it('passes allowlisted extraArgs through to yt-dlp', () => {
     const args = buildYtDlpArgs({
       ...job,
       options: { ...DEFAULT_DOWNLOAD_OPTIONS, extraArgs: ['--no-playlist', '--no-warnings'] },
@@ -27,16 +37,22 @@ describe('buildYtDlpArgs', () => {
     expect(args.slice(-3)).toEqual(['--no-playlist', '--no-warnings', job.videoUrl]);
   });
 
-  it('refuses restricted extraArgs that never went through config validation', () => {
+  it('refuses extraArgs that never went through config validation', () => {
     // The queue state file is parsed by hand, so a hand-edited
     // .queue-state.json is the one path that can still smuggle these in.
-    expect(() =>
-      buildYtDlpArgs({ ...job, options: { ...DEFAULT_DOWNLOAD_OPTIONS, extraArgs: ['--prox', 'http://attacker'] } }),
-    ).toThrow(/restricted yt-dlp argument/);
-
-    expect(() =>
-      buildYtDlpArgs({ ...job, options: { ...DEFAULT_DOWNLOAD_OPTIONS, extraArgs: ['-o/tmp/elsewhere/x.mp4'] } }),
-    ).toThrow(/restricted yt-dlp argument/);
+    const refused = [
+      ['--exec', 'id'],
+      ['--alias', 'foo', '--exec {0}', '--foo', 'touch /tmp/pwned'],
+      ['--prox', 'http://attacker'],
+      ['-ia', '/tmp/urls.txt'],
+      ['-o/tmp/elsewhere/x.mp4'],
+      ['http://169.254.169.254/latest/meta-data/'],
+    ];
+    for (const extraArgs of refused) {
+      expect(() => buildYtDlpArgs({ ...job, options: { ...DEFAULT_DOWNLOAD_OPTIONS, extraArgs } })).toThrow(
+        /refusing yt-dlp argument/,
+      );
+    }
   });
 });
 

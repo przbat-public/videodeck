@@ -84,4 +84,30 @@ describe('FakeElasticsearch controls', () => {
     const response = await fetch(`${baseUrl}/_alias/videos_alias`);
     expect(((await response.json()) as Record<string, unknown>).videos_x).toBeDefined();
   });
+
+  it('folds diacritics the way the real analyzer does, including ł', async () => {
+    // The index analyzer is standard + lowercase + asciifolding. Unicode NFD
+    // handles ę/ą/ó but leaves ł alone, and a fake that stops there answers
+    // empty for a query the real cluster matches.
+    await fetch(`${baseUrl}/videos_x/_doc/polish1?refresh=true`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Głęboka integracja', channelName: 'Kanał Łódź' }),
+    });
+
+    const hitsFor = async (query: string, field: string): Promise<number> => {
+      const response = await fetch(`${baseUrl}/videos_x/_search`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query: { multi_match: { query, fields: [field] } } }),
+      });
+      const body = (await response.json()) as { hits: { total: { value: number } } };
+      return body.hits.total.value;
+    };
+
+    expect(await hitsFor('gleboka', 'title')).toBe(1); // ę folds through NFD
+    expect(await hitsFor('lodz', 'channelName')).toBe(1); // ł only through the table
+    expect(await hitsFor('gleboka integracja', 'title')).toBe(1);
+    expect(await hitsFor('kosmosu', 'title')).toBe(0);
+  });
 });

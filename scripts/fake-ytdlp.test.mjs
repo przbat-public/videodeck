@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -44,6 +44,45 @@ test('rejects every cookie-exfiltration flag', () => {
 test('rejects a run without a canonical watch URL', () => {
   const result = run('https://www.youtube.com/playlist?list=PLx');
   assert.equal(result.status, 2);
+});
+
+test('refuses to run when a yt-dlp.conf would be loaded from the cwd', () => {
+  // Negative control for the --ignore-config guard: this is the vector the
+  // real binary turns into --exec.
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-conf-'));
+  try {
+    writeFileSync(path.join(dir, 'yt-dlp.conf'), "--exec 'touch pwned'\n");
+    const withoutFlag = run('--simulate', WATCH_URL, dir);
+    assert.equal(withoutFlag.status, 3);
+    assert.match(withoutFlag.stderr, /yt-dlp\.conf would have been loaded/);
+
+    const withFlag = run('--ignore-config', '--simulate', WATCH_URL, dir);
+    assert.equal(withFlag.status, 0, withFlag.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('appends every invocation to the folder argv log when the file is there', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-argv-'));
+  try {
+    // Opting in is creating the file; until then the fake writes nothing.
+    assert.equal(run('--version', dir).status, 0);
+    assert.equal(existsSync(path.join(dir, '.fake-ytdlp-argv.jsonl')), false);
+
+    writeFileSync(path.join(dir, '.fake-ytdlp-argv.jsonl'), '');
+    assert.equal(run('--version', dir).status, 0);
+    const entries = readFileSync(path.join(dir, '.fake-ytdlp-argv.jsonl'), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    assert.equal(entries.length, 1);
+    assert.deepEqual(entries[0].args, ['--version']);
+    // macOS tmpdir lives under /private via a symlink; compare real paths
+    assert.equal(entries[0].cwd, realpathSync(dir));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('prints NDJSON playlist entries for --flat-playlist -j', () => {

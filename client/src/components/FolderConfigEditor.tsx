@@ -264,7 +264,7 @@ export function FolderConfigEditor({
                 ? t('config.subtitleLangsPlaceholder', {
                     langs: downloadDefaults.extraArgs.join(' '),
                   })
-                : t('config.extraArgsReserved')}
+                : t('config.extraArgsAllowed')}
             </p>
           </div>
 

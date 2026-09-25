@@ -13,17 +13,47 @@
  *
  * Failure simulation: video ids containing `member` / `private` / `removed`
  * print the corresponding YouTube error and exit 1, so permanent-failure
- * detection can be exercised offline. Everything else is a strict no-op
- * success.
+ * detection can be exercised offline. A `yt-dlp.conf` in the working
+ * directory without `--ignore-config` exits 3: the real binary would have
+ * loaded it. Everything else is a strict no-op success.
+ *
+ * With `.fake-ytdlp-argv.jsonl` present in the working directory, every
+ * invocation appends its cwd and argv there as one JSON line, which is how
+ * tests assert the arguments the queue built.
  */
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const args = process.argv.slice(2);
 
+// Argument trail: a test opts in by creating this file in the folder the run
+// starts from (the channel folder), and then reads the JSON lines back. It is
+// a file rather than an environment variable because the runners sandbox
+// process.env, so a child process would never see a test-set variable.
+const ARGV_LOG_NAME = '.fake-ytdlp-argv.jsonl';
+const argvLogPath = path.join(process.cwd(), ARGV_LOG_NAME);
+if (existsSync(argvLogPath)) {
+  appendFileSync(argvLogPath, `${JSON.stringify({ cwd: process.cwd(), args })}\n`);
+}
+
 if (args.includes('--version')) {
   console.log('2026.06.01-fake');
   process.exit(0);
+}
+
+/**
+ * The real yt-dlp reads yt-dlp.conf from its working directory (and from
+ * $HOME) unless --ignore-config is passed, and a config may carry --exec.
+ * The fake cannot execute a config file, so it does the next honest thing:
+ * it refuses to run and names the file. A test that sees status 3 has found a
+ * call site that forgot --ignore-config.
+ */
+if (!args.includes('--ignore-config') && !args.includes('--no-config')) {
+  const loaded = ['yt-dlp.conf'].filter((name) => existsSync(path.join(process.cwd(), name)));
+  if (loaded.length > 0) {
+    console.error(`fake-ytdlp: refusing to run, ${loaded.join(', ')} would have been loaded from the cwd`);
+    process.exit(3);
+  }
 }
 
 const FORBIDDEN_FLAGS = ['--cookies', '--load-cookies', '--cookies-from-browser', '--netrc-cmd'];

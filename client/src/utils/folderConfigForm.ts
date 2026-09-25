@@ -13,16 +13,40 @@ export const parseSubLangs = (value: string): string[] =>
     .filter((lang) => lang.length > 0);
 
 /**
- * "--cookies-from-browser chrome --proxy http://p" →
- * ['--cookies-from-browser', 'chrome', '--proxy', 'http://p'].
- * Simple whitespace split on purpose: flags are passed to yt-dlp as separate
- * argv entries (no shell), so quoting inside one entry is not supported.
+ * "--sleep-requests 1 --match-filter "duration > 600"" →
+ * ['--sleep-requests', '1', '--match-filter', 'duration > 600'].
+ *
+ * Whitespace separates entries and double quotes group one entry that contains
+ * spaces. yt-dlp receives argv entries (no shell), so the quotes are only how
+ * the form spells a value with spaces in it; they are not passed on.
  */
-export const parseExtraArgs = (value: string): string[] =>
-  value
-    .split(/\s+/)
-    .map((arg) => arg.trim())
-    .filter((arg) => arg.length > 0);
+export const parseExtraArgs = (value: string): string[] => {
+  const entries: string[] = [];
+  let current = '';
+  let quoted = false;
+  for (const char of value) {
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (!quoted && /\s/.test(char)) {
+      if (current.length > 0) {
+        entries.push(current);
+        current = '';
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (current.length > 0) {
+    entries.push(current);
+  }
+  return entries;
+};
+
+/** The inverse of parseExtraArgs: quote the entries that contain spaces */
+export const formatExtraArgs = (args: string[]): string =>
+  args.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)).join(' ');
 
 /**
  * Distinct categories already used across the folders, sorted — offered as
@@ -68,7 +92,7 @@ export const toFormState = (config: FolderConfig | null, defaults: DownloadOptio
   subtitlesEnabled: config?.subLangs ? config.subLangs.length > 0 : defaults.subLangs.length > 0,
   subLangs: config?.subLangs ? config.subLangs.join(', ') : '',
   writeComments: config?.writeComments ?? defaults.writeComments,
-  extraArgs: config?.extraArgs ? config.extraArgs.join(' ') : '',
+  extraArgs: config?.extraArgs ? formatExtraArgs(config.extraArgs) : '',
   impersonate: config?.impersonate ?? defaults.impersonate ?? false,
   sponsorblockRemove: config?.sponsorblockRemove ?? defaults.sponsorblockRemove ?? false,
   concurrentFragments: config?.concurrentFragments !== undefined ? String(config.concurrentFragments) : '',

@@ -150,9 +150,11 @@ Four working principles sit underneath the checklist:
   validation (`server/src/config.ts`, `server/src/routes/http.ts`); never
   pass user-controlled URLs straight to `fetch`.
 - **No SSRF**: internal/loopback addresses stay blocked.
-- **Forbidden yt-dlp flags**: `--cookies`, `--load-cookies`,
-  `--cookies-from-browser` (cookie-jar exfiltration) are rejected in
-  `server/src/services/folderConfig.ts`; do not remove them.
+- **yt-dlp argument allowlist**: a folder config's `extraArgs` may only use
+  the exact flag names in `ALLOWED_EXTRA_ARGS`
+  (`server/src/services/folderConfig.ts`), each with a checked value shape,
+  and every call passes `--ignore-config`. Never widen either without a test
+  for the vector it reopens.
 - **Secrets**: only `server/.env` (git-ignored); never commit real values.
 
 ## Type safety
