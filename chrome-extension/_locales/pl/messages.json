@@ -77,7 +77,7 @@
     "message": "Token API (opcjonalny)"
   },
   "apiTokenHelp": {
-    "message": "Wypełnij tylko, gdy serwer ma ustawione API_TOKEN. Wysyłany jako Authorization: Bearer."
+    "message": "Wypełnij tylko, gdy serwer ma ustawione API_TOKEN. Wysyłany jako Authorization: Bearer. Zostaw puste, aby usunąć zapisany token."
   },
   "apiTokenPlaceholder": {
     "message": "token z API_TOKEN serwera"

@@ -16,10 +16,13 @@ const YOUTUBE_TITLE_SELECTORS = [
 function getVideoInfo(): VideoInfo | null {
   try {
     const url = window.location.href;
+    const videoId = extractYoutubeVideoId(url);
 
-    // YouTube detection
-    if (url.includes('youtube.com/watch') || url.includes('youtu.be/')) {
-      return getYouTubeVideoInfo(url);
+    // Every YouTube URL shape the shared helper understands (watch, youtu.be,
+    // Shorts, embed, live) is a video page. Anything else takes the generic
+    // path.
+    if (videoId !== null) {
+      return getYouTubeVideoInfo(videoId);
     }
 
     return getGenericVideoInfo(url);
@@ -29,13 +32,8 @@ function getVideoInfo(): VideoInfo | null {
   }
 }
 
-/** Builds the YouTube video info from the page DOM and its URL. */
-function getYouTubeVideoInfo(url: string): VideoInfo | null {
-  const videoId = extractYoutubeVideoId(url);
-  if (!videoId) {
-    return null;
-  }
-
+/** Builds the YouTube video info from the page DOM. */
+function getYouTubeVideoInfo(videoId: string): VideoInfo {
   let title = findYoutubeTitle();
 
   // Fallback to the meta tag or the document title

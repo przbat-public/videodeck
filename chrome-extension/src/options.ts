@@ -104,11 +104,14 @@ async function saveSettings(
   }
 
   try {
-    await chrome.storage.local.set({
-      serverUrl,
-      folderPath,
-      ...(apiToken.length > 0 ? { apiToken } : {}),
-    });
+    // An empty token field means "no token": drop whatever is stored, or
+    // clearing the field would silently keep sending the old token.
+    await chrome.storage.local.set({ serverUrl, folderPath });
+    if (apiToken.length > 0) {
+      await chrome.storage.local.set({ apiToken });
+    } else {
+      await chrome.storage.local.remove('apiToken');
+    }
     showStatus(status, 'success', chrome.i18n.getMessage('settingsSaved'));
   } catch (error) {
     showStatus(

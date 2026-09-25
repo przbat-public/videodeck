@@ -77,7 +77,7 @@
     "message": "API token (optional)"
   },
   "apiTokenHelp": {
-    "message": "Fill only when the server sets API_TOKEN. Sent as Authorization: Bearer."
+    "message": "Fill only when the server sets API_TOKEN. Sent as Authorization: Bearer. Leave empty to delete a saved token."
   },
   "apiTokenPlaceholder": {
     "message": "the server API_TOKEN value"
