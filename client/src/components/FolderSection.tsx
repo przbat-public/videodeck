@@ -1,6 +1,7 @@
 import type { DownloadOptions, FolderConfig } from '@videodeck/shared/api';
 import { ListExistsResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { apiGet } from '../utils/apiClient';
 import { FolderConfigEditor } from './FolderConfigEditor';
 import { PlaylistDownloadSection } from './PlaylistDownloadSection';
 import type { VideoListSectionHandle } from './VideoListSection';
@@ -60,11 +61,11 @@ export function FolderSection({
 
   const checkListExists = useCallback(async () => {
     try {
-      const response = await fetch(`/api/folder/list-exists?folderPath=${encodeURIComponent(folderPath)}`);
-      if (response.ok) {
-        const data = ListExistsResponseSchema.parse(await response.json());
-        setListExists(data.exists);
-      }
+      const data = await apiGet(
+        `/api/folder/list-exists?folderPath=${encodeURIComponent(folderPath)}`,
+        ListExistsResponseSchema,
+      );
+      setListExists(data.exists);
     } catch {
       // Best-effort check: an unknown list.json state is handled by the parent
     }

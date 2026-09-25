@@ -1,5 +1,6 @@
 import { CategoriesResponseSchema } from '@videodeck/shared/schemas';
 import { useEffect, useState } from 'react';
+import { apiGet } from '../utils/apiClient';
 
 interface UseCategoriesResult {
   categories: string[];
@@ -19,11 +20,10 @@ export function useCategories(): UseCategoriesResult {
 
     const load = async (): Promise<void> => {
       try {
-        const response = await fetch('/api/videos/categories', { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = CategoriesResponseSchema.parse(await response.json());
+        const data = await apiGet('/api/videos/categories', CategoriesResponseSchema, {
+          signal: controller.signal,
+          message: (status) => `HTTP error! status: ${status}`,
+        });
         setCategories(data.categories || []);
       } catch {
         if (controller.signal.aborted) {

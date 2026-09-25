@@ -2,6 +2,7 @@ import type { FolderSummary } from '@videodeck/shared/api';
 import { FolderSummariesResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useState } from 'react';
 import i18n from '../i18n';
+import { apiGet } from '../utils/apiClient';
 import { logError } from '../utils/logError';
 
 interface UseFolderSummariesResult {
@@ -22,13 +23,12 @@ interface UseFolderSummariesResult {
 
 /** GET one folder's counts; the response carries that folder alone */
 async function fetchFolderSummary(folderPath: string): Promise<Record<string, FolderSummary>> {
-  const response = await fetch(`/api/folder/summaries?folderPath=${encodeURIComponent(folderPath)}`, {
-    cache: 'no-store',
-  });
-  if (!response.ok) {
-    throw new Error(i18n.t('errors.loadSummaries'));
-  }
-  return FolderSummariesResponseSchema.parse(await response.json()).summaries;
+  const data = await apiGet(
+    `/api/folder/summaries?folderPath=${encodeURIComponent(folderPath)}`,
+    FolderSummariesResponseSchema,
+    { cache: 'no-store', message: i18n.t('errors.loadSummaries') },
+  );
+  return data.summaries;
 }
 
 /**
@@ -45,11 +45,10 @@ export function useFolderSummaries(enabled = true): UseFolderSummariesResult {
   const load = useCallback(async (signal?: AbortSignal): Promise<void> => {
     setFetching(true);
     try {
-      const response = await fetch('/api/folder/summaries', signal ? { signal } : {});
-      if (!response.ok) {
-        throw new Error(i18n.t('errors.loadSummaries'));
-      }
-      const data = FolderSummariesResponseSchema.parse(await response.json());
+      const data = await apiGet('/api/folder/summaries', FolderSummariesResponseSchema, {
+        ...(signal ? { signal } : {}),
+        message: i18n.t('errors.loadSummaries'),
+      });
       setSummaries(data.summaries);
       setError(null);
     } catch (err) {

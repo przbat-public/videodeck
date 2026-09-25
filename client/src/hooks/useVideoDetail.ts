@@ -3,6 +3,7 @@ import { useCallback, useEffect, useReducer } from 'react';
 import i18n from '../i18n';
 import type { VideoDetailState } from '../reducers/videoDetailReducer';
 import { initialState, VideoDetailActionType, videoDetailReducer } from '../reducers/videoDetailReducer';
+import { apiGet } from '../utils/apiClient';
 
 interface UseVideoDetailResult {
   state: VideoDetailState;
@@ -24,12 +25,14 @@ export function useVideoDetail(baseName: string | undefined): UseVideoDetailResu
       }
       try {
         dispatch({ type: VideoDetailActionType.FETCH_DETAILS_START });
-        const detailsResponse = await fetch(
+        const detailsData = await apiGet(
           `/api/videos/${encodeURIComponent(baseName)}/details`,
-          signal ? { signal } : {},
+          VideoDetailsResponseSchema,
+          {
+            ...(signal ? { signal } : {}),
+            message: i18n.t('errors.loadDetails'),
+          },
         );
-        if (!detailsResponse.ok) throw new Error(i18n.t('errors.loadDetails'));
-        const detailsData = VideoDetailsResponseSchema.parse(await detailsResponse.json());
         dispatch({
           type: VideoDetailActionType.FETCH_DETAILS_SUCCESS,
           payload: detailsData.details,

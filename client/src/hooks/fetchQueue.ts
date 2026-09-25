@@ -1,6 +1,7 @@
 import type { QueueListResponse } from '@videodeck/shared/api';
 import { QueueListResponseSchema } from '@videodeck/shared/schemas';
 import i18n from '../i18n';
+import { apiGet } from '../utils/apiClient';
 
 /**
  * GET /api/folder/queue: one folder's jobs when a folder path is given,
@@ -13,9 +14,9 @@ export async function fetchQueue(signal?: AbortSignal, folderPath?: string): Pro
   // conditional request can come back as `304 Not Modified`, which `fetch`
   // reports as `ok: false` (the server used to answer exactly that, and the
   // queue controls showed a load error while the queue was healthy).
-  const response = await fetch(url, { cache: 'no-store', ...(signal ? { signal } : {}) });
-  if (!response.ok) {
-    throw new Error(i18n.t('errors.loadQueue'));
-  }
-  return QueueListResponseSchema.parse(await response.json());
+  return apiGet(url, QueueListResponseSchema, {
+    cache: 'no-store',
+    ...(signal ? { signal } : {}),
+    message: i18n.t('errors.loadQueue'),
+  });
 }
