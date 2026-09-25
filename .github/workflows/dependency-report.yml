@@ -24,7 +24,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version-file: .nvmrc
       # `pnpm outdated`/`pnpm audit` only read package.json + the workspace
       # lockfile, so no install step is needed (pnpm ships with the runner).
       - name: Generate report

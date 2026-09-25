@@ -1,8 +1,8 @@
-# Server image: Node 22 + yt-dlp (nightly) + ffmpeg. Video folders are
+# Server image: Node 24 + yt-dlp (nightly) + ffmpeg. Video folders are
 # mounted at runtime (see docker-compose.yml). Installed via pnpm (the
 # workspace root carries the lockfile; a full install keeps the image
 # simple — the build needs dev dependencies for tsc).
-FROM node:22-slim
+FROM node:24-slim
 
 RUN corepack enable \
     && apt-get update && apt-get install -y --no-install-recommends \
