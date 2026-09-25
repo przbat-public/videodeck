@@ -699,7 +699,7 @@ describe('folder router', () => {
       });
       expect(mockedSpawn).toHaveBeenCalledWith(
         'yt-dlp',
-        ['--flat-playlist', '-i', '-j', 'https://www.youtube.com/@a/videos'],
+        ['--ignore-config', '--flat-playlist', '-i', '-j', 'https://www.youtube.com/@a/videos'],
         { cwd: FOLDER },
       );
       expect(mockedFs.open).toHaveBeenCalledWith(expect.stringMatching(/list\.json\..*\.tmp$/), 'w');

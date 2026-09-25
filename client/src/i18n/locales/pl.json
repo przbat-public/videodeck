@@ -161,7 +161,7 @@
     "concurrentFragmentsDefault": "Domyślnie ({{count}})",
     "extraArgs": "Dodatkowe argumenty yt-dlp:",
     "extraArgsPlaceholder": "np. --no-playlist --match-filter \"duration < 7200\"",
-    "extraArgsReserved": "flagi -f, -o, --download-archive, --merge-output-format i --paths są zarezerwowane; --exec, --proxy i --cookies* są zabronione"
+    "extraArgsAllowed": "dozwolone: --no-playlist, --no-warnings, --no-write-*, --sleep-* (także --min/--max-sleep-interval), --limit-rate, --match-filter, --retries"
   },
   "playlist": {
     "checking": "Sprawdzanie statusu pliku list.json...",

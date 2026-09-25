@@ -1,7 +1,12 @@
 import { existsSync } from 'node:fs';
 import type { QueueJob } from '@videodeck/shared/api';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
-import { createDeepServerTestEnv, folderConfig, videoFiles } from '@videodeck/test-infra/deepServerTestEnv';
+import {
+  createDeepServerTestEnv,
+  folderConfig,
+  videoFiles,
+  YTDLP_ARGV_LOG_NAME,
+} from '@videodeck/test-infra/deepServerTestEnv';
 
 /**
  * Deep integration: the REAL Express app (routes + services + queue) over
@@ -173,6 +178,127 @@ describe('deep server integration (real app, fake external world)', () => {
 
     const list = await env.agent.get(`/api/folder/list?folderPath=${encodeURIComponent(folderPath)}`).expect(200);
     expect(list.body.downloadStatuses.aaaaaaaaaaa).toBe(true);
+  });
+
+  it('refuses folder configs that carry a yt-dlp escape hatch, and stores the safe ones', async () => {
+    const folderPath = await env.seedFolder('channel-config-guard', {});
+    env.setFolders('channel-config-guard');
+
+    // The vector from the review, over the real API: --alias defines `foo` as
+    // --exec, and --foo then runs it.
+    const exploit = await env.agent
+      .put('/api/folder/config')
+      .send({
+        folderPath,
+        config: {
+          channelUrl: 'https://www.youtube.com/@deepchannel',
+          extraArgs: ['--alias', 'foo', '--exec {0}', '--foo', `touch ${env.root}/pwned`],
+        },
+      })
+      .expect(400);
+    expect((exploit.body as { error: string }).error).toMatch(/extraArgs/);
+
+    const stored = await env.agent
+      .put('/api/folder/config')
+      .send({
+        folderPath,
+        config: {
+          channelUrl: 'https://www.youtube.com/@deepchannel',
+          extraArgs: ['--sleep-requests', '1', '--limit-rate', '2M'],
+        },
+      })
+      .expect(200);
+    expect((stored.body as { config: { extraArgs: string[] } }).config.extraArgs).toEqual([
+      '--sleep-requests',
+      '1',
+      '--limit-rate',
+      '2M',
+    ]);
+  });
+
+  it('drops a hand-written escape hatch from config.json before yt-dlp ever sees it', async () => {
+    // No API involved: whoever can write to the channel folder gets to write
+    // config.json, so the queue must sanitize what it reads from disk.
+    const folderPath = await env.seedFolder('channel-hostile-config', {
+      [YTDLP_ARGV_LOG_NAME]: '',
+      'config.json': JSON.stringify({
+        channelUrl: 'https://www.youtube.com/@deepchannel',
+        extraArgs: ['--alias', 'foo', '--exec {0}', '--foo', `touch ${env.root}/pwned`, '--sleep-requests', '1'],
+      }),
+    });
+    env.setFolders('channel-hostile-config');
+
+    await env.agent
+      .post('/api/folder/queue')
+      .send({
+        folderPath,
+        type: 'download',
+        videos: [
+          {
+            videoId: 'hostile0001',
+            videoUrl: 'https://www.youtube.com/watch?v=hostile0001',
+            title: 'Hostile config',
+          },
+        ],
+      })
+      .expect(202);
+
+    const job = (await waitForJobStatus(folderPath, 'hostile0001', 'done')) as QueueJob;
+    expect(job.progress).toBe(100);
+
+    const call = env
+      .ytDlpCalls(folderPath)
+      .find((candidate) => candidate.args.includes('https://www.youtube.com/watch?v=hostile0001'));
+    expect(call).toBeDefined();
+    // The safe argument survived, the alias chain did not reach the binary
+    expect(call?.args).toContain('--sleep-requests');
+    expect(call?.args.join(' ')).not.toMatch(/--alias|--exec|--foo/);
+    expect(existsSync(`${env.root}/pwned`)).toBe(false);
+  });
+
+  it('ignores a yt-dlp.conf planted in the channel folder, for downloads and playlist fetches', async () => {
+    // The second RCE path: yt-dlp reads yt-dlp.conf from its working
+    // directory. The fake refuses to run if a config would have been loaded
+    // without --ignore-config, so a green run here proves the flag is passed.
+    const folderPath = await env.seedFolder('channel-hostile-conf', {
+      [YTDLP_ARGV_LOG_NAME]: '',
+      'config.json': folderConfig('https://www.youtube.com/@deepchannel'),
+      'yt-dlp.conf': "--exec 'touch pwned-from-conf'\n",
+    });
+    env.setFolders('channel-hostile-conf');
+
+    const playlist = await env.agent.post('/api/folder/download-playlist').send({ folderPath }).expect(200);
+    expect((playlist.body as { videoCount: number }).videoCount).toBe(2);
+
+    const playlistCall = env.ytDlpCalls(folderPath).find((candidate) => candidate.args.includes('--flat-playlist'));
+    expect(playlistCall?.args).toContain('--ignore-config');
+    expect(playlistCall?.cwd).toBe(folderPath);
+
+    await env.agent
+      .post('/api/folder/queue')
+      .send({
+        folderPath,
+        type: 'download',
+        videos: [
+          {
+            videoId: 'conf0000001',
+            videoUrl: 'https://www.youtube.com/watch?v=conf0000001',
+            title: 'Planted config',
+          },
+        ],
+      })
+      .expect(202);
+
+    const job = (await waitForJobStatus(folderPath, 'conf0000001', 'done')) as QueueJob;
+    expect(job.progress).toBe(100);
+    expect(existsSync(`${folderPath}/20260101_Fake video conf0000001.mp4`)).toBe(true);
+
+    const downloadCall = env
+      .ytDlpCalls(folderPath)
+      .find((candidate) => candidate.args.includes('https://www.youtube.com/watch?v=conf0000001'));
+    expect(downloadCall?.args[0]).toBe('--ignore-config');
+    expect(downloadCall?.cwd).toBe(folderPath);
+    expect(existsSync(`${folderPath}/pwned-from-conf`)).toBe(false);
   });
 
   it('reports an unreachable Elasticsearch and recovers when it comes back', async () => {

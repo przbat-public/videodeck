@@ -182,7 +182,7 @@ describe('buildConfig', () => {
         subtitlesEnabled: true,
         subLangs: '',
         writeComments: true,
-        extraArgs: '--cookies-from-browser chrome',
+        extraArgs: '--sleep-requests 1 --match-filter "duration > 600 & !is_live"',
         impersonate: false,
         sponsorblockRemove: false,
         concurrentFragments: '',
@@ -190,7 +190,7 @@ describe('buildConfig', () => {
       },
       null,
     );
-    expect(withArgs.extraArgs).toEqual(['--cookies-from-browser', 'chrome']);
+    expect(withArgs.extraArgs).toEqual(['--sleep-requests', '1', '--match-filter', 'duration > 600 & !is_live']);
 
     const cleared = buildConfig(
       {
@@ -206,9 +206,17 @@ describe('buildConfig', () => {
         concurrentFragments: '',
         collection: false,
       },
-      { extraArgs: ['--proxy', 'http://p'] },
+      { extraArgs: ['--sleep-requests', '1'] },
     );
     expect(cleared).not.toHaveProperty('extraArgs');
+  });
+
+  it('round-trips an argument whose value contains spaces', () => {
+    const config = { extraArgs: ['--match-filter', 'duration > 600 & !is_live'] };
+
+    const form = toFormState(config, defaults);
+    expect(form.extraArgs).toBe('--match-filter "duration > 600 & !is_live"');
+    expect(buildConfig(form, config).extraArgs).toEqual(['--match-filter', 'duration > 600 & !is_live']);
   });
 
   it('disables subtitles with an empty array', () => {

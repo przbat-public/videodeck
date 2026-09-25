@@ -1,6 +1,7 @@
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { queryCardByTitle } from './drivers/searchDrivers';
 import { channelRow, folderSection } from './drivers/statusDrivers';
 import { refreshCacheAndWait, renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
@@ -31,11 +32,18 @@ describe('client integration — real backend', () => {
 
     const searchPage = await renderApp('/');
 
-    // Search without diacritics — the real analyzer folds the seeded title.
+    // Search without diacritics — the real analyzer folds the seeded title
+    // (and its highlight splits the card title into a <mark> plus text). The
+    // list shows every seeded video before the query lands, so wait for the
+    // filtered result set: the other cards have to disappear.
     const input = await screen.findByLabelText('Fraza wyszukiwania');
     await searchPage.user.type(input, 'gleboka');
     await searchPage.user.keyboard('{Enter}');
-    await screen.findByText('Głęboka integracja');
+    await waitFor(() => {
+      expect(queryCardByTitle('Głęboka integracja')).toBeInTheDocument();
+      expect(queryCardByTitle('Historia kosmosu')).not.toBeInTheDocument();
+      expect(queryCardByTitle('Drugi kanał wideo')).not.toBeInTheDocument();
+    });
 
     searchPage.unmount();
 

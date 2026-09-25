@@ -32,139 +32,179 @@ export const MAX_CATEGORY_LENGTH = 64;
 /** yt-dlp language selectors: `en`, `pl`, `en-US`, `en.*`, `all`, `-live_chat` */
 const SUB_LANG_RE = /^-?[A-Za-z0-9._*-]+$/;
 
-/**
- * Flags the download pipeline owns: the archive (`--download-archive`) is
- * what deduplicates re-uploads under a changed title, the output template
- * (`-o`) is what the folder index parses, `-f`/`--merge-output-format`
- * produce the playable mp4, and `--paths` would break the folder layout.
- * A per-folder config may not override any of them.
- */
-const RESERVED_EXTRA_ARGS = [
-  '-f',
-  '--format',
-  '-o',
-  '--output',
-  '-P',
-  '--paths',
-  '--download-archive',
-  '--no-download-archive',
-  '--merge-output-format',
-];
-
-/** Reserved flags that take their value as the next entry (`--proxy http://p`) */
-const RESERVED_ARGS_WITH_VALUE = [
-  '-f',
-  '--format',
-  '-o',
-  '--output',
-  '-P',
-  '--paths',
-  '--download-archive',
-  '--merge-output-format',
-];
+/** Value shapes for the allowlisted flags that take one */
+const SECONDS_RE = /^(?:0|[1-9]\d{0,4})(?:\.\d{1,3})?$/;
+const RATE_RE = /^(?:0|[1-9]\d{0,9})(?:\.\d{1,3})?[KMG]?$/i;
+const RETRIES_RE = /^(?:0|[1-9]\d{0,2}|infinite)$/;
+/** A `--match-filter` expression: comparisons and boolean operators, no shell metacharacters */
+const FILTER_RE = /^[\p{L}\p{N} _.,:=!<>&|()[\]{}'"%@#+*/-]{1,200}$/u;
 
 /**
- * Flags a per-folder config may never pass to yt-dlp, even though the
- * pipeline does not use them:
- * - `--exec` / `--exec-before-download` / `--ppa` / `--postprocessor-args` /
- *   `--use-postprocessor` run shell commands or arbitrary binaries (RCE via
- *   config.json);
- * - `--config-locations` loads an arbitrary yt-dlp config;
- * - `--cookies*` exfiltrate the browser cookie jar;
- * - `--proxy` routes the traffic through an arbitrary host;
- * - `--netrc` / `--netrc-cmd` / `--netrc-location` /
- *   `--username` / `--password` leak or read credentials;
- * - `--print-to-file` appends to an arbitrary file (`..` traversal works),
- *   `--batch-file` / `--load-info-json` read arbitrary files whose contents
- *   then land in the job log served to clients;
- * - `--ffmpeg-location` points the merge step at an arbitrary binary;
- * - `--downloader-args` / `--external-downloader-args` forward arbitrary
- *   arguments to external downloaders.
+ * The complete set of yt-dlp flags a per-folder config may pass, each with the
+ * shape of its value.
  *
- * The short spellings are listed too (`-a` for `--batch-file`, `-u`/`-p` for
- * `--username`/`--password`), and matching accepts the prefix spellings
- * yt-dlp resolves (`--prox`, `--cookies-fr`), so a shortened flag cannot slip
- * past the list.
+ * This is an allowlist on purpose. A denylist loses to yt-dlp's own parser:
+ * `--alias foo "--exec {0}"` expands to an arbitrary flag at run time,
+ * clustered short options (`-ia` is `-i` plus `-a`) hide a second flag inside
+ * one entry, any unambiguous prefix of a long option resolves to it, and a
+ * bare entry is simply another URL to download. None of those spell out
+ * `--exec`, and all of them reach either a command or a file, so only exact
+ * names of flags that neither run nor read anything are accepted.
+ *
+ * The set covers what channel configs actually ask for: throttle the channel
+ * (`--sleep-*`, `--limit-rate`), cap retries, skip Shorts or live streams
+ * (`--match-filter`), keep a single video (`--no-playlist`) and suppress the
+ * metadata sidecars the pipeline would otherwise write.
  */
-const FORBIDDEN_EXTRA_ARGS = [
-  '--exec',
-  '--exec-before-download',
-  '--config-locations',
-  '--cookies',
-  '--load-cookies',
-  '--cookies-from-browser',
-  '--proxy',
-  '--netrc',
-  '--netrc-cmd',
-  '--netrc-location',
-  '--username',
-  '--password',
-  '--video-password',
-  '--print-to-file',
-  '--batch-file',
-  '-a',
-  '-u',
-  '-p',
-  '--load-info-json',
-  '--use-postprocessor',
-  '--postprocessor-args',
-  '--ppa',
-  '--downloader-args',
-  '--external-downloader-args',
-  '--ffmpeg-location',
-];
+const ALLOWED_EXTRA_ARGS: ReadonlyMap<string, { values: 0 | 1; pattern?: RegExp }> = new Map([
+  ['--no-playlist', { values: 0 }],
+  ['--no-warnings', { values: 0 }],
+  ['--no-write-thumbnail', { values: 0 }],
+  ['--no-write-description', { values: 0 }],
+  ['--no-write-info-json', { values: 0 }],
+  ['--no-write-subs', { values: 0 }],
+  ['--no-write-auto-subs', { values: 0 }],
+  ['--no-write-comments', { values: 0 }],
+  ['--no-write-playlist-metafiles', { values: 0 }],
+  ['--sleep-requests', { values: 1, pattern: SECONDS_RE }],
+  ['--sleep-interval', { values: 1, pattern: SECONDS_RE }],
+  ['--min-sleep-interval', { values: 1, pattern: SECONDS_RE }],
+  ['--max-sleep-interval', { values: 1, pattern: SECONDS_RE }],
+  ['--limit-rate', { values: 1, pattern: RATE_RE }],
+  ['--retries', { values: 1, pattern: RETRIES_RE }],
+  ['--match-filter', { values: 1, pattern: FILTER_RE }],
+  ['--match-filters', { values: 1, pattern: FILTER_RE }],
+]);
 
-/**
- * Total entries a dropped forbidden flag consumes (the flag itself plus its
- * values). Most flags fall back to orphanValueWidth, but `--print-to-file`
- * takes TWO values (template + file), so it always consumes three entries.
- */
-const FORBIDDEN_ARGS_VALUE_WIDTH: Record<string, number> = {
-  '--print-to-file': 3,
-};
+/** The allowed names, spelled out in the error a rejected entry produces */
+const ALLOWED_FLAG_LIST = [...ALLOWED_EXTRA_ARGS.keys()].join(', ');
 
-/**
- * Real yt-dlp flags that also happen to be proper prefixes of a restricted
- * flag. yt-dlp prefers an exact match over a prefix match, so these stay
- * legal: `--print` (not `--print-to-file`), `--downloader` and
- * `--external-downloader` (not their `-args` forms; both accept only names
- * from yt-dlp's own downloader table) and `--no-download`, an alias for
- * `--no-simulate` rather than `--no-download-archive`.
- */
-const PREFIX_LOOKALIKE_FLAGS = new Set(['--print', '--downloader', '--external-downloader', '--no-download']);
-
-/** The flag part of an argument: `--proxy=http://p` becomes `--proxy` */
-function flagName(arg: string): string {
-  const equals = arg.indexOf('=');
-  return equals === -1 ? arg : arg.slice(0, equals);
+interface ExtraArgParse {
+  /** Accepted entries, exactly as the config spelled them */
+  accepted: string[];
+  /** The first problem found, or null when every entry is allowed */
+  error: string | null;
 }
 
-/**
- * The restricted flag an `extraArgs` entry stands for, or undefined when the
- * entry is not restricted. yt-dlp's parser accepts any unambiguous prefix of a
- * long option (`--prox` means `--proxy`) and lets short options carry their
- * value glued (`-psecret`), so full-name comparison alone let both spellings
- * through.
- */
-function restrictedArg(arg: string, restricted: readonly string[]): string | undefined {
-  if (arg.startsWith('--')) {
-    const flag = flagName(arg);
-    if (PREFIX_LOOKALIKE_FLAGS.has(flag)) {
-      return undefined;
-    }
-    return restricted.find((name) => name === flag || (flag.length > 2 && name.startsWith(flag)));
+interface ExtraArgEntry {
+  /** The flag part: `--limit-rate=1M` and `--limit-rate` both give `--limit-rate` */
+  flag: string;
+  /** The value glued with `=`, when the entry has one */
+  glued: string | undefined;
+  /** The entry as the config spelled it, trimmed */
+  text: string;
+}
+
+type EntryRead = { ok: true; entry: ExtraArgEntry } | { ok: false; error: string };
+
+/** Split one entry into its flag and glued value, or say why it is unusable */
+function readEntry(raw: unknown): EntryRead {
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    return { ok: false, error: `extraArgs contains an invalid argument: ${JSON.stringify(raw)}` };
   }
-  return restricted.find((name) => name.length === 2 && arg.startsWith(name));
+  const text = raw.trim();
+  const equals = text.indexOf('=');
+  if (equals === -1) {
+    return { ok: true, entry: { flag: text, glued: undefined, text } };
+  }
+  return { ok: true, entry: { flag: text.slice(0, equals), glued: text.slice(equals + 1), text } };
 }
 
-/** Whether an `extraArgs` entry shadows a pipeline-owned flag (`-f`, `--out=…`) */
-export function isReservedExtraArg(arg: string): boolean {
-  return restrictedArg(arg, RESERVED_EXTRA_ARGS) !== undefined;
+interface EntryCheck {
+  /** Entries the check consumes: 1 for a boolean or glued flag, 2 for flag plus value */
+  width: number;
+  /** Accepted argv entries to keep (empty when the entry is dropped) */
+  accepted: string[];
+  error?: string;
 }
 
-/** Whether an `extraArgs` entry is a dangerous flag (`--exec`, `--prox=…`) */
-export function isForbiddenExtraArg(arg: string): boolean {
-  return restrictedArg(arg, FORBIDDEN_EXTRA_ARGS) !== undefined;
+/** Judge a flag that takes a value: the glued one, or the entry after it */
+function checkValueFlag(entry: ExtraArgEntry, pattern: RegExp | undefined, next: unknown): EntryCheck {
+  const value = entry.glued ?? (typeof next === 'string' ? next : undefined);
+  if (value === undefined || value.startsWith('-')) {
+    return { width: 1, accepted: [], error: `extraArgs: ${entry.flag} needs a value` };
+  }
+  if (pattern !== undefined && !pattern.test(value)) {
+    return {
+      width: entry.glued === undefined ? 2 : 1,
+      accepted: [],
+      error: `extraArgs: ${entry.flag} has an invalid value: ${JSON.stringify(value)}`,
+    };
+  }
+  return {
+    width: entry.glued === undefined ? 2 : 1,
+    accepted: entry.glued === undefined ? [value] : [],
+  };
+}
+
+/** Judge one entry against the allowlist, with the entry that follows it */
+function checkEntry(entry: ExtraArgEntry, next: unknown): EntryCheck {
+  const spec = ALLOWED_EXTRA_ARGS.get(entry.flag);
+  if (spec === undefined) {
+    // No arity is known for a rejected flag, so a bare next entry is taken as
+    // its value and dropped with it.
+    return {
+      width: entry.glued === undefined && isBareValue(next) ? 2 : 1,
+      accepted: [],
+      error: `extraArgs uses an argument that is not allowed: ${entry.flag} (allowed: ${ALLOWED_FLAG_LIST})`,
+    };
+  }
+
+  if (spec.values === 0) {
+    return entry.glued === undefined
+      ? { width: 1, accepted: [entry.text] }
+      : { width: 1, accepted: [], error: `extraArgs: ${entry.flag} does not take a value` };
+  }
+
+  const check = checkValueFlag(entry, spec.pattern, next);
+  return check.error === undefined ? { ...check, accepted: [entry.text, ...check.accepted] } : check;
+}
+
+/**
+ * Read an `extraArgs` list as flag/value pairs. Allowed pairs land in
+ * `accepted`; anything else produces the first error and is dropped together
+ * with its value, so a caller that sanitizes never leaves an orphan value
+ * behind that yt-dlp would read as another URL.
+ */
+function parseExtraArgs(extraArgs: readonly unknown[]): ExtraArgParse {
+  const accepted: string[] = [];
+  let error: string | null = null;
+
+  let index = 0;
+  while (index < extraArgs.length) {
+    const read = readEntry(extraArgs[index]);
+    if (!read.ok) {
+      error ??= read.error;
+      index += 1;
+      continue;
+    }
+    const check = checkEntry(read.entry, extraArgs[index + 1]);
+    if (error === null && check.error !== undefined) {
+      error = check.error;
+    }
+    accepted.push(...check.accepted);
+    index += check.width;
+  }
+
+  return { accepted, error };
+}
+
+/** Whether an entry can be the value of the flag before it (not another flag) */
+function isBareValue(entry: unknown): boolean {
+  return typeof entry === 'string' && entry.trim().length > 0 && !entry.startsWith('-');
+}
+
+/**
+ * Throwing form of the same check, for the spawn boundary. Config validation
+ * and `resolveDownloadOptions` both sanitize already; the queue state file is
+ * parsed by hand, so a hand-edited `.queue-state.json` is the one path that
+ * can still smuggle an argument in.
+ */
+export function assertExtraArgsAllowed(extraArgs: readonly string[]): void {
+  const { error } = parseExtraArgs(extraArgs);
+  if (error !== null) {
+    throw new Error(`refusing yt-dlp argument: ${error}`);
+  }
 }
 
 /** Error message when `value` is not a valid maxHeight, or null when it is */
@@ -201,23 +241,12 @@ function validateConcurrentFragments(value: unknown): string | null {
   return null;
 }
 
-/** Error message when `value` is not a valid extraArgs list, or null when it is */
+/** Error message when `value` is not an allowed extraArgs list, or null when it is */
 function validateExtraArgs(value: unknown): string | null {
   if (!Array.isArray(value)) {
     return 'extraArgs must be an array of yt-dlp arguments';
   }
-  for (const arg of value) {
-    if (typeof arg !== 'string' || arg.trim().length === 0) {
-      return `extraArgs contains an invalid argument: ${JSON.stringify(arg)}`;
-    }
-    if (isReservedExtraArg(arg)) {
-      return `extraArgs must not override the built-in argument: ${arg}`;
-    }
-    if (isForbiddenExtraArg(arg)) {
-      return `extraArgs must not use the restricted argument: ${arg}`;
-    }
-  }
-  return null;
+  return parseExtraArgs(value).error;
 }
 
 /** Error message when `value` is not a valid category, or null when it is */
@@ -305,51 +334,12 @@ function isLanguageCode(value: unknown): value is string {
 }
 
 /**
- * Extra entries a dropped flag consumes on top of itself: 1 when its value is
- * glued (`--proxy=http://p`, `-psecret`) or the flag takes none, 2 when the
- * value is the next entry (only for flags that take one — `valueFlags`).
- */
-function orphanValueWidth(arg: string, flag: string, next: unknown, valueFlags: readonly string[] | undefined): number {
-  if (arg.includes('=') || (flag.length === 2 && arg.length > 2)) {
-    return 1;
-  }
-  if (valueFlags !== undefined && !valueFlags.includes(flag)) {
-    return 1;
-  }
-  return typeof next === 'string' && !next.startsWith('-') ? 2 : 1;
-}
-
-/**
- * Accept every extraArg that the pipeline does not own and that is not
- * forbidden. A dropped flag like `-f` orphans its value ("best") — that is
- * dropped too, unless the value is glued (`-f=best`) or the flag takes none.
+ * Keep the allowlisted entries of a list that came from disk. A dropped flag
+ * takes its value with it, so nothing is left behind for yt-dlp to read as
+ * another URL.
  */
 function resolveExtraArgs(extraArgs: unknown[]): string[] {
-  const accepted: string[] = [];
-  let index = 0;
-  while (index < extraArgs.length) {
-    const arg = extraArgs[index];
-    if (typeof arg !== 'string' || arg.trim().length === 0) {
-      index += 1;
-      continue;
-    }
-    const reservedFlag = restrictedArg(arg, RESERVED_EXTRA_ARGS);
-    if (reservedFlag !== undefined) {
-      index += orphanValueWidth(arg, reservedFlag, extraArgs[index + 1], RESERVED_ARGS_WITH_VALUE);
-      continue;
-    }
-    const forbiddenFlag = restrictedArg(arg, FORBIDDEN_EXTRA_ARGS);
-    if (forbiddenFlag !== undefined) {
-      // Drop the flag and its value(s): `--proxy http://p` arrives as two
-      // entries, `--print-to-file` as three (template + file).
-      const extraWidth = FORBIDDEN_ARGS_VALUE_WIDTH[forbiddenFlag];
-      index += extraWidth ?? orphanValueWidth(arg, forbiddenFlag, extraArgs[index + 1], undefined);
-      continue;
-    }
-    accepted.push(arg);
-    index += 1;
-  }
-  return accepted;
+  return parseExtraArgs(extraArgs).accepted;
 }
 
 /**

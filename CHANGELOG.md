@@ -110,6 +110,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server image and the CI jobs all read the same pin, and `@types/node`
   follows it. Node 22 support ends in April 2027, so the move lands well
   before the date
+- `extraArgs` in a folder's `config.json` is an allowlist now. A config may
+  still throttle a channel, cap retries, skip Shorts and drop sidecars, and
+  the editor hint lists exactly which flags those are. Everything else is
+  refused with a message naming the argument, both by the API and when a
+  hand-written `config.json` is read back
+
+### Security
+
+- **Closed a remote code execution path through `extraArgs`.** The old check
+  was a list of forbidden flags, and yt-dlp's parser walks around such a list:
+  `--alias` defines an arbitrary flag, short options cluster (`-ia` is two),
+  any unambiguous prefix of a long option resolves, and a bare entry is
+  another URL to download. Folder configs now accept only exact names from a
+  fixed allowlist, with each value shape checked
+- **Closed a second remote code execution path through `yt-dlp.conf`.** yt-dlp
+  reads that file from its working directory, which for a download is the
+  channel folder, so anyone who could write into that folder (a network share,
+  a NAS, a synced drive) could hand it an `--exec`. Every yt-dlp call now
+  passes `--ignore-config`, the playlist fetch included
 
 - The extension declares Chrome 102 as its floor, which is what its use of `chrome.storage.session` requires
 ### Fixed

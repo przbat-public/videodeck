@@ -13,7 +13,11 @@ import type { RenderedApp } from '../render-app';
 export const findSearchInput = () => screen.findByLabelText('Fraza wyszukiwania');
 
 export const sortSelect = () => screen.getByLabelText('Sort');
-export const categorySelect = () => screen.getByLabelText('Kategoria');
+/**
+ * The category select appears only once the categories request has answered
+ * (an empty list renders no control), so this one waits like the channel one.
+ */
+export const categorySelect = () => screen.findByLabelText('Kategoria');
 export const channelSelect = () => screen.findByRole('combobox', { name: 'Kanał' });
 
 /** Type a phrase and commit it with Enter (the debounce does not wait) */

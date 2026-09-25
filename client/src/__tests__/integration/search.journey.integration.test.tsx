@@ -89,13 +89,13 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
     const page = await renderApp('/');
     await findCardByTitle('Drugi kanał wideo');
 
-    await pickOption(page.user, categorySelect(), 'other');
+    await pickOption(page.user, await categorySelect(), 'other');
     await waitFor(() => expect(queryCardByTitle('Głęboka integracja')).not.toBeInTheDocument());
     expect(queryCardByTitle('Drugi kanał wideo')).toBeInTheDocument();
     // A single-category search targets one physical index, never a comma list.
     expect(lastSearch().request?.path.includes(',')).toBe(false);
 
-    await pickOption(page.user, categorySelect(), 'tests');
+    await pickOption(page.user, await categorySelect(), 'tests');
     await waitFor(() => expect(queryCardByTitle('Drugi kanał wideo')).not.toBeInTheDocument());
     expect(queryCardByTitle('Głęboka integracja')).toBeInTheDocument();
   });

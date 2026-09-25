@@ -38,10 +38,34 @@ interface SearchBody {
   _source?: { excludes?: string[] } | boolean;
 }
 
+/**
+ * Letters Lucene's ASCIIFoldingFilter folds to ASCII while Unicode NFD leaves
+ * them alone. The real index analyzer is `standard` + lowercase +
+ * asciifolding, so `ł` has to search as `l`; Polish needs that one, and the
+ * rest of the table covers the usual European letters.
+ */
+const ASCII_FOLD_SPECIALS: Record<string, string> = {
+  ß: 'ss',
+  æ: 'ae',
+  œ: 'oe',
+  þ: 'th',
+  ð: 'd',
+  ø: 'o',
+  ł: 'l',
+  đ: 'd',
+  ħ: 'h',
+  ı: 'i',
+  ŋ: 'n',
+  ŧ: 't',
+  ĸ: 'k',
+  ſ: 's',
+};
+
 /** Strip diacritics + lowercase, mirroring the search analyzer's asciifolding */
 function fold(value: string): string {
   return value
     .toLowerCase()
+    .replace(/[ßæœþðøłđħıŋŧĸſ]/g, (char) => ASCII_FOLD_SPECIALS[char] ?? char)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 }
