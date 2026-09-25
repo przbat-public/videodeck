@@ -15,6 +15,13 @@ server {
     }
 
     location /api/ {
+        # The server refuses cross-site requests on its own; answering here too
+        # keeps such a request from reaching it at all. Browsers set this
+        # header, so clients without it (curl, the extension worker) are
+        # unaffected.
+        if ($http_sec_fetch_site = "cross-site") {
+            return 403;
+        }
         proxy_pass http://server:3001;
         proxy_http_version 1.1;
         proxy_set_header Host $host;

@@ -11,6 +11,7 @@ import {
   getExtensionOrigins,
   getRateLimitMax,
   getRateLimitWindowMs,
+  getTrustProxy,
   isTokenRequired,
 } from './config';
 import { metricsBody, metricsRegistry, recordRequest } from './metrics';
@@ -152,6 +153,15 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   // `Last-Modified`, which is what the player and the thumbnails rely on.
   app.set('etag', false);
 
+  // The rate limit below counts per client IP. Behind a reverse proxy every
+  // request carries the proxy's address unless the hops are declared, and then
+  // Express reads X-Forwarded-For instead. Off by default: an undeclared proxy
+  // is safer than a header a client can spoof.
+  const trustProxy = getTrustProxy();
+  if (trustProxy !== undefined) {
+    app.set('trust proxy', trustProxy);
+  }
+
   const extraCorsOrigins = getCorsOrigins();
   const extensionOrigins = getExtensionOrigins();
 
@@ -187,7 +197,10 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   // /health and /health/live stay public; /metrics and everything else are
   // behind the token when set (metrics leak route cardinality and OpenAI
   // cost counters). REQUIRE_API_TOKEN closes open mode entirely.
-  const auth = createAuthMiddleware(options.apiToken, isTokenRequired());
+  const auth = createAuthMiddleware(options.apiToken, isTokenRequired(), {
+    extraOrigins: extraCorsOrigins,
+    extensionOrigins,
+  });
   app.use('/api', auth);
   app.use('/metrics', auth);
 

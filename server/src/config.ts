@@ -99,6 +99,33 @@ export function getRateLimitWindowMs(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 10 * 60 * 1000;
 }
 
+/**
+ * How many proxies in front of the server are trusted for the client IP
+ * (`app.set('trust proxy', …)`). The rate limit counts per IP, and behind the
+ * nginx container every request arrives from the proxy: without this the whole
+ * household shares one bucket, and with a too-wide setting a client can spoof
+ * its address with `X-Forwarded-For`.
+ *
+ * `TRUST_PROXY` accepts the values Express understands: a hop count (`1` for
+ * the single nginx hop of the shipped compose stack), `loopback`, a subnet, or
+ * `false`. Unset means "trust nobody", which is right when the server is
+ * reached directly.
+ */
+export function getTrustProxy(): string | number | boolean | undefined {
+  const raw = (process.env.TRUST_PROXY ?? '').trim();
+  if (raw.length === 0) {
+    return undefined;
+  }
+  if (raw === 'true') {
+    return true;
+  }
+  if (raw === 'false') {
+    return false;
+  }
+  const hops = Number.parseInt(raw, 10);
+  return Number.isInteger(hops) && String(hops) === raw ? hops : raw;
+}
+
 // ---------------------------------------------------------------------------
 // Video folders
 // ---------------------------------------------------------------------------

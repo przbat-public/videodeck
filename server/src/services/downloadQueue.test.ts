@@ -1365,6 +1365,49 @@ describe('queue state persistence', () => {
     expect(spawn.spawnFn).not.toHaveBeenCalled();
   });
 
+  it('rebuilds the video URL from the id instead of trusting the state file', async () => {
+    // The enqueue route canonicalises the URL (and refuses anything that is
+    // not a YouTube host); restore is the one path where a hand-edited file
+    // could point yt-dlp somewhere else, so it canonicalises too.
+    await fs.writeFile(
+      stateFile,
+      JSON.stringify({
+        paused: true,
+        jobs: [
+          {
+            folderPath: '/videos/channel-a',
+            videoId: 'dQw4w9WgXcQ',
+            videoUrl: 'file:///etc/passwd',
+          },
+          {
+            folderPath: '/videos/channel-a',
+            videoId: 'aaaaaaaaaaa',
+            videoUrl: 'http://169.254.169.254/latest/meta-data/',
+          },
+          {
+            folderPath: '/videos/channel-a',
+            videoId: 'bbbbbbbbbbb',
+            videoUrl: 'https://www.youtube.com/watch?v=bbbbbbbbbbb&list=PLsmuggled',
+          },
+        ],
+      }),
+    );
+
+    const queue = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+
+    await expect(restoreQueueState(queue, stateFile)).resolves.toBe(3);
+    expect(queue.list('/videos/channel-a').map((job) => job.videoUrl)).toEqual([
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+      'https://www.youtube.com/watch?v=bbbbbbbbbbb',
+    ]);
+  });
+
   it('drops restored options that do not parse and keeps the jobs', async () => {
     await fs.writeFile(
       stateFile,

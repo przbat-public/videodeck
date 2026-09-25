@@ -30,5 +30,8 @@
       "import": "./youtube.ts",
       "require": "./youtube.ts"
     }
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
   }
 }

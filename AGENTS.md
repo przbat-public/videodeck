@@ -188,8 +188,9 @@ Playwright stays the thin mocked-API browser layer (`client/e2e/`).
 ## Gotchas
 
 - **pnpm lockfile**: one `pnpm-lock.yaml` for the workspace; install with
-  `pnpm install --frozen-lockfile` (CI and Docker alike). `shared/*.ts`
-  resolves `zod` from the workspace root package.
+  `pnpm install --frozen-lockfile` (CI and Docker alike). Every package
+  declares what it imports: `shared/` carries its own `zod` dependency, so a
+  production-only install (`--prod`, as the server image does) still has it.
 - **E2E queue mock**: the mocked queue endpoint is matched by **regex**
   (`/\/api\/folder\/queue/`); a naive glob like `queue*` misses `/queue/pause`,
   and `includes('pause')` matches the query string `?paused=0`.

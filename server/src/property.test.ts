@@ -112,6 +112,23 @@ describe('extractYoutubeVideoId', () => {
       }),
     );
   });
+
+  it('reads the id from every host shape the embed code produces', () => {
+    const id = 'dQw4w9WgXcQ';
+    // The allowlist doubles as the server's SSRF guard, so it only ever holds
+    // real YouTube hosts; the www form is the one the embed snippets emit.
+    const urls = [
+      `https://www.youtube-nocookie.com/embed/${id}`,
+      `https://youtube-nocookie.com/embed/${id}`,
+      `https://www.youtube.com/shorts/${id}`,
+      `https://youtu.be/${id}`,
+      `https://m.youtube.com/watch?v=${id}`,
+    ];
+    for (const url of urls) {
+      expect({ url, id: extractYoutubeVideoId(url) }).toEqual({ url, id });
+    }
+    expect(extractYoutubeVideoId(`https://www.youtube-nocookie.com.evil.test/embed/${id}`)).toBeNull();
+  });
 });
 
 describe('stripVttCueSettings', () => {

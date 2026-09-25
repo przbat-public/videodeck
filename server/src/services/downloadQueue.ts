@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { DownloadOptions, JobStatus, JobType, QueueJob } from '@videodeck/shared/api';
 import { extractYtDlpProgress, isYtDlpProgressLine } from '@videodeck/shared/progress';
 import { DownloadOptionsSchema } from '@videodeck/shared/schemas';
+import { toWatchUrl } from '@videodeck/shared/youtube';
 import { removePartialDownloads, writeTextAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/objectUtils';
@@ -829,6 +830,10 @@ function isRestorableFolder(folderPath: string): boolean {
  * look like a job we wrote (corrupt hand-edited file) are skipped, and
  * unparseable options fall back to the folder defaults instead of reaching
  * buildYtDlpArgs as an unchecked cast.
+ *
+ * The URL is rebuilt from the id instead of read from the file: a hand-edited
+ * state file could otherwise point yt-dlp at `file:///etc/passwd` or an
+ * internal host, and the enqueue route is not in the way on this path.
  */
 function toEnqueueRequest(job: unknown): EnqueueRequest | null {
   if (!job || typeof job !== 'object') {
@@ -849,7 +854,7 @@ function toEnqueueRequest(job: unknown): EnqueueRequest | null {
   return {
     folderPath,
     videoId,
-    videoUrl: typeof record.videoUrl === 'string' ? record.videoUrl : `https://www.youtube.com/watch?v=${videoId}`,
+    videoUrl: toWatchUrl(videoId),
     ...(typeof record.title === 'string' ? { title: record.title } : {}),
     type: record.type === 'update' ? 'update' : 'download',
     ...(typeof record.baseName === 'string' ? { baseName: record.baseName } : {}),
