@@ -2,8 +2,8 @@ import type { JSX } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRegisterMenuSections } from '../components/appMenuRegistry';
+import { LoadMore } from '../components/LoadMore';
 import SearchBar from '../components/SearchBar';
-import { Button } from '../components/ui/Button';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { Loading } from '../components/ui/Loading';
 import VideoList from '../components/VideoList';
@@ -128,13 +128,7 @@ export default function VideoListPage(): JSX.Element {
             </p>
           )}
           {(videos.length > 0 || showEmptyState) && <VideoList videos={videos} searchQuery={query} />}
-          {hasMore && (
-            <div className="load-more">
-              <Button onClick={handleLoadMore} disabled={videoLoading}>
-                {videoLoading ? t('app.loading') : t('search.loadMore')}
-              </Button>
-            </div>
-          )}
+          {hasMore && <LoadMore loading={videoLoading} failed={videoError !== null} onLoadMore={handleLoadMore} />}
         </>
       )}
     </main>

@@ -95,21 +95,27 @@ test.describe('search page', () => {
     await expect.poll(() => sorts).toContain('date-asc');
   });
 
-  test('"Show more" appends the next page', async ({ page }) => {
+  test('scrolling to the end of the results loads the next page by itself', async ({ page }) => {
+    const offsets: (string | null)[] = [];
+    const firstPage = Array.from({ length: 30 }, (_, index) => video(`v${index}`, `Film ${index + 1}`));
     await mockApi(page, {
-      search: (params) =>
-        params.get('offset') === '1'
-          ? { videos: [video('v2', 'Drugi film')], totalCount: 2 }
-          : { videos: [video('v1', 'Pierwszy film')], totalCount: 2 },
+      search: (params) => {
+        offsets.push(params.get('offset'));
+        return params.get('offset') === '30'
+          ? { videos: [video('v30', 'Ostatni film')], totalCount: 31 }
+          : { videos: firstPage, totalCount: 31 };
+      },
     });
 
     await page.goto('/');
-    await expect(page.getByText('Pierwszy film')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Pokaż więcej' })).toBeVisible();
+    await expect(page.getByText('Film 1', { exact: true })).toBeVisible();
+    // Ten rows of cards keep the end of the list out of reach for now
+    expect(offsets).not.toContain('30');
 
-    await page.getByRole('button', { name: 'Pokaż więcej' }).click();
+    await page.getByRole('button', { name: 'Pokaż więcej' }).scrollIntoViewIfNeeded();
 
-    await expect(page.getByText('Drugi film')).toBeVisible();
+    await expect(page.getByText('Ostatni film')).toBeVisible();
+    expect(offsets).toContain('30');
     await expect(page.getByRole('button', { name: 'Pokaż więcej' })).toBeHidden();
   });
 

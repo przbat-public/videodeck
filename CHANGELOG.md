@@ -92,6 +92,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   clears the banner as soon as it answers again. A failed request reports the
   outage itself, so the banner does not wait for the next poll.
 
+### Changed
+
+- The search results load the next page by themselves when you scroll near
+  the end of the list, so "Pokaż więcej" no longer needs a click. The button
+  stays under the list: after a failed page the automatic loading stops, and
+  the button retries
+
 ### Fixed
 
 - "Anuluj wszystko" works on a channel with thousands of queued jobs. It
