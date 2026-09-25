@@ -77,11 +77,12 @@ async function startServer() {
       /* logged inside */
     });
 
-    // Ctrl+C / docker stop: cancel yt-dlp jobs, end SSE streams and close
-    // cleanly once the killed children are gone.
+    // Ctrl+C / docker stop: stop the yt-dlp jobs (the state file keeps them for
+    // the next boot), end SSE streams and close cleanly once the killed
+    // children are gone.
     installShutdownHandlers({
       server,
-      cancelJobs: () => downloadQueue.cancelAll(),
+      cancelJobs: () => downloadQueue.stopForShutdown(),
       awaitIdle: (timeoutMs) => downloadQueue.waitForIdle(timeoutMs),
       closeSseStreams: closeAllSseStreams,
     });

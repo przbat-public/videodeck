@@ -78,6 +78,7 @@ describe('createApp auth wiring', () => {
     get: jest.fn(),
     cancel: jest.fn(),
     cancelAll: jest.fn(() => 0),
+    whenPersisted: jest.fn(() => Promise.resolve()),
     setPaused: jest.fn(),
     clearFinished: jest.fn(() => 0),
     on: jest.fn(),

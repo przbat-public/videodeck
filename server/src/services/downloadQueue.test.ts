@@ -1064,6 +1064,23 @@ describe('DownloadQueue', () => {
     expect(queue.list().map((job) => job.status)).toEqual(['cancelled', 'cancelled', 'running']);
   });
 
+  it('cancelAll never starts a job it is about to cancel', () => {
+    queue.enqueue([update('a'), update('b'), update('c'), update('d'), update('e')]);
+    expect(spawn.calls).toHaveLength(3); // update limit of 3
+
+    expect(queue.cancelAll('/videos/channel-a')).toBe(5);
+
+    // a slot freed by one cancellation must not go to a job the same call cancels next
+    expect(spawn.calls).toHaveLength(3);
+    expect(statuses()).toEqual([
+      ['a', 'cancelled'],
+      ['b', 'cancelled'],
+      ['c', 'cancelled'],
+      ['d', 'cancelled'],
+      ['e', 'cancelled'],
+    ]);
+  });
+
   it('filters list by folder and returns copies', () => {
     queue.enqueue([request('a'), request('c', { folderPath: '/videos/channel-b' })]);
 
@@ -1191,6 +1208,47 @@ describe('queue state persistence', () => {
 
     // A reboot must not resurrect a job the user cancelled while it ran.
     await waitForState((state) => (state.jobs ?? []).length === 0);
+  });
+
+  it('writes one snapshot for a cancelAll, however many jobs it cancels', async () => {
+    const queue = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    queue.enqueue(Array.from({ length: 50 }, (_, index) => request(`v${index}`)));
+    await waitForState((state) => (state.jobs ?? []).length === 50);
+    const writesBefore = mockedWriteTextAtomic.mock.calls.length;
+
+    expect(queue.cancelAll('/videos/channel-a')).toBe(50);
+    await waitForState((state) => (state.jobs ?? []).length === 0);
+
+    // Every snapshot holds the whole queue, so a write per cancelled job does
+    // not scale to a channel with thousands of queued jobs.
+    expect(mockedWriteTextAtomic.mock.calls.length - writesBefore).toBe(1);
+  });
+
+  it('keeps the interrupted jobs in the state file when the server shuts down', async () => {
+    const spawn = createFakeSpawn();
+    const queue = new DownloadQueue({
+      spawnFn: spawn.spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    queue.enqueue([request('a'), request('b')]);
+    await waitForState((state) => (state.jobs ?? []).length === 2);
+    const writesBefore = mockedWriteTextAtomic.mock.calls.length;
+
+    queue.stopForShutdown();
+    await queue.waitForIdle(1000);
+
+    expect(at(spawn.calls, 0).process.kill).toHaveBeenCalledWith('SIGTERM');
+    expect(mockedWriteTextAtomic.mock.calls.length).toBe(writesBefore);
+    // The next boot re-enqueues both jobs instead of starting with an empty queue.
+    const persisted = JSON.parse(await fs.readFile(stateFile, 'utf-8')) as { jobs?: QueueJob[] };
+    expect((persisted.jobs ?? []).map((job) => job.videoId)).toEqual(['a', 'b']);
   });
 
   it('serializes state writes so an older snapshot cannot land after a newer one', async () => {
@@ -1342,6 +1400,40 @@ describe('queue state persistence', () => {
       writeComments: false,
       extraArgs: ['--no-playlist'],
     });
+  });
+
+  it('a folder cancelled after restore stays cancelled on the next boot', async () => {
+    await fs.writeFile(
+      stateFile,
+      JSON.stringify({
+        paused: true,
+        jobs: [
+          { folderPath: '/videos/channel-a', videoId: 'a', type: 'download' },
+          { folderPath: '/videos/channel-a', videoId: 'b', type: 'download' },
+          { folderPath: '/videos/channel-b', videoId: 'c', type: 'download' },
+        ],
+      }),
+    );
+
+    const first = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    await expect(restoreQueueState(first, stateFile)).resolves.toBe(3);
+    expect(first.cancelAll('/videos/channel-a')).toBe(2);
+    await first.whenPersisted();
+
+    const second = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    await expect(restoreQueueState(second, stateFile)).resolves.toBe(1);
+    expect(second.list('/videos/channel-a')).toEqual([]);
+    expect(second.list('/videos/channel-b').map((job) => job.videoId)).toEqual(['c']);
   });
 
   it('waitForIdle resolves once the last child process is gone', async () => {
