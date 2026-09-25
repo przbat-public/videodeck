@@ -1,8 +1,14 @@
-import type { EnqueueJobsResponse, JobType, QueueJob, QueueListJob, QueueVideoInput } from '@videodeck/shared/api';
+import type {
+  ApiError,
+  EnqueueJobsResponse,
+  JobType,
+  QueueJob,
+  QueueListJob,
+  QueueVideoInput,
+} from '@videodeck/shared/api';
 import { EnqueueJobsResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import i18n from '../i18n';
-import { apiSend } from '../utils/apiClient';
 import { fetchQueue, fetchQueueJobLog } from './fetchQueue';
 
 export interface UseDownloadQueueOptions {
@@ -106,13 +112,22 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
       if (videos.length === 0) {
         return { jobs: [], skipped: [] };
       }
-      const result = await apiSend(
-        'POST',
-        '/api/folder/queue',
-        EnqueueJobsResponseSchema,
-        { folderPath, type, videos },
-        { failureMessage: (failure) => failure.message ?? i18n.t('errors.enqueue') },
-      );
+      const response = await fetch('/api/folder/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderPath, type, videos }),
+      });
+      if (!response.ok) {
+        let message = i18n.t('errors.enqueue');
+        try {
+          const body: ApiError = await response.json();
+          message = body.error || body.message || message;
+        } catch {
+          // keep default message
+        }
+        throw new Error(message);
+      }
+      const result = EnqueueJobsResponseSchema.parse(await response.json());
       await refresh();
       onQueueChangedRef.current?.();
       return result;

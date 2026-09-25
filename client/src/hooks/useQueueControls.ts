@@ -1,7 +1,6 @@
 import { ClearFinishedResponseSchema, QueuePauseResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useState } from 'react';
 import i18n from '../i18n';
-import { apiSend } from '../utils/apiClient';
 import { refreshQueueSummary, useQueueSummary } from '../utils/queueSummaryStore';
 
 interface UseQueueControlsResult {
@@ -38,19 +37,17 @@ export function useQueueControls(): UseQueueControlsResult {
   const setPaused = useCallback(async (next: boolean): Promise<void> => {
     setLoading(true);
     try {
-      const result = await apiSend(
-        'POST',
-        `/api/folder/queue/${next ? 'pause' : 'resume'}?paused=${next ? '1' : '0'}`,
-        QueuePauseResponseSchema,
-        undefined,
-        {
-          message: (status) =>
-            i18n.t(next ? 'errors.pauseQueue' : 'errors.resumeQueue', {
-              status,
-            }),
-        },
-      );
-      setPaused(result.paused);
+      const response = await fetch(`/api/folder/queue/${next ? 'pause' : 'resume'}?paused=${next ? '1' : '0'}`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error(
+          i18n.t(next ? 'errors.pauseQueue' : 'errors.resumeQueue', {
+            status: response.status,
+          }),
+        );
+      }
+      QueuePauseResponseSchema.parse(await response.json());
       setError(null);
     } catch (err) {
       setError(failureMessage(err));
@@ -63,10 +60,12 @@ export function useQueueControls(): UseQueueControlsResult {
   const clearFinished = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
-      await apiSend('DELETE', '/api/folder/queue/finished', ClearFinishedResponseSchema, undefined, {
-        message: (status) => i18n.t('errors.clearFinishedJobs', { status }),
-      });
-      await refreshQueueSummary();
+      const response = await fetch('/api/folder/queue/finished', { method: 'DELETE' });
+      if (!response.ok) {
+        throw new Error(i18n.t('errors.clearFinishedJobs', { status: response.status }));
+      }
+      ClearFinishedResponseSchema.parse(await response.json());
+      setError(null);
     } catch (err) {
       setError(failureMessage(err));
     } finally {
