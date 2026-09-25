@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import type { VideoListItem } from '@videodeck/shared/api';
 import { BrowserRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
+import i18n from '../i18n';
 import VideoCard from './VideoCard';
 
 const mockVideo: VideoListItem = {
@@ -123,5 +124,11 @@ describe('VideoCard', () => {
     expect(marks.length).toBe(2);
     expect(marks[0]).toHaveClass('search-highlight');
     expect(screen.getByText('a long ', { exact: false })).toBeInTheDocument();
+  });
+
+  it('labels the play overlay from the catalog', () => {
+    renderWithRouter(<VideoCard video={mockVideo} />);
+
+    expect(screen.getByTitle(i18n.t('video.play'))).toBeInTheDocument();
   });
 });

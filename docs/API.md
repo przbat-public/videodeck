@@ -15,11 +15,15 @@ Dependency-free liveness probe: `200 { status: 'ok' }` when the server process r
 
 ### GET /metrics (public)
 
-Prometheus: `http_requests_total` and `http_request_duration_seconds` (method/route/status labels; unknown paths go to the `unmatched` label so as not to multiply series per URL), `download_queue_size`, and summary cost metrics: `openai_summary_requests_total`, `openai_summary_tokens_total`, `openai_summary_estimated_cost_cents_total` (a USD estimate based on approximate model pricing).
+Prometheus: `http_requests_total` and `http_request_duration_seconds` (method/route/status labels on the counter, method/route on the histogram; unknown paths go to the `unmatched` label so as not to multiply series per URL), `download_queue_size`, and summary cost metrics: `openai_summary_requests_total`, `openai_summary_tokens_total`, `openai_summary_estimated_cost_cents_total` (a USD estimate based on approximate model pricing).
 
-### GET /api/videos/refreshCache
+### POST /api/videos/refreshCache
 
 Refreshes and reindexes all videos from the configured folders into Elasticsearch.
+
+The method is POST, not GET, because starting a reindex changes server state.
+A GET could be triggered by a cross-site navigation in a browser that sends no
+`Sec-Fetch-Site` header.
 
 **Response:**
 
@@ -33,10 +37,10 @@ Refreshes and reindexes all videos from the configured folders into Elasticsearc
 **Cache on removable drives.** Each folder's index lives in Elasticsearch under an alias computed from the folder path and **survives unplugging the drive**. After swapping drives, search immediately uses the aliases of the currently attached folders (the previous drive is simply not searched), and the status page shows only the missing index per folder (`indeks ES: brak`, "ES index: missing"). Instead of a full reindex, it is then enough to call:
 
 ```
-GET /api/videos/refreshCache?onlyMissing=1
+POST /api/videos/refreshCache?onlyMissing=1
 ```
 
-, only folders without an existing index are reindexed (e.g. a drive attached for the first time); folders with a cache are skipped and keep serving search. In the web UI this is the **"only missing (use existing index)"** checkbox (pl: „tylko brakujące (użyj istniejącego indeksu)") next to the "Refresh index" button (pl: „Odśwież indeks"). A full reindex (without the parameter) remains for situations where the drive contents changed and the existing index must be rebuilt.
+The server then reindexes only folders without an existing index (e.g. a drive attached for the first time). Folders with a cache are skipped and keep serving search. In the web UI this is the **"only missing (use existing index)"** checkbox (pl: „tylko brakujące (użyj istniejącego indeksu)") next to the "Refresh index" button (pl: „Odśwież indeks"). A full reindex (without the parameter) remains for situations where the drive contents changed and the existing index must be rebuilt.
 
 **Note:** This endpoint starts the indexing process in the background and returns immediately. If a reindex is already running, it returns `409` with the current status. Progress can be followed via `GET /api/videos/refreshCache/status` (the client does this itself and shows it in a toast).
 
@@ -77,8 +81,8 @@ After every download-queue job (`download`/`update`), the changed videos are ind
 
 **Changing the analyzer requires a reindex:** existing indexes keep the
 mappings from their creation time, so after an upgrade that changes text
-analysis (e.g. introducing `polish_folded`), call `GET /api/videos/refreshCache`. New
-indexes get the new analyzer, and the aliases switch atomically.
+analysis (e.g. introducing `polish_folded`), call `POST /api/videos/refreshCache`.
+New indexes get the new analyzer, and the aliases switch atomically.
 
 ### GET /api/videos/search
 

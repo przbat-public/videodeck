@@ -40,14 +40,14 @@ export function PlaylistDownloadSection({
         null,
         { folderPath },
         {
-          failureMessage: (failure) => failure.message ?? 'Failed to download playlist',
+          failureMessage: (failure) => failure.message ?? t('errors.downloadPlaylist'),
         },
       );
 
       // Notify parent to refresh list existence status
       onPlaylistDownloaded();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      const errorMessage = err instanceof Error ? err.message : t('errors.occurred');
       setDownloadError(errorMessage);
     } finally {
       setIsDownloading(false);

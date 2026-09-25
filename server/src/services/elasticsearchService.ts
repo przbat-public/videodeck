@@ -396,10 +396,36 @@ export async function discardIndexVersion(indexName: string): Promise<void> {
 }
 
 /**
+ * First-time creations in flight, per folder. Two callers that both see "no
+ * alias" would each create a physical index, and the later promote deletes
+ * the version the first caller is writing into: the document is then missing
+ * from search until the next full reindex. Callers that arrive while a
+ * creation runs share its result instead of starting a second one.
+ */
+const indexCreationsInFlight = new Map<string, Promise<void>>();
+
+/**
  * Make sure the folder has a searchable (possibly empty) index behind its
  * alias. No-op when the alias already exists.
  */
 export async function createIndex(folderPath: string): Promise<void> {
+  const pending = indexCreationsInFlight.get(folderPath);
+  if (pending) {
+    return pending;
+  }
+
+  const creation = createFolderIndex(folderPath).finally(() => {
+    // Only clear our own entry: a failed attempt must not be cached, and a
+    // newer creation may already have replaced it.
+    if (indexCreationsInFlight.get(folderPath) === creation) {
+      indexCreationsInFlight.delete(folderPath);
+    }
+  });
+  indexCreationsInFlight.set(folderPath, creation);
+  return creation;
+}
+
+async function createFolderIndex(folderPath: string): Promise<void> {
   const esClient = getElasticsearchClient();
   const alias = getIndexNameFromFolderPath(folderPath);
 

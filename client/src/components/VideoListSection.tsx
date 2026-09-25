@@ -68,14 +68,14 @@ export function VideoListSection({
       `/api/folder/list?folderPath=${encodeURIComponent(folderPath)}`,
       FolderListResponseSchema,
       {
-        message: 'Failed to load videos',
+        message: t('errors.loadVideos'),
       },
     );
     setVideos(data.videos);
     setDownloadStatuses(data.downloadStatuses);
     setLastUpdatedDates(data.lastUpdatedDates);
     setHasLoadedVideos(true);
-  }, [folderPath]);
+  }, [folderPath, t]);
 
   // Visible reload (spinner), used by the parent and on demand
   const loadVideos = useCallback(async () => {
@@ -87,13 +87,13 @@ export function VideoListSection({
       setVideosError(null);
       await fetchList();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      const errorMessage = err instanceof Error ? err.message : t('errors.occurred');
       setVideosError(errorMessage);
       logError(err);
     } finally {
       setIsLoadingVideos(false);
     }
-  }, [fetchList, listExists]);
+  }, [fetchList, listExists, t]);
 
   // When a job finishes, reflect it locally right away; the queue-drained
   // callback re-syncs exact dates from the server.

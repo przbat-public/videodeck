@@ -66,14 +66,14 @@ export function FolderConfigEditor({
         '/api/folder/config',
         SaveFolderConfigResponseSchema,
         { folderPath, config: newConfig },
-        { failureMessage: (failure) => failure.message ?? 'Failed to save config' },
+        { failureMessage: (failure) => failure.message ?? t('errors.saveConfig') },
       );
 
       setConfig(result.config);
       onConfigUpdate(folderPath, result.config);
       onEditingFinished();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      const errorMessage = err instanceof Error ? err.message : t('errors.occurred');
       setError(errorMessage);
     } finally {
       setIsSaving(false);

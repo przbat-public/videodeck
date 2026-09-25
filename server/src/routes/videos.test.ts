@@ -87,6 +87,10 @@ describe('videos router', () => {
     // Defaults for the real fs mocks: access/realpath succeed
     mockedFs.access.mockResolvedValue(undefined);
     mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
+    // clearAllMocks clears calls, not implementations: pin the two maintenance
+    // flags so a test that sets one cannot leak into the ones after it
+    mockedIsReindexRunning.mockReturnValue(false);
+    mockedIsRecreateIndicesRunning.mockReturnValue(false);
 
     app = createApp();
   });
@@ -394,6 +398,16 @@ describe('videos router', () => {
       expect(response.body).toMatchObject({ error: 'Reindex already running', status: running });
       expect(mockedRefreshVideosCache).not.toHaveBeenCalled();
     });
+
+    it('returns 409 while an index recreation is running', async () => {
+      mockedIsRecreateIndicesRunning.mockReturnValue(true);
+
+      const response = await request(app).post('/api/videos/refreshCache');
+
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({ error: 'Reindex already running' });
+      expect(mockedRefreshVideosCache).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /api/videos/refreshCache/status', () => {
@@ -466,6 +480,40 @@ describe('videos router', () => {
         message: 'Index recreation is already in progress',
       });
       expect(mockedRecreateAllIndices).not.toHaveBeenCalled();
+    });
+
+    it('should return 409 while a reindex is running', async () => {
+      mockedIsReindexRunning.mockReturnValue(true);
+
+      const response = await request(app).post('/api/videos/recreateIndices');
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({
+        error: 'Index recreation already running',
+        message: 'Index recreation is already in progress',
+      });
+      expect(mockedRecreateAllIndices).not.toHaveBeenCalled();
+    });
+
+    it('refuses the second index maintenance job until the first one finishes', async () => {
+      let finishRefresh: (() => void) | undefined;
+      mockedRefreshVideosCache.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishRefresh = resolve;
+          }),
+      );
+
+      expect((await request(app).post('/api/videos/refreshCache')).status).toBe(202);
+      expect((await request(app).post('/api/videos/recreateIndices')).status).toBe(409);
+      expect(mockedRecreateAllIndices).not.toHaveBeenCalled();
+
+      finishRefresh?.();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const afterFinish = await request(app).post('/api/videos/recreateIndices');
+      expect(afterFinish.status).toBe(202);
+      expect(mockedRecreateAllIndices).toHaveBeenCalled();
     });
   });
 

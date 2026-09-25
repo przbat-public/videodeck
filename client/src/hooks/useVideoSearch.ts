@@ -52,14 +52,21 @@ function reportSearchError(
 interface UseVideoSearchResult {
   videos: VideoListItem[];
   totalCount: number;
+  /** A fresh search is in flight: what is on screen is not the answer yet */
   loading: boolean;
+  /** The next page is being appended to the results already on screen */
+  loadingMore: boolean;
   error: string | null;
   /** True while the server knows about more videos than are loaded */
   hasMore: boolean;
   /** Runs a search from scratch; the caller decides when (the page runs one per URL change) */
   search: (state: SearchState) => Promise<void>;
-  /** Fetches the next page and appends it to the current results */
-  loadMore: () => Promise<void>;
+  /**
+   * Fetches the next page and appends it to the current results, resolving
+   * with how many videos arrived (0 when the page failed or was ignored) so
+   * the caller can announce what a "load more" actually brought.
+   */
+  loadMore: () => Promise<number>;
 }
 
 /** The message a failed search deserves: an unreachable cluster gets its own */
@@ -82,7 +89,7 @@ export function useVideoSearch(): UseVideoSearchResult {
   // too late to prevent two pages with the same offset)
   const inFlightRef = useRef(false);
 
-  const runSearch = useCallback(async (searchState: SearchState, offset: number, append: boolean): Promise<void> => {
+  const runSearch = useCallback(async (searchState: SearchState, offset: number, append: boolean): Promise<number> => {
     const requestId = ++latestRequestRef.current;
     const isCurrent = () => requestId === latestRequestRef.current;
 
@@ -91,7 +98,7 @@ export function useVideoSearch(): UseVideoSearchResult {
     abortRef.current = controller;
     inFlightRef.current = true;
 
-    dispatch({ type: VideoSearchActionType.SEARCH_START });
+    dispatch({ type: VideoSearchActionType.SEARCH_START, payload: { append } });
 
     try {
       const params = buildSearchParams(searchState, offset);
@@ -100,18 +107,21 @@ export function useVideoSearch(): UseVideoSearchResult {
         failureMessage: searchFailureMessage,
       });
       if (!isCurrent()) {
-        return;
+        return 0;
       }
+      const videos = data.videos || [];
       dispatch({
         type: VideoSearchActionType.SEARCH_SUCCESS,
         payload: {
-          videos: data.videos || [],
+          videos,
           totalCount: data.totalCount || 0,
           ...(append ? { append } : {}),
         },
       });
+      return append ? videos.length : 0;
     } catch (err) {
       reportSearchError(err, controller.signal.aborted, isCurrent, dispatch, append);
+      return 0;
     } finally {
       if (isCurrent()) {
         inFlightRef.current = false;
@@ -127,17 +137,18 @@ export function useVideoSearch(): UseVideoSearchResult {
     [runSearch],
   );
 
-  const loadMore = useCallback(async (): Promise<void> => {
+  const loadMore = useCallback(async (): Promise<number> => {
     if (inFlightRef.current) {
-      return;
+      return 0;
     }
-    await runSearch(searchStateRef.current, state.videos.length, true);
+    return runSearch(searchStateRef.current, state.videos.length, true);
   }, [runSearch, state.videos.length]);
 
   return {
     videos: state.videos,
     totalCount: state.totalCount,
     loading: state.loading,
+    loadingMore: state.loadingMore,
     error: state.error,
     hasMore: state.videos.length < state.totalCount,
     search,
