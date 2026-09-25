@@ -94,6 +94,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- "Anuluj wszystko" works on a channel with thousands of queued jobs. It
+  used to re-scan the whole queue and hold one more copy of the state file
+  in memory for every job it cancelled, so 1,456 queued updates of one
+  channel froze the server for minutes until it ran out of memory. The
+  crash lost the cancellations too: the jobs came back on the next start.
+  The whole channel now goes in a third of a second, with one write. A
+  graceful stop (Ctrl+C, `docker compose restart`) no longer saves the jobs
+  it kills as cancelled, so the next boot resumes them
 - The header of a channel's video list keeps one shape: the counts and the
   queue summary ("kolejka: 3 w toku, 326 czeka") share a line, and the bulk
   buttons always start under them. The buttons used to slide next to the

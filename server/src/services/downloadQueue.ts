@@ -204,6 +204,8 @@ export class DownloadQueue extends EventEmitter {
   private readonly hungJobs = new Map<string, true>();
   /** While paused, queued jobs wait; running ones finish (cancel still works) */
   private paused = false;
+  /** Set by stopForShutdown: the state file keeps the last snapshot taken before it */
+  private shuttingDown = false;
 
   constructor(options: DownloadQueueOptions = {}) {
     super();
@@ -237,7 +239,7 @@ export class DownloadQueue extends EventEmitter {
 
   private persistState(): void {
     const stateFile = this.stateFile;
-    if (!stateFile) {
+    if (!stateFile || this.shuttingDown) {
       return;
     }
     const jobs = Array.from(this.jobs.values())
@@ -317,18 +319,7 @@ export class DownloadQueue extends EventEmitter {
     if (!job || !isActive(job)) {
       return false;
     }
-    // Stop a pending retry from resurrecting the job
-    const timer = this.retryTimers.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      this.retryTimers.delete(id);
-    }
-    job.status = 'cancelled';
-    job.finishedAt = new Date().toISOString();
-    this.attempts.delete(id);
-    this.emitJob(job);
-    // A running job is killed; the 'close' handler then sweeps its partial files
-    killProcessGroup(this.processes.get(id), 'SIGTERM');
+    this.markCancelled(job);
     // Persist right away: a cancelled job must not come back after a reboot,
     // and the 'close' handler of an already-exited process never persists.
     this.persistState();
@@ -338,16 +329,52 @@ export class DownloadQueue extends EventEmitter {
     return true;
   }
 
+  /** Mark the job cancelled, drop its pending retry and kill its process */
+  private markCancelled(job: QueueJob): void {
+    // Stop a pending retry from resurrecting the job
+    const timer = this.retryTimers.get(job.id);
+    if (timer) {
+      clearTimeout(timer);
+      this.retryTimers.delete(job.id);
+    }
+    job.status = 'cancelled';
+    job.finishedAt = new Date().toISOString();
+    this.attempts.delete(job.id);
+    this.emitJob(job);
+    // A running job is killed; the 'close' handler then sweeps its partial files
+    killProcessGroup(this.processes.get(job.id), 'SIGTERM');
+  }
+
+  /**
+   * Cancel every active job, or only those of one folder. The batch is
+   * persisted and pumped once: a snapshot holds the whole queue and a pump
+   * scans it, so doing either per job does not scale to a channel with
+   * thousands of queued jobs, and a pump between two cancellations would
+   * start a job that the same call cancels next.
+   */
   cancelAll(folderPath?: string): number {
     let count = 0;
     for (const job of this.jobs.values()) {
       if (isActive(job) && (!folderPath || job.folderPath === folderPath)) {
-        if (this.cancel(job.id)) {
-          count += 1;
-        }
+        this.markCancelled(job);
+        count += 1;
       }
     }
+    if (count > 0) {
+      this.persistState();
+      this.pump();
+    }
     return count;
+  }
+
+  /**
+   * Server shutdown: stop every job without recording the cancellations, so
+   * the state file still lists the interrupted work and the next boot
+   * re-enqueues it.
+   */
+  stopForShutdown(): void {
+    this.shuttingDown = true;
+    this.cancelAll();
   }
 
   /** Cancel everything and forget all jobs (used by tests). */
