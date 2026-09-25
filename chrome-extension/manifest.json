@@ -1,6 +1,7 @@
 {
   "default_locale": "pl",
   "manifest_version": 3,
+  "minimum_chrome_version": "102",
   "name": "Video Downloader",
   "version": "1.0.0",
   "description": "__MSG_manifestDescription__",
@@ -25,7 +26,8 @@
         "https://www.youtube.com/*",
         "https://m.youtube.com/*",
         "https://music.youtube.com/*",
-        "https://youtube-nocookie.com/*"
+        "https://youtube-nocookie.com/*",
+        "https://youtu.be/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"

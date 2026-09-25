@@ -42,7 +42,8 @@ the refresh icon next to the extension in `chrome://extensions/`.
 
 ## Features
 
-- Automatic video detection on the page (YouTube, direct video links)
+- Automatic video detection on the page (YouTube watch pages, Shorts,
+  `youtu.be` links, direct video links)
 - Downloads through `/api/folder/download-video` (the job runs in the
   server-side queue; closing the popup does not stop the download)
 - Real-time download progress (SSE)
@@ -52,7 +53,8 @@ the refresh icon next to the extension in `chrome://extensions/`.
 
 ## Requirements
 
-- Chrome 88 or newer (Manifest V3)
+- Chrome 102 or newer (Manifest V3; the background worker keeps its
+  active-download snapshot in `chrome.storage.session`, added in Chrome 102)
 - The video-search-app server must be running
 - The folder path must be in the server's `VIDEOS_FOLDER_PATH`
 - The server must be reachable from the browser (CORS configured)

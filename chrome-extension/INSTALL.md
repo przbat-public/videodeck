@@ -91,6 +91,7 @@ keeps working.
 1. **Open a page with a video:**
    - Go to YouTube or another page with a video
    - Example: `https://www.youtube.com/watch?v=VIDEO_ID`
+   - Shorts pages and `https://youtu.be/VIDEO_ID` links work the same way
 
 2. **Click the extension icon:**
    - In the Chrome toolbar, click the extension icon
@@ -137,7 +138,8 @@ keeps working.
 
 ## Requirements
 
-- Chrome 88 or newer (Manifest V3)
+- Chrome 102 or newer (Manifest V3; the extension stores its active-download
+  snapshot in `chrome.storage.session`, added in Chrome 102)
 - The video-search-app server must be running
 - The folder path must be in the server's `VIDEOS_FOLDER_PATH`
 - The server must have CORS enabled
