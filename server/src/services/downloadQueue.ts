@@ -109,6 +109,30 @@ function isActive(job: QueueJob): boolean {
 }
 
 /**
+ * Coalescing window of the state file: transitions inside it share one
+ * snapshot, which holds the whole queue.
+ */
+const PERSIST_COALESCE_MS = 200;
+
+/**
+ * What a restart needs from a job: exactly the fields `restoreQueueState`
+ * reads back. Status, progress, timestamps and the log tail describe the run,
+ * not the work to re-enqueue, and the snapshot is rewritten on every
+ * transition.
+ */
+function toPersistedJob(job: QueueJob): EnqueueRequest {
+  return stripUndefined<EnqueueRequest>({
+    folderPath: job.folderPath,
+    videoId: job.videoId,
+    videoUrl: job.videoUrl,
+    title: job.title,
+    type: job.type,
+    baseName: job.baseName,
+    options: job.options,
+  });
+}
+
+/**
  * The job without its log tail: what the queue list endpoints send. The log
  * stays behind GET /api/folder/queue/:jobId, because the list is polled and on
  * a real instance the logs were the megabytes it carried.
@@ -262,35 +286,75 @@ export class DownloadQueue extends EventEmitter {
   /**
    * Persist the active jobs and the paused flag, so a reboot can re-enqueue
    * them (archive.txt dedups downloads; updates are idempotent re-scans).
-   * Writes are chained: atomic renames race when they run in parallel, and
-   * an older snapshot landing last would resurrect stale jobs or a stale
-   * paused flag. A failed write must never break the queue or the chain.
+   *
+   * The snapshot holds the whole queue, so transitions are coalesced: a burst
+   * (a 6,000-job cancelAll, a queue draining, a retry storm) writes once per
+   * window instead of once per event, and a snapshot identical to the last one
+   * written is skipped. `whenPersisted()` forces a pending write out for the
+   * callers that must not lose a reboot race.
+   *
+   * Writes are chained: atomic renames race when they run in parallel, and an
+   * older snapshot landing last would resurrect stale jobs or a stale paused
+   * flag. A failed write must never break the queue or the chain.
    */
   private persistChain: Promise<void> = Promise.resolve();
+  /** Pending coalesced write; the snapshot is taken when the timer fires */
+  private persistTimer: NodeJS.Timeout | undefined;
+  /** Payload of the last write that landed, so an unchanged snapshot is not rewritten */
+  private lastPersistedText = '';
 
   private persistState(): void {
-    const stateFile = this.stateFile;
-    if (!stateFile || this.shuttingDown) {
+    if (!this.stateFile || this.shuttingDown || this.persistTimer !== undefined) {
       return;
     }
-    const jobs = Array.from(this.jobs.values())
-      .filter(isActive)
-      .map((job) => ({ ...job, log: [], logLineCount: 0 }));
+    const timer = setTimeout(() => {
+      this.persistTimer = undefined;
+      // A snapshot taken after the shutdown began would drop the interrupted
+      // jobs the state file exists to keep
+      if (!this.shuttingDown) {
+        this.writeState();
+      }
+    }, PERSIST_COALESCE_MS);
+    timer.unref();
+    this.persistTimer = timer;
+  }
+
+  /** Take the snapshot now and chain its write behind the writes in flight */
+  private writeState(): void {
+    const stateFile = this.stateFile;
+    if (!stateFile) {
+      return;
+    }
+    const jobs = Array.from(this.jobs.values()).filter(isActive).map(toPersistedJob);
     const text = JSON.stringify({ paused: this.paused, jobs });
+    if (text === this.lastPersistedText) {
+      return; // a transition the file does not record (a retry, a fresh log line)
+    }
     this.persistChain = this.persistChain
       .catch(() => undefined)
       .then(() => writeTextAtomic(stateFile, text))
+      .then(() => {
+        this.lastPersistedText = text;
+      })
       .catch((error: unknown) => {
         logger.warn(`Cannot persist queue state: ${error instanceof Error ? error.message : String(error)}`);
       });
   }
 
   /**
-   * Resolves when every persist started so far has finished (or failed).
-   * Cancel routes wait on this so a reboot right after the response cannot
-   * restore jobs the user just dropped.
+   * Resolves when every persist started so far has finished (or failed). A
+   * snapshot still waiting out the coalescing window goes out at once: cancel
+   * routes wait on this, and a reboot right after the response must not restore
+   * jobs the user just dropped.
    */
   whenPersisted(): Promise<void> {
+    if (this.persistTimer !== undefined) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = undefined;
+      if (!this.shuttingDown) {
+        this.writeState();
+      }
+    }
     return this.persistChain;
   }
 
@@ -461,6 +525,10 @@ export class DownloadQueue extends EventEmitter {
 
   /** Cancel everything and forget all jobs (used by tests). */
   clear(): void {
+    if (this.persistTimer !== undefined) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = undefined;
+    }
     this.cancelAll();
     for (const timer of this.retryTimers.values()) {
       clearTimeout(timer);

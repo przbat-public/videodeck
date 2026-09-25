@@ -53,7 +53,7 @@ class FakeProcess extends EventEmitter implements SpawnedProcess {
     this.stdout.emit('data', Buffer.from(text));
   }
 
-  exit(code: number): void {
+  exit(code: number | null): void {
     this.emit('close', code);
   }
 }
@@ -1259,10 +1259,73 @@ describe('queue state persistence', () => {
     const persisted = JSON.parse(await fs.readFile(stateFile, 'utf-8')) as { paused?: boolean; jobs?: QueueJob[] };
     const persistedJob = at(persisted.jobs ?? [], 0);
     expect(persistedJob.folderPath).toBe('/videos/channel-a');
-    expect(persistedJob.log).toEqual([]);
+    // Only what a restart needs: the log tail and the live status stay out of
+    // the file, which is rewritten on every transition.
+    expect(Object.keys(persistedJob).sort()).toEqual(['folderPath', 'title', 'type', 'videoId', 'videoUrl']);
 
     at(spawn.calls, 0).process.exit(0);
     await waitForState((state) => (state.jobs ?? []).length === 0);
+  });
+
+  it('writes one snapshot for a burst of transitions', async () => {
+    const spawn = createFakeSpawn();
+    const queue = new DownloadQueue({
+      spawnFn: spawn.spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+      maxConcurrent: 50,
+    });
+    queue.enqueue(Array.from({ length: 50 }, (_, index) => request(`v${index}`, { folderPath: `/videos/f${index}` })));
+    await waitForState((state) => (state.jobs ?? []).length === 50);
+    const writesBefore = mockedWriteTextAtomic.mock.calls.length;
+
+    // Every job fails in the same tick: 50 transitions, and a snapshot holds
+    // the whole queue, so one write per transition does not scale.
+    for (const call of spawn.calls) {
+      call.process.exit(1);
+    }
+    await queue.whenPersisted();
+
+    expect(mockedWriteTextAtomic.mock.calls.length - writesBefore).toBe(1);
+    // The snapshot that landed is the LAST state, not the first one
+    await waitForState((state) => (state.jobs ?? []).length === 0);
+  });
+
+  it('does not rewrite a snapshot that did not change', async () => {
+    const queue = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    queue.enqueue([request('a')]);
+    await queue.whenPersisted();
+    const writes = mockedWriteTextAtomic.mock.calls.length;
+
+    // The same job again: deduplicated, and the persisted shape did not move
+    queue.enqueue([request('a')]);
+    await queue.whenPersisted();
+
+    expect(mockedWriteTextAtomic.mock.calls.length).toBe(writes);
+  });
+
+  it('flushes the pending snapshot when a caller waits for it', async () => {
+    const queue = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+
+    queue.enqueue([request('a')]);
+    // A cancel route awaits this: a reboot right after the response must not
+    // restore a job the user just dropped, so the write cannot wait out the
+    // coalescing window.
+    await queue.whenPersisted();
+
+    const persisted = JSON.parse(await fs.readFile(stateFile, 'utf-8')) as { jobs?: QueueJob[] };
+    expect((persisted.jobs ?? []).map((job) => job.videoId)).toEqual(['a']);
   });
 
   it('persists the paused flag', async () => {
@@ -1334,8 +1397,8 @@ describe('queue state persistence', () => {
   });
 
   it('serializes state writes so an older snapshot cannot land after a newer one', async () => {
-    // Every persistState call returns a promise we resolve by hand, so the
-    // test controls exactly when each write completes.
+    // Every write returns a promise we resolve by hand, so the test controls
+    // exactly when each one completes.
     const writes: Array<{ text: string; release: () => void }> = [];
     mockedWriteTextAtomic.mockImplementation(
       (_file, text) =>
@@ -1351,16 +1414,20 @@ describe('queue state persistence', () => {
       maxAttempts: 1,
     });
     queue.setPaused(true);
-    queue.enqueue([request('a')]);
+    const paused = queue.whenPersisted();
     await flush();
-
-    // The pause snapshot is still in flight, so the enqueue snapshot must
-    // wait. Writing both at once would let the older, job-less snapshot
-    // rename over the newer one and resurrect stale state after a reboot.
     expect(mockedWriteTextAtomic).toHaveBeenCalledTimes(1);
     expect((JSON.parse(writes[0]?.text ?? '{}') as { jobs?: QueueJob[] }).jobs).toHaveLength(0);
 
-    // Only once the pause write is done may the enqueue snapshot go out.
+    // The pause write is still in flight, so the enqueue snapshot must wait.
+    // Writing both at once would let the older, job-less snapshot rename over
+    // the newer one and resurrect stale state after a reboot.
+    queue.enqueue([request('a')]);
+    const enqueued = queue.whenPersisted();
+    await flush();
+    expect(mockedWriteTextAtomic).toHaveBeenCalledTimes(1);
+
+    // Only once the pause write is done may the enqueue snapshot go out
     writes[0]?.release();
     await flush();
     expect(mockedWriteTextAtomic).toHaveBeenCalledTimes(2);
@@ -1369,7 +1436,7 @@ describe('queue state persistence', () => {
     expect(enqueueState.jobs).toHaveLength(1);
     expect(enqueueState.jobs?.[0]?.videoId).toBe('a');
     writes[1]?.release();
-    await flush();
+    await Promise.all([paused, enqueued]);
   });
 
   it('restores jobs as queued, honors the paused flag and skips corrupt entries', async () => {
