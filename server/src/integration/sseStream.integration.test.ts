@@ -1,8 +1,9 @@
 import http from 'node:http';
-import type { QueueJob } from '@videodeck/shared/api';
+import type { CancelJobResponse, QueueListResponse, QueuePauseResponse } from '@videodeck/shared/api';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { createDeepServerTestEnv, folderConfig } from '@videodeck/test-infra/deepServerTestEnv';
 import { downloadQueue } from '../services/downloadQueue';
+import { at } from '../test-utils';
 import { activeSseStreamCount } from '../utils/sseRegistry';
 
 /**
@@ -11,10 +12,13 @@ import { activeSseStreamCount } from '../utils/sseRegistry';
  * stream holds: the queue listeners, the 15 s heartbeat interval and its slot
  * in the open-stream gauge. A supertest run cannot show that, because the
  * cleanup hangs off the connection dying, not off the request being consumed.
+ *
+ * The queue stays paused for the whole test, so the stream watches a job that
+ * cannot start, finish or fail on its own: every assertion then depends on the
+ * abort alone, never on how quickly the runner gets a download job going.
  */
 
-/** Long enough that the job outlives every assertion made after the abort */
-const PROGRESS_DELAY_MS = '1000';
+const FOLDER = 'sse-abort';
 
 describe('download-video SSE stream cleanup on client disconnect', () => {
   let env: DeepServerTestEnv;
@@ -28,8 +32,8 @@ describe('download-video SSE stream cleanup on client disconnect', () => {
   });
 
   /** GET /metrics until it reports the given number of open streams */
-  async function waitForOpenStreams(expected: number, timeoutMs = 1200): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
+  async function waitForOpenStreams(expected: number): Promise<void> {
+    const deadline = Date.now() + 8000;
     let body = '';
     while (Date.now() < deadline) {
       body = (await env.agent.get('/metrics').expect(200)).text;
@@ -38,29 +42,18 @@ describe('download-video SSE stream cleanup on client disconnect', () => {
       }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    throw new Error(`sse_streams_open never reached ${expected} within ${timeoutMs} ms; last body:\n${body}`);
-  }
-
-  /** Wait until the job the stream was watching settles, so no download runs on */
-  async function waitForJobToSettle(folderPath: string): Promise<void> {
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-      const response = await env.agent.get(`/api/folder/queue?folderPath=${encodeURIComponent(folderPath)}`);
-      const jobs = (response.body as { jobs: QueueJob[] }).jobs;
-      if (jobs.length > 0 && jobs.every((job) => ['done', 'error', 'cancelled'].includes(job.status))) {
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    throw new Error('the download job did not settle');
+    throw new Error(`sse_streams_open never reached ${expected}; last body:\n${body}`);
   }
 
   it('drops the queue listeners, the heartbeat and the open-stream gauge when the client aborts', async () => {
-    const folderPath = await env.seedFolder('sse-abort', {
+    const folderPath = await env.seedFolder(FOLDER, {
       'config.json': folderConfig('https://www.youtube.com/@sseabort'),
     });
-    env.setFolders('sse-abort');
-    process.env.FAKE_YTDLP_PROGRESS_DELAY_MS = PROGRESS_DELAY_MS;
+    env.setFolders(FOLDER);
+
+    // A queued job is all this test needs, and a paused queue keeps it queued
+    const paused = await env.agent.post('/api/folder/queue/pause?paused=1').expect(200);
+    expect((paused.body as QueuePauseResponse).paused).toBe(true);
 
     // Only setInterval/clearInterval are faked: the socket I/O and the test's
     // own timeouts stay real, while jest counts the heartbeat timer for us.
@@ -99,18 +92,22 @@ describe('download-video SSE stream cleanup on client disconnect', () => {
       );
       expect(firstChunk).toContain('downloadStart');
 
+      // The app's own state, not a sleep: the stream is watching a job that is
+      // still queued, so nothing can have settled it behind our back.
+      const queue = await env.agent.get(`/api/folder/queue?folderPath=${encodeURIComponent(folderPath)}`).expect(200);
+      const jobs = (queue.body as QueueListResponse).jobs;
+      expect(jobs.map((job) => job.status)).toEqual(['queued']);
+
       // While the stream is open it holds its queue listeners, its heartbeat
-      // timer and its place in the gauge
-      const openTimers = jest.getTimerCount();
+      // and its place in the gauge
       expect(downloadQueue.listenerCount('job')).toBe(idleJobListeners + 1);
       expect(downloadQueue.listenerCount('progress')).toBe(idleProgressListeners + 1);
       expect(activeSseStreamCount()).toBe(1);
       await waitForOpenStreams(1);
-      expect(openTimers).toBeGreaterThan(idleTimers);
+      // The heartbeat is the only interval the stream adds
+      expect(jest.getTimerCount()).toBe(idleTimers + 1);
 
-      // The tab closes: tear the socket down without reading the stream out.
-      // The download keeps running server-side, so every assertion below has
-      // to hold while the job is still in flight.
+      // The tab closes: tear the socket down without reading the stream out
       stream.destroy();
       request.destroy();
 
@@ -118,15 +115,16 @@ describe('download-video SSE stream cleanup on client disconnect', () => {
       expect(downloadQueue.listenerCount('job')).toBe(idleJobListeners);
       expect(downloadQueue.listenerCount('progress')).toBe(idleProgressListeners);
       expect(activeSseStreamCount()).toBe(0);
-      // Exactly the heartbeat went away; the job's own watchdog timer is
-      // still armed until it settles.
-      expect(jest.getTimerCount()).toBe(openTimers - 1);
-
-      await waitForJobToSettle(folderPath);
       expect(jest.getTimerCount()).toBe(idleTimers);
+
+      // The stream is gone but the job is not: cancelling it keeps the queue
+      // clean for whatever runs next in this process.
+      const job = at(jobs, 0);
+      const cancelled = await env.agent.delete(`/api/folder/queue/${job.id}`).expect(200);
+      expect((cancelled.body as CancelJobResponse).job?.status).toBe('cancelled');
     } finally {
-      process.env.FAKE_YTDLP_PROGRESS_DELAY_MS = '600';
       jest.useRealTimers();
+      await env.agent.post('/api/folder/queue/resume?paused=0').expect(200);
     }
   }, 30_000);
 });
