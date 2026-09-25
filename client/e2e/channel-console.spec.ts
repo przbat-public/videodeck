@@ -60,9 +60,15 @@ async function consolePage(page: Page, viewport = { width: 1280, height: 900 }):
       channels: folderPaths.map((_, index) => channelName(index)),
       folders: Object.fromEntries(folderPaths.map((folderPath, index) => [folderPath, channelName(index)])),
     },
-    queue: {
+    // The console polls the counters, not the job list
+    queueSummary: {
       paused: false,
-      jobs: [
+      counts: { queued: 0, running: 1, done: 0, error: 1, cancelled: 0 },
+      folders: {
+        [folderPaths[1]]: { running: 1, queued: 0, failed: 0 },
+        [folderPaths[2]]: { running: 0, queued: 0, failed: 1, firstError: 'yt-dlp exited with code 1' },
+      },
+      running: [
         {
           id: 'job-running',
           folderPath: folderPaths[1],
@@ -71,20 +77,6 @@ async function consolePage(page: Page, viewport = { width: 1280, height: 900 }):
           type: 'download',
           status: 'running',
           progress: 42,
-          log: [],
-          logLineCount: 0,
-          createdAt: '2026-01-01T10:00:00.000Z',
-        },
-        {
-          id: 'job-failed',
-          folderPath: folderPaths[2],
-          videoId: 'v-failed',
-          videoUrl: 'https://yt/v-failed',
-          type: 'download',
-          status: 'error',
-          error: 'yt-dlp exited with code 1',
-          log: [],
-          logLineCount: 0,
           createdAt: '2026-01-01T10:00:00.000Z',
         },
       ],

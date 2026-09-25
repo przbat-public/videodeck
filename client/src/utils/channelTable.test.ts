@@ -1,5 +1,6 @@
-import type { QueueJob, StatusResponse } from '@videodeck/shared/api';
+import type { StatusResponse } from '@videodeck/shared/api';
 import { describe, expect, it } from 'vitest';
+import type { ChannelQueueCounts } from './channelTable';
 import {
   buildChannelRows,
   filterChannels,
@@ -41,31 +42,29 @@ const summaries = {
   },
 };
 
-const job = (overrides: Partial<QueueJob>): QueueJob => ({
-  id: 'job-1',
-  folderPath: '/videos/kanal-a',
-  videoId: 'v1',
-  videoUrl: 'https://yt/v1',
-  type: 'download',
-  status: 'running',
-  log: [],
-  logLineCount: 0,
-  createdAt: '2026-09-19T10:00:00.000Z',
+/** What GET /api/folder/queue/summaries reports for one folder */
+const counts = (overrides: Partial<ChannelQueueCounts> = {}): ChannelQueueCounts => ({
+  running: 0,
+  queued: 0,
+  failed: 0,
   ...overrides,
 });
 
 const rows = () =>
-  buildChannelRows(status, summaries.summaries, [
-    job({}),
-    job({ id: 'job-2', status: 'queued' }),
-    job({ id: 'job-3', status: 'error', error: 'yt-dlp exited with code 1' }),
-  ]);
+  buildChannelRows(status, summaries.summaries, {
+    '/videos/kanal-a': counts({ running: 1, queued: 1, failed: 1, firstError: 'yt-dlp exited with code 1' }),
+  });
 
 describe('buildChannelRows', () => {
   it('carries the channel name the search page filters by', () => {
-    const built = buildChannelRows(status, summaries.summaries, [], {
-      '/videos/kanal-b': 'Kanał B',
-    });
+    const built = buildChannelRows(
+      status,
+      summaries.summaries,
+      {},
+      {
+        '/videos/kanal-b': 'Kanał B',
+      },
+    );
 
     expect(built[0]?.channelName).toBe('Kanał B');
     // A folder with no indexed videos has no channel name: the console hides
@@ -75,7 +74,7 @@ describe('buildChannelRows', () => {
   });
 
   it('reports no index state while Elasticsearch could not be read', () => {
-    const built = buildChannelRows({ ...status, elasticsearch: 'down', indexedFolders: [] }, summaries.summaries, []);
+    const built = buildChannelRows({ ...status, elasticsearch: 'down', indexedFolders: [] }, summaries.summaries, {});
 
     // A chip per channel would say "reindex everything"; the banner above the
     // table says the cluster is down
@@ -97,17 +96,15 @@ describe('buildChannelRows', () => {
     });
   });
 
-  it('counts the queue per folder and remembers the first failure', () => {
-    const built = buildChannelRows(status, summaries.summaries, [
-      job({}),
-      job({ id: 'job-2', status: 'queued' }),
-      job({ id: 'job-3', status: 'error', error: 'yt-dlp exited with code 1' }),
-      job({ id: 'job-4', folderPath: '/videos/kanal-b', status: 'error', error: 'members-only' }),
-    ]);
+  it('carries the counters of every folder and leaves the rest at zero', () => {
+    const built = buildChannelRows(status, summaries.summaries, {
+      '/videos/kanal-a': counts({ running: 1, queued: 1, failed: 1, firstError: 'yt-dlp exited with code 1' }),
+      '/videos/kanal-b': counts({ failed: 1, firstError: 'members-only' }),
+    });
 
     expect(built[1]?.queue).toEqual({ running: 1, queued: 1, failed: 1, firstError: 'yt-dlp exited with code 1' });
     expect(built[0]?.queue).toEqual({ running: 0, queued: 0, failed: 1, firstError: 'members-only' });
-    expect(built[2]?.queue).toEqual({ running: 0, queued: 0, failed: 0, firstError: undefined });
+    expect(built[2]?.queue).toEqual({ running: 0, queued: 0, failed: 0 });
   });
 
   it('lists why a channel needs attention, worst first', () => {
@@ -142,23 +139,26 @@ describe('buildChannelRows', () => {
   });
 
   it('leaves the category out when the config has none', () => {
-    const built = buildChannelRows(status, summaries.summaries, []);
+    const built = buildChannelRows(status, summaries.summaries, {});
 
     expect('category' in (built[2] ?? {})).toBe(false);
     expect(built[2]?.category).toBeUndefined();
   });
 
-  it('keeps the first error when several jobs failed', () => {
-    const built = buildChannelRows(status, {}, [
-      job({ id: 'job-1', status: 'error', error: 'first' }),
-      job({ id: 'job-2', status: 'error', error: 'second' }),
-    ]);
+  it('keeps the first error the queue summary reported', () => {
+    const built = buildChannelRows(
+      status,
+      {},
+      {
+        '/videos/kanal-a': counts({ failed: 2, firstError: 'first' }),
+      },
+    );
 
     expect(built[1]?.queue).toMatchObject({ failed: 2, firstError: 'first' });
   });
 
   it('leaves the summary absent while it has not arrived', () => {
-    const built = buildChannelRows(status, {}, []);
+    const built = buildChannelRows(status, {}, {});
 
     expect(built.every((row) => row.summary === undefined)).toBe(true);
   });
@@ -181,7 +181,7 @@ describe('filterChannels', () => {
   });
 
   it('breaks ties on the name so the order never depends on the input order', () => {
-    const built = buildChannelRows(status, {}, []);
+    const built = buildChannelRows(status, {}, {});
 
     // No summaries at all: every channel ties on "missing" and on "updated"
     expect(sortChannels(built, 'missing').map((row) => row.name)).toEqual(['kanal-a', 'kanal-b', 'kanal-c']);
@@ -208,7 +208,7 @@ describe('filterChannels', () => {
       },
     };
 
-    expect(sortChannels(buildChannelRows(status, sameDate.summaries, []), 'updated').map((row) => row.name)).toEqual([
+    expect(sortChannels(buildChannelRows(status, sameDate.summaries, {}), 'updated').map((row) => row.name)).toEqual([
       'kanal-a',
       'kanal-b',
       'kanal-c',
@@ -253,36 +253,40 @@ describe('summarizeChannels', () => {
 });
 
 describe('foldersWithFinishedJobs', () => {
-  it('names each folder once whose job left the queue since the previous poll', () => {
-    const previous = [
-      job({ id: 'a-1', folderPath: '/videos/kanal-a', status: 'running' }),
-      job({ id: 'a-2', folderPath: '/videos/kanal-a', status: 'queued' }),
-      job({ id: 'b-1', folderPath: '/videos/kanal-b', status: 'queued' }),
-      job({ id: 'c-1', folderPath: '/videos/kanal-c', status: 'done' }),
-    ];
-    const current = [
-      job({ id: 'a-1', folderPath: '/videos/kanal-a', status: 'done' }),
-      job({ id: 'a-2', folderPath: '/videos/kanal-a', status: 'error' }),
-      job({ id: 'b-1', folderPath: '/videos/kanal-b', status: 'running' }),
-      // c-1 was cleared from the queue, but it had already finished before
-      job({ id: 'd-1', folderPath: '/videos/kanal-d', status: 'done' }),
-    ];
+  it('names each folder once whose queue lost active work since the previous poll', () => {
+    const previous = {
+      '/videos/kanal-a': counts({ running: 1, queued: 1 }),
+      '/videos/kanal-b': counts({ queued: 1 }),
+      '/videos/kanal-c': counts(),
+    };
+    const current = {
+      '/videos/kanal-a': counts(),
+      '/videos/kanal-b': counts({ running: 1 }),
+      '/videos/kanal-c': counts(),
+    };
 
     expect(foldersWithFinishedJobs(previous, current)).toEqual(['/videos/kanal-a']);
   });
 
-  it('counts a job that vanished while active as finished', () => {
+  it('counts a folder that vanished from the summary as finished', () => {
     // Cancelled and swept between two polls: the folder may still have
     // changed on disk before the cancel landed
-    const previous = [job({ id: 'a-1', folderPath: '/videos/kanal-a', status: 'running' })];
+    const previous = { '/videos/kanal-a': counts({ running: 1 }) };
 
-    expect(foldersWithFinishedJobs(previous, [])).toEqual(['/videos/kanal-a']);
+    expect(foldersWithFinishedJobs(previous, {})).toEqual(['/videos/kanal-a']);
   });
 
   it('reports nothing on the first poll and while nothing changes', () => {
-    const jobs = [job({ id: 'a-1', status: 'running' })];
+    const queue = { '/videos/kanal-a': counts({ running: 1 }) };
 
-    expect(foldersWithFinishedJobs([], jobs)).toEqual([]);
-    expect(foldersWithFinishedJobs(jobs, jobs)).toEqual([]);
+    expect(foldersWithFinishedJobs({}, queue)).toEqual([]);
+    expect(foldersWithFinishedJobs(queue, queue)).toEqual([]);
+  });
+
+  it('does not re-read a folder that gained work', () => {
+    const previous = { '/videos/kanal-a': counts({ queued: 1 }) };
+    const current = { '/videos/kanal-a': counts({ queued: 3 }) };
+
+    expect(foldersWithFinishedJobs(previous, current)).toEqual([]);
   });
 });

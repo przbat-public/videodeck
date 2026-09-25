@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { DownloadOptions, JobStatus, JobType, QueueJob } from '@videodeck/shared/api';
+import type { DownloadOptions, JobStatus, JobType, QueueJob, QueueListJob, QueueSummary } from '@videodeck/shared/api';
 import { extractYtDlpProgress, isYtDlpProgressLine } from '@videodeck/shared/progress';
 import { DownloadOptionsSchema } from '@videodeck/shared/schemas';
 import { toWatchUrl } from '@videodeck/shared/youtube';
@@ -106,6 +106,18 @@ export interface DownloadQueueOptions {
 
 function isActive(job: QueueJob): boolean {
   return job.status === 'queued' || job.status === 'running';
+}
+
+/**
+ * The job without its log tail: what the queue list endpoints send. The log
+ * stays behind GET /api/folder/queue/:jobId, because the list is polled and on
+ * a real instance the logs were the megabytes it carried.
+ */
+export function toListJob(job: QueueJob): QueueListJob {
+  const { log, logLineCount, ...rest } = job;
+  void log;
+  void logLineCount;
+  return rest;
 }
 
 /** `[download] Destination: <file>` — the file yt-dlp announces it is writing */
@@ -337,6 +349,48 @@ export class DownloadQueue extends EventEmitter {
     this.prune();
     const jobs = Array.from(this.jobs.values()).filter((job) => !folderPath || job.folderPath === folderPath);
     return jobs.map((job) => this.snapshot(job));
+  }
+
+  /**
+   * Counters of the whole queue, the per-folder counters the channel console
+   * renders, and the jobs running right now. This is what a poller asks for:
+   * the job list can hold thousands of entries, the counters fit in a small
+   * answer with no log lines in it.
+   */
+  summary(): QueueSummary {
+    this.prune();
+    const counts: Record<JobStatus, number> = { queued: 0, running: 0, done: 0, error: 0, cancelled: 0 };
+    const folders: QueueSummary['folders'] = {};
+    const running: QueueListJob[] = [];
+    for (const job of this.jobs.values()) {
+      counts[job.status] += 1;
+      let folder = folders[job.folderPath];
+      if (folder === undefined) {
+        folder = { running: 0, queued: 0, failed: 0 };
+        folders[job.folderPath] = folder;
+      }
+      if (job.status === 'running') {
+        folder.running += 1;
+        running.push(this.listSnapshot(job));
+      } else if (job.status === 'queued') {
+        folder.queued += 1;
+      } else if (job.status === 'error') {
+        folder.failed += 1;
+        if (folder.firstError === undefined && job.error !== undefined) {
+          folder.firstError = job.error;
+        }
+      }
+    }
+    return { counts, folders, running };
+  }
+
+  /**
+   * The job without its log tail: what a list endpoint sends. The log stays
+   * behind GET /api/folder/queue/:jobId, because the list is polled and the
+   * logs were the megabytes it carried.
+   */
+  private listSnapshot(job: QueueJob): QueueListJob {
+    return toListJob(job);
   }
 
   /**

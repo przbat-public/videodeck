@@ -62,6 +62,7 @@ async function folderListPage(page: Page): Promise<void> {
     route.fulfill(
       json({
         paused: false,
+        total: 1,
         jobs: [
           {
             id: 'job-1',
@@ -491,8 +492,10 @@ test.describe('long unbroken content', () => {
         downloadStatuses: {},
         lastUpdatedDates: {},
       },
+      // The list carries no logs; the failed row reads its tail per job
       queue: {
         paused: false,
+        total: 1,
         jobs: [
           {
             id: 'job-1',
@@ -503,12 +506,26 @@ test.describe('long unbroken content', () => {
             type: 'download',
             status: 'error',
             error: 'yt-dlp exited with code 1 after 3 attempts',
-            log,
-            logLineCount: log.length,
             createdAt: '2026-01-01T10:00:00.000Z',
             finishedAt: '2026-01-01T10:01:00.000Z',
           },
         ],
+      },
+      queueJob: {
+        job: {
+          id: 'job-1',
+          folderPath: '/videos/e2e',
+          videoId: 'v1',
+          videoUrl: 'https://yt/v1',
+          title: 'Pierwszy film',
+          type: 'download',
+          status: 'error',
+          error: 'yt-dlp exited with code 1 after 3 attempts',
+          log,
+          logLineCount: log.length,
+          createdAt: '2026-01-01T10:00:00.000Z',
+          finishedAt: '2026-01-01T10:01:00.000Z',
+        },
       },
     });
     await page.setViewportSize({ width: 360, height: 800 });

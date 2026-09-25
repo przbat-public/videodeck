@@ -27,7 +27,10 @@ const json = (body: unknown, status = 200): MockResponse => ({
 
 type FetchHandlers = {
   status?: () => MockResponse;
+  /** GET /api/folder/queue?folderPath= — the jobs of one expanded folder */
   queue?: () => MockResponse;
+  /** GET /api/folder/queue/summaries — the counters the console and the bar share */
+  queueSummary?: () => MockResponse;
   summaries?: () => MockResponse;
   folderSummary?: (folderPath: string) => MockResponse;
   list?: () => MockResponse;
@@ -42,9 +45,9 @@ function matchPrefixedRoute(url: string, handlers: FetchHandlers): MockResponse 
   if (url.startsWith('/api/folder/list-exists')) {
     return json({ exists: false });
   }
-  // The expanded section polls its own folder; the same queue answers it
+  // The expanded section polls its own folder, log-free and capped
   if (url.startsWith('/api/folder/queue?folderPath=')) {
-    return handlers.queue?.() ?? json({ jobs: [], paused: false });
+    return handlers.queue?.() ?? json({ jobs: [], total: 0, paused: false });
   }
   if (url.startsWith('/api/folder/summaries?folderPath=')) {
     const folderPath = decodeURIComponent(url.slice('/api/folder/summaries?folderPath='.length));
@@ -66,12 +69,28 @@ function installFetch(handlers: FetchHandlers = {}): FetchMock {
     'POST /api/folder/download-playlist': () => json({ output: 'ok' }),
     'DELETE /api/folder/queue/finished': () => json({ cleared: 2 }),
   };
+  // The mock keeps the pause state like the real server, so the queue bar
+  // reads it back from the summary the pause click triggers.
+  let queuePaused = false;
   const routes: Record<string, () => MockResponse> = {
     '/api/status': () => handlers.status?.() ?? json(statusResponse),
     '/api/folder/summaries': () => handlers.summaries?.() ?? json({ summaries: {} }),
-    '/api/folder/queue': () => handlers.queue?.() ?? json({ jobs: [], paused: false }),
-    '/api/folder/queue/pause?paused=1': () => json({ paused: true }),
-    '/api/folder/queue/resume?paused=0': () => json({ paused: false }),
+    '/api/folder/queue/summaries': () =>
+      handlers.queueSummary?.() ??
+      json({
+        paused: queuePaused,
+        counts: { queued: 0, running: 0, done: 0, error: 0, cancelled: 0 },
+        folders: {},
+        running: [],
+      }),
+    '/api/folder/queue/pause?paused=1': () => {
+      queuePaused = true;
+      return json({ paused: true });
+    },
+    '/api/folder/queue/resume?paused=0': () => {
+      queuePaused = false;
+      return json({ paused: false });
+    },
   };
 
   const fetchMock: FetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -143,23 +162,14 @@ describe('StatusPage', () => {
             '/videos/b': { videos: 0, downloaded: 0, notDownloaded: 0, stale: 0 },
           },
         }),
-      queue: () =>
+      queueSummary: () =>
         json({
           paused: false,
-          jobs: [
-            {
-              id: 'job-1',
-              folderPath: '/videos/a',
-              videoId: 'v1',
-              videoUrl: 'https://yt/v1',
-              type: 'download',
-              status: 'error',
-              error: 'yt-dlp exited with code 1',
-              log: [],
-              logLineCount: 0,
-              createdAt: '2026-09-19T10:00:00.000Z',
-            },
-          ],
+          counts: { queued: 0, running: 0, done: 0, error: 1, cancelled: 0 },
+          folders: {
+            '/videos/a': { running: 0, queued: 0, failed: 1, firstError: 'yt-dlp exited with code 1' },
+          },
+          running: [],
         }),
     });
     renderPage();
@@ -209,23 +219,13 @@ describe('StatusPage', () => {
 
   it('clears the finished jobs the queue keeps in memory', async () => {
     const user = userEvent.setup();
-    const finishedJob = (id: string, status: 'done' | 'cancelled') => ({
-      id,
-      folderPath: '/videos/a',
-      videoId: id,
-      videoUrl: `https://yt/${id}`,
-      type: 'download',
-      status,
-      log: [],
-      logLineCount: 0,
-      createdAt: '2025-01-01T00:00:00.000Z',
-      finishedAt: '2025-01-01T00:01:00.000Z',
-    });
     const fetchMock = installFetch({
-      queue: () =>
+      queueSummary: () =>
         json({
-          jobs: [finishedJob('a', 'cancelled'), finishedJob('b', 'done')],
           paused: false,
+          counts: { queued: 0, running: 0, done: 1, error: 0, cancelled: 1 },
+          folders: {},
+          running: [],
         }),
     });
     renderPage();
@@ -313,7 +313,7 @@ describe('StatusPage', () => {
   });
 
   it('shows why the queue controls are unusable when the queue read fails', async () => {
-    installFetch({ queue: () => json({ error: 'boom' }, 500) });
+    installFetch({ queueSummary: () => json({ error: 'boom' }, 500) });
     renderPage();
 
     expect(await screen.findByText('Błąd kolejki: Nie udało się wczytać kolejki')).toBeInTheDocument();
@@ -367,9 +367,14 @@ describe('StatusPage', () => {
           summaries: { '/videos/a': { videos: 3, downloaded: 0, notDownloaded: 3, stale: 0 } },
         });
       },
-      queue: () => {
+      queueSummary: () => {
         queueCalls += 1;
-        return json({ jobs: [], paused: false });
+        return json({
+          paused: false,
+          counts: { queued: 0, running: 0, done: 0, error: 0, cancelled: 0 },
+          folders: {},
+          running: [],
+        });
       },
       list: () =>
         json({
@@ -400,17 +405,6 @@ describe('StatusPage', () => {
   it('refreshes the counts of a channel whose job just finished, and that channel alone', async () => {
     // Real timers: the queue hook polls on its own interval, and the test
     // waits for the poll to observe the finished job.
-    const running = {
-      id: 'job-1',
-      folderPath: '/videos/a',
-      videoId: 'v1',
-      videoUrl: 'https://yt/v1',
-      type: 'download',
-      status: 'running',
-      log: [],
-      logLineCount: 0,
-      createdAt: '2026-09-19T10:00:00.000Z',
-    };
     let finished = false;
     const refreshed: string[] = [];
     const fetchMock = installFetch({
@@ -421,7 +415,19 @@ describe('StatusPage', () => {
             '/videos/b': { videos: 2, downloaded: 2, notDownloaded: 0, stale: 0 },
           },
         }),
-      queue: () => json({ jobs: [finished ? { ...running, status: 'done' } : running], paused: false }),
+      queueSummary: () =>
+        json({
+          paused: false,
+          counts: {
+            queued: 0,
+            running: finished ? 0 : 1,
+            done: finished ? 1 : 0,
+            error: 0,
+            cancelled: 0,
+          },
+          folders: { '/videos/a': { running: finished ? 0 : 1, queued: 0, failed: 0 } },
+          running: [],
+        }),
       folderSummary: (folderPath) => {
         refreshed.push(folderPath);
         return json({ summaries: { [folderPath]: { videos: 3, downloaded: 2, notDownloaded: 1, stale: 0 } } });
@@ -525,7 +531,14 @@ describe('StatusPage', () => {
     };
     let queued = false;
     installFetch({
-      queue: () => json({ jobs: queued ? [queuedJob] : [], paused: false }),
+      queue: () => json({ jobs: queued ? [queuedJob] : [], total: queued ? 1 : 0, paused: false }),
+      queueSummary: () =>
+        json({
+          paused: false,
+          counts: { queued: queued ? 1 : 0, running: 0, done: 0, error: 0, cancelled: 0 },
+          folders: { '/videos/a': { running: 0, queued: queued ? 1 : 0, failed: 0 } },
+          running: [],
+        }),
       enqueue: () => {
         queued = true;
         return json({ jobs: [queuedJob], skipped: [] });

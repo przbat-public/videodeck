@@ -63,7 +63,7 @@ function folderFetchResponse(url: string, init: RequestInit | undefined, handler
     return json(handlers.list?.() ?? listResponse);
   }
   if (url === QUEUE_URL && (init?.method || 'GET') === 'GET') {
-    return json(handlers.queue?.() ?? { jobs: [], paused: false });
+    return json(handlers.queue?.() ?? { jobs: [], total: 0, paused: false });
   }
   if (url === '/api/folder/queue' && init?.method === 'POST') {
     const body = JSON.parse(String(init.body));
@@ -329,7 +329,7 @@ describe('VideoListSection', () => {
   it('shows a toast when the server rejects the enqueue', async () => {
     const fetchMock = installFetch({});
     fetchMock.mockImplementationOnce(async (url: string) =>
-      json(url === LIST_URL ? listResponse : { jobs: [], paused: false }),
+      json(url === LIST_URL ? listResponse : { jobs: [], total: 0, paused: false }),
     );
     await renderLoaded();
     fetchMock.mockImplementationOnce(async () => json({ error: 'Folder path is not in the allowed list' }, 403));
@@ -343,7 +343,7 @@ describe('VideoListSection', () => {
     let queueState: QueueJob[] = [makeJob({ status: 'running', progress: 10 })];
     let listState: ListResponse = listResponse;
     const fetchMock = installFetch({
-      queue: () => ({ jobs: queueState, paused: false }),
+      queue: () => ({ jobs: queueState, total: queueState.length, paused: false }),
       list: () => listState,
     });
     await renderLoaded();
@@ -373,7 +373,7 @@ describe('VideoListSection', () => {
 
   it('"Anuluj wszystko" cancels the folder queue', async () => {
     const fetchMock = installFetch({
-      queue: () => ({ jobs: [makeJob({ status: 'queued' })], paused: false }),
+      queue: () => ({ jobs: [makeJob({ status: 'queued' })], total: 1, paused: false }),
     });
     await renderLoaded();
 
