@@ -533,6 +533,163 @@ describe('elasticsearchService', () => {
     });
   });
 
+  describe('createIndex under concurrency', () => {
+    /** Alias target plus the documents of every physical index */
+    interface EsState {
+      indices: Map<string, Set<string>>;
+      aliasTarget: string | undefined;
+    }
+
+    interface AliasAction {
+      add?: { index: string };
+      remove?: { index: string };
+    }
+
+    /**
+     * Stateful stand-in for the calls createIndex and indexVideo make, with
+     * the cluster's own failure modes: creating an existing index fails and
+     * refreshing a deleted one 404s.
+     */
+    const esExistsAlias = (state: EsState) => async (): Promise<boolean> => state.aliasTarget !== undefined;
+
+    const esCreate =
+      (state: EsState) =>
+      async (params: { index: string }): Promise<{ acknowledged: boolean }> => {
+        if (state.indices.has(params.index)) {
+          throw Object.assign(new Error('resource_already_exists_exception'), { meta: { statusCode: 400 } });
+        }
+        state.indices.set(params.index, new Set());
+        return { acknowledged: true };
+      };
+
+    const esRefresh =
+      (state: EsState) =>
+      async (params: { index: string }): Promise<Record<string, never>> => {
+        if (!state.indices.has(params.index)) {
+          throw notFound();
+        }
+        return {};
+      };
+
+    const esGetAlias = (state: EsState) => async (): Promise<Record<string, { aliases: Record<string, never> }>> => {
+      if (state.aliasTarget === undefined) {
+        throw notFound();
+      }
+      return { [state.aliasTarget]: { aliases: {} } };
+    };
+
+    const esExists =
+      (state: EsState) =>
+      async (params: { index: string }): Promise<boolean> =>
+        state.indices.has(params.index);
+
+    /** Apply one remove/add alias action to the state */
+    function applyAliasAction(state: EsState, action: AliasAction): void {
+      if (action.remove && state.aliasTarget === action.remove.index) {
+        state.aliasTarget = undefined;
+      }
+      if (action.add) {
+        state.aliasTarget = action.add.index;
+      }
+    }
+
+    const esUpdateAliases =
+      (state: EsState) =>
+      async (params: { actions: AliasAction[] }): Promise<{ acknowledged: boolean }> => {
+        for (const action of params.actions) {
+          applyAliasAction(state, action);
+        }
+        return { acknowledged: true };
+      };
+
+    const esGet =
+      (state: EsState) =>
+      async (params: { index: string }): Promise<Record<string, { aliases: Record<string, never> }>> => {
+        const prefix = params.index.replace(/\*$/, '');
+        const names = [...state.indices.keys()].filter((name) => name.startsWith(prefix));
+        return Object.fromEntries(names.map((name) => [name, { aliases: {} }]));
+      };
+
+    const esDelete =
+      (state: EsState) =>
+      async (params: { index: string }): Promise<{ acknowledged: boolean }> => {
+        state.indices.delete(params.index);
+        return { acknowledged: true };
+      };
+
+    const esIndex =
+      (state: EsState) =>
+      async (params: { index: string; id: string }): Promise<Record<string, never>> => {
+        const documents = state.indices.get(state.aliasTarget ?? params.index);
+        if (!documents) {
+          throw notFound();
+        }
+        documents.add(params.id);
+        return {};
+      };
+
+    function installStatefulElasticsearch(): EsState {
+      const state: EsState = { indices: new Map(), aliasTarget: undefined };
+      mockClient.indices.existsAlias.mockImplementation(esExistsAlias(state));
+      mockClient.indices.create.mockImplementation(esCreate(state));
+      mockClient.indices.refresh.mockImplementation(esRefresh(state));
+      mockClient.indices.getAlias.mockImplementation(esGetAlias(state));
+      mockClient.indices.exists.mockImplementation(esExists(state));
+      mockClient.indices.updateAliases.mockImplementation(esUpdateAliases(state));
+      mockClient.indices.get.mockImplementation(esGet(state));
+      mockClient.indices.delete.mockImplementation(esDelete(state));
+      mockClient.index.mockImplementation(esIndex(state));
+      return state;
+    }
+
+    /** A promise plus its settle function, for holding two callers in flight */
+    function deferred(): { promise: Promise<void>; resolve: () => void } {
+      let resolve = () => {
+        /* replaced below */
+      };
+      const promise = new Promise<void>((settle) => {
+        resolve = settle;
+      });
+      return { promise, resolve };
+    }
+
+    it('keeps both documents when two first-time creations race for the same folder', async () => {
+      const state = installStatefulElasticsearch();
+      // Two jobs finishing together check the alias before either has created
+      // its index; the barrier holds both checks open for exactly that window.
+      const bothChecked = deferred();
+      let checks = 0;
+      mockClient.indices.existsAlias.mockImplementation(async () => {
+        checks += 1;
+        if (checks === 2) {
+          bothChecked.resolve();
+        }
+        await Promise.race([bothChecked.promise, new Promise((resolve) => setTimeout(resolve, 50))]);
+        return false;
+      });
+
+      await Promise.all([
+        indexVideo(video({ videoId: 'vid00000001', baseName: '20240101_First' })),
+        indexVideo(video({ videoId: 'vid00000002', baseName: '20240101_Second' })),
+      ]);
+
+      const versions = await getIndexVersions(FOLDER_A);
+      expect(versions).toHaveLength(1);
+      expect([...(state.indices.get(versions[0] ?? '') ?? [])].sort()).toEqual(['vid00000001', 'vid00000002']);
+    });
+
+    it('lets a later creation retry after the in-flight one failed', async () => {
+      mockClient.indices.existsAlias.mockResolvedValue(false);
+      mockClient.indices.create.mockRejectedValueOnce(new Error('ES is down'));
+
+      await expect(createIndex(FOLDER_A)).rejects.toThrow('ES is down');
+      await createIndex(FOLDER_A);
+
+      expect(mockClient.indices.create).toHaveBeenCalledTimes(2);
+      expect(mockClient.indices.updateAliases).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('recreateAllIndices', () => {
     beforeEach(() => {
       aliasPointsAt(`${ALIAS_A}_old`, `${ALIAS_B}_old`);

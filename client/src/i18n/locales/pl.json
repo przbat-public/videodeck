@@ -31,7 +31,11 @@
     "clear": "Wyczyść",
     "loadMore": "Pokaż więcej",
     "loading": "Ładowanie filmów...",
-    "noResults": "Brak filmów. Spróbuj innego zapytania."
+    "noResults": "Brak filmów. Spróbuj innego zapytania.",
+    "loadedMore_one": "Wczytano {{count}} film więcej (na liście: {{loaded}})",
+    "loadedMore_few": "Wczytano {{count}} filmy więcej (na liście: {{loaded}})",
+    "loadedMore_many": "Wczytano {{count}} filmów więcej (na liście: {{loaded}})",
+    "loadedMore_other": "Wczytano {{count}} filmów więcej (na liście: {{loaded}})"
   },
   "sortOption": {
     "relevance": "Trafność",
@@ -136,7 +140,8 @@
     "updatedTitle": "{{title}} (aktualizacja: {{date}})",
     "summaryTitle": "Streszczenie",
     "invalidId": "Nieprawidłowy identyfikator filmu",
-    "summaryTruncated": "To streszczenie powstało na podstawie skróconych napisów — tekst źródłowy był zbyt długi dla modelu."
+    "summaryTruncated": "To streszczenie powstało na podstawie skróconych napisów — tekst źródłowy był zbyt długi dla modelu.",
+    "play": "Odtwórz"
   },
   "config": {
     "save": "Zapisz",
@@ -243,7 +248,11 @@
     },
     "loadSummaries": "Nie udało się policzyć filmów w kanałach",
     "searchElasticsearch": "Nie udało się wyszukać filmów: Elasticsearch nie odpowiada",
-    "channelsElasticsearch": "Nie udało się wczytać listy kanałów: Elasticsearch nie odpowiada"
+    "channelsElasticsearch": "Nie udało się wczytać listy kanałów: Elasticsearch nie odpowiada",
+    "loadVideos": "Nie udało się wczytać filmów",
+    "loadSummary": "Nie udało się wczytać streszczenia",
+    "downloadPlaylist": "Nie udało się pobrać listy odtwarzania",
+    "saveConfig": "Nie udało się zapisać pliku config.json"
   },
   "health": {
     "elasticsearchDown": "Elasticsearch nie odpowiada. Wyszukiwanie i indeksowanie są wyłączone, pobieranie i lista filmów działają dalej.",

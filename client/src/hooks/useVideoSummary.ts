@@ -28,7 +28,7 @@ async function requestSummary(baseName: string, signal: AbortSignal): Promise<Su
     return { kind: 'unavailable', message: summaryUnavailableMessage() };
   }
   if (!response.ok) {
-    throw new Error('Failed to load summary');
+    throw new Error(i18n.t('errors.loadSummary'));
   }
   const data = VideoSummaryResponseSchema.parse(await response.json());
   return { kind: 'success', summary: data.summary, truncated: data.truncated === true };

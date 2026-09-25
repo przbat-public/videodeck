@@ -120,6 +120,61 @@ describe('useVideoSearch', () => {
   });
 
   describe('loadMore', () => {
+    it('reports an appended page as loadingMore, never as a fresh load', async () => {
+      const secondPage = deferred();
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ videos: [video('a')], totalCount: 3 }))
+        .mockReturnValueOnce(secondPage.promise);
+      const { result } = renderHook(() => useVideoSearch());
+      await act(() => result.current.search(state()));
+      expect(result.current.loadingMore).toBe(false);
+
+      let pending: Promise<number>;
+      act(() => {
+        pending = result.current.loadMore();
+      });
+
+      // The cards on screen answer the current query; only the list region is
+      // busy, so the page has nothing new to announce as "loading".
+      expect(result.current.loading).toBe(false);
+      expect(result.current.loadingMore).toBe(true);
+
+      secondPage.resolve({ videos: [video('b')], totalCount: 3 });
+      await act(() => pending);
+
+      expect(result.current.loadingMore).toBe(false);
+    });
+
+    it('resolves with how many videos the page appended', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ videos: [video('a')], totalCount: 3 }))
+        .mockResolvedValueOnce(jsonResponse({ videos: [video('b'), video('c')], totalCount: 3 }));
+      const { result } = renderHook(() => useVideoSearch());
+      await act(() => result.current.search(state()));
+
+      let appended = -1;
+      await act(async () => {
+        appended = await result.current.loadMore();
+      });
+
+      expect(appended).toBe(2);
+    });
+
+    it('resolves with nothing appended when the page failed', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ videos: [video('a')], totalCount: 3 }))
+        .mockRejectedValueOnce(new Error('Network error'));
+      const { result } = renderHook(() => useVideoSearch());
+      await act(() => result.current.search(state()));
+
+      let appended = -1;
+      await act(async () => {
+        appended = await result.current.loadMore();
+      });
+
+      expect(appended).toBe(0);
+    });
+
     it('appends the next page and reports hasMore while results remain', async () => {
       fetchMock
         .mockResolvedValueOnce(jsonResponse({ videos: [video('a')], totalCount: 3 }))
@@ -185,8 +240,8 @@ describe('useVideoSearch', () => {
       const { result } = renderHook(() => useVideoSearch());
 
       await act(() => result.current.search(state()));
-      let first: Promise<void>;
-      let second: Promise<void>;
+      let first: Promise<number>;
+      let second: Promise<number>;
       act(() => {
         first = result.current.loadMore();
         second = result.current.loadMore();

@@ -52,8 +52,8 @@ You should see a JSON response with information about Elasticsearch.
 
 3. Configure environment variables:
 
-Create a `server/.env` file (the server loads it from its own directory ,
-`dotenv.config()` runs with cwd=`server/`; a root-level `.env` is ignored):
+Create a `server/.env` file (the server loads it from its own directory,
+because `dotenv.config()` runs with cwd=`server/`; a root-level `.env` is ignored):
 
 ```bash
 VIDEOS_FOLDER_PATH=/path/to/videos/folder
@@ -107,7 +107,7 @@ RATE_LIMIT_WINDOW_MS=600000 # rate-limit window length in ms (default 10 minutes
 
 - If Elasticsearch runs on a different host or port, update `ELASTICSEARCH_URL` accordingly.
 - If you use Docker and get a "Cannot connect to the Docker daemon" error, make sure Docker Desktop is running.
-- After starting the server for the first time, you must manually call the `/api/videos/refreshCache` endpoint to index videos into Elasticsearch (this may take a while depending on the number of videos). The same applies after an upgrade that changes the search analyzer (see [docs/API.md](API.md)).
+- After starting the server for the first time, you must manually call the `POST /api/videos/refreshCache` endpoint to index videos into Elasticsearch (this may take a while depending on the number of videos). The same applies after an upgrade that changes the search analyzer (see [docs/API.md](API.md)).
 - **Keep yt-dlp up to date**: YouTube regularly breaks older versions. yt-dlp recommends the `nightly` channel (stable tends to be "stale and prone to external breakage"); the version is shown in the server startup log (`yt-dlp version: ...`), and when downloads start failing with "Sign in to confirm you're not a bot"/429 errors, the first thing to try is `yt-dlp -U` or the `nightly` channel. In a channel's `config.json` you can also enable `impersonate: true` (browser impersonation, without cookies).
 
 
@@ -137,7 +137,7 @@ cd client && pnpm run preview
 pnpm run build:extension   # esbuild → background/content/popup/options.js
 ```
 
-The generated `chrome-extension/*.js` files are not committed (gitignore) ,
+The generated `chrome-extension/*.js` files are not committed (gitignore), so
 after cloning the repo, the extension must be built before loading it into
 Chrome.
 

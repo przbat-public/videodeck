@@ -1,10 +1,15 @@
 # Security-sensitive paths: these files decide what reaches yt-dlp and the
-# filesystem — require a review from the repository owners for any change.
-server/src/routes/folder.ts
-server/src/routes/http.ts
-server/src/services/folderConfig.ts
-server/src/services/ytdlp.ts
-server/src/services/ytdlpFailures.ts
-shared/schemas.ts
+# filesystem, or they define the API contract, so any change needs a review
+# from the repository owner. Every pattern list ends with an explicit owner,
+# and the fallback rule below covers the rest of the tree.
+server/src/routes/folder.ts @przbat-public
+server/src/routes/http.ts @przbat-public
+server/src/services/folderConfig.ts @przbat-public
+server/src/services/ytdlp.ts @przbat-public
+server/src/services/ytdlpFailures.ts @przbat-public
+shared/schemas.ts @przbat-public
 
-* @przbat
+# CI and dependency automation decide what runs on every push.
+.github/ @przbat-public
+
+* @przbat-public

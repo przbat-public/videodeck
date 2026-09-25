@@ -84,14 +84,14 @@ videos straight from YouTube.
 
 5. Index the videos once. On the film list, open the gear menu in the top
    bar and pick **"Refresh index"** (pl: „Odśwież indeks"), or call
-   `GET /api/videos/refreshCache`. Large libraries take a while; progress
+   `POST /api/videos/refreshCache`. Large libraries take a while; progress
    shows in a toast.
 
 ## Requirements
 
 - Node.js 24.x (corepack provides pnpm 12.4.2, pinned in `packageManager`)
 - Elasticsearch 8.x or 9.x (local or remote)
-- Chrome 88+ (only for the Chrome extension)
+- Chrome 102+ (only for the Chrome extension)
 
 ## Configuration
 

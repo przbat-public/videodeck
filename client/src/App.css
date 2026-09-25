@@ -221,6 +221,20 @@
   font-size: 0.9rem;
 }
 
+/* Announced, never painted: the result of an incremental load is news for a
+   screen reader and noise on screen, where the new cards already say it. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* A failed page load: the reason plus the retry that re-runs the request */
 .page-error {
   display: flex;
