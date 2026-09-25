@@ -78,14 +78,14 @@ dodaje filmy do kolejki wprost z YouTube.
 
 5. Zaindeksuj filmy raz. Na liście filmów otwórz menu zębatki w górnym
    pasku i wybierz **„Odśwież indeks"** (en: "Refresh index") albo wywołaj
-   `GET /api/videos/refreshCache`. Duże biblioteki chwilę trwają; postęp
+   `POST /api/videos/refreshCache`. Duże biblioteki chwilę trwają; postęp
    widać w toaście.
 
 ## Wymagania
 
 - Node.js 24.x (corepack dostarcza pnpm 12.4.2, przypięty w `packageManager`)
 - Elasticsearch 8.x lub 9.x (lokalnie lub zdalnie)
-- Chrome 88+ (tylko dla rozszerzenia Chrome, zob. [chrome-extension/README.md](../chrome-extension/README.md))
+- Chrome 102+ (tylko dla rozszerzenia Chrome, zob. [chrome-extension/README.md](../chrome-extension/README.md))
 
 ## Konfiguracja
 
