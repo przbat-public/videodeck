@@ -128,7 +128,7 @@ describe('buildChannelRows', () => {
       {
         '/videos/kanal-c': { videos: 4, downloaded: 4, notDownloaded: 0, stale: 1 },
       },
-      [job({ id: 'job-9', folderPath: '/videos/kanal-c', status: 'error', error: 'gone' })],
+      { '/videos/kanal-c': counts({ failed: 1, firstError: 'gone' }) },
     );
 
     expect(built[2]).toMatchObject({ collection: true, configured: false });
