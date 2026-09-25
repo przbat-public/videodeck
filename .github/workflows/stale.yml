@@ -1,5 +1,8 @@
 name: Stale issue and PR cleanup
 
+# The action is pinned to a release commit (the trailing comment names the
+# version) so a retagged `@v11` cannot change what runs here unreviewed.
+
 on:
   schedule:
     # Daily at 03:00 UTC
@@ -15,7 +18,7 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/stale@v11
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
         with:
           days-before-stale: 90
           days-before-close: 30
