@@ -39,6 +39,11 @@ export interface ChannelRow {
   category?: string;
   /** Whether config.json carries a channelUrl */
   configured: boolean;
+  /**
+   * A folder of single downloads (`kind: "collection"`): no channel URL, no
+   * list.json and no channel actions, its list comes from the folder index
+   */
+  collection: boolean;
   /** ES index present (true), missing (false) or unknown (null, cluster down) */
   indexed: boolean | null;
   /** `list.json` exists (false), does not (true) or is still unknown (null) */
@@ -107,10 +112,10 @@ function queueCountsByFolder(jobs: readonly QueueJob[]): Record<string, ChannelQ
  */
 function attentionReasons(row: Omit<ChannelRow, 'attention'>): AttentionReason[] {
   const reasons = new Set<AttentionReason>();
-  if (!row.configured) {
+  if (!(row.configured || row.collection)) {
     reasons.add('noChannelUrl');
   }
-  if (row.listExists === false) {
+  if (row.listExists === false && !row.collection) {
     reasons.add('noList');
   }
   if (row.indexed === false) {
@@ -145,6 +150,7 @@ export function buildChannelRows(
       ...(channelName ? { channelName } : {}),
       ...(category ? { category } : {}),
       configured: Boolean(config?.channelUrl),
+      collection: config?.kind === 'collection',
       indexed: status.elasticsearch === 'down' ? null : status.indexedFolders.includes(folderPath),
       listExists: status.listExists[folderPath] ?? null,
       ...(summary ? { summary } : {}),

@@ -305,6 +305,7 @@
       "cancelled": "Cancelled the channel's jobs",
       "playlistQueued": "Fetching the channel's playlist"
     },
+    "collection": "collection",
     "expand": "Show videos",
     "collapse": "Hide videos",
     "searchInChannel": "Search in this channel",
