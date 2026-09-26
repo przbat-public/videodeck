@@ -79,7 +79,6 @@ describe('useStatus', () => {
     );
     const { result, unmount } = renderHook(() => useStatus());
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-
     unmount();
     await act(async () => {
       rejectFetch(new Error('Aborted'));
@@ -87,6 +86,29 @@ describe('useStatus', () => {
 
     // The aborted fetch dispatches nothing: no error state, no crash.
     expect(result.current.state.error).toBeNull();
+  });
+
+  it('leaves the app-wide Elasticsearch verdict alone when the answer lands after unmount', async () => {
+    // The status read is the biggest answer the client asks for, so its body
+    // can resolve after the page is gone. The verdict is app-wide state (the
+    // shell's banner): a page the reader has left must not raise it, and in
+    // the integration suite that write landed in the middle of the next test.
+    let resolveFetch!: (response: MockResponse) => void;
+    fetchMock.mockImplementation(
+      () =>
+        new Promise<MockResponse>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const { unmount } = renderHook(() => useStatus());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    unmount();
+    await act(async () => {
+      resolveFetch(jsonResponse({ ...statusResponse, elasticsearch: 'down' }));
+    });
+
+    expect(getElasticsearchState()).toBe('unknown');
   });
 
   it('loads the status again on reload after a failure', async () => {
