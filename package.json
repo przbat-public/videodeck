@@ -9,7 +9,7 @@
     "build:server": "cd server && pnpm run build",
     "build:client": "cd client && pnpm run build",
     "build:extension": "cd chrome-extension && pnpm run build",
-    "lint": "biome check . && node scripts/check-hardcoded-polish.mjs && node scripts/check-tsconfig-strict.mjs",
+    "lint": "biome check . && node scripts/check-hardcoded-polish.mjs && node scripts/check-test-hygiene.mjs && node scripts/check-tsconfig-strict.mjs",
     "lint:types": "eslint . --max-warnings 0",
     "lint:fix": "biome check --write .",
     "lint:scripts": "tsc -p scripts/tsconfig.json",
