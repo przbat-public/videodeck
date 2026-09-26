@@ -1,0 +1,84 @@
+name: Nightly order randomisation
+
+# Per-PR runs stay deterministic on purpose: a red check has to mean the diff
+# broke something. This workflow asks the other question on a schedule, with a
+# fixed seed so a failure here is reproducible with the same command locally.
+#
+# Local equivalents (seeds as used here):
+#   cd server && pnpm exec jest --randomize --seed=9137 --showSeed
+#   cd client && pnpm run test:run --sequence.shuffle.tests --sequence.seed=9137
+#   cd client && pnpm run test:integration --sequence.shuffle.tests --sequence.seed=9137
+#
+# One job per layer, so a red run in one of them cannot hide the state of the
+# others. The suites do not all survive the shuffle yet: the client unit job is
+# green at this seed, the server unit job and the client integration job expose
+# order dependencies and are expected to stay red until those are paid down one
+# file at a time.
+
+on:
+  schedule:
+    # Daily at 02:30 UTC, ahead of the working day
+    - cron: '30 2 * * *'
+  # Manual runs only otherwise: this is not a required check and never runs
+  # on a pull request.
+  workflow_dispatch:
+
+# Every `uses:` below is pinned to a release commit (the trailing comment names
+# the version) so a retagged action cannot change what runs here unreviewed.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-random-order:
+    name: Server unit tests (random order)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
+      - uses: ./.github/actions/pnpm-setup
+      # jest 30.5.2: --randomize shuffles the tests inside each file and
+      # --seed pins the order (--showSeed prints it in the summary).
+      - name: Server unit tests in a random order
+        working-directory: server
+        run: pnpm exec jest --randomize --seed=9137
+
+  client-random-order:
+    name: Client unit tests (random order)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
+      - uses: ./.github/actions/pnpm-setup
+      # vitest 5.0.1: sequence.shuffle.tests shuffles the tests inside each
+      # file and sequence.seed pins the order.
+      - name: Client unit tests in a random order
+        working-directory: client
+        run: pnpm run test:run --sequence.shuffle.tests --sequence.seed=9137
+
+  client-integration-random-order:
+    name: Client integration (random order)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
+      - uses: ./.github/actions/pnpm-setup
+      - name: Client integration tests in a random order
+        working-directory: client
+        run: pnpm run test:integration --sequence.shuffle.tests --sequence.seed=9137
