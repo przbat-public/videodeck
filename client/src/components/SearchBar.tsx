@@ -22,7 +22,8 @@ interface SearchBarProps {
 }
 
 const MIN_SEARCH_LENGTH = 3;
-const DEBOUNCE_DELAY = 300;
+/** The typing pause the bar waits out before committing a phrase (ms) */
+export const DEBOUNCE_DELAY = 300;
 
 /** A phrase worth searching for: nothing at all, or enough to be selective */
 const isSearchable = (trimmed: string): boolean => trimmed.length === 0 || trimmed.length >= MIN_SEARCH_LENGTH;

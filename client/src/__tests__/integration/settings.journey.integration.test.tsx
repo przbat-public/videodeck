@@ -1,5 +1,6 @@
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import i18n from '../../i18n';
 import { tabTo, typeAndCommitPhrase } from './drivers/searchDrivers';
 import type { RenderedApp } from './render-app';
 import { refreshCacheAndWait, renderApp } from './render-app';
@@ -45,8 +46,19 @@ describe('settings journey — theme and language survive navigation', () => {
     await typeAndCommitPhrase(page.user, 'kosmos', 'Search phrase');
     await screen.findByText((_content, element) => element?.textContent === 'Historia kosmosu');
     await page.user.click(screen.getByRole('link', { name: /Historia kosmosu/ }));
-    await screen.findByRole('heading', { name: 'Historia kosmosu' });
-    await screen.findByText('Original description');
+    // The detail page is entered through its own route signal: the URL, the
+    // English back link and the gone search form. The card's <h3> carries the
+    // same title on the list, so a heading wait here would pass without any
+    // navigation.
+    await waitFor(
+      () => {
+        expect(page.router.state.location.pathname).toBe('/video/deepE2e0002');
+        expect(screen.getByRole('link', { name: /Back to list/ })).toBeInTheDocument();
+        expect(screen.queryByLabelText('Search phrase')).toBeNull();
+      },
+      { timeout: 15_000 },
+    );
+    await screen.findByText(i18n.t('video.description'));
 
     // Both choices persisted across the in-place navigation.
     expect(document.documentElement.dataset.theme).toBe('dark');

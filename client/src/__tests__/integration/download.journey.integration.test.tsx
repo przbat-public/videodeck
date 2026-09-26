@@ -7,6 +7,7 @@ import { folderConfig, videoFiles } from '@videodeck/test-infra/deepServerTestEn
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { findCardByTitle, queryCardByTitle, typeAndCommitPhrase } from './drivers/searchDrivers';
 import { channelRow, folderSection } from './drivers/statusDrivers';
+import type { RenderedApp } from './render-app';
 import { renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
 
@@ -42,6 +43,42 @@ const readQueueState = async (): Promise<{ paused?: boolean; jobs?: unknown[] }>
   }
   return parsed as { paused?: boolean; jobs?: unknown[] };
 };
+
+/**
+ * Pause or resume the global queue through the API. A test uses the bar for
+ * the action it asserts on, and this for the `finally` restore: the API does
+ * not depend on the state the UI happens to be in when a test fails.
+ */
+async function setQueuePaused(paused: boolean): Promise<void> {
+  const action = paused ? 'pause' : 'resume';
+  const response = await fetch(`/api/folder/queue/${action}?paused=${paused ? 1 : 0}`, { method: 'POST' });
+  if (!response.ok) {
+    throw new Error(`queue ${action} failed with ${String(response.status)}`);
+  }
+}
+
+/** Pause through the bar the reader uses, and wait until the bar shows it */
+async function pauseQueueFromUi(page: RenderedApp): Promise<void> {
+  await page.user.click(await screen.findByRole('button', { name: 'Pauza kolejki' }));
+  await screen.findByRole('button', { name: 'Wznów kolejkę' });
+}
+
+/**
+ * A channel folder whose playlist holds two videos with the first one already
+ * on disk: the console row counts one missing video, and one job is enough to
+ * drain it. Every test that needs this shape seeds it in its own body.
+ */
+async function seedConsoleRowFolder(name: string): Promise<string> {
+  return env.seedFolder(name, {
+    'config.json': folderConfig(`https://www.youtube.com/@${name}`),
+    'list.json': JSON.stringify([
+      { id: 'ddddddddddd', title: 'Juz pobrany', url: 'https://www.youtube.com/watch?v=ddddddddddd' },
+      { id: 'eeeeeeeeeee', title: 'Do pobrania', url: 'https://www.youtube.com/watch?v=eeeeeeeeeee' },
+    ]),
+    // The first video is already on disk, so only the second may be queued
+    ...videoFiles('ddddddddddd', 'Juz pobrany'),
+  });
+}
 
 /** The alias the server derives from a folder path (elasticsearchService) */
 const folderAlias = (folderPath: string): string =>
@@ -147,78 +184,91 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
     env.setFolders('channel-integration', 'channel-two', 'channel-cancel');
 
     const page = await renderApp('/download');
-    // The previous test left the queue running — pause it again. Wait for
-    // the status page (and its queue bar) to leave the loading state.
-    await page.user.click(await screen.findByRole('button', { name: 'Pauza kolejki' }));
-    await screen.findByRole('button', { name: 'Wznów kolejkę' });
+    // Pause the queue in this test's own body: the cancel below has to land
+    // before the queue starts the job, whatever the previous test left behind.
+    // The finally hands the next test a running queue.
+    await pauseQueueFromUi(page);
+    try {
+      const section = await folderSection(folderPath);
+      await page.user.click(within(section).getByRole('button', { name: 'Pobierz listę filmów' }));
+      await within(section).findByText('Film do anulowania');
 
-    const section = await folderSection(folderPath);
-    await page.user.click(within(section).getByRole('button', { name: 'Pobierz listę filmów' }));
-    await within(section).findByText('Film do anulowania');
+      await page.user.click(within(section).getByRole('button', { name: 'Pobierz' }));
+      await within(section).findByText('Pobieranie: w kolejce');
 
-    await page.user.click(within(section).getByRole('button', { name: 'Pobierz' }));
-    await within(section).findByText('Pobieranie: w kolejce');
+      await page.user.click(within(section).getByRole('button', { name: 'Anuluj' }));
+      await within(section).findByText('Anulowano');
 
-    await page.user.click(within(section).getByRole('button', { name: 'Anuluj' }));
-    await within(section).findByText('Anulowano');
-
-    // The cancel happened before the fake yt-dlp ever ran: no files, and the
-    // persisted state no longer holds the job.
-    expect(existsSync(`${folderPath}/20260101_Fake video ccccccccccc.mp4`)).toBe(false);
-    await waitFor(async () => {
-      const state = await readQueueState();
-      expect(state.paused).toBe(true);
-      expect(state.jobs).toHaveLength(0);
-    });
+      // The cancel happened before the fake yt-dlp ever ran: no files, and the
+      // persisted state no longer holds the job.
+      expect(existsSync(`${folderPath}/20260101_Fake video ccccccccccc.mp4`)).toBe(false);
+      await waitFor(async () => {
+        const state = await readQueueState();
+        expect(state.paused).toBe(true);
+        expect(state.jobs).toHaveLength(0);
+      });
+    } finally {
+      await setQueuePaused(false);
+    }
   });
 
   it('queues the missing videos of a channel from its console row', async () => {
-    await env.seedFolder('channel-console-row', {
-      'config.json': folderConfig('https://www.youtube.com/@consolerow'),
-      'list.json': JSON.stringify([
-        { id: 'ddddddddddd', title: 'Juz pobrany', url: 'https://www.youtube.com/watch?v=ddddddddddd' },
-        { id: 'eeeeeeeeeee', title: 'Do pobrania', url: 'https://www.youtube.com/watch?v=eeeeeeeeeee' },
-      ]),
-      // The first video is already on disk, so only the second may be queued
-      ...videoFiles('ddddddddddd', 'Juz pobrany'),
-    });
+    await seedConsoleRowFolder('channel-console-row');
     env.setFolders('channel-console-row');
 
     const page = await renderApp('/download');
-    // The previous test left the queue paused, which keeps the new job waiting
-    // long enough to inspect the persisted state.
-    await screen.findByRole('button', { name: 'Wznów kolejkę' });
+    // Paused here on purpose: the new job has to wait while this test reads the
+    // persisted state, and no other test may depend on that state.
+    await pauseQueueFromUi(page);
+    try {
+      const row = await channelRow(env.folder('channel-console-row'));
+      // Every queue action is in the row menu now
+      await page.user.click(within(row).getByRole('button', { name: 'Więcej akcji' }));
+      await page.user.click(await screen.findByRole('menuitem', { name: 'Pobierz wszystkie' }));
 
-    const row = await channelRow(env.folder('channel-console-row'));
-    // Every queue action is in the row menu now
-    await page.user.click(within(row).getByRole('button', { name: 'Więcej akcji' }));
-    await page.user.click(await screen.findByRole('menuitem', { name: 'Pobierz wszystkie' }));
-
-    await waitFor(async () => {
-      const state = await readQueueState();
-      expect(state.jobs).toHaveLength(1);
-      expect(state.jobs?.[0]).toMatchObject({ videoId: 'eeeeeeeeeee' });
-    });
+      await waitFor(async () => {
+        const state = await readQueueState();
+        expect(state.jobs).toHaveLength(1);
+        expect(state.jobs?.[0]).toMatchObject({ videoId: 'eeeeeeeeeee' });
+      });
+    } finally {
+      // Drop the job this test queued, then start the queue again: the next
+      // test owns its own queue state and must not inherit a running download.
+      await fetch(`/api/folder/queue?folderPath=${encodeURIComponent(env.folder('channel-console-row'))}`, {
+        method: 'DELETE',
+      });
+      await setQueuePaused(false);
+    }
   });
 
   it('moves the console counts of a channel as soon as its download lands', async () => {
-    // Continues the previous test: the paused queue holds the one job of
-    // channel-console-row, whose row counts one missing video.
-    const folderPath = env.folder('channel-console-row');
+    // A folder of this test's own with the same shape: one video on disk, one
+    // missing. The paused queue holds its own job, so nothing is inherited.
+    const folderPath = await seedConsoleRowFolder('channel-console-drain');
+    env.setFolders('channel-console-drain');
+
     const page = await renderApp('/download');
-    const row = await channelRow(folderPath);
-    await within(row).findByText('1 niepobrany', undefined, { timeout: 15_000 });
-    await within(row).findByText('1 czeka');
+    await pauseQueueFromUi(page);
+    try {
+      const row = await channelRow(folderPath);
+      await within(row).findByText('1 niepobrany', undefined, { timeout: 15_000 });
 
-    // Resume: the fake yt-dlp writes the files and the post-job hook refreshes
-    // the folder index before the job reads as done.
-    await page.user.click(await screen.findByRole('button', { name: 'Wznów kolejkę' }));
+      await page.user.click(within(row).getByRole('button', { name: 'Więcej akcji' }));
+      await page.user.click(await screen.findByRole('menuitem', { name: 'Pobierz wszystkie' }));
+      await within(row).findByText('1 czeka', undefined, { timeout: 15_000 });
 
-    // The row learns about it from the queue poll alone: no reload, no action
-    // taken on the page.
-    await waitFor(() => expect(within(row).queryByText('1 niepobrany')).toBeNull(), { timeout: 20_000 });
-    expect(within(row).getByText('2 filmów')).toBeInTheDocument();
-    expect(within(row).queryByText('1 czeka')).toBeNull();
-    expect(existsSync(`${folderPath}/20260101_Fake video eeeeeeeeeee.mp4`)).toBe(true);
+      // Resume: the fake yt-dlp writes the files and the post-job hook refreshes
+      // the folder index before the job reads as done.
+      await page.user.click(screen.getByRole('button', { name: 'Wznów kolejkę' }));
+
+      // The row learns about it from the queue poll alone: no reload, no action
+      // taken on the page.
+      await waitFor(() => expect(within(row).queryByText('1 niepobrany')).toBeNull(), { timeout: 20_000 });
+      expect(within(row).getByText('2 filmów')).toBeInTheDocument();
+      expect(within(row).queryByText('1 czeka')).toBeNull();
+      expect(existsSync(`${folderPath}/20260101_Fake video eeeeeeeeeee.mp4`)).toBe(true);
+    } finally {
+      await setQueuePaused(false);
+    }
   });
 });

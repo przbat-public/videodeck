@@ -849,19 +849,27 @@ describe('DownloadQueue', () => {
   });
 
   describe('retries', () => {
-    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-    const waitFor = async (condition: () => boolean): Promise<void> => {
-      for (let i = 0; i < 100; i += 1) {
-        if (condition()) {
-          return;
-        }
-        await sleep(5);
-      }
-      throw new Error('condition not met in time');
+    /**
+     * Past every backoff a failure can schedule. The queue draws a full-jitter
+     * delay from [0, retryDelayMs * 2**attempts), so a three-attempt job with
+     * retryDelayMs 5 tops out at 5 ms * 2**2 = 20 ms.
+     */
+    const RETRY_BACKOFF_CEILING_MS = 100;
+
+    /** Let the fake clock deliver every due timer, immediate and microtask */
+    const settle = async (): Promise<void> => {
+      await jest.advanceTimersByTimeAsync(0);
+    };
+
+    /** Run the whole jittered backoff out, then let the retry start */
+    const waitOutBackoff = async (): Promise<void> => {
+      await jest.advanceTimersByTimeAsync(RETRY_BACKOFF_CEILING_MS);
+      await settle();
     };
 
     let retryQueue: DownloadQueue;
     beforeEach(() => {
+      jest.useFakeTimers();
       retryQueue = new DownloadQueue({
         maxConcurrent: 1,
         maxAttempts: 3,
@@ -871,20 +879,25 @@ describe('DownloadQueue', () => {
       });
     });
 
+    afterEach(() => {
+      // A backoff a test left pending must not fire into the next one.
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    });
+
     it('retries a failed run and succeeds on the second attempt', async () => {
       const job = at(retryQueue.enqueue([request('a')]), 0);
 
       spawned(0).process.exit(1);
-      await flush();
+      await settle();
       expect(retryQueue.get(job.id)?.status).toBe('running'); // waiting out the backoff
 
-      await sleep(15);
-      await flush();
+      await waitOutBackoff();
       expect(spawn.calls).toHaveLength(2);
 
       spawned(1).process.exit(0);
-      await flush();
-      await flush();
+      await settle();
+      await settle();
       expect(retryQueue.get(job.id)?.status).toBe('done');
     });
 
@@ -892,13 +905,17 @@ describe('DownloadQueue', () => {
       const job = at(retryQueue.enqueue([request('a')]), 0);
 
       spawned(0).process.exit(1);
-      await flush();
-      await waitFor(() => spawn.calls.length === 2);
+      await settle();
+      await waitOutBackoff();
+      expect(spawn.calls).toHaveLength(2);
+
       spawned(1).process.exit(1);
-      await flush();
-      await waitFor(() => spawn.calls.length === 3);
+      await settle();
+      await waitOutBackoff();
+      expect(spawn.calls).toHaveLength(3);
+
       spawned(2).process.exit(1);
-      await flush();
+      await settle();
 
       expect(spawn.calls).toHaveLength(3);
       const finalJob = retryQueue.get(job.id);
@@ -909,15 +926,12 @@ describe('DownloadQueue', () => {
     it('cancelling during the backoff stops the retry', async () => {
       const job = at(retryQueue.enqueue([request('a')]), 0);
 
-      // `close` is synchronous, so the backoff timer exists the moment the
-      // process exits: cancelling here is guaranteed to land before it fires.
-      // Waiting first let the jittered delay (0-10 ms) beat the cancel on a
-      // busy runner and start a second yt-dlp run.
+      // Cancelled before the fake clock runs the backoff out, so the cancel
+      // cannot lose a race with the jittered delay the way a real wait could.
       spawned(0).process.exit(1);
       retryQueue.cancel(job.id);
 
-      await sleep(30);
-      await flush();
+      await waitOutBackoff();
 
       expect(spawn.calls).toHaveLength(1);
       expect(retryQueue.get(job.id)?.status).toBe('cancelled');
@@ -926,20 +940,19 @@ describe('DownloadQueue', () => {
     it('leaves the retry queued when the queue is paused during the backoff', async () => {
       const job = at(retryQueue.enqueue([request('a')]), 0);
 
-      // Paused in the same tick as the process exit, so the pause cannot lose
-      // a race with the jittered delay and start the retry anyway.
+      // Paused before the fake clock runs the backoff out: the timer fires
+      // into a paused queue, which hands the job back instead of spawning.
       spawned(0).process.exit(1);
       retryQueue.setPaused(true);
 
-      await sleep(30);
-      await flush();
+      await waitOutBackoff();
 
       // Pausing must not be answered by starting a fresh yt-dlp run.
       expect(spawn.calls).toHaveLength(1);
       expect(retryQueue.get(job.id)?.status).toBe('queued');
 
       retryQueue.setPaused(false);
-      await flush();
+      await settle();
 
       expect(spawn.calls).toHaveLength(2);
     });
@@ -951,9 +964,8 @@ describe('DownloadQueue', () => {
         "ERROR: [youtube] obNLctxL3_c: This video is available to this channel's members on level: Supporter (or any higher level). Join this channel to get access to members-only content and other exclusive perks.\n",
       );
       spawned(0).process.exit(1);
-      await flush();
-      await sleep(15);
-      await flush();
+      await settle();
+      await waitOutBackoff();
 
       expect(spawn.calls).toHaveLength(1); // no second attempt
       expect(retryQueue.get(job.id)).toMatchObject({
@@ -1091,62 +1103,85 @@ describe('DownloadQueue', () => {
   });
 
   it('kills a hung job after the idle timeout and retries it as a transient failure', async () => {
-    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-    const waitFor = async (condition: () => boolean): Promise<void> => {
-      for (let i = 0; i < 500; i += 1) {
-        if (condition()) {
-          return;
-        }
-        await sleep(10);
-      }
-      throw new Error('condition not met in time');
-    };
+    // One second is the floor of both watchdog windows, so this is the
+    // shortest idle timeout a caller can ask for; the queue checks it every
+    // `idleTimeoutMs / 4`, and the idle test is "more than", not "at least".
+    const IDLE_TIMEOUT_MS = 1000;
+    const WATCHDOG_CHECK_MS = IDLE_TIMEOUT_MS / 4;
 
-    const watchdogQueue = new DownloadQueue({
-      maxConcurrent: 1,
-      maxAttempts: 2,
-      retryDelayMs: 5,
-      // One second is the floor of both watchdog windows, so this is the
-      // shortest idle timeout a caller can ask for.
-      idleTimeoutMs: 1000,
-      spawnFn: spawn.spawnFn,
-      afterJob,
-    });
-    const job = at(watchdogQueue.enqueue([request('a')]), 0);
+    jest.useFakeTimers();
+    try {
+      const watchdogQueue = new DownloadQueue({
+        maxConcurrent: 1,
+        maxAttempts: 2,
+        retryDelayMs: 5,
+        idleTimeoutMs: IDLE_TIMEOUT_MS,
+        spawnFn: spawn.spawnFn,
+        afterJob,
+      });
+      const job = at(watchdogQueue.enqueue([request('a')]), 0);
 
-    // No output ever arrives: the watchdog SIGTERMs the process group and
-    // the queue retries the job like any transient failure.
-    await waitFor(() => spawned().process.kill.mock.calls.some(([signal]) => signal === 'SIGTERM'));
-    await waitFor(() => spawn.calls.length === 2);
-    await flush();
+      // No output ever arrives: the first check past the whole window SIGTERMs
+      // the process group. The window is advanced on the fake clock, so the
+      // assertion lands on the kill the watchdog made, not on a poll that
+      // happened to see it.
+      await jest.advanceTimersByTimeAsync(IDLE_TIMEOUT_MS + WATCHDOG_CHECK_MS);
+      expect(spawned().process.kill.mock.calls.some(([signal]) => signal === 'SIGTERM')).toBe(true);
 
-    expect(watchdogQueue.get(job.id)?.status).toBe('running');
-    expect(spawn.calls.length).toBe(2);
-    // The hung attempt must not have run the success hook
-    expect(afterJob).not.toHaveBeenCalled();
+      // The SIGTERM closes the process with a null code and the queue retries
+      // the job like any transient failure, after the jittered backoff.
+      await jest.advanceTimersByTimeAsync(100);
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(watchdogQueue.get(job.id)?.status).toBe('running');
+      expect(spawn.calls.length).toBe(2);
+      // The hung attempt must not have run the success hook
+      expect(afterJob).not.toHaveBeenCalled();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
   });
 
   it('does not kill a healthy job when the watchdog timeouts are not positive', async () => {
-    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-    const clampedQueue = new DownloadQueue({
-      maxConcurrent: 1,
-      idleTimeoutMs: 0,
-      maxJobDurationMs: 0,
-      spawnFn: spawn.spawnFn,
-      afterJob,
-    });
-    const job = at(clampedQueue.enqueue([request('a')]), 0);
+    jest.useFakeTimers();
+    try {
+      // This test's fake process closes the moment it is killed. The usual
+      // deferred close would leave a zero-delay watchdog interval firing
+      // inside the same tick, and a broken clamp would spin the fake clock
+      // instead of failing the assertion below.
+      const closeOnKill = (command: string, args: string[], options: { cwd: string }): FakeProcess => {
+        const child = spawn.spawnFn(command, args, options);
+        child.kill = jest.fn((signal?: NodeJS.Signals) => {
+          child.emit('close', signal === 'SIGTERM' ? null : 0);
+          return true;
+        });
+        return child;
+      };
+      const clampedQueue = new DownloadQueue({
+        maxConcurrent: 1,
+        idleTimeoutMs: 0,
+        maxJobDurationMs: 0,
+        spawnFn: closeOnKill,
+        afterJob,
+      });
+      const job = at(clampedQueue.enqueue([request('a')]), 0);
 
-    // Unclamped, `setInterval(fn, 0)` and `setTimeout(fn, 0)` fire on the
-    // first tick and `Date.now() - lastOutputAt > 0` is already true, so a
-    // process that is alive and simply quiet gets SIGTERMed right away.
-    await sleep(100);
+      // Unclamped, `setInterval(fn, 0)` and `setTimeout(fn, 0)` fire on the
+      // first tick and `Date.now() - lastOutputAt > 0` is already true, so a
+      // process that is alive and simply quiet gets SIGTERMed right away.
+      // The advance lands on the first tick and on every check after it.
+      await jest.advanceTimersByTimeAsync(999);
 
-    expect(spawned().process.kill).not.toHaveBeenCalled();
-    expect(clampedQueue.get(job.id)?.status).toBe('running');
-    // Drop the armed watchdog before it fires at the floor a second later:
-    // the retry that kill would trigger outlives the test.
-    clampedQueue.clear();
+      expect(spawned().process.kill).not.toHaveBeenCalled();
+      expect(clampedQueue.get(job.id)?.status).toBe('running');
+      // Drop the armed watchdog before it fires at the floor a second later:
+      // the retry that kill would trigger outlives the test.
+      clampedQueue.clear();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
   });
 
   it('returns false when cancelling an unknown or finished job', async () => {

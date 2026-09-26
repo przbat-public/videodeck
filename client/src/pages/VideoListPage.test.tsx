@@ -1,9 +1,10 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { VideoListItem } from '@videodeck/shared/api';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppLayout } from '../components/AppLayout';
+import { DEBOUNCE_DELAY } from '../components/SearchBar';
 import i18n from '../i18n';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
 import { installIntersectionObserver } from '../test/intersectionObserverMock';
@@ -142,7 +143,31 @@ const pick = async (select: HTMLElement, label: string) => {
 const searchUrls = (fetchMock: FetchMock): string[] =>
   fetchMock.mock.calls.map(([url]) => url).filter((url) => url.startsWith('/api/videos/search'));
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Advance SearchBar's debounce window on the fake clock instead of sleeping
+ * through it. `schedule` runs first (a keystroke, usually), then the whole
+ * pause, so the assertions afterwards see what the timer path did. Only the
+ * window is faked: everything before it has settled on real timers, and
+ * fireEvent keeps userEvent's internal timer waits out of the fake clock.
+ */
+const advancePastDebounce = async (schedule?: () => void): Promise<void> => {
+  vi.useFakeTimers();
+  try {
+    schedule?.();
+    await act(async () => {
+      vi.advanceTimersByTime(DEBOUNCE_DELAY + 1);
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+};
+
+/** Let the mock fetch promises settle without touching the clock */
+const flushMicrotasks = async (turns = 4): Promise<void> => {
+  for (let turn = 0; turn < turns; turn += 1) {
+    await act(() => Promise.resolve());
+  }
+};
 
 /** The scroll call the page made to put the reader back where they were */
 const scrollTo = vi.fn();
@@ -153,7 +178,7 @@ function setScrollY(value: number): void {
 }
 
 // Real timers here (the page debounces), so interactions go through userEvent
-// — fireEvent stays reserved for the fake-timer suites (SearchBar).
+// — fireEvent stays for the two tests that fake the debounce window itself.
 const user = userEvent.setup();
 
 describe('VideoListPage', () => {
@@ -226,14 +251,26 @@ describe('VideoListPage', () => {
 
   describe('opening a URL', () => {
     it('searches exactly once with the defaults on the bare / URL', async () => {
-      renderAt('/');
+      // Fake timers from before the mount: even the search bar's first
+      // debounce window belongs to the clock this test controls, so a commit
+      // that sneaked in behind it would land in the recorded URLs. Nothing was
+      // typed, so advancing the whole window must not add a search.
+      vi.useFakeTimers();
+      try {
+        renderAt('/');
+        await flushMicrotasks();
+        expect(screen.getByText('First')).toBeInTheDocument();
+        expect(screen.getByRole('combobox', { name: 'Kategoria' })).toBeInTheDocument();
 
-      expect(await screen.findByText('First')).toBeInTheDocument();
-      await screen.findByRole('combobox', { name: 'Kategoria' }); // categories loaded too
-      await sleep(350); // past the search bar's debounce: nothing else may fire
+        await act(async () => {
+          vi.advanceTimersByTime(DEBOUNCE_DELAY + 1);
+        });
 
-      expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?offset=0&limit=100']);
-      expect(currentUrl()).toBe('/');
+        expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?offset=0&limit=100']);
+        expect(currentUrl()).toBe('/');
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('fills the form and runs the search from the URL parameters', async () => {
@@ -367,9 +404,12 @@ describe('VideoListPage', () => {
       renderAt('/?q=drone');
       await screen.findByText('First');
 
-      await user.clear(searchInput());
-      await user.type(searchInput(), 'dr');
-      await sleep(350);
+      // The keystroke and the pause it schedules both run on the fake clock,
+      // so a debounce that wrongly committed two characters would show up as
+      // a second search instead of hiding behind the real wait.
+      await advancePastDebounce(() => {
+        fireEvent.change(searchInput(), { target: { value: 'dr' } });
+      });
 
       expect(searchInput()).toHaveValue('dr');
       expect(currentUrl()).toBe('/?q=drone');

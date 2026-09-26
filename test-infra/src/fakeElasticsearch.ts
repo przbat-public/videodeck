@@ -7,11 +7,27 @@ import type { AddressInfo } from 'node:net';
  * tests point `ELASTICSEARCH_URL` at it, so the REAL elasticsearchService
  * runs end-to-end over HTTP without Docker.
  *
- * Fidelity target: the wire contract, not Elasticsearch semantics. Search
- * implements the query shapes the service sends (multi_match over
- * SEARCH_FIELDS, bool filters, uploadDate/viewCount/likeCount sorts,
- * highlight fragments with the service's control chars) — everything else
- * the real-ES CI integration suite covers against an actual cluster.
+ * Fidelity: the wire contract plus the cluster semantics the service leans on.
+ * Each of these has a test over the fake's own HTTP surface in
+ * `server/src/test/fakeElasticsearch.test.ts`:
+ *
+ * - the search analyzer's asciifolding, `ł` included. Unicode NFD alone leaves
+ *   that letter alone, so a fake that stops there answers empty for a query
+ *   the real cluster matches ("folds diacritics the way the real analyzer
+ *   does, including ł").
+ * - `index.max_result_window`: a page whose `from + size` passes 10000 gets
+ *   the real 400 body, while a page that ends exactly at the window still
+ *   serves ("refuses a page past the result window the way Elasticsearch
+ *   does", "still serves a page that ends exactly at the result window").
+ * - the bulk `errors` flag, false only when every item landed ("reports
+ *   errors: false when every bulk item succeeded", "reports errors: true when
+ *   any bulk item failed").
+ *
+ * Search still implements only the query shapes the service sends
+ * (multi_match over SEARCH_FIELDS, bool filters, uploadDate/viewCount/
+ * likeCount sorts, highlight fragments with the service's control chars).
+ * Everything else the real-ES CI integration suite covers against an actual
+ * cluster.
  */
 
 interface DocumentEntry {

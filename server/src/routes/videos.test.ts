@@ -71,6 +71,14 @@ const mockedGetFolderPathsForCategory = getFolderPathsForCategory as jest.Mocked
 const mockedListCategories = listCategories as jest.MockedFunction<typeof listCategories>;
 const mockedGenerateSummary = generateSummary as jest.MockedFunction<typeof generateSummary>;
 
+/**
+ * One loop turn. The refresh routes hand their work to a background promise,
+ * so a test has to let that chain finish before reading the spy. A fixed delay
+ * guesses how long a promise chain takes; an immediate runs right after the
+ * microtasks and cannot flake.
+ */
+const flushAsync = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
 describe('videos router', () => {
   let app: express.Application;
   let consoleErrorSpy: jest.SpyInstance;
@@ -370,8 +378,8 @@ describe('videos router', () => {
       });
       expect(mockedRefreshVideosCache).toHaveBeenCalled();
 
-      // Wait a bit for the catch handler to execute
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // The catch handler runs in the background: one loop turn lets it log
+      await flushAsync();
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining('Error refreshing cache in background:'),
         error,
@@ -461,8 +469,8 @@ describe('videos router', () => {
       });
       expect(mockedRecreateAllIndices).toHaveBeenCalled();
 
-      // Wait a bit for the catch handler to execute
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // The catch handler runs in the background: one loop turn lets it log
+      await flushAsync();
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining('Error recreating indices in background:'),
         error,
@@ -509,7 +517,7 @@ describe('videos router', () => {
       expect(mockedRecreateAllIndices).not.toHaveBeenCalled();
 
       finishRefresh?.();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await flushAsync();
 
       const afterFinish = await request(app).post('/api/videos/recreateIndices');
       expect(afterFinish.status).toBe(202);
