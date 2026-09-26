@@ -1,5 +1,11 @@
 import { installShutdownHandlers, shutdown } from './shutdown';
 
+/**
+ * One loop turn: shutdown resumes on a promise chain once the queue drains, so
+ * the test lets that chain finish instead of guessing a delay.
+ */
+const flushAsync = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
 describe('shutdown', () => {
   it('cancels the jobs, closes the server and exits 0', () => {
     const cancelJobs = jest.fn();
@@ -71,7 +77,7 @@ describe('shutdown', () => {
     expect(close).not.toHaveBeenCalled();
 
     releaseIdle?.();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushAsync();
 
     expect(close).toHaveBeenCalled();
     expect(exit).toHaveBeenCalledWith(0);
