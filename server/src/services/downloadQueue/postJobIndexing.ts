@@ -69,14 +69,24 @@ function scheduleIndexRetry(folderPath: string, baseNames: string[], attempt = 0
   const delay = INDEX_RETRY_DELAYS_MS[attempt] ?? 480_000;
   const timer = setTimeout(() => {
     indexRetryTimers.delete(folderPath);
-    void indexVideosFromDisk(folderPath, baseNames).then((indexed) => {
-      if (indexed < baseNames.length) {
-        logger.warn(`Retry indexed ${indexed}/${baseNames.length} videos in ${folderPath}`);
+    void indexVideosFromDisk(folderPath, baseNames)
+      .then((indexed) => {
+        if (indexed < baseNames.length) {
+          logger.warn(`Retry indexed ${indexed}/${baseNames.length} videos in ${folderPath}`);
+          scheduleIndexRetry(folderPath, baseNames, attempt + 1);
+          return;
+        }
+        logger.info(`Retry indexed ${indexed}/${baseNames.length} videos in ${folderPath}`);
+      })
+      .catch((error: unknown) => {
+        // The scanner swallows its own failures today, so this path only fires
+        // if that changes. A rejection is a retry that did not land like a
+        // short count, and it must never escape as an unhandled rejection that
+        // takes the process down: log it and take the same bounded backoff.
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`Retry indexing ${baseNames.length} videos in ${folderPath} failed: ${message}`);
         scheduleIndexRetry(folderPath, baseNames, attempt + 1);
-        return;
-      }
-      logger.info(`Retry indexed ${indexed}/${baseNames.length} videos in ${folderPath}`);
-    });
+      });
   }, delay);
   timer.unref();
   indexRetryTimers.set(folderPath, timer);

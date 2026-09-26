@@ -174,6 +174,44 @@ describe('indexChangedVideos', () => {
     }
   });
 
+  it('logs a warning instead of letting a rejected index retry escape', async () => {
+    jest.useFakeTimers();
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+        /* the retry warning is the assertion */
+      });
+      mockedRefreshIndex.mockResolvedValue({
+        index: {
+          version: 1,
+          builtAt: 'x',
+          entries: { abc: { baseName: '20250101_New', videoFile: '20250101_New.mp4', infoMtime: 'x' } },
+        },
+        changed: ['abc'],
+        removed: [],
+      });
+      mockedIndexVideosFromDisk.mockResolvedValue(0); // schedules the background retry
+      await indexChangedVideos(job);
+
+      // The retry path is one refactor away from rejecting (today the scanner
+      // swallows its own failures), and a bare `void promise.then(…)` would
+      // turn that into an unhandled rejection.
+      mockedIndexVideosFromDisk.mockRejectedValue(new Error('Elasticsearch is down'));
+      await jest.advanceTimersByTimeAsync(30_000);
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Retry indexing 1 videos in /videos/channel-a failed: Elasticsearch is down'),
+      );
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      jest.useRealTimers();
+      clearIndexRetries();
+    }
+  });
+
   it('does not schedule a retry when every changed video was indexed', async () => {
     jest.useFakeTimers();
     try {
@@ -1055,11 +1093,11 @@ describe('DownloadQueue', () => {
   it('kills a hung job after the idle timeout and retries it as a transient failure', async () => {
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
     const waitFor = async (condition: () => boolean): Promise<void> => {
-      for (let i = 0; i < 100; i += 1) {
+      for (let i = 0; i < 500; i += 1) {
         if (condition()) {
           return;
         }
-        await sleep(5);
+        await sleep(10);
       }
       throw new Error('condition not met in time');
     };
@@ -1068,7 +1106,9 @@ describe('DownloadQueue', () => {
       maxConcurrent: 1,
       maxAttempts: 2,
       retryDelayMs: 5,
-      idleTimeoutMs: 30,
+      // One second is the floor of both watchdog windows, so this is the
+      // shortest idle timeout a caller can ask for.
+      idleTimeoutMs: 1000,
       spawnFn: spawn.spawnFn,
       afterJob,
     });
@@ -1084,6 +1124,29 @@ describe('DownloadQueue', () => {
     expect(spawn.calls.length).toBe(2);
     // The hung attempt must not have run the success hook
     expect(afterJob).not.toHaveBeenCalled();
+  });
+
+  it('does not kill a healthy job when the watchdog timeouts are not positive', async () => {
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+    const clampedQueue = new DownloadQueue({
+      maxConcurrent: 1,
+      idleTimeoutMs: 0,
+      maxJobDurationMs: 0,
+      spawnFn: spawn.spawnFn,
+      afterJob,
+    });
+    const job = at(clampedQueue.enqueue([request('a')]), 0);
+
+    // Unclamped, `setInterval(fn, 0)` and `setTimeout(fn, 0)` fire on the
+    // first tick and `Date.now() - lastOutputAt > 0` is already true, so a
+    // process that is alive and simply quiet gets SIGTERMed right away.
+    await sleep(100);
+
+    expect(spawned().process.kill).not.toHaveBeenCalled();
+    expect(clampedQueue.get(job.id)?.status).toBe('running');
+    // Drop the armed watchdog before it fires at the floor a second later:
+    // the retry that kill would trigger outlives the test.
+    clampedQueue.clear();
   });
 
   it('returns false when cancelling an unknown or finished job', async () => {
@@ -1392,6 +1455,32 @@ describe('queue state persistence', () => {
     expect(at(spawn.calls, 0).process.kill).toHaveBeenCalledWith('SIGTERM');
     expect(mockedWriteTextAtomic.mock.calls.length).toBe(writesBefore);
     // The next boot re-enqueues both jobs instead of starting with an empty queue.
+    const persisted = JSON.parse(await fs.readFile(stateFile, 'utf-8')) as { jobs?: QueueJob[] };
+    expect((persisted.jobs ?? []).map((job) => job.videoId)).toEqual(['a', 'b']);
+  });
+
+  it('persists a job enqueued inside the coalescing window when the server shuts down', async () => {
+    const spawn = createFakeSpawn();
+    const queue = new DownloadQueue({
+      spawnFn: spawn.spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    queue.enqueue([request('a')]);
+    await waitForState((state) => (state.jobs ?? []).length === 1);
+
+    // Inside the coalescing window: no snapshot of 'b' has reached the file
+    // yet, and the shutdown tears the queue down before the timer fires.
+    queue.enqueue([request('b')]);
+
+    await queue.stopForShutdown();
+
+    expect(spawn.calls).toHaveLength(1); // 'a' was the only one running
+    expect(queue.list().map((job) => job.status)).toEqual(['cancelled', 'cancelled']);
+    // Both the job that was running and the one enqueued a moment before the
+    // shutdown are work the next boot has to resume, so neither may read as
+    // cancelled in the state file the killed queue leaves behind.
     const persisted = JSON.parse(await fs.readFile(stateFile, 'utf-8')) as { jobs?: QueueJob[] };
     expect((persisted.jobs ?? []).map((job) => job.videoId)).toEqual(['a', 'b']);
   });

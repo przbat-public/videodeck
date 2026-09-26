@@ -177,6 +177,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The server build leaves `test-infra` out of `dist`, so a local build produces only what the server ships
 ### Fixed
 
+- A job enqueued in the last moments before a shutdown is no longer lost. The
+  snapshot it was waiting on had not been taken yet, and the shutdown that
+  followed skipped it, so the next boot did not know about the job. The queue
+  now flushes what it holds to the state file before it starts killing, which
+  also keeps the interrupted jobs coming back as queued instead of cancelled
+- A queue built with a zero or negative idle or wall-clock timeout used to kill
+  every job on the watchdog's first tick. Both windows now have a one-second
+  floor
+- A background index retry that rejects is logged as a warning now. It used to
+  lean on the scanner catching its own failures, and a refactor there would
+  have turned the rejection into a crash
 - The queue reports the paused state it actually holds. After a restart with a
   paused queue the API said "not paused" until someone touched the pause
   button, because the router kept its own copy of the flag
