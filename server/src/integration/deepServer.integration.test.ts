@@ -189,6 +189,36 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(lastBody?.size).toBe(0);
   });
 
+  it('reports the document the cluster refused and still indexes the rest of the batch', async () => {
+    // The bug class a journey could not see: a per-item bulk failure used to
+    // be invisible here, so one refused document either vanished from search
+    // without a word or was counted as indexed. A digit string past int32
+    // survives toDocument's coercion as a number, and the viewCount mapping
+    // (integer) refuses it while its siblings in the same batch land.
+    await env.seedFolder('bulk-partial', {
+      ...videoFiles('bulk00000001', 'Film dobry'),
+      ...videoFiles('bulk00000002', 'Film z ogromna liczba wyswietlen', { view_count: '99999999999999999999' }),
+      ...videoFiles('bulk00000003', 'Film drugi dobry'),
+    });
+    env.setFolders('bulk-partial');
+
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    // Three documents, one batch: the caller reports the refusal instead of
+    // counting all three as indexed
+    const status = await env.agent.get('/api/videos/refreshCache/status').expect(200);
+    expect(status.body.indexed).toBe(2);
+    expect(status.body.skipped).toBe(1);
+
+    // And the good documents are searchable, so the batch did not sink
+    const search = await env.agent.get('/api/videos/search?q=film').expect(200);
+    const titles = (search.body.videos as Array<{ title: string }>).map((item) => item.title);
+    expect(titles).toEqual(expect.arrayContaining(['Film dobry', 'Film drugi dobry']));
+    expect(titles).not.toContain('Film z ogromna liczba wyswietlen');
+    expect(search.body.totalCount).toBe(2);
+  });
+
   it('walks the model fallback chain when the primary model is rate limited', async () => {
     await env.seedFolder('channel-c', videoFiles('vid00000002', 'Historia filmu'));
     env.setFolders('channel-c');
