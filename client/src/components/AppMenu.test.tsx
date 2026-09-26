@@ -6,6 +6,7 @@ import type { JSX, ReactNode } from 'react';
 import { useCallback, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n, { DEFAULT_LANGUAGE } from '../i18n';
 import { AppMenu } from './AppMenu';
 import type { AppMenuSectionSpec } from './appMenuRegistry';
 import { RegisterSectionsContext, SectionsContext, sectionsSignature } from './appMenuRegistry';
@@ -47,7 +48,11 @@ function renderMenu(
 }
 
 describe('AppMenu', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // The language test switches the shared i18n instance, so every test
+    // starts from the default: in a shuffled order the Polish labels below
+    // would otherwise depend on which test ran first.
+    await i18n.changeLanguage(DEFAULT_LANGUAGE);
     vi.clearAllMocks();
   });
 
