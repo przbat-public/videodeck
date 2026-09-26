@@ -98,6 +98,11 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
   process.env.OPENAI_API_KEY = 'test-key';
   process.env.YTDLP_PATH = FAKE_YTDLP;
   process.env.QUEUE_STATE_FILE = path.join(root, '.queue-state.json');
+  // The environment's own folder set, before any test narrows it with
+  // setFolders: the server refuses to answer /api without one, and a value
+  // inherited from another test file in the same worker would point it at
+  // folders this environment never created.
+  process.env.VIDEOS_FOLDER_PATH = videosDir;
   // Pace the fake yt-dlp's progress lines: the download journey observes the
   // running state through the client's 1.5s queue poll, so a job must stay
   // visible for longer than one poll (3 lines x 600ms = 1.8s).

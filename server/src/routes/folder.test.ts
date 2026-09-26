@@ -182,7 +182,12 @@ describe('folder router', () => {
     mockedListCachedFolders.mockResolvedValue({ folders: new Set([FOLDER]), elasticsearchUp: true });
     downloadQueue.clear();
     spawnCalls.length = 0;
+    // Both caches in routes/folder are module-level and outlive a test: the
+    // summary cache and the 5 s /api/status body. Reset both here so a test
+    // that asks for either under its own mocks cannot serve the next test the
+    // previous answer (a stale status body once said "elasticsearch: down").
     invalidateSummaryCache();
+    invalidateStatusCache();
     app = createApp();
   });
 
@@ -223,7 +228,6 @@ describe('folder router', () => {
     });
 
     it('serves the folders from disk when Elasticsearch is unreachable', async () => {
-      invalidateStatusCache();
       mockedListCachedFolders.mockResolvedValue({ folders: new Set(), elasticsearchUp: false });
 
       const response = await request(app).get('/api/status');

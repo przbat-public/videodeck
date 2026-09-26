@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { findCardByTitle, queryCardByTitle, typeAndCommitPhrase } from './drivers/searchDrivers';
 import { channelRow, folderSection } from './drivers/statusDrivers';
 import type { RenderedApp } from './render-app';
-import { renderApp } from './render-app';
+import { refreshCacheAndWait, renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
 
 /**
@@ -96,6 +96,21 @@ const folderAlias = (folderPath: string): string =>
 describe('download journey — pause, enqueue, resume, drain, search', () => {
   it('downloads the whole playlist through the queue and finds the videos in search without a reindex', async () => {
     const folderPath = env.folder('channel-integration');
+    // The seeded videos reach Elasticsearch the way they do in production:
+    // the console reindexes the folders that have no cache yet. Only
+    // channel-integration is reindexed, so "the second folder was never
+    // touched" below still means something.
+    //
+    // This replaces an accident. The post-job sweep only takes `.info.json`
+    // files modified at or after the job started (2 s of mtime tolerance), so
+    // the seeded videos used to be indexed only when the fixtures happened to
+    // be young enough at job time, which depended on how long the tests before
+    // this one took. The downloads themselves still land through the
+    // incremental single-document writes, which step 7 asserts.
+    env.setFolders('channel-integration');
+    await refreshCacheAndWait();
+    env.setFolders(...BASELINE_FOLDERS);
+
     const page = await renderApp('/download');
     const row = await channelRow(folderPath);
     const section = await folderSection(folderPath);
@@ -155,9 +170,9 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
       expect(state.jobs).toHaveLength(0);
     });
 
-    // 7. The post-job hook indexed the downloads through the folder alias —
-    //    no full reindex ran in this file, yet the alias exists and the
-    //    incremental single-document writes carried the new titles.
+    // 7. The post-job hook indexed the downloads through the folder alias: the
+    //    reindex at the top of this test created it for the seeded videos, and
+    //    the incremental single-document writes below carried the new titles.
     expect(env.fakeEs.aliasOf(folderAlias(folderPath))).toBeDefined();
     const docWrites = env.fakeEs.requestLog.filter((request) => request.path.includes('/_doc/'));
     expect(docWrites.some((request) => request.path.includes('/_doc/aaaaaaaaaaa'))).toBe(true);
@@ -166,10 +181,10 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
       true,
     );
 
-    // 8. Search finds the downloads through the alias — still without a full
-    //    reindex. The first incremental sweep also picked up the seeded
-    //    videos of the same folder (its folder index starts empty), but the
-    //    second folder was never touched and stays out of search.
+    // 8. Search serves the whole folder through the alias: the seeded videos
+    //    came from the reindex above, the downloads from the job's own writes,
+    //    and no second reindex ran. The second folder was never reindexed and
+    //    stays out of search.
     page.unmount();
     const searchPage = await renderApp('/');
     await findCardByTitle('Fake video aaaaaaaaaaa');

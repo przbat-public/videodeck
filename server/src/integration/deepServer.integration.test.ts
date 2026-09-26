@@ -79,6 +79,14 @@ describe('deep server integration (real app, fake external world)', () => {
   });
 
   it('refuses cross-site browser requests on the real API and keeps the local client working', async () => {
+    // /api/status reads the configured folders, so this test seeds its own set
+    // first: without one it would answer from whatever VIDEOS_FOLDER_PATH the
+    // test before it left behind (an empty one is a 500, not the guard's 403).
+    await env.seedFolder('cross-site-guard', {
+      'config.json': folderConfig('https://www.youtube.com/@crosssite'),
+    });
+    env.setFolders('cross-site-guard');
+
     // The Docker UI proxies the API with the token attached, so a request may
     // carry the token and still come from a page nobody trusts. The browser
     // marker decides, before the token is even looked at.
@@ -140,15 +148,18 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(details.body.details.subtitles).toHaveLength(1);
 
     // Summary: the real pipeline reads the subtitle file and calls the mock
-    // OpenAI server; the result lands in the disk cache.
+    // OpenAI server; the result lands in the disk cache. The mock server is
+    // shared by the whole file, so the count starts where this test finds it
+    // (the fallback-chain test below makes two calls of its own).
+    const callsBefore = env.mockOpenai.requests.length;
     const first = await env.agent.get(`/api/videos/${baseName}/summary`).expect(200);
     expect(first.body.summary).toBe('Fake summary.');
-    expect(env.mockOpenai.requests).toHaveLength(1);
-    expect(env.mockOpenai.requests.at(0)?.prompt).toContain('Deep test subtitle line.');
+    expect(env.mockOpenai.requests).toHaveLength(callsBefore + 1);
+    expect(env.mockOpenai.requests.at(callsBefore)?.prompt).toContain('Deep test subtitle line.');
 
     const second = await env.agent.get(`/api/videos/${baseName}/summary`).expect(200);
     expect(second.body.summary).toBe('Fake summary.');
-    expect(env.mockOpenai.requests).toHaveLength(1); // cache hit — no second call
+    expect(env.mockOpenai.requests).toHaveLength(callsBefore + 1); // cache hit — no second call
   });
 
   it('answers a search whose page crosses the result window with a short page, not a 500', async () => {
@@ -499,6 +510,11 @@ describe('deep server integration (real app, fake external world)', () => {
       expect(folderList.jobs).toHaveLength(250);
     } finally {
       await env.agent.delete('/api/folder/queue').query({ folderPath }).expect(200);
+      // Cancelling empties the folder, not the queue's memory: the 250 terminal
+      // jobs stay in the list, and the unfiltered page serves its first 200, so
+      // whatever test runs next would not find its own job on the page. Clear
+      // them the way the console's Clear button does.
+      await env.agent.delete('/api/folder/queue/finished').expect(200);
       await env.agent.post('/api/folder/queue/resume?paused=0').expect(200);
     }
   });

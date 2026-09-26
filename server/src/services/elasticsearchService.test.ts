@@ -115,6 +115,11 @@ describe('elasticsearchService', () => {
       /* silence expected error logs */
     });
     mockFolders.current = ['/videos/a', '/videos/b'];
+    // The outage window is module-level state shared by every read path: a
+    // test that armed it and did not clear it refused the reads of the tests
+    // after it ("Elasticsearch is not reachable" from assertElasticsearchReachable).
+    // clearElasticsearchOutage is the seam the outage tests themselves use.
+    clearElasticsearchOutage();
 
     mockClient.indices.create.mockResolvedValue({ acknowledged: true });
     mockClient.indices.exists.mockResolvedValue(false);

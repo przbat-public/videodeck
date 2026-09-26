@@ -326,6 +326,14 @@ describe('isAllowedCorsOrigin', () => {
 describe('Host header guard (DNS rebinding)', () => {
   const originalAllowedHosts = process.env.ALLOWED_HOSTS;
 
+  beforeEach(() => {
+    // These tests build their own app and assert 200 on /health, which answers
+    // 503 while the probe reports the cluster down. The mock's implementation
+    // lives for the whole file, so without this pin a test above that set it to
+    // false decides these answers instead of the Host header under test.
+    mockedCheckElasticsearch.mockResolvedValue(true);
+  });
+
   afterEach(() => {
     if (originalAllowedHosts === undefined) {
       delete process.env.ALLOWED_HOSTS;

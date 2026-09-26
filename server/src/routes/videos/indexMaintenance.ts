@@ -40,6 +40,16 @@ function isIndexMaintenanceRunning(): boolean {
   return indexMaintenanceRunning || isReindexRunning() || isRecreateIndicesRunning();
 }
 
+/**
+ * Tests: forget a job accepted by these routes. The flag is one copy for the
+ * whole process on purpose (the two jobs rewrite the same aliases), so it
+ * outlives a test that only stubs the service flags; without this a test that
+ * started a job hands the next one a 409.
+ */
+export function resetIndexMaintenanceState(): void {
+  indexMaintenanceRunning = false;
+}
+
 // GET /api/videos/refreshCache/status - Progress of the running/last reindex
 export const getRefreshStatus: RouteHandler<NoParams, ReindexStatus> = (_req, res) => {
   res.json(getReindexStatus());
