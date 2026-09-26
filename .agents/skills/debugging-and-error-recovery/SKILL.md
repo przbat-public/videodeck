@@ -70,8 +70,14 @@ one-liner before pushing.
 ## Error-specific patterns
 
 - **Test failure.** Read the diff between expected and actual before
-  touching code. Flaky timing failures get deterministic fixes (fake
-  timers, awaited promises), never retries or sleeps.
+  touching code. Flaky timing failures in the jest and jsdom layers get
+  deterministic fixes (fake timers, awaited promises), never retries or
+  sleeps. The real-browser layer is the one exception, and it is a narrow
+  one: `client/playwright.config.ts` keeps `retries: 2` on CI so a browser
+  hiccup does not block a merge, and the e2e job adds
+  `--fail-on-flaky-tests`, so a test that only passes on a retry still
+  fails the job. Treat that red as the deterministic-fix work it is, and
+  never raise the retry count to make it quiet.
 - **Type or lint failure.** `pnpm run typecheck` and `pnpm run lint:types`
   report the first error clearly; fix from the top of the output down.
 - **Runtime error.** The client `ErrorBoundary` logs the component stack
