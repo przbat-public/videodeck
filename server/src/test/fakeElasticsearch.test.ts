@@ -14,7 +14,19 @@ describe('FakeElasticsearch controls', () => {
     await fetch(`${baseUrl}/videos_x`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ settings: {}, mappings: {} }),
+      // The mapping the range rule reads; a real index maps the counts as
+      // integer, so a value outside int32 is refused per item.
+      body: JSON.stringify({
+        settings: {},
+        mappings: { properties: { title: { type: 'text' }, viewCount: { type: 'integer' } } },
+      }),
+    });
+    // The alias is part of the fixture, not a leftover of the test that
+    // happens to run before the alias tests: nothing here may need an order.
+    await fetch(`${baseUrl}/_aliases`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ actions: [{ add: { index: 'videos_x', alias: 'videos_alias' } }] }),
     });
   });
 
@@ -164,11 +176,35 @@ describe('FakeElasticsearch controls', () => {
 
   it('reports errors: true when any bulk item failed', async () => {
     // The service decides per item off `errors`; a fake that always says false
-    // lets a caller ignore a failure it should have counted.
+    // lets a caller count a document the cluster refused as indexed. The
+    // refusal here comes from the mapping, which is how a real cluster answers
+    // a hand-edited info.json whose count no longer fits an integer.
     const response = await bulk([
       { index: { _index: 'videos_x', _id: 'bulk-ok-2' } },
+      { title: 'Stored', viewCount: 12 },
+      { index: { _index: 'videos_x', _id: 'bulk-bad' } },
+      { title: 'Out of range', viewCount: 100_000_000_000_000_000_000 },
+    ]);
+
+    const body = (await response.json()) as {
+      errors: boolean;
+      items: Array<{ index: { status: number; error?: { type: string } } }>;
+    };
+    expect(body.errors).toBe(true);
+    expect(body.items[0]?.index.status).toBe(201);
+    expect(body.items[1]?.index.status).toBe(400);
+    expect(body.items[1]?.index.error?.type).toBe('document_parsing_exception');
+  });
+
+  it('refuses a bulk item whose index does not exist', async () => {
+    // A default cluster auto-creates the index and reports the item as
+    // created, so the fake is stricter than reality here on purpose: the
+    // service creates its target index before writing, and a 404 catches the
+    // caller that forgot to.
+    const response = await bulk([
+      { index: { _index: 'videos_x', _id: 'bulk-ok-3' } },
       { title: 'Stored' },
-      { index: { _index: 'videos_missing', _id: 'bulk-bad' } },
+      { index: { _index: 'videos_missing', _id: 'bulk-bad-2' } },
       { title: 'No such index' },
     ]);
 

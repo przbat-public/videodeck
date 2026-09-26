@@ -237,7 +237,9 @@ jobs:
         run: pnpm exec playwright install --with-deps
       - name: Run Playwright tests
         working-directory: client
-        run: pnpm run test:e2e
+        # The config retries a real-browser hiccup twice, but a test that only
+        # passed on a retry is a flake: fail the job instead of absorbing it.
+        run: pnpm run test:e2e --fail-on-flaky-tests
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -275,7 +277,7 @@ jobs:
         working-directory: client
         env:
           E2E_TARGET: preview
-        run: pnpm run test:e2e
+        run: pnpm run test:e2e --fail-on-flaky-tests
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

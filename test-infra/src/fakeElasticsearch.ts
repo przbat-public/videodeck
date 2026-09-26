@@ -21,7 +21,14 @@ import type { AddressInfo } from 'node:net';
  *   does", "still serves a page that ends exactly at the result window").
  * - the bulk `errors` flag, false only when every item landed ("reports
  *   errors: false when every bulk item succeeded", "reports errors: true when
- *   any bulk item failed").
+ *   any bulk item failed"). The failing item in that scenario breaks the
+ *   mapping: its count falls outside the int32 range an `integer` field
+ *   accepts, which is what a real cluster answers with a per-item
+ *   document_parsing_exception. Single-document writes are not range-checked.
+ * - a bulk item aimed at an index that does not exist answers 404 instead of
+ *   auto-creating the index ("refuses a bulk item whose index does not
+ *   exist"). The service always creates its index before writing, so the
+ *   strict answer catches a typo; a default cluster auto-creates instead.
  *
  * Search still implements only the query shapes the service sends
  * (multi_match over SEARCH_FIELDS, bool filters, uploadDate/viewCount/
@@ -103,6 +110,56 @@ function resultWindowError(target: string, requested: number): Record<string, un
     },
     status: 400,
   };
+}
+
+/**
+ * The range a mapped `integer` field accepts. A count past it is the one
+ * per-item failure the service has to survive: `toDocument` normalises the
+ * counts, so a hand-edited info.json reaches the cluster as a number the
+ * mapping refuses.
+ */
+const INTEGER_MIN = -2_147_483_648;
+const INTEGER_MAX = 2_147_483_647;
+
+/** Fields the index maps as `integer`, read from the mapping stored with it */
+function integerFieldsOf(entry: IndexEntry): string[] {
+  const stored = entry.mappings.mappings as { properties?: Record<string, { type?: string }> } | undefined;
+  return Object.entries(stored?.properties ?? {})
+    .filter(([, spec]) => spec?.type === 'integer')
+    .map(([field]) => field);
+}
+
+/**
+ * The per-item error a real cluster answers a document with when a mapped
+ * `integer` field holds a value outside the int32 range. Digit strings are
+ * coerced the way the cluster coerces them; everything else is refused.
+ * Returns undefined when every mapped integer field is in range.
+ */
+function integerRangeFailure(
+  entry: IndexEntry,
+  document: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  for (const field of integerFieldsOf(entry)) {
+    const value = document[field];
+    if (value === undefined || value === null) {
+      continue;
+    }
+    const numeric = typeof value === 'string' && /^-?\d+$/.test(value) ? Number(value) : value;
+    const inRange =
+      typeof numeric === 'number' && Number.isInteger(numeric) && numeric >= INTEGER_MIN && numeric <= INTEGER_MAX;
+    if (inRange) {
+      continue;
+    }
+    return {
+      type: 'document_parsing_exception',
+      reason: `failed to parse field [${field}] of type [integer]`,
+      caused_by: {
+        type: 'illegal_argument_exception',
+        reason: `Value [${String(value)}] is out of range for an integer`,
+      },
+    };
+  }
+  return undefined;
 }
 
 /** Strip diacritics + lowercase, mirroring the search analyzer's asciifolding */
@@ -525,6 +582,12 @@ export class FakeElasticsearch {
         continue;
       }
       const id = op.index?._id ?? String(Math.random());
+      const failure = integerRangeFailure(entry, doc);
+      if (failure) {
+        errors = true;
+        items.push({ index: { _index: op.index?._index, _id: id, status: 400, error: failure } });
+        continue;
+      }
       entry.documents.set(id, { id, source: doc });
       items.push({ index: { _id: id, status: 201 } });
     }

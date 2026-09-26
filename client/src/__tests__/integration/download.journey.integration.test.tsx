@@ -22,6 +22,12 @@ import { startBackend, stopBackend } from './test-env';
 
 let env: DeepServerTestEnv;
 
+/**
+ * The folder set `startBackend` seeds. The console-row tests narrow it to
+ * their own seed folder, so every test restores it afterwards.
+ */
+const BASELINE_FOLDERS = ['channel-integration', 'channel-two'] as const;
+
 beforeAll(async () => {
   env = await startBackend();
 });
@@ -32,6 +38,9 @@ afterAll(async () => {
 
 afterEach(() => {
   cleanup();
+  // The row the first test opens lives in this set: a test that narrowed it
+  // and did not restore would leave that row missing for whoever runs next.
+  env.setFolders(...BASELINE_FOLDERS);
 });
 
 const queueStatePath = () => `${env.root}/.queue-state.json`;
