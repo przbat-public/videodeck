@@ -82,7 +82,12 @@ async function startServer() {
     // children are gone.
     installShutdownHandlers({
       server,
-      cancelJobs: () => downloadQueue.stopForShutdown(),
+      // Fire-and-forget: stopForShutdown flushes the interrupted jobs to the
+      // state file before it kills anything, and the awaitIdle drain below
+      // keeps the process alive long enough for that write to land.
+      cancelJobs: () => {
+        void downloadQueue.stopForShutdown();
+      },
       awaitIdle: (timeoutMs) => downloadQueue.waitForIdle(timeoutMs),
       closeSseStreams: closeAllSseStreams,
     });

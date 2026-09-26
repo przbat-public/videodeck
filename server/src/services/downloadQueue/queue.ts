@@ -76,9 +76,9 @@ export interface DownloadQueueOptions {
   maxAttempts?: number;
   /** Base of the retry backoff (ms, default 30 s; grows exponentially with jitter) */
   retryDelayMs?: number;
-  /** Kill a job that produced no output for this long (ms, default 10 min) */
+  /** Kill a job that produced no output for this long (ms, default 10 min, floor 1 s) */
   idleTimeoutMs?: number;
-  /** Kill a job that outlived this wall-clock limit (ms, default 8 h) */
+  /** Kill a job that outlived this wall-clock limit (ms, default 8 h, floor 1 s) */
   maxJobDurationMs?: number;
   spawnFn?: SpawnFn;
   /** Called after a job finishes successfully (default: refresh folder index) */
@@ -87,6 +87,19 @@ export interface DownloadQueueOptions {
   /** Persist the active jobs (and the paused flag) to this file for restarts */
   stateFile?: string;
 }
+
+/**
+ * Floor of both watchdog windows, the way the counters get a floor of one.
+ * Each one feeds a timer directly, so `0` or a negative value armed
+ * `setInterval(fn, 0)` and `setTimeout(fn, 0)`, and the idle check
+ * (`Date.now() - lastOutputAt > 0`) is true on the very first tick: a healthy
+ * job whose process simply had not spoken yet got its process group killed.
+ * One second is the smallest window that still says something, because yt-dlp
+ * is routinely quiet for a few hundred milliseconds while it resolves a URL or
+ * starts an ffmpeg merge, and the idle check itself ticks only every
+ * `idleTimeoutMs / 4` (250 ms at this floor).
+ */
+const WATCHDOG_MIN_TIMEOUT_MS = 1000;
 
 function isActive(job: QueueJob): boolean {
   return job.status === 'queued' || job.status === 'running';
@@ -162,8 +175,8 @@ export class DownloadQueue extends EventEmitter {
     this.retainFinishedMs = options.retainFinishedMs ?? 60 * 60 * 1000;
     this.maxAttempts = Math.max(1, options.maxAttempts ?? 3);
     this.retryDelayMs = options.retryDelayMs ?? 30_000;
-    this.idleTimeoutMs = options.idleTimeoutMs ?? 10 * 60 * 1000;
-    this.maxJobDurationMs = options.maxJobDurationMs ?? 8 * 60 * 60 * 1000;
+    this.idleTimeoutMs = Math.max(WATCHDOG_MIN_TIMEOUT_MS, options.idleTimeoutMs ?? 10 * 60 * 1000);
+    this.maxJobDurationMs = Math.max(WATCHDOG_MIN_TIMEOUT_MS, options.maxJobDurationMs ?? 8 * 60 * 60 * 1000);
     this.spawnFn =
       options.spawnFn ??
       ((command, args, opts) =>
@@ -409,10 +422,22 @@ export class DownloadQueue extends EventEmitter {
    * Server shutdown: stop every job without recording the cancellations, so
    * the state file still lists the interrupted work and the next boot
    * re-enqueues it.
+   *
+   * The flush has to come first. A snapshot taken after the kill would record
+   * the interrupted jobs as cancelled and they would never resume, which is
+   * why `shuttingDown` suppresses writes at all. But a flush left pending in
+   * the coalescing window is a snapshot that was never taken, so a job
+   * enqueued in the last moments before the shutdown would otherwise be lost.
+   * Flush while the jobs still read as queued, then suppress, then tear down.
    */
-  stopForShutdown(): void {
+  async stopForShutdown(): Promise<void> {
+    await this.whenPersisted();
     this.shuttingDown = true;
     this.cancelAll();
+    // The snapshot computed above is already on the chain; awaiting it again
+    // hands the caller a promise that settles only once the file holds the
+    // interrupted jobs, so a process exit cannot race the last rename.
+    await this.whenPersisted();
   }
 
   /** Cancel everything and forget all jobs (used by tests). */
