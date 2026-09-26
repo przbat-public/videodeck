@@ -33,6 +33,8 @@ export const FAKE_YTDLP = path.join(REPO_ROOT, 'scripts/fake-bin/yt-dlp');
 export const YTDLP_ARGV_LOG_NAME = '.fake-ytdlp-argv.jsonl';
 
 type AppModule = typeof import('../../server/src/app.js');
+type FolderRoutesModule = typeof import('../../server/src/routes/folder.js');
+type IndexMaintenanceModule = typeof import('../../server/src/routes/videos/indexMaintenance.js');
 
 // Local declaration so both typechecking programs are happy: the server
 // program sees the real @types/jest shape, the client program gets a stub.
@@ -44,6 +46,20 @@ async function loadAppModule(): Promise<AppModule> {
     return jest.requireActual<AppModule>('../../server/src/app');
   }
   return import('../../server/src/app.js');
+}
+
+async function loadFolderRoutesModule(): Promise<FolderRoutesModule> {
+  if (typeof jest !== 'undefined') {
+    return jest.requireActual<FolderRoutesModule>('../../server/src/routes/folder');
+  }
+  return import('../../server/src/routes/folder.js');
+}
+
+async function loadIndexMaintenanceModule(): Promise<IndexMaintenanceModule> {
+  if (typeof jest !== 'undefined') {
+    return jest.requireActual<IndexMaintenanceModule>('../../server/src/routes/videos/indexMaintenance');
+  }
+  return import('../../server/src/routes/videos/indexMaintenance.js');
 }
 
 export interface DeepServerTestEnv {
@@ -70,6 +86,13 @@ export interface DeepServerTestEnv {
    * with `YTDLP_ARGV_LOG_NAME`.
    */
   ytDlpCalls(folderPath: string): Array<{ cwd: string; args: string[] }>;
+  /**
+   * Forget the server's module-level state: the 5 s `/api/status` body, the
+   * summary cache and the index-maintenance flag. It outlives a test because
+   * the app is booted in-process, exactly like the client's own store does,
+   * and a suite reaching the app only over HTTP cannot clear it otherwise.
+   */
+  resetServerState(): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -149,6 +172,18 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
     }
   };
 
+  const resetServerState = async (): Promise<void> => {
+    const [folderRoutes, indexMaintenance] = await Promise.all([
+      loadFolderRoutesModule(),
+      loadIndexMaintenanceModule(),
+    ]);
+    // Each of these is one module-level copy for the whole process on purpose
+    // (there is one cluster and one alias set), so all three outlive a test.
+    folderRoutes.invalidateStatusCache();
+    folderRoutes.invalidateSummaryCache();
+    indexMaintenance.resetIndexMaintenanceState();
+  };
+
   return {
     agent: request(app),
     app,
@@ -161,6 +196,7 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
     seedFolder,
     setFolders,
     ytDlpCalls,
+    resetServerState,
     async dispose() {
       if (httpServer) {
         await new Promise<void>((resolve, reject) => httpServer.close((error) => (error ? reject(error) : resolve())));
