@@ -69,3 +69,16 @@ export async function stopBackend(): Promise<void> {
   await env.dispose();
   env = null;
 }
+
+/**
+ * Drop the server's module-level state between tests: the 5 s /api/status
+ * body, the summary cache and the index-maintenance flag. The app is booted
+ * in-process, so those outlive a test the same way the client's own store
+ * does, and the test that stops the fake cluster would otherwise hand the
+ * next reader its cached "elasticsearch: down" answer for the whole TTL. The
+ * server suite resets the same three pieces in its own setup; this suite
+ * reaches the app over HTTP and asks the environment for it instead.
+ */
+export async function resetServerState(): Promise<void> {
+  await env?.resetServerState();
+}

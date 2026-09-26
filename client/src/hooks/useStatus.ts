@@ -31,6 +31,13 @@ export function useStatus(): UseStatusResult {
         ...(signal ? { signal } : {}),
         message: i18n.t('errors.fetchStatus'),
       });
+      if (signal?.aborted) {
+        // Unmounted while the (large) answer was on its way: a page the reader
+        // has left must not move the app-wide banner. The abort guard in the
+        // catch below covers the failed read; this covers the successful one,
+        // whose body can resolve after the unmount too.
+        return;
+      }
       // The status answer says whether the index read worked, so the banner
       // knows before the first /health poll comes back. A healthy read is only
       // evidence: it must not clear a state the probe reported.

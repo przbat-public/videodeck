@@ -29,6 +29,7 @@ import { getReindexStatus, getVideos, isReindexRunning, refreshVideosCache } fro
 import type { VideoInfoJson } from '../types';
 import { buildCommentTree } from '../utils/commentTreeUtils';
 import { getVideoFilePath } from '../utils/videoPathUtils';
+import { resetIndexMaintenanceState } from './videos/indexMaintenance';
 
 jest.mock('../services/videoScanner');
 // Only the file-path join is mocked; normalizeFolderPath must stay real
@@ -99,6 +100,10 @@ describe('videos router', () => {
     // flags so a test that sets one cannot leak into the ones after it
     mockedIsReindexRunning.mockReturnValue(false);
     mockedIsRecreateIndicesRunning.mockReturnValue(false);
+    // The router keeps a third guard of its own for the window between
+    // accepting a job and the service reporting itself running, and it is
+    // module-level: a test that accepted a job would answer the next one 409.
+    resetIndexMaintenanceState();
 
     app = createApp();
   });
@@ -504,6 +509,10 @@ describe('videos router', () => {
     });
 
     it('refuses the second index maintenance job until the first one finishes', async () => {
+      // This test starts a real recreation at the end, so it has to give the
+      // mock a promise to settle: a bare jest.fn() returns undefined, and
+      // `.finally` on it throws before the flag it guards can be cleared.
+      mockedRecreateAllIndices.mockResolvedValue(undefined);
       let finishRefresh: (() => void) | undefined;
       mockedRefreshVideosCache.mockImplementation(
         () =>

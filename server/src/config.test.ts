@@ -10,10 +10,30 @@ import {
   invalidateVideosFolderCache,
 } from './config';
 
+/**
+ * Put an environment variable back the way this file found it.
+ *
+ * process.env outlives a test FILE inside a jest worker, so a suite that
+ * borrows a value has to restore it, not just delete it: the deletion would
+ * follow every later file in the same worker. The deep server integration is
+ * one of those neighbours — it boots a server whose /api refuses to answer
+ * without a VIDEOS_FOLDER_PATH.
+ */
+function restoreEnv(name: string, original: string | undefined): void {
+  if (original === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = original;
+  }
+}
+
 describe('getVideosFolderPaths', () => {
+  const originalVideosFolderPath = process.env.VIDEOS_FOLDER_PATH;
+  const originalHome = process.env.HOME;
+
   afterEach(() => {
-    delete process.env.VIDEOS_FOLDER_PATH;
-    delete process.env.HOME;
+    restoreEnv('VIDEOS_FOLDER_PATH', originalVideosFolderPath);
+    restoreEnv('HOME', originalHome);
     invalidateVideosFolderCache();
   });
 
@@ -106,8 +126,10 @@ describe('getVideosFolderPaths', () => {
 });
 
 describe('getOpenAiApiKey', () => {
+  const originalKey = process.env.OPENAI_API_KEY;
+
   afterEach(() => {
-    delete process.env.OPENAI_API_KEY;
+    restoreEnv('OPENAI_API_KEY', originalKey);
   });
 
   it('reads the key lazily from the environment', () => {
@@ -120,10 +142,14 @@ describe('getOpenAiApiKey', () => {
 });
 
 describe('lazy server settings', () => {
+  const originalHost = process.env.HOST;
+  const originalToken = process.env.API_TOKEN;
+  const originalCorsOrigins = process.env.CORS_ORIGINS;
+
   afterEach(() => {
-    delete process.env.HOST;
-    delete process.env.API_TOKEN;
-    delete process.env.CORS_ORIGINS;
+    restoreEnv('HOST', originalHost);
+    restoreEnv('API_TOKEN', originalToken);
+    restoreEnv('CORS_ORIGINS', originalCorsOrigins);
   });
 
   it('getHost defaults to loopback', () => {
