@@ -27,6 +27,12 @@ import { startBackend, stopBackend } from './test-env';
 
 let env: DeepServerTestEnv;
 
+/**
+ * The folder set `startBackend` seeds. The paging tests narrow it to their own
+ * bulk folder, so every test restores it afterwards.
+ */
+const BASELINE_FOLDERS = ['channel-integration', 'channel-two'] as const;
+
 beforeAll(async () => {
   env = await startBackend();
   await refreshCacheAndWait();
@@ -42,6 +48,9 @@ afterEach(() => {
   // page would hand its position to the next one, and that next search would
   // restore pages nobody asked for. Every journey starts from a clean session.
   clearListPositions();
+  // A narrowed folder set decides what the next test's first page holds, so a
+  // shuffled order would otherwise change whose card is on it.
+  env.setFolders(...BASELINE_FOLDERS);
 });
 
 interface SearchBody {
