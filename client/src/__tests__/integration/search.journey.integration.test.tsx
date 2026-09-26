@@ -80,9 +80,21 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
     await pickOption(page.user, await channelSelect(), 'Deep test channel');
     await waitFor(() => expect(JSON.stringify(lastSearch().body)).toContain('Deep test channel'));
 
-    // 4. The card opens the detail in place (no new tab).
+    // 4. The card opens the detail in place (no new tab). The wait is on the
+    //    route signal the app emits, never on the detail heading: the card
+    //    renders the same title as an <h3> on the list, so a heading query is
+    //    already satisfied before the click and cannot tell the detail page
+    //    from the list. The URL, the detail-only back link and the vanished
+    //    search form can only all hold on the detail page.
     await page.user.click(screen.getByRole('link', { name: /Historia kosmosu/ }));
-    await screen.findByRole('heading', { name: 'Historia kosmosu' });
+    await waitFor(
+      () => {
+        expect(page.router.state.location.pathname).toBe('/video/deepE2e0002');
+        expect(screen.getByRole('link', { name: /Wróć do listy/ })).toBeInTheDocument();
+        expect(screen.queryByLabelText('Fraza wyszukiwania')).toBeNull();
+      },
+      { timeout: 15_000 },
+    );
     expect(await screen.findByText('Deep test description.', undefined, { timeout: 10_000 })).toBeInTheDocument();
     expect(await screen.findByText('Fake summary.', undefined, { timeout: 10_000 })).toBeInTheDocument();
 
