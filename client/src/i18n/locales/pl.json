@@ -37,7 +37,9 @@
     "loadedMore_many": "Wczytano {{count}} filmów więcej (na liście: {{loaded}})",
     "loadedMore_other": "Wczytano {{count}} filmów więcej (na liście: {{loaded}})",
     "trimmedNotice": "Wcześniejsze wyniki ({{count}}) usunięto, aby przewijanie było płynne",
-    "backToTop": "Wróć na początek wyników"
+    "backToTop": "Wróć na początek wyników",
+    "heading": "Wyniki wyszukiwania",
+    "headingWithQuery": "Wyniki wyszukiwania: {{query}}"
   },
   "sortOption": {
     "relevance": "Trafność",
@@ -280,7 +282,16 @@
   },
   "nav": {
     "backToList": "Wróć do listy",
-    "home": "Strona główna"
+    "home": "Strona główna",
+    "skipToContent": "Przejdź do treści"
+  },
+  "pageTitle": {
+    "results": "videodeck: filmy",
+    "resultsQuery": "Szukaj: {{query}}",
+    "video": "{{title}} - videodeck",
+    "videoLoading": "Ładowanie filmu - videodeck",
+    "videoError": "Film niedostępny - videodeck",
+    "channels": "Pobieranie filmów - videodeck"
   },
   "channelConsole": {
     "title": "Pobieranie filmów",
