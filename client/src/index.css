@@ -109,6 +109,9 @@ body {
 /* Respect the OS "reduce motion" setting: cut animations and transitions
    to the minimum instead of disabling the app's behavior. */
 @media (prefers-reduced-motion: reduce) {
+  /* eslint-disable css/no-important -- the collapse has to outrank whatever
+     duration an element sets for itself, which is the one job !important has
+     here; the rule has no per-block exception, so the whole block is exempt */
   *,
   *::before,
   *::after {
@@ -117,4 +120,5 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  /* eslint-enable css/no-important */
 }

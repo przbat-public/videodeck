@@ -118,11 +118,10 @@ export default defineConfig([
    * 2025, which covers the browsers a self-hosted install runs on and admits
    * content-visibility (Baseline low since 2024-09-16, `auto` since
    * 2025-09-15). Anything newer needs an explicit @supports guard, which the
-   * rule accepts. css/no-important is deliberately absent: the four
-   * !important flags in index.css are the prefers-reduced-motion collapse,
-   * which cannot be expressed without them, and the rule has no per-block
-   * exception, so it arrives with a scoped disable around that single block
-   * rather than four line-level ones.
+   * rule accepts. css/no-important covers the whole file: the four !important
+   * flags in index.css are the prefers-reduced-motion collapse, and the one
+   * scoped disable around that block is what lets the rule stay on for every
+   * other declaration.
    */
   {
     files: ['client/src/**/*.css'],
@@ -132,6 +131,7 @@ export default defineConfig([
       'css/no-duplicate-imports': 'error',
       'css/no-duplicate-keyframe-selectors': 'error',
       'css/no-empty-blocks': 'error',
+      'css/no-important': 'error',
       'css/no-invalid-at-rule-placement': 'error',
       'css/no-invalid-at-rules': 'error',
       'css/no-invalid-properties': ['error', { allowUnknownVariables: true }],
