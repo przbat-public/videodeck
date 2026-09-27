@@ -22,10 +22,13 @@ rules and the copy rules. This skill turns that contract into a checklist.
 1. **Tokens only.** Every color comes from `client/src/index.css`. A
    hardcoded hex or `white`/`black` outside the allowed surfaces (header
    gradient, video player, white text on semantic buttons) is a violation.
-   New colors mean new tokens in BOTH themes plus a `DESIGN.md` update.
-2. **Both themes.** The change must read well under `:root` and
-   `:root[data-theme='dark']`. Never add a light-only background or a
-   dark-only text color.
+   A color that differs between themes is one token written as
+   `light-dark(<light>, <dark>)`, plus a `DESIGN.md` update for a new token.
+2. **Both themes.** The change must read well under the OS preference and
+   under a pinned `data-theme`. The palette is declared once in `:root`, and
+   `:root[data-theme='light']` and `:root[data-theme='dark']` override the
+   `color-scheme` alone, so a token never has a second copy to drift from.
+   Never add a light-only background or a dark-only text color.
 3. **Primitives first.** Buttons use `ui/Button` variants, selects use
    `ui/Select`, errors use `ui/ErrorMessage`, spinners use `ui/Loading`,
    checkboxes use `ui/Checkbox`. Do not build a new ad-hoc button or
