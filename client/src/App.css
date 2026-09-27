@@ -712,7 +712,7 @@
 .channel-name {
   display: block;
   font-weight: 600;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .channel-path {
@@ -912,6 +912,7 @@
   line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  /* eslint-disable-next-line css/use-baseline -- the standard property is not Baseline yet (no web-features support entry); the -webkit- fallback above it is what browsers use today */
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -925,6 +926,7 @@
      to 500px and drag the row height with it. */
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  /* eslint-disable-next-line css/use-baseline -- the standard property is not Baseline yet (no web-features support entry); the -webkit- fallback above it is what browsers use today */
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -1115,7 +1117,7 @@
 .output-line {
   margin-bottom: 0.25rem;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* Long unbroken content (hashtags, URLs inside titles and descriptions)
@@ -1208,6 +1210,7 @@
   cursor: pointer;
   font-size: 0.9rem;
   color: var(--color-text-muted);
+  /* eslint-disable-next-line css/use-baseline -- not Baseline (Safari ships the prefixed form); the loss is cosmetic */
   user-select: none;
 }
 
@@ -1367,6 +1370,7 @@
   color: var(--color-text);
   cursor: pointer;
   outline: none;
+  /* eslint-disable-next-line css/use-baseline -- not Baseline (Safari ships the prefixed form); the loss is cosmetic */
   user-select: none;
 }
 
@@ -1430,6 +1434,7 @@
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  /* eslint-disable-next-line css/use-baseline -- the standard property is not Baseline yet (no web-features support entry); the -webkit- fallback above it is what browsers use today */
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -1644,6 +1649,7 @@
   color: var(--color-text);
   cursor: pointer;
   outline: none;
+  /* eslint-disable-next-line css/use-baseline -- not Baseline (Safari ships the prefixed form); the loss is cosmetic */
   user-select: none;
 }
 
@@ -1689,4 +1695,29 @@
   .app-topbar {
     padding: 1rem 1rem 0.5rem;
   }
+}
+
+/* Skip link (components/AppLayout.tsx): the first stop in the tab order.
+   Parked above the viewport with a transform, never display/visibility, so
+   it stays in the accessibility tree and can take focus; the transform keeps
+   it out of the layout at every width, phone included. */
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  transform: translateY(-200%);
+  padding: 0.5rem 1rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 2px solid var(--color-primary);
+  border-radius: 6px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* Revealed only while it holds keyboard focus: the global :focus-visible
+   ring in index.css then draws around it. */
+.skip-link:focus-visible {
+  transform: translateY(0);
 }

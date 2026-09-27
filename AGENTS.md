@@ -62,6 +62,20 @@ the client e2e suite, in that order.)
 - **pnpm** (workspaces) manages dependencies; `allowBuilds` in `pnpm-workspace.yaml`
   whitelists the packages allowed to run postinstall scripts.
 
+## Browser support
+
+The client targets **Baseline 2025**: a CSS or platform feature has to be
+Baseline available as of 2025 to ship without a guard, and anything newer
+needs an `@supports` block or an inline exception naming its reason. The
+`use-baseline` rule of the CSS plugin, configured in `eslint.config.mjs`,
+enforces that target over the client stylesheets, which `pnpm run lint:types`
+already reaches. The two exceptions in the stylesheet today are the standard
+`line-clamp` and the unprefixed `user-select`, both of which Safari serves
+from the prefixed form.
+
+The Chrome extension keeps its own floor, Chrome 102, pinned by
+`manifest.json` and by the esbuild target.
+
 ## Language
 
 **All commit messages, PR titles/descriptions, code comments, docs and issue

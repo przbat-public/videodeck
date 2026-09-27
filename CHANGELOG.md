@@ -113,6 +113,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a stale one fails the test as well. The client and extension HTML is
   application markup rather than prose, which the rule states instead of
   exempting it silently
+- **The stylesheets are linted, with a browser contract behind them**:
+  `@eslint/css` joins the flat config for the client stylesheets, which
+  `pnpm run lint:types` already reaches, and AGENTS.md states the target that
+  the new rule enforces: a feature has to be Baseline available as of 2025 to
+  ship without a guard. The first run found one real defect, a deprecated
+  `word-break: break-word` that is now `overflow-wrap: anywhere`, and six
+  deliberate uses of the standard `line-clamp` and the unprefixed
+  `user-select`, neither of which is Baseline yet, so each carries an inline
+  exception that names its reason
 ### Added
 
 - The client says when Elasticsearch is unreachable instead of turning it into

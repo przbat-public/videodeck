@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import eslintReact from '@eslint-react/eslint-plugin';
+import css from '@eslint/css';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import biome from 'eslint-config-biome';
 import playwright from 'eslint-plugin-playwright';
@@ -104,6 +105,38 @@ export default defineConfig([
       ...commonRules,
       ...reactHooks.configs.flat['recommended-latest'].rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+
+  /*
+   * Stylesheets. Biome is told to skip CSS (see the `files.includes` list in
+   * biome.json), so the two client stylesheets used to be checked by nothing
+   * but the advisory UX scanner, and DESIGN.md section 2 ("pick a token, or
+   * extend the token set") had no gate behind it.
+   *
+   * The Baseline target is 2025: a feature must be Baseline available as of
+   * 2025, which covers the browsers a self-hosted install runs on and admits
+   * content-visibility (Baseline low since 2024-09-16, `auto` since
+   * 2025-09-15). Anything newer needs an explicit @supports guard, which the
+   * rule accepts. css/no-important is deliberately absent: the four
+   * !important flags in index.css are the prefers-reduced-motion collapse,
+   * which cannot be expressed without them, and the rule has no per-block
+   * exception, so it arrives with a scoped disable around that single block
+   * rather than four line-level ones.
+   */
+  {
+    files: ['client/src/**/*.css'],
+    plugins: { css },
+    language: 'css/css',
+    rules: {
+      'css/no-duplicate-imports': 'error',
+      'css/no-duplicate-keyframe-selectors': 'error',
+      'css/no-empty-blocks': 'error',
+      'css/no-invalid-at-rule-placement': 'error',
+      'css/no-invalid-at-rules': 'error',
+      'css/no-invalid-properties': ['error', { allowUnknownVariables: true }],
+      'css/no-unmatchable-selectors': 'error',
+      'css/use-baseline': ['error', { available: 2025 }],
     },
   },
 
