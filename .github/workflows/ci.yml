@@ -7,11 +7,12 @@ on:
       - 'docs/**'
       - '**.md'
       - 'LICENSE'
+  # Pull requests run this workflow whatever they touch, and the `changes` job
+  # decides which jobs do the work. Filtering the trigger instead left every
+  # check below in a pending state on a documentation-only pull request, and
+  # the ruleset on `main` requires them by name, so such a pull request could
+  # never merge. GitHub counts a skipped job as a success.
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
-      - 'LICENSE'
   workflow_dispatch:
 
 permissions:
@@ -25,6 +26,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Documentation-only pull requests still need the checks below to report, so
+  # this job runs first and tells the heavy jobs whether there is anything for
+  # them to do. A typo fix in a README then costs one lint run instead of the
+  # whole pipeline, and every check it skips still reports as successful.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
+          # The comparison below needs the base branch, not a one-commit clone.
+          fetch-depth: 0
+      - name: Decide whether code changed
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            # The push trigger already ignores documentation-only pushes.
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --quiet origin "$BASE_REF"
+          if git diff --quiet "origin/$BASE_REF...HEAD" -- . ':(exclude)*.md' ':(exclude)docs/*' ':(exclude)LICENSE'; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Runs on every pull request on purpose: this job carries the prose gate,
+  # which is the only check that reads documentation.
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -51,6 +90,8 @@ jobs:
 
   format:
     name: Format check
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -64,6 +105,8 @@ jobs:
 
   audit:
     name: pnpm audit (moderate+)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -81,6 +124,8 @@ jobs:
 
   typecheck:
     name: Typecheck (server + client + extension)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -94,6 +139,8 @@ jobs:
 
   unit-tests:
     name: Unit tests (${{ matrix.package }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -122,6 +169,8 @@ jobs:
 
   client-integration:
     name: Client integration (real backend in-process)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -139,6 +188,8 @@ jobs:
 
   coverage:
     name: Coverage ratchet
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -156,6 +207,8 @@ jobs:
 
   integration:
     name: Server integration (fake yt-dlp + Elasticsearch)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -196,7 +249,8 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [lint, format, typecheck, unit-tests]
+    needs: [changes, lint, format, typecheck, unit-tests]
+    if: needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -223,6 +277,8 @@ jobs:
 
   e2e:
     name: Playwright E2E (mocked API)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -258,6 +314,8 @@ jobs:
   # from the repo root.
   e2e-preview:
     name: Playwright E2E (production bundle)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
