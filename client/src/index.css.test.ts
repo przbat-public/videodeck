@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import appCss from './App.css?raw';
 import indexCss from './index.css?raw';
 
 /**
@@ -15,8 +16,9 @@ import indexCss from './index.css?raw';
 /**
  * Tokens whose resolved value differs between the themes. The old dark block
  * repeated 23 tokens, but six of them carried the same literal as the light
- * block (the primary pair, the warning pair and the secondary pair), so only
- * these 17 need a `light-dark()` pair.
+ * block (the primary pair, the warning pair and the secondary pair), so only 17
+ * of those need a `light-dark()` pair. The elevation tokens joined later: a
+ * shadow that stays 10% black in dark mode is invisible there.
  */
 const THEME_VARYING_TOKENS = [
   '--color-bg',
@@ -36,13 +38,15 @@ const THEME_VARYING_TOKENS = [
   '--color-toast-bg',
   '--color-toast-text',
   '--color-focus-ring',
+  '--shadow-card',
+  '--shadow-popover',
 ];
 
 /**
  * Tokens with one theme-independent value: the eight the light block owned
  * alone (semantic colors, the focus ring, the card radius) plus the six
- * identical pairs listed above. They must stay plain literals: a
- * `light-dark(x, x)` would be a pair with no effect.
+ * identical pairs listed above plus the halo base. They must stay plain
+ * literals: a `light-dark(x, x)` would be a pair with no effect.
  */
 const THEME_INVARIANT_TOKENS = [
   '--color-primary',
@@ -58,6 +62,7 @@ const THEME_INVARIANT_TOKENS = [
   '--color-secondary',
   '--color-secondary-hover',
   '--color-focus',
+  '--color-halo',
   '--radius-card',
 ];
 
@@ -178,5 +183,52 @@ describe('index.css theme contract', () => {
     expect(blockBody(':root')).toContain('color-scheme: light dark;');
     expect(blockBody(":root[data-theme='light']").trim()).toBe('color-scheme: light;');
     expect(blockBody(":root[data-theme='dark']").trim()).toBe('color-scheme: dark;');
+  });
+});
+
+/**
+ * Elevation contract.
+ *
+ * App.css used to spell the shadow colours out as `rgba()` literals in thirteen
+ * `box-shadow` declarations, which is how a card shadow stayed the same 10%
+ * black in dark mode, where it is all but invisible (DESIGN.md section 3 says
+ * shadows deepen in dark). Each shadow family is a token in index.css now, and
+ * the shadows that tint themselves with a semantic colour mix it from that
+ * token instead.
+ */
+const appCssWithoutComments = appCss.replace(/\/\*[\s\S]*?\*\//g, '');
+
+/** Every `box-shadow` value in App.css, in file order */
+const boxShadowValues = [...appCssWithoutComments.matchAll(/box-shadow\s*:\s*([^;}]+)/g)].map((match) =>
+  (match[1] ?? '').trim(),
+);
+
+describe('App.css elevation contract', () => {
+  it('declares every elevation token as a light-dark() pair', () => {
+    for (const token of ['--shadow-card', '--shadow-popover']) {
+      const value = rootTokens.get(token);
+      expect(value, `${token} must be declared in the single :root block`).toBeDefined();
+      const [light, dark] = splitLightDark(value ?? '');
+      expect(light.length, `${token} needs a light value`).toBeGreaterThan(0);
+      expect(dark.length, `${token} needs a dark value`).toBeGreaterThan(0);
+      expect(dark, `${token} must deepen in dark`).not.toBe(light);
+    }
+  });
+
+  it('keeps every box-shadow free of a colour literal', () => {
+    // A regex that quietly stopped matching would make the assertion below
+    // vacuous, so the scan proves it still sees the shadows first.
+    expect(boxShadowValues.length).toBeGreaterThanOrEqual(13);
+    const offenders = boxShadowValues.filter((value) => /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i.test(value));
+
+    expect(offenders, 'pick a token, or extend the token set (DESIGN.md section 2)').toEqual([]);
+
+    // The scan above would miss a keyword colour, so the colour that ends every
+    // shadow has to be a token or a mix of one.
+    const untokened = boxShadowValues
+      .filter((value) => value !== 'none')
+      .filter((value) => !/(?:var\(--[\w-]+\)|color-mix\(.+\))$/.test(value));
+
+    expect(untokened, 'every shadow colour comes from a token').toEqual([]);
   });
 });

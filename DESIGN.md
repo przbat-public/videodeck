@@ -37,7 +37,10 @@ its dark twin.
 | `--color-primary-text` | `#4449b3` | `#a5adff` | accent used as text: links, checked options |
 | `--color-primary-soft` | `#eef0ff` | `#2e3352` | accent-tinted fills |
 | `--color-focus` | `#5a5fd8` | `#5a5fd8` | focus ring |
+| `--color-halo` | `#667eea` | `#667eea` | base indigo of the soft halos and the primary button glow |
 | `--color-focus-ring` | `rgba(102, 126, 234, 0.2)` | `rgba(165, 173, 255, 0.3)` | soft halo on focused controls (checkbox, select trigger) |
+| `--shadow-card` | `0 2px 8px rgba(0, 0, 0, 0.1)` | `0 2px 8px rgba(0, 0, 0, 0.45)` | search bar, detail panels, queue controls |
+| `--shadow-popover` | `0 8px 24px rgba(30, 30, 60, 0.16)` | `0 8px 24px rgba(0, 0, 0, 0.55)` | Select and Menu dropdowns |
 
 Rows whose Light and Dark entries match are single literals in the
 stylesheet, not pairs. The table lists the resolved value either way.
@@ -59,6 +62,10 @@ Rules:
 - White text on `--color-primary` must stay at least 4.5:1 (WCAG AA). That
   is why the primary stays `#5a5fd8` in both themes.
 - Alerts use the semantic soft backgrounds, never raw colors.
+- Shadows are tokens too: `--shadow-card` and `--shadow-popover` hold the two
+  elevations, and a shadow tinted by the control it sits under mixes the color
+  from that token (`color-mix(in srgb, var(--color-info) 30%, transparent)` on
+  the download button). No `box-shadow` spells a color out.
 - The header gradient (`--color-primary` to `#764ba2`) is the one allowed
   decorative surface; the video player is the one allowed black surface.
 
@@ -81,8 +88,11 @@ tokens, never theme hacks.
 
 System stack, no webfonts: `-apple-system, BlinkMacSystemFont, Segoe UI,
 Roboto, Oxygen, Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue,
-sans-serif`. Sizes stay in the 0.8-2.5rem range: 0.8rem metadata, 0.9rem
-labels, 1rem body, 1.1-1.2rem titles, 2.5rem the app header. Weights: 500
+sans-serif`. Sizes stay in the 0.8-2rem range: 0.8rem metadata, 0.9rem
+labels, 1rem body, 1.1-1.2rem titles, 1.5rem section headings, and the
+console heading at `clamp(1.4rem, 1rem + 1.4vw, 2rem)`, which is the largest
+text in the app. The top bar carries no wordmark, only the brand icon, so
+nothing there scales with the viewport. Weights: 500
 for muted labels, 600-700 for headings and buttons. Nothing italic, nothing
 uppercase beyond the PL/EN language buttons.
 
@@ -93,7 +103,10 @@ uppercase beyond the PL/EN language buttons.
   so the space over the bar reads the same as the space under it.
 - Cards: 8px radius (`--radius-card`), 1rem padding, no shadow. Titles and
   snippets clamp to two lines, and the grid rows share one height, so
-  every card in a result page is the same size.
+  every card in a result page is the same size. The panels that frame a page
+  instead of holding a result (the search bar, the detail sections, the queue
+  controls) do carry `--shadow-card`, and the two floating menus share
+  `--shadow-popover`; both tokens from section 2 and both deeper in dark mode.
 - Gaps are 0.25/0.5/1/2rem. 1rem is the default rhythm between controls.
 - Controls are compact: 0.75rem vertical padding on inputs and buttons,
   0.3-0.55rem on small buttons.

@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { VideoDetails } from '@videodeck/shared/api';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { playbackPositionKey } from '../hooks/usePlaybackPosition';
 import i18n from '../i18n';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
 import VideoDetailPage from './VideoDetailPage';
@@ -51,6 +52,55 @@ const renderPage = () =>
       </Routes>
     </MemoryRouter>,
   );
+
+/** What an earlier visit left behind; the hook and the page read this shape */
+function seedPosition(videoId: string, time: number, duration: number): void {
+  localStorage.setItem(playbackPositionKey(videoId), JSON.stringify({ time, duration }));
+}
+
+/** jsdom plays nothing: currentTime and duration are the only state that matters */
+function setPlayback(player: HTMLVideoElement, currentTime: number, duration: number): void {
+  player.currentTime = currentTime;
+  Object.defineProperty(player, 'duration', { value: duration, configurable: true });
+}
+
+interface MediaSessionStub {
+  metadata: MediaMetadata | null;
+  /** Registered actions, as the browser would hold them */
+  handlers: Map<MediaSessionAction, MediaSessionActionHandler>;
+  setActionHandler: (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => void;
+}
+
+/** navigator.mediaSession is missing from jsdom, so the page gets a stub that remembers */
+function installMediaSession(): MediaSessionStub {
+  const handlers = new Map<MediaSessionAction, MediaSessionActionHandler>();
+  const session: MediaSessionStub = {
+    metadata: null,
+    handlers,
+    setActionHandler: vi.fn((action: MediaSessionAction, handler: MediaSessionActionHandler | null): void => {
+      if (handler === null) {
+        handlers.delete(action);
+      } else {
+        handlers.set(action, handler);
+      }
+    }),
+  };
+  Object.defineProperty(navigator, 'mediaSession', { value: session, configurable: true });
+  return session;
+}
+
+/** MediaMetadata is missing from jsdom for the same reason */
+class FakeMediaMetadata {
+  title: string;
+  artist: string;
+  artwork: MediaImage[];
+
+  constructor(init: MediaMetadataInit = {}) {
+    this.title = init.title ?? '';
+    this.artist = init.artist ?? '';
+    this.artwork = init.artwork ?? [];
+  }
+}
 
 describe('VideoDetailPage', () => {
   beforeEach(() => {
@@ -247,5 +297,182 @@ describe('VideoDetailPage', () => {
 
     expect(await screen.findByText('A talk about hedgehogs')).toBeInTheDocument();
     expect(screen.queryByText(/^Błąd:/)).toBeNull();
+  });
+
+  describe('the Media Session API', () => {
+    beforeEach(() => {
+      globalThis.MediaMetadata = FakeMediaMetadata as unknown as typeof MediaMetadata;
+      // jsdom reports both of these as not implemented; the page only has to call them
+      vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+      vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, 'mediaSession');
+      Reflect.deleteProperty(globalThis, 'MediaMetadata');
+      vi.restoreAllMocks();
+    });
+
+    it('keeps iOS from taking the video full screen and reads only the header', async () => {
+      renderPage();
+
+      const player = await screen.findByTestId('video-player');
+      expect(player).toHaveAttribute('playsinline');
+      expect(player).toHaveAttribute('preload', 'metadata');
+    });
+
+    it('publishes the title, the channel and the poster to the OS', async () => {
+      const session = installMediaSession();
+      renderPage();
+
+      await screen.findByTestId('video-player');
+
+      expect(session.metadata?.title).toBe('A talk about hedgehogs');
+      expect(session.metadata?.artist).toBe('Nature');
+      expect(session.metadata?.artwork).toEqual([
+        { src: `/api/videos/file/hedgehogs.webp?folder=${encodeURIComponent('/videos/a')}` },
+      ]);
+      expect([...session.handlers.keys()].sort()).toEqual(['pause', 'play', 'seekbackward', 'seekforward', 'seekto']);
+    });
+
+    it('routes the media keys to the player', async () => {
+      const session = installMediaSession();
+      renderPage();
+      const player = (await screen.findByTestId('video-player')) as HTMLVideoElement;
+      setPlayback(player, 100, 600);
+
+      session.handlers.get('seekforward')?.({ action: 'seekforward', seekOffset: 15 });
+      expect(player.currentTime).toBe(115);
+
+      // Without an offset the player falls back to its own step
+      session.handlers.get('seekbackward')?.({ action: 'seekbackward' });
+      expect(player.currentTime).toBe(105);
+
+      session.handlers.get('seekto')?.({ action: 'seekto', seekTime: 42 });
+      expect(player.currentTime).toBe(42);
+    });
+
+    it('stays inside the video when a media key seeks past either end', async () => {
+      const session = installMediaSession();
+      renderPage();
+      const player = (await screen.findByTestId('video-player')) as HTMLVideoElement;
+
+      setPlayback(player, 2, 600);
+      session.handlers.get('seekbackward')?.({ action: 'seekbackward', seekOffset: 10 });
+      expect(player.currentTime).toBe(0);
+
+      setPlayback(player, 595, 600);
+      session.handlers.get('seekforward')?.({ action: 'seekforward', seekOffset: 10 });
+      expect(player.currentTime).toBe(600);
+    });
+
+    it('starts and stops playback from the OS controls', async () => {
+      const session = installMediaSession();
+      renderPage();
+      await screen.findByTestId('video-player');
+
+      session.handlers.get('play')?.({ action: 'play' });
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+
+      session.handlers.get('pause')?.({ action: 'pause' });
+      expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    });
+
+    it('drops the metadata and the handlers when the page goes away', async () => {
+      const session = installMediaSession();
+      const { unmount } = renderPage();
+      await screen.findByTestId('video-player');
+      expect(session.handlers.size).toBe(5);
+
+      unmount();
+
+      expect(session.metadata).toBeNull();
+      expect(session.handlers.size).toBe(0);
+    });
+  });
+
+  describe('resuming where the viewer stopped', () => {
+    beforeEach(() => {
+      localStorage.clear();
+      vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+      localStorage.clear();
+      vi.restoreAllMocks();
+    });
+
+    it('offers the stored place and seeks the player there', async () => {
+      seedPosition('hedgehogs', 754, 1800);
+      const user = userEvent.setup();
+      renderPage();
+      const resume = await screen.findByRole('button', {
+        name: i18n.t('video.resumeFrom', { time: '12:34' }),
+      });
+      const player = screen.getByTestId('video-player') as HTMLVideoElement;
+      setPlayback(player, 0, 1800);
+
+      await user.click(resume);
+
+      expect(player.currentTime).toBe(754);
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+      // The offer is answered, so it goes away
+      expect(screen.queryByRole('button', { name: i18n.t('video.resumeFrom', { time: '12:34' }) })).toBeNull();
+    });
+
+    it('takes the offer away once the viewer starts playing by hand', async () => {
+      seedPosition('hedgehogs', 754, 1800);
+      renderPage();
+      const player = (await screen.findByTestId('video-player')) as HTMLVideoElement;
+      const offer = i18n.t('video.resumeFrom', { time: '12:34' });
+      expect(screen.getByRole('button', { name: offer })).toBeInTheDocument();
+
+      // Playing from the native controls is an answer too: the offer must not
+      // jump the viewer back later.
+      fireEvent.play(player);
+
+      expect(screen.queryByRole('button', { name: offer })).toBeNull();
+    });
+
+    it('starts over and forgets the stored place', async () => {
+      seedPosition('hedgehogs', 754, 1800);
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByRole('button', { name: i18n.t('video.resumeFrom', { time: '12:34' }) });
+      const player = screen.getByTestId('video-player') as HTMLVideoElement;
+      setPlayback(player, 754, 1800);
+
+      await user.click(screen.getByRole('button', { name: i18n.t('video.startFromBeginning') }));
+
+      expect(player.currentTime).toBe(0);
+      expect(localStorage.getItem(playbackPositionKey('hedgehogs'))).toBeNull();
+      expect(screen.queryByRole('button', { name: i18n.t('video.startFromBeginning') })).toBeNull();
+    });
+
+    it('offers nothing for a video that was never watched', async () => {
+      renderPage();
+
+      await screen.findByTestId('video-player');
+
+      expect(screen.queryByRole('button', { name: i18n.t('video.startFromBeginning') })).toBeNull();
+    });
+
+    it('offers nothing for a place in the first seconds', async () => {
+      seedPosition('hedgehogs', 8, 1800);
+      renderPage();
+
+      await screen.findByTestId('video-player');
+
+      expect(screen.queryByRole('button', { name: i18n.t('video.startFromBeginning') })).toBeNull();
+    });
+
+    it('offers nothing for a place in the last stretch of the video', async () => {
+      seedPosition('hedgehogs', 1790, 1800);
+      renderPage();
+
+      await screen.findByTestId('video-player');
+
+      expect(screen.queryByRole('button', { name: i18n.t('video.startFromBeginning') })).toBeNull();
+    });
   });
 });

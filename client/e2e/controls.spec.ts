@@ -85,10 +85,24 @@ test.describe('select controls', () => {
     const trigger = page.getByRole('combobox', { name: 'Sort' });
     await trigger.focus();
 
-    // The box-shadow transition takes 0.2s; poll until it settles.
-    await expect
-      .poll(() => trigger.evaluate((el) => getComputedStyle(el).boxShadow))
-      .toContain('rgba(102, 126, 234, 0.2)');
+    // The ring paints a color-mix() of the halo token, and a browser is free to
+    // serialize a mixed colour its own way (color(srgb ...) rather than rgba()).
+    // The expectation therefore goes through the same engine: a probe carrying
+    // the same expression tells the test what this browser calls that colour, so
+    // the assertion compares colours instead of spellings.
+    const expected = await page.evaluate(() => {
+      const probe = document.createElement('div');
+      probe.style.boxShadow = '0 0 0 3px color-mix(in srgb, #667eea 20%, transparent)';
+      document.body.append(probe);
+      const painted = getComputedStyle(probe).boxShadow;
+      probe.remove();
+      return painted;
+    });
+    expect(expected).not.toBe('none');
+
+    // The box-shadow transition takes 0.2s and interpolates through oklab, so
+    // polling is what waits for the ring to settle on the painted colour.
+    await expect.poll(() => trigger.evaluate((el) => getComputedStyle(el).boxShadow)).toContain(expected);
   });
 });
 
