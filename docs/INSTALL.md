@@ -38,26 +38,24 @@ docker run -d --name videodeck-elasticsearch --restart unless-stopped \
   docker.elastic.co/elasticsearch/elasticsearch:9.5.1
 ```
 
-Only the API port is published. The transport port stays inside the container,
-because a single node has nobody to talk to.
+Only the API port is published. Keep it that way. A single node has nobody to
+talk to on the transport port, so that one stays inside the container.
 
 The flags that carry weight:
 
 - `--name` plus `-v videodeck-es-data:...` keep the container addressable and
-  the index on disk, so replacing the container costs seconds instead of a full
-  reindex,
+  the index on disk. Replacing it then costs seconds, not a reindex.
 - `--restart unless-stopped` brings the node back with Docker. An explicit
-  `docker stop videodeck-elasticsearch` still keeps it down,
+  `docker stop` still keeps it down.
 - `ES_JAVA_OPTS` holds the JVM at 1 GB. Without it the image claims half of the
-  Docker VM, and two nodes started that way are what the OOM killer ends,
-- the four health flags let `docker ps` answer the question that matters while
+  Docker VM. Two nodes started that way are what the OOM killer ends.
+- The four health flags let `docker ps` answer the question that matters while
   the JVM boots.
 
-Start Elasticsearch with this command rather than the Run button in Docker
-Desktop. That button passes no settings at all, so the node comes up with
-security enabled and no published port: the container looks fine in the
-dashboard, and the app answers `elasticsearch: "down"` because nothing listens
-on 9200.
+Avoid the Run button in Docker Desktop. It passes no settings at all. The node
+comes up with security enabled and no published port. The container looks fine
+in the dashboard. The app answers `elasticsearch: "down"`, because nothing
+listens on 9200.
 
 **Option B: Homebrew (macOS)**
 
