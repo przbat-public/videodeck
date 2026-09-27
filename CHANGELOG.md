@@ -125,6 +125,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deliberate uses of the standard `line-clamp` and the unprefixed
   `user-select`, neither of which is Baseline yet, so each carries an inline
   exception that names its reason
+- **No more flash of the wrong theme, and one token block instead of two**:
+  `client/src/index.css` declares `color-scheme: light dark` once and writes
+  the seventeen tokens that differ between themes as
+  `light-dark(<light>, <dark>)`, so the dark palette is no longer a second
+  copy that can drift. A short inline script in `client/index.html` reads the
+  stored choice before the first paint, which is what removes the light frame
+  a dark-mode user used to see, and two `theme-color` metas tint the browser
+  chrome in both schemes. `useTheme` keeps owning the choice after mount, and
+  the storage key it persists to is exported so a test can pin it against the
+  inline script instead of trusting two copies of a string
 ### Added
 
 - The client says when Elasticsearch is unreachable instead of turning it into

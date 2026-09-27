@@ -1,74 +1,64 @@
 /* ------------------------------------------------------------------ */
-/* Design tokens — the single source of truth for the palette, radii  */
+/* Design tokens: the single source of truth for the palette, radii   */
 /* and shadows. Components must not hardcode colors anymore.          */
+/*                                                                    */
+/* One block declares every token. A value that differs between the   */
+/* themes is written as light-dark(<light>, <dark>) and resolves      */
+/* against the used color-scheme; a token that reads the same in both */
+/* themes stays a single literal, so the two cannot drift apart.      */
 /* ------------------------------------------------------------------ */
 :root {
-  /* Native form controls (the date picker, the calendar icon) follow the theme */
-  color-scheme: light;
-  --color-bg: #f5f5f5;
-  --color-bg-soft: #f0f0f0;
-  --color-surface: #fff;
-  --color-text: #333;
-  --color-text-muted: #666;
-  --color-border: #e0e0e0;
-  --color-primary: #5a5fd8; /* ≥4.5:1 on white (WCAG AA for button text) */
+  /* Native form controls (the date picker, the calendar icon) follow the
+     resolved theme: both schemes are allowed here, the blocks below pin one. */
+  color-scheme: light dark;
+  --color-bg: light-dark(#f5f5f5, #16181c);
+  --color-bg-soft: light-dark(#f0f0f0, #23262d);
+  --color-surface: light-dark(#fff, #1d1f24);
+  --color-text: light-dark(#333, #e6e6e6);
+  --color-text-muted: light-dark(#666, #9aa0a6);
+  --color-border: light-dark(#e0e0e0, #3a3d45);
+  --color-primary: #5a5fd8; /* both themes: white button text stays ≥4.5:1 (WCAG AA) */
   --color-primary-hover: #4b56c9;
-  --color-primary-text: #4449b3; /* accent used as text: ≥4.5:1 on light surfaces */
-  --color-primary-soft: #eef0ff;
+  --color-primary-text: light-dark(#4449b3, #a5adff); /* accent as text: ≥4.5:1 on light, ≈8:1 on dark */
+  --color-primary-soft: light-dark(#eef0ff, #2e3352);
   --color-success: #28a745;
   --color-success-hover: #218838;
   --color-danger: #dc3545;
   --color-danger-hover: #c82333;
-  --color-danger-bg: #f8d7da;
-  --color-danger-text: #721c24;
+  --color-danger-bg: light-dark(#f8d7da, #4a262b);
+  --color-danger-text: light-dark(#721c24, #f2b8bd);
   --color-info: #17a2b8;
   --color-info-hover: #138496;
-  --color-info-bg: #f1fbfd;
+  --color-info-bg: light-dark(#f1fbfd, #203a40);
   --color-warning: #ffc107;
   --color-warning-hover: #e0a800;
   --color-secondary: #5a6268;
   --color-secondary-hover: #495057;
-  --color-warning-bg: #fff3cd;
-  --color-warning-text: #856404;
-  --color-warning-border: #ffeeba;
-  /* Toast: a floating surface above the page (utils/toastOptions) */
-  --color-toast-bg: #363636;
-  --color-toast-text: #fff;
+  --color-warning-bg: light-dark(#fff3cd, #4a3d1d);
+  --color-warning-text: light-dark(#856404, #e6c66a);
+  --color-warning-border: light-dark(#ffeeba, #6b5a26);
+  /* Toast: a floating surface above the page (utils/toastOptions); in dark it
+     lifts off the page instead of glowing white */
+  --color-toast-bg: light-dark(#363636, #2b2f36);
+  --color-toast-text: light-dark(#fff, #e6e6e6);
   --color-focus: #5a5fd8;
-  /* Soft halo around focused controls (checkbox, select trigger) */
-  --color-focus-ring: rgba(102, 126, 234, 0.2);
+  /* Soft halo around focused controls (checkbox, select trigger); the dark
+     value is a lighter indigo so the ring still reads there */
+  --color-focus-ring: light-dark(rgba(102, 126, 234, 0.2), rgba(165, 173, 255, 0.3));
   --radius-card: 8px;
 }
 
-/* Dark theme: the same tokens, re-tuned. The resolved value of the
-   system/light/dark picker lands on <html data-theme=…> (hooks/useTheme). */
+/* The resolved value of the system/light/dark picker lands on
+   <html data-theme=…> (hooks/useTheme, plus the pre-paint script in
+   index.html). These two blocks pin the color-scheme only: the light-dark()
+   values above do the rest, so a pinned theme needs no second copy of the
+   palette and the first frame is already themed. */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --color-bg: #16181c;
-  --color-bg-soft: #23262d;
-  --color-surface: #1d1f24;
-  --color-text: #e6e6e6;
-  --color-text-muted: #9aa0a6;
-  --color-border: #3a3d45;
-  --color-primary: #5a5fd8; /* kept: white button text stays ≥4.5:1 */
-  --color-primary-hover: #4b56c9;
-  --color-primary-text: #a5adff; /* accent as text: ≈8:1 on dark surfaces */
-  --color-primary-soft: #2e3352;
-  --color-danger-bg: #4a262b;
-  --color-danger-text: #f2b8bd;
-  --color-info-bg: #203a40;
-  --color-warning: #ffc107;
-  --color-warning-hover: #e0a800;
-  --color-secondary: #5a6268;
-  --color-secondary-hover: #495057;
-  --color-warning-bg: #4a3d1d;
-  --color-warning-text: #e6c66a;
-  --color-warning-border: #6b5a26;
-  /* Toast: lifts off the dark page instead of glowing white */
-  --color-toast-bg: #2b2f36;
-  --color-toast-text: #e6e6e6;
-  /* Soft halo around focused controls: a lighter indigo reads on dark */
-  --color-focus-ring: rgba(165, 173, 255, 0.3);
 }
 
 * {

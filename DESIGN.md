@@ -18,7 +18,11 @@ header, no emoji decoration, no marketing voice.
 
 Tokens live in `client/src/index.css` and are the only source of color.
 Components must never hardcode a color: pick a token, or extend the token
-set. There are two themes, both defined on the same tokens.
+set. One `:root` block declares every token once. A value that changes
+between the themes is written as `light-dark(<light>, <dark>)`, which
+resolves against the used `color-scheme`; a token that reads the same in
+both themes stays a single literal, so a light value cannot drift away from
+its dark twin.
 
 | Token | Light | Dark | Use |
 | --- | --- | --- | --- |
@@ -34,6 +38,9 @@ set. There are two themes, both defined on the same tokens.
 | `--color-primary-soft` | `#eef0ff` | `#2e3352` | accent-tinted fills |
 | `--color-focus` | `#5a5fd8` | `#5a5fd8` | focus ring |
 | `--color-focus-ring` | `rgba(102, 126, 234, 0.2)` | `rgba(165, 173, 255, 0.3)` | soft halo on focused controls (checkbox, select trigger) |
+
+Rows whose Light and Dark entries match are single literals in the
+stylesheet, not pairs. The table lists the resolved value either way.
 
 Semantic colors keep white-on-color text and do not change with the theme:
 success `#28a745`/`#218838`, danger `#dc3545`/`#c82333`, info `#17a2b8`/`#138496`,
@@ -57,10 +64,18 @@ Rules:
 
 ## 3. Dark theme
 
-`useTheme` resolves system/light/dark and writes the result to
-`<html data-theme=…>`. Every component must look right in both themes:
-tokens handle color, shadows deepen in dark, nothing hardcodes `#fff` or
-light grays. New surfaces get tokens, never theme hacks.
+`:root` allows both schemes (`color-scheme: light dark`), so `light-dark()`
+follows the OS until a choice is stored. A stored choice arrives as
+`data-theme` on `<html>`, where two small blocks,
+`:root[data-theme='light']` and `:root[data-theme='dark']`, override the
+`color-scheme` only; the palette itself is never duplicated. `useTheme`
+resolves system/light/dark and persists the choice under `videodeck-theme`.
+An inline script in `client/index.html` reads that key before the stylesheet
+loads, so the first frame is already themed instead of flashing light.
+
+Every component must look right in both themes: tokens handle color, shadows
+deepen in dark, nothing hardcodes `#fff` or light grays. New surfaces get
+tokens, never theme hacks.
 
 ## 4. Typography
 

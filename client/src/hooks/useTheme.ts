@@ -2,11 +2,16 @@ import { useCallback, useEffect, useState } from 'react';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
 
-const STORAGE_KEY = 'videodeck-theme';
+/**
+ * The persisted choice. The inline pre-paint script in client/index.html reads
+ * the same key before the first paint, and useTheme.test.ts asserts that the
+ * two never drift apart.
+ */
+export const THEME_STORAGE_KEY = 'videodeck-theme';
 
 /** The user's persisted choice, or 'system' */
 function readStoredTheme(): ThemeChoice {
-  const value = localStorage.getItem(STORAGE_KEY);
+  const value = localStorage.getItem(THEME_STORAGE_KEY);
   return value === 'light' || value === 'dark' || value === 'system' ? value : 'system';
 }
 
@@ -22,8 +27,11 @@ function resolveTheme(choice: ThemeChoice): 'light' | 'dark' {
 /**
  * App theme (light/dark/system). The resolved value is written to
  * `document.documentElement[data-theme]`, where the CSS tokens switch; the
- * choice persists in localStorage. While the choice is 'system', an OS
- * preference change re-resolves it live.
+ * choice persists in localStorage under THEME_STORAGE_KEY. index.html reads
+ * that key inline before the first paint, so the first frame is already
+ * themed; from mount on this hook owns the choice, including an OS preference
+ * change while the choice is 'system' (the CSS resolves light-dark() on its
+ * own, but the attribute has to name the painted theme).
  */
 export function useTheme(): { theme: ThemeChoice; setTheme: (theme: ThemeChoice) => void } {
   const [themeChoice, setThemeChoice] = useState<ThemeChoice>(readStoredTheme);
@@ -45,7 +53,7 @@ export function useTheme(): { theme: ThemeChoice; setTheme: (theme: ThemeChoice)
   }, [themeChoice]);
 
   const setTheme = useCallback((next: ThemeChoice) => {
-    localStorage.setItem(STORAGE_KEY, next);
+    localStorage.setItem(THEME_STORAGE_KEY, next);
     setThemeChoice(next);
   }, []);
 
