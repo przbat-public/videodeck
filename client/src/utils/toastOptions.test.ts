@@ -28,8 +28,10 @@ const referencedTokens = (): string[] =>
     return match[1];
   });
 
-const lightBlock = indexCss.slice(indexCss.indexOf(':root {'), indexCss.indexOf(":root[data-theme='dark']"));
-const darkBlock = indexCss.slice(indexCss.indexOf(":root[data-theme='dark']"));
+// The palette lives in one :root block now, so one slice covers both themes:
+// a token that changes with the theme is written as light-dark(<light>, <dark>).
+const rootStart = indexCss.indexOf(':root {');
+const rootBlock = indexCss.slice(rootStart, indexCss.indexOf('}', rootStart) + 1);
 
 describe('toastOptions', () => {
   it('paints with design tokens instead of colour literals', () => {
@@ -50,12 +52,12 @@ describe('toastOptions', () => {
     const tokens = referencedTokens();
 
     for (const token of tokens) {
-      expect(lightBlock, `${token} is not defined in index.css`).toContain(`${token}:`);
+      expect(rootBlock, `${token} is not defined in index.css`).toContain(`${token}:`);
     }
     // The toast background and text are the ones that must flip with the theme
     for (const token of ['--color-toast-bg', '--color-toast-text']) {
       expect(tokens).toContain(token);
-      expect(darkBlock, `${token} has no dark value`).toContain(`${token}:`);
+      expect(rootBlock, `${token} has no light-dark() pair`).toContain(`${token}: light-dark(`);
     }
   });
 });

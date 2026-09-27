@@ -105,6 +105,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it flags an effect that calls an async loader even when the state update
   lands after the await, so the three fetch-on-mount hooks carry a per-line
   disable that names the reason
+- **React Compiler 1.0 memoizes the client**: `babel-plugin-react-compiler`
+  and `@rolldown/plugin-babel` (both optional peers of `@vitejs/plugin-react`
+  6, whose inline `babel` option is gone) run the compiler preset in
+  `client/vite.config.ts`. Measured on this source, a production build grows by
+  about 15 KB gzipped and takes about 1.2 s longer, so the price is small and
+  the re-render win is the part this environment cannot measure: React DevTools
+  shows the "Memo" badge on compiled components instead. Existing manual
+  memoization stays, because removing it changes compiler output
+### Added
 - **The prose gate covers the whole repository**: `humanizer:gate` also scans
   the four plans under `docs/plans/` and the landing page, and a new
   repo-invariant test (`scripts/check-prose-gate-coverage.test.mjs`) fails
@@ -134,6 +143,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   either token-backed or on a named-exception list, checks text contrast at
   4.5:1, and fails on an em dash. The page is in the prose baseline now, so its
   score is a ratchet instead of a report
+- **No more flash of the wrong theme, and one token block instead of two**:
+  `client/src/index.css` declares `color-scheme: light dark` once and writes
+  the seventeen tokens that differ between themes as
+  `light-dark(<light>, <dark>)`, so the dark palette is no longer a second
+  copy that can drift. A short inline script in `client/index.html` reads the
+  stored choice before the first paint, which is what removes the light frame
+  a dark-mode user used to see, and two `theme-color` metas tint the browser
+  chrome in both schemes. `useTheme` keeps owning the choice after mount, and
+  the storage key it persists to is exported so a test can pin it against the
+  inline script instead of trusting two copies of a string
+- **Every route names its document, the results page has a heading, and the
+  shell offers a skip link**: each route renders a `<title>`, which React 19
+  hoists into the head with no effect and no library, so the tab, the history
+  entry and a screen reader all say where the reader is, and the results title
+  carries the search phrase. The list page gains the `<h1>` it never had,
+  visually hidden because the search bar is the visual anchor on that route.
+  The shell starts with a skip link that targets the landmark every route
+  marks with one shared id, so the pair cannot drift apart
 ### Added
 
 - The client says when Elasticsearch is unreachable instead of turning it into

@@ -28,6 +28,12 @@ function AppMenuProvider({ children }: { children: ReactNode }): JSX.Element {
 }
 
 /**
+ * The id every routed page puts on its `<main>` landmark. The shell's skip
+ * link points at it, so the pages and the link have to agree on one string.
+ */
+export const MAIN_CONTENT_ID = 'main-content';
+
+/**
  * The shell every page renders inside: the top bar (brand and back link on
  * the left, the gear menu on the right) above the routed page. The bar sits
  * in the page flow, never on top of content.
@@ -40,6 +46,11 @@ export function AppLayout(): JSX.Element {
 
   return (
     <AppMenuProvider>
+      {/* First stop in the tab order: a keyboard user leaves the top bar in
+          one keystroke instead of walking through every control in it. */}
+      <a className="skip-link" href={`#${MAIN_CONTENT_ID}`}>
+        {t('nav.skipToContent')}
+      </a>
       <header className="app-topbar">
         <div className="topbar-left">
           <Link to="/" className="app-brand" aria-label={t('nav.home')}>

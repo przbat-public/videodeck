@@ -1179,7 +1179,10 @@
   .cancel-job-button,
   .ui-menu-trigger,
   .app-back,
-  .app-brand {
+  .app-brand,
+  /* The skip link is a pointer target too once it takes focus, and its 0.5rem
+     padding left it 38px tall on a phone. */
+  .skip-link {
     min-height: 44px;
   }
 

@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
+import { MAIN_CONTENT_ID } from '../components/AppLayout';
 import { useRegisterMenuSections } from '../components/appMenuRegistry';
 import { LoadMore } from '../components/LoadMore';
 import SearchBar from '../components/SearchBar';
@@ -18,9 +19,26 @@ import { useSearchUrlState } from '../hooks/useSearchUrlState';
 import { useVideoSearch } from '../hooks/useVideoSearch';
 import { useElasticsearchState } from '../utils/elasticsearchStatus';
 
+/**
+ * The two names this route gives the search on screen: the tab title and the
+ * level one heading. Both follow the phrase in the URL and fall back to the
+ * app, so neither can drift from the other or from the results below.
+ */
+function useResultsLabels(query: string): { title: string; heading: string } {
+  const { t } = useTranslation();
+  if (query) {
+    return {
+      title: t('pageTitle.resultsQuery', { query }),
+      heading: t('search.headingWithQuery', { query }),
+    };
+  }
+  return { title: t('pageTitle.results'), heading: t('search.heading') };
+}
+
 export default function VideoListPage(): JSX.Element {
   const { searchState, setSearchState } = useSearchUrlState();
   const { query, sort, category, channel } = searchState;
+  const { title, heading } = useResultsLabels(query);
   const {
     videos,
     loading: videoLoading,
@@ -153,7 +171,14 @@ export default function VideoListPage(): JSX.Element {
   const showEmptyState = !videoError;
 
   return (
-    <main className="app-main" ref={setMainRef} tabIndex={-1}>
+    <main id={MAIN_CONTENT_ID} className="app-main" ref={setMainRef} tabIndex={-1}>
+      {/* React 19 hoists the title into <head>, so the tab names the search
+          that is on screen without an effect or a routing library. */}
+      <title>{title}</title>
+      {/* The search bar is the page's visual anchor and the cards below carry
+          the content: the heading names the page for a screen reader without
+          competing with the form for attention. */}
+      <h1 className="visually-hidden">{heading}</h1>
       <SearchBar
         query={query}
         sort={sort}

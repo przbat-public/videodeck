@@ -3,8 +3,28 @@
 <html lang="pl">
   <head>
     <meta charset="UTF-8" />
+    <!-- The stored theme has to reach <html> before the first paint, or a
+         dark-mode user sees one light frame. This script sits above the
+         stylesheet the bundle injects, so it runs first. The key must stay
+         identical to THEME_STORAGE_KEY in src/hooks/useTheme.ts; the unit test
+         there pins both. Storage access can throw, hence the try/catch. -->
+    <script>
+      (() => {
+        try {
+          const stored = localStorage.getItem('videodeck-theme');
+          if (stored === 'light' || stored === 'dark') {
+            document.documentElement.dataset.theme = stored;
+          }
+        } catch {
+          // No storage (private mode, embedded webview): the CSS follows the OS
+          // and useTheme re-resolves the choice once React mounts.
+        }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f5f5" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16181c" />
     <title>Video Search App</title>
   </head>
   <body>

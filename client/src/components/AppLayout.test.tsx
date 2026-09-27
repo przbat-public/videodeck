@@ -6,7 +6,8 @@ import type { JSX } from 'react';
 import { useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
-import { AppLayout } from './AppLayout';
+import i18n from '../i18n';
+import { AppLayout, MAIN_CONTENT_ID } from './AppLayout';
 import { useRegisterMenuSections } from './appMenuRegistry';
 
 const user = userEvent.setup();
@@ -22,13 +23,22 @@ function RegisteringChild(): JSX.Element {
   );
 }
 
+/** Stands in for a routed page: the shell's skip link needs a target */
+function PageStub(): JSX.Element {
+  return (
+    <main id={MAIN_CONTENT_ID} tabIndex={-1}>
+      <RegisteringChild />
+    </main>
+  );
+}
+
 function renderLayout(url: string): ReturnType<typeof render> {
   return render(
     <MemoryRouter initialEntries={[url]}>
       <Routes>
         <Route path="/" element={<AppLayout />}>
-          <Route path="video/:videoId" element={<RegisteringChild />} />
-          <Route index element={<RegisteringChild />} />
+          <Route path="video/:videoId" element={<PageStub />} />
+          <Route index element={<PageStub />} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -36,6 +46,19 @@ function renderLayout(url: string): ReturnType<typeof render> {
 }
 
 describe('AppLayout', () => {
+  it('offers the skip link as the first tab stop, pointing at the main landmark', async () => {
+    renderLayout('/');
+
+    const skipLink = screen.getByRole('link', { name: i18n.t('nav.skipToContent') });
+    await user.tab();
+    expect(document.activeElement).toBe(skipLink);
+
+    // A skip link that points nowhere bypasses nothing
+    const href = skipLink.getAttribute('href') ?? '';
+    expect(href).toBe(`#${MAIN_CONTENT_ID}`);
+    expect(document.querySelector(href)).not.toBeNull();
+  });
+
   it('shows the back link only on the detail page', () => {
     renderLayout('/');
     expect(screen.queryByRole('link', { name: /Wróć do listy/ })).not.toBeInTheDocument();

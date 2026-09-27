@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
+import { MAIN_CONTENT_ID } from '../components/AppLayout';
 import { Button } from '../components/ui/Button';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { Loading } from '../components/ui/Loading';
@@ -21,7 +22,11 @@ export default function VideoDetailPage(): JSX.Element {
 
   if (state.loading) {
     return (
-      <main className="video-detail-page" ref={mainRef} tabIndex={-1}>
+      <main id={MAIN_CONTENT_ID} className="video-detail-page" ref={mainRef} tabIndex={-1}>
+        {/* React 19 hoists the title into <head>; every state of the route
+            names the tab, so none of them leaves the previous page's title
+            standing. */}
+        <title>{t('pageTitle.videoLoading')}</title>
         <Loading message={t('video.loading')} />
       </main>
     );
@@ -29,7 +34,8 @@ export default function VideoDetailPage(): JSX.Element {
 
   if (state.error || !state.details) {
     return (
-      <main className="video-detail-page" ref={mainRef} tabIndex={-1}>
+      <main id={MAIN_CONTENT_ID} className="video-detail-page" ref={mainRef} tabIndex={-1}>
+        <title>{t('pageTitle.videoError')}</title>
         <div className="page-error">
           <ErrorMessage>{t('app.error', { message: state.error || t('video.notFound') })}</ErrorMessage>
           <Button onClick={reload}>{t('app.retry')}</Button>
@@ -44,7 +50,8 @@ export default function VideoDetailPage(): JSX.Element {
   const subtitleUrl = (subtitlePath: string) => `/api/videos/file/${encodeURIComponent(subtitlePath)}${folderQuery}`;
 
   return (
-    <main className="video-detail-page" ref={mainRef} tabIndex={-1}>
+    <main id={MAIN_CONTENT_ID} className="video-detail-page" ref={mainRef} tabIndex={-1}>
+      <title>{t('pageTitle.video', { title: state.details.title })}</title>
       <div className="video-detail-container">
         <div className="video-detail-main">
           <div className="video-player-section">
