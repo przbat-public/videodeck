@@ -449,6 +449,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/DEPLOYMENT.md` gains a troubleshooting section for the failures the
   stack cannot fix alone: a bootstrap check against `vm.max_map_count`, a port
   9200 that is already taken, and a Docker Desktop that stopped answering
+- Documentation-only pull requests can merge again. `paths-ignore` on the CI
+  trigger kept the whole workflow from starting, the ruleset on `main` requires
+  its checks by name, and a check that never reports stays pending, so a change
+  to a README sat blocked behind eleven checks that would never run. The
+  workflow now starts for every pull request and a small `changes` job decides
+  which jobs do the work: the lint job runs either way because it carries the
+  prose gate, and the jobs it skips report as skipped, which GitHub counts as a
+  success
 
 ## [1.0.0] - 2026-09-14
 
