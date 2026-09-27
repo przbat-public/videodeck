@@ -2,7 +2,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { VideoDetails } from '@videodeck/shared/api';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
 import VideoDetailPage from './VideoDetailPage';
 
@@ -57,10 +58,39 @@ describe('VideoDetailPage', () => {
     installFetch();
   });
 
+  afterEach(() => {
+    // document.title is document-wide: never let one test's title answer for
+    // the next one's assertion.
+    document.title = '';
+  });
+
   it('shows a spinner while loading', () => {
     renderPage();
 
     expect(screen.getByText('Ładowanie filmu...')).toBeInTheDocument();
+  });
+
+  it('titles the loading screen before the video arrives', () => {
+    renderPage();
+
+    expect(document.title).toBe(i18n.t('pageTitle.videoLoading'));
+  });
+
+  it('titles the document after the video', async () => {
+    renderPage();
+
+    expect(await screen.findByText('A talk about hedgehogs')).toBeInTheDocument();
+    // The title is data from the API, not a translated label
+    expect(document.title).toContain('A talk about hedgehogs');
+    expect(document.title).toBe(i18n.t('pageTitle.video', { title: 'A talk about hedgehogs' }));
+  });
+
+  it('titles the failed screen when the video cannot be shown', async () => {
+    installFetch({ details: () => json({ error: 'nope' }, 500) });
+    renderPage();
+
+    await screen.findByText(/^Błąd:/);
+    expect(document.title).toBe(i18n.t('pageTitle.videoError'));
   });
 
   it('renders the title, metadata and description', async () => {

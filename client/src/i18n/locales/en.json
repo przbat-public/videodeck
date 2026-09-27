@@ -35,7 +35,9 @@
     "loadedMore_one": "Loaded {{count}} more video ({{loaded}} in the list)",
     "loadedMore_other": "Loaded {{count}} more videos ({{loaded}} in the list)",
     "trimmedNotice": "Earlier results ({{count}}) were removed to keep scrolling fast",
-    "backToTop": "Back to the top of the results"
+    "backToTop": "Back to the top of the results",
+    "heading": "Search results",
+    "headingWithQuery": "Search results: {{query}}"
   },
   "sortOption": {
     "relevance": "Relevance",
@@ -256,7 +258,16 @@
   },
   "nav": {
     "backToList": "Back to list",
-    "home": "Home"
+    "home": "Home",
+    "skipToContent": "Skip to content"
+  },
+  "pageTitle": {
+    "results": "videodeck: videos",
+    "resultsQuery": "Search: {{query}}",
+    "video": "{{title}} - videodeck",
+    "videoLoading": "Loading video - videodeck",
+    "videoError": "Video unavailable - videodeck",
+    "channels": "Downloads - videodeck"
   },
   "channelConsole": {
     "title": "Downloads",
