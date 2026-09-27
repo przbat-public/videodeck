@@ -8,6 +8,11 @@
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.5.1
+    # The JVM is the slowest thing in this stack to start and to stop, so it
+    # gets both guards: a stop that is not deliberate leaves a translog to
+    # recover, and that recovery is what turns the next boot slow.
+    restart: unless-stopped
+    stop_grace_period: 60s
     environment:
       - discovery.type=single-node
       # Security is off and the port below is bound to loopback: anything that
@@ -16,16 +21,33 @@ services:
       - xpack.security.enabled=false
       # Elasticsearch is a rebuildable cache for this app, not the store of
       # record (the video folders are) — replicas are wasted I/O.
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      # The heap sits at 1 GB rather than the 512 MB it used to be: a small
+      # heap collects constantly once the index grows, and the slow answers
+      # that follow arrive in the server as request timeouts, which look like
+      # a connection problem from the outside.
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
     volumes:
       - es-data:/usr/share/elasticsearch/data
     ports:
       - '127.0.0.1:9200:9200'
     healthcheck:
-      test: ['CMD-SHELL', 'curl -fs http://localhost:9200 >/dev/null || exit 1']
+      # Ask the cluster, not the root path. `/` answers as soon as the HTTP
+      # layer is up, while everything behind this container needs a cluster
+      # that accepts index work. The start period covers the JVM boot and any
+      # translog recovery, and the retry budget after it covers a machine that
+      # is busy with something else. Without the start period a cold or
+      # recovering node ran out of retries, went unhealthy, and took the
+      # server down with it: `depends_on` below refuses to start a dependency
+      # that never reported healthy.
+      test:
+        [
+          'CMD-SHELL',
+          'curl -fs "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null || exit 1',
+        ]
       interval: 10s
-      timeout: 5s
-      retries: 12
+      timeout: 10s
+      retries: 30
+      start_period: 60s
 
   server:
     build:

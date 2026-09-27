@@ -88,6 +88,76 @@ sudo chown -R 1000:1000 /path/to/videos
 On a network share, map every client onto one account instead of chasing
 ownership of individual files: set the share's `uid` and `gid` mount options.
 
+## Troubleshooting
+
+### The stack refuses to come up, and Elasticsearch is the reason
+
+Elasticsearch is a JVM, and it is the slowest service in this stack to start.
+Nothing behind it starts until it reports healthy. A node that was stopped
+abruptly (Docker Desktop quit, host reboot, VM killed) recovers its translog on
+the next boot, so a start that follows a hard stop takes longer than a clean
+one. When the healthcheck never passes, the run ends with
+`dependency failed to start` and the server stays down.
+
+The compose file allows a start period of one minute and five minutes of
+retries. That covers most boots. When it does not, ask the container what it
+thinks:
+
+```bash
+docker compose ps                              # health of every service
+docker compose logs elasticsearch | tail -40   # why the JVM stopped or stalled
+docker inspect -f '{{.State.ExitCode}} {{.State.Health.Status}}' \
+  "$(docker compose ps -q elasticsearch)"
+curl -s 'http://localhost:9200/_cluster/health?pretty'
+```
+
+Two failures have a signature of their own.
+
+**Exit code 78, with `max virtual memory areas vm.max_map_count [65530] is too
+low` in the log.** That is the bootstrap check Elasticsearch runs when it binds
+to a non-loopback address. Docker Desktop lowered this kernel setting in 4.25
+and restored it in 4.26. Check what the engine sees. Update Docker Desktop if
+the number is wrong. The command below has to print `262144`:
+
+```bash
+docker run --rm alpine cat /proc/sys/vm/max_map_count
+```
+
+**`Bind for 127.0.0.1:9200 failed: port is already allocated`.** Something else
+holds the port. That is usually a local Elasticsearch from Homebrew, or a
+container that belongs to another project. This names the process:
+
+```bash
+lsof -nP -iTCP:9200 -sTCP:LISTEN
+```
+
+Elasticsearch holds nothing worth keeping, so a volume left half-written costs
+a reindex and nothing else. Replacing it takes three commands:
+
+```bash
+docker compose rm -sf elasticsearch
+docker volume rm "$(basename "$PWD")_es-data"
+docker compose up -d
+```
+
+Then `POST /api/videos/refreshCache` rebuilds the index from the folders.
+
+### Docker itself stops answering
+
+Some symptoms belong to Docker Desktop, not to this stack. `docker ps` hangs.
+Every command times out. The engine answers nothing on its socket. Containers
+that cannot reach the engine surface in the app as connect errors, so rule this
+out first with one command that should return instantly:
+
+```bash
+curl -s --unix-socket ~/.docker/run/docker.sock http://localhost/_ping
+```
+
+Docker Desktop keeps its VM disk on the host, and a host volume with almost no
+free space stalls writes inside the VM. The engine goes down with it. Leave
+several gigabytes free, quit Docker Desktop completely
+(`osascript -e 'quit app "Docker"'`), and start it again.
+
 ## Backups
 
 The folders themselves are the source of truth. Per folder, the files worth
