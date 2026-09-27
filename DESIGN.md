@@ -88,8 +88,11 @@ tokens, never theme hacks.
 
 System stack, no webfonts: `-apple-system, BlinkMacSystemFont, Segoe UI,
 Roboto, Oxygen, Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue,
-sans-serif`. Sizes stay in the 0.8-2.5rem range: 0.8rem metadata, 0.9rem
-labels, 1rem body, 1.1-1.2rem titles, 2.5rem the app header. Weights: 500
+sans-serif`. Sizes stay in the 0.8-2rem range: 0.8rem metadata, 0.9rem
+labels, 1rem body, 1.1-1.2rem titles, 1.5rem section headings, and the
+console heading at `clamp(1.4rem, 1rem + 1.4vw, 2rem)`, which is the largest
+text in the app. The top bar carries no wordmark, only the brand icon, so
+nothing there scales with the viewport. Weights: 500
 for muted labels, 600-700 for headings and buttons. Nothing italic, nothing
 uppercase beyond the PL/EN language buttons.
 
