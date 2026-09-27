@@ -1757,3 +1757,14 @@
 .skip-link:focus-visible {
   transform: translateY(0);
 }
+
+/* Resume offer above the player: two actions the reader answers before the
+   video starts. The gap sits on the 0.25/0.5/1/2rem scale, and the row owns
+   the small gap to the player so the buttons never touch it. */
+.player-resume {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}

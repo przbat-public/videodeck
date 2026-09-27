@@ -125,7 +125,9 @@
     "summaryTitle": "Summary",
     "invalidId": "Invalid video identifier",
     "summaryTruncated": "This summary was generated from truncated subtitles — the source text was too long for the model.",
-    "play": "Play"
+    "play": "Play",
+    "resumeFrom": "Resume from {{time}}",
+    "startFromBeginning": "From the start"
   },
   "config": {
     "save": "Save",

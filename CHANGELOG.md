@@ -172,6 +172,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `text-wrap: pretty` behind an `@supports` guard because that value is not
   Baseline 2025 yet, and the same title scales with `clamp()` between the 360px
   and 1400px bounds instead of a fixed 1.8rem
+- **The player hands itself to the operating system and remembers the place**:
+  the detail page sets Media Session metadata (title, channel, poster) and
+  routes the play, pause and seek actions back to the element, so the lock
+  screen and the media keys drive it, and it clears both on the way out. The
+  video is `playsInline` and preloads its header alone, so iOS stops taking it
+  full screen on its own and the server does not stream a film nobody started.
+  The position is kept per video and offered above the player as "Wznów od
+  12:34" or "Od początku", never as an autoplay: a position under ten seconds,
+  or within fifteen seconds of the end, is not offered at all
 ### Added
 
 - The client says when Elasticsearch is unreachable instead of turning it into
