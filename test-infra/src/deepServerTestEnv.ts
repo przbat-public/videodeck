@@ -12,6 +12,7 @@ import { MockOpenai } from './mockOpenai';
  * Boots the REAL Express app with only the external world faked:
  *  - Elasticsearch  → in-process FakeElasticsearch (ELASTICSEARCH_URL)
  *  - OpenAI         → in-process MockOpenai (OPENAI_BASE_URL)
+ *  - DeepSeek       → the same MockOpenai (DEEPSEEK_BASE_URL)
  *  - yt-dlp         → scripts/fake-bin/yt-dlp (YTDLP_PATH)
  *  - video folders  → a temp directory (VIDEOS_FOLDER_PATH)
  *  - queue state    → inside the temp directory (QUEUE_STATE_FILE)
@@ -119,6 +120,16 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
   process.env.ELASTICSEARCH_URL = esUrl;
   process.env.OPENAI_BASE_URL = openaiUrl;
   process.env.OPENAI_API_KEY = 'test-key';
+  // Both providers reach the same mock, so a test may switch with one variable.
+  process.env.DEEPSEEK_BASE_URL = openaiUrl;
+  // The DeepSeek key wins over the OpenAI one by design (that is the switch),
+  // so a key in the developer's own server/.env would move every suite onto
+  // DeepSeek. Empty, not deleted: dotenv.config() runs again when the app is
+  // imported below and would re-inject a deleted variable, while an empty value
+  // reads as "no key" and survives. A test that wants DeepSeek sets its own.
+  process.env.DEEPSEEK_API_KEY = '';
+  process.env.DEEPSEEK_MODEL = '';
+  process.env.SUMMARY_PROVIDER = '';
   process.env.YTDLP_PATH = FAKE_YTDLP;
   process.env.QUEUE_STATE_FILE = path.join(root, '.queue-state.json');
   // The environment's own folder set, before any test narrows it with

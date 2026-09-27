@@ -191,6 +191,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   clears the banner as soon as it answers again. A failed request reports the
   outage itself, so the banner does not wait for the next poll.
 
+### Added
+
+- **DeepSeek summaries**: the summary endpoint runs on OpenAI or DeepSeek and
+  picks by environment. `DEEPSEEK_API_KEY` alone switches to DeepSeek, because
+  that is the one-line switch; `SUMMARY_PROVIDER=openai|deepseek` pins the
+  choice when both keys are present, and a pinned provider whose key is missing
+  answers 503 instead of spending the other account. `DEEPSEEK_BASE_URL` points
+  a gateway or a test somewhere else, and `DEEPSEEK_MODEL` takes a model name or
+  `name:effort` (for example `deepseek-v4-pro:high`), where the effort turns
+  DeepSeek's thinking mode on at `none`, `minimal`, `low`, `medium`, `high`,
+  `xhigh` or `max`. A bare name keeps thinking off, which is cheaper and enough
+  for a summary, and a colon that is not an effort word stays inside the model
+  name so gateway tags like `qwen3:32b` still work. The disk cache,
+  the in-flight dedup, the two-generation semaphore, the 429 fallback and the
+  truncation marker are untouched: only the provider profile moved. DeepSeek
+  without an effort gets a 100k input budget against OpenAI's 25k, so long
+  transcripts stop being cut, and with thinking on the output cap grows because
+  reasoning shares it
+
+### Changed
+
+- The summary metrics are named `summary_requests_total`,
+  `summary_tokens_total` and `summary_estimated_cost_cents_total` now, each
+  carrying a `provider` label. The old `openai_summary_*` names are gone, so a
+  Grafana query matching them has to be updated
+- The 503 body and the toast that explain a missing key name both variables
+  instead of `OPENAI_API_KEY` alone
+
+### Fixed
+
+- The cost line the summary service logs names its unit. It printed a cents
+  value behind a dollar sign, so every logged summary read as a hundred times
+  its real cost
+
 ### Changed
 
 - The status page polls counters now, not the whole queue. On a real instance

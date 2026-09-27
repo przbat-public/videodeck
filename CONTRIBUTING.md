@@ -105,7 +105,7 @@ major PR; their 4.x and 2.x API migrations are already done.
 ## Project layout
 
 ```
-server/            Express 5 + ES + download queue (yt-dlp) + OpenAI summaries
+server/            Express 5 + ES + download queue (yt-dlp) + AI summaries (OpenAI or DeepSeek)
 client/            React 19 + Vite UI (i18n pl/en, Playwright e2e)
 chrome-extension/  MV3 extension: enqueue videos from YouTube (SSE progress)
 shared/            zod API contract + helpers shared by server and extension

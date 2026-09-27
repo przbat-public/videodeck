@@ -111,6 +111,11 @@ Najważniejsze zmienne:
 | `ELASTICSEARCH_URL`   | adres Elasticsearch                                                              |
 | `API_TOKEN`           | token bearer chroniący `/api`; ustaw przed wystawieniem serwera poza loopback    |
 | `OPENAI_API_KEY`      | włącza streszczenia AI (`GET /api/videos/:id/summary`)                           |
+| `DEEPSEEK_API_KEY`    | liczy te streszczenia na DeepSeeku; `SUMMARY_PROVIDER` przypina providera        |
+
+Streszczenia włącza dowolny z tych kluczy, a dodanie klucza DeepSeeka jest
+przełączeniem: gdy są oba, odpowiada DeepSeek, chyba że `SUMMARY_PROVIDER=openai`
+mówi inaczej.
 
 Pełna lista (współbieżność, limity żądań, CORS, allowlista hostów, originy
 rozszerzenia i więcej): [docs/INSTALL.md](INSTALL.md). Konsekwencje
