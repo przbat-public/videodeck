@@ -44,7 +44,7 @@
   background: var(--color-surface);
   padding: 1rem;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-card);
 }
 
 .search-input {
@@ -294,7 +294,7 @@
   border-radius: 8px;
   padding: 2rem;
   margin-bottom: 2rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-card);
 }
 
 .video-player-section {
@@ -310,10 +310,23 @@
 }
 
 
+/* The film title is the longest heading in the app and it wraps freely, so it
+   scales across the 360-1400px bounds (DESIGN.md section 11) between 1.4rem and
+   the fixed 1.8rem it used to declare, which is what a wide viewport still
+   gets. */
 .video-detail-info h1 {
-  font-size: 1.8rem;
+  font-size: clamp(1.4rem, 1.26rem + 0.62vw, 1.8rem);
   margin-bottom: 1rem;
   color: var(--color-text);
+}
+
+/* `pretty` is not Baseline 2025 yet, so it ships as an enhancement: browsers
+   without it keep the plain greedy wrap. It is worth having here because a long
+   Polish title otherwise ends on a line with one word. */
+@supports (text-wrap: pretty) {
+  .video-detail-info h1 {
+    text-wrap: pretty;
+  }
 }
 
 .video-meta {
@@ -335,7 +348,7 @@
   border-radius: 8px;
   padding: 2rem;
   margin-bottom: 2rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-card);
 }
 
 .video-description-full h2 {
@@ -356,7 +369,7 @@
   border-radius: 8px;
   padding: 2rem;
   margin-bottom: 2rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-card);
 }
 
 .video-summary-section h2 {
@@ -380,7 +393,7 @@
   background: var(--color-surface);
   border-radius: 8px;
   padding: 2rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-card);
 }
 
 .video-comments-section h2 {
@@ -499,6 +512,9 @@
 
 .status-page h1 {
   font-size: clamp(1.4rem, 1rem + 1.4vw, 2rem);
+  /* A short heading that folds onto two lines on a phone: `balance` splits it
+     evenly instead of leaving one word alone under a full line */
+  text-wrap: balance;
   margin-bottom: 1.5rem;
   color: var(--color-text);
 }
@@ -559,7 +575,10 @@
 .config-input:focus {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  /* 10% of the halo indigo: rgba(102, 126, 234, 0.1), the same wash the rule
+     used to spell out. Thinner than --color-focus-ring, because the focus here
+     already shows as the primary border. */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-halo) 10%, transparent);
 }
 
 .config-actions {
@@ -736,6 +755,9 @@
   border: 1px solid var(--color-border);
   background: var(--color-bg-soft);
   color: var(--color-text-muted);
+  /* The queue chips carry the counts, so their digits have to keep one width
+     when a count crosses 9 */
+  font-variant-numeric: tabular-nums;
 }
 
 .channel-badge--warn {
@@ -757,6 +779,11 @@
 /* The video counts: one plain line each, no pill per number */
 .channel-count {
   display: block;
+  /* The column stacks a count per line, so their leading digits have to line
+     up. Proportional figures make "1" narrower than "0", which shifts the word
+     after the number and breaks the column; tabular figures keep the digit
+     box one width. */
+  font-variant-numeric: tabular-nums;
 }
 
 .channel-count--warn {
@@ -979,7 +1006,8 @@
 .download-video-button:hover:not(:disabled) {
   background: var(--color-info-hover);
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(23, 162, 184, 0.3);
+  /* Mixed from the button's own accent: rgba(23, 162, 184, 0.3) */
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--color-info) 30%, transparent);
 }
 
 .download-video-button:disabled {
@@ -1003,7 +1031,8 @@
 .update-video-button:hover:not(:disabled) {
   background: var(--color-warning-hover);
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(255, 193, 7, 0.3);
+  /* Mixed from the button's own accent: rgba(255, 193, 7, 0.3) */
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--color-warning) 30%, transparent);
 }
 
 .update-video-button:disabled {
@@ -1027,7 +1056,8 @@
 .cancel-job-button:hover:not(:disabled) {
   background: var(--color-secondary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(90, 98, 104, 0.3);
+  /* Mixed from the button's own accent: rgba(90, 98, 104, 0.3) */
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--color-secondary) 30%, transparent);
 }
 
 .cancel-job-button:disabled {
@@ -1358,7 +1388,7 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(30, 30, 60, 0.16);
+  box-shadow: var(--shadow-popover);
   padding: 4px;
 }
 
@@ -1420,7 +1450,7 @@
   background: var(--color-surface);
   padding: 0.75rem 1rem;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-card);
   margin-bottom: 1.5rem;
 }
 
@@ -1481,7 +1511,10 @@
 .ui-button--primary:hover:not(:disabled) {
   background: var(--color-primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+  /* 30% of the halo indigo: rgba(102, 126, 234, 0.3), the glow the button
+     used to spell out. It reads lighter than --color-primary, so the shadow
+     stays visible under the darker hover background. */
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--color-halo) 30%, transparent);
 }
 
 .ui-button--success {
@@ -1638,7 +1671,7 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(30, 30, 60, 0.16);
+  box-shadow: var(--shadow-popover);
   padding: 4px;
 }
 

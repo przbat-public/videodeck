@@ -161,6 +161,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   visually hidden because the search bar is the visual anchor on that route.
   The shell starts with a skip link that targets the landmark every route
   marks with one shared id, so the pair cannot drift apart
+- **Elevation is a token, and the console's numbers line up**: the thirteen
+  `box-shadow` values that spelled out their own colour now come from
+  `--shadow-card` and `--shadow-popover`, or mix an accent token through
+  `color-mix()`, and their light halves resolve to exactly the colours they
+  replaced. Both elevation tokens deepen in dark mode, where a ten percent
+  black shadow is invisible on the dark surface. The channel console's counts
+  use tabular figures, so a column of numbers stops shifting as counts change,
+  the console heading balances its two lines, the film title uses
+  `text-wrap: pretty` behind an `@supports` guard because that value is not
+  Baseline 2025 yet, and the same title scales with `clamp()` between the 360px
+  and 1400px bounds instead of a fixed 1.8rem
 ### Added
 
 - The client says when Elasticsearch is unreachable instead of turning it into

@@ -42,10 +42,23 @@
   --color-toast-bg: light-dark(#363636, #2b2f36);
   --color-toast-text: light-dark(#fff, #e6e6e6);
   --color-focus: #5a5fd8;
-  /* Soft halo around focused controls (checkbox, select trigger); the dark
-     value is a lighter indigo so the ring still reads there */
-  --color-focus-ring: light-dark(rgba(102, 126, 234, 0.2), rgba(165, 173, 255, 0.3));
+  /* The indigo every soft halo mixes from: the focus ring below, the config
+     input's focus halo and the primary button's hover glow. Lighter than
+     --color-primary, which is what keeps a 10-30% wash of it visible. */
+  --color-halo: #667eea;
+  /* Soft halo around focused controls (checkbox, select trigger); the config
+     input draws a thinner wash of --color-halo of its own. The light half here
+     is a mix of --color-halo and lands on exactly the rgba(102, 126, 234, 0.2)
+     this token used to declare. The dark half stays the literal it was: mixing
+     the accent-as-text indigo would be the same color, but the declaration
+     would run past the 120 columns the token block keeps. */
+  --color-focus-ring: light-dark(color-mix(in srgb, var(--color-halo) 20%, transparent), rgba(165, 173, 255, 0.3));
   --radius-card: 8px;
+  /* Elevation. The light halves are the literals App.css used to spell out, so
+     the light rendering does not move; both deepen in dark, where a 10% black
+     shadow is all but invisible (DESIGN.md section 3). */
+  --shadow-card: light-dark(0 2px 8px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.45));
+  --shadow-popover: light-dark(0 8px 24px rgba(30, 30, 60, 0.16), 0 8px 24px rgba(0, 0, 0, 0.55));
 }
 
 /* The resolved value of the system/light/dark picker lands on
