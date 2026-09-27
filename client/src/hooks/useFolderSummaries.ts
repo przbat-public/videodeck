@@ -68,6 +68,7 @@ export function useFolderSummaries(enabled = true): UseFolderSummariesResult {
       return;
     }
     const controller = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount fetch, the update lands after the await (see the rule note in eslint.config.mjs)
     void load(controller.signal);
     return () => {
       controller.abort();

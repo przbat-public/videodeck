@@ -1,3 +1,4 @@
+import css from '@eslint/css';
 import js from '@eslint/js';
 import eslintReact from '@eslint-react/eslint-plugin';
 import { defineConfig, globalIgnores } from 'eslint/config';
@@ -65,6 +66,16 @@ export default defineConfig([
     rules: commonRules,
   },
 
+  /*
+   * `react-hooks/set-state-in-effect` over-reports. It flags every effect
+   * whose call chain contains setState, an async loader that only updates
+   * state after its await included: a minimal reproduction of exactly that
+   * shape is reported as well. The three fetch-on-mount hooks in client/src
+   * therefore carry a per-line disable naming that reason, instead of the
+   * rule being switched off, so the shape the rule is named after (a
+   * synchronous setState in an effect body) is still caught.
+   */
+
   // Client: browser globals plus the React rule set
   {
     files: ['client/src/**/*.{ts,tsx}'],
@@ -84,15 +95,48 @@ export default defineConfig([
     // Tell the plugin which React version the code targets; React 19 ref-as-
     // prop means forwardRef is gone from the codebase.
     settings: { 'react-x': { version: '19.0.0' } },
-    // react-hooks 7 still ships its presets in eslintrc shape, so the plugin is
-    // registered by hand. Its `recommended-latest` adds the whole React
-    // Compiler rule set — enable that as a separate, deliberate change.
+    // react-hooks 7 ships flat presets, so the whole React Compiler rule set
+    // (purity, immutability, refs, set-state-in-effect, preserve-manual-
+    // memoization and the rest) comes from `configs.flat['recommended-latest']`
+    // rather than a hand-registered pair of rules. It is a superset of
+    // `recommended`, so the newest lint earns its place here.
     plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh },
     rules: {
       ...commonRules,
-      'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
+      ...reactHooks.configs.flat['recommended-latest'].rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+
+  /*
+   * Stylesheets. Biome is told to skip CSS (see the `files.includes` list in
+   * biome.json), so the two client stylesheets used to be checked by nothing
+   * but the advisory UX scanner, and DESIGN.md section 2 ("pick a token, or
+   * extend the token set") had no gate behind it.
+   *
+   * The Baseline target is 2025: a feature must be Baseline available as of
+   * 2025, which covers the browsers a self-hosted install runs on and admits
+   * content-visibility (Baseline low since 2024-09-16, `auto` since
+   * 2025-09-15). Anything newer needs an explicit @supports guard, which the
+   * rule accepts. css/no-important covers the whole file: the four !important
+   * flags in index.css are the prefers-reduced-motion collapse, and the one
+   * scoped disable around that block is what lets the rule stay on for every
+   * other declaration.
+   */
+  {
+    files: ['client/src/**/*.css'],
+    plugins: { css },
+    language: 'css/css',
+    rules: {
+      'css/no-duplicate-imports': 'error',
+      'css/no-duplicate-keyframe-selectors': 'error',
+      'css/no-empty-blocks': 'error',
+      'css/no-important': 'error',
+      'css/no-invalid-at-rule-placement': 'error',
+      'css/no-invalid-at-rules': 'error',
+      'css/no-invalid-properties': ['error', { allowUnknownVariables: true }],
+      'css/no-unmatchable-selectors': 'error',
+      'css/use-baseline': ['error', { available: 2025 }],
     },
   },
 

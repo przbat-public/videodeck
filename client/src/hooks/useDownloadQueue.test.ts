@@ -318,4 +318,24 @@ describe('useDownloadQueue', () => {
       { cache: 'no-store', signal: expect.any(AbortSignal) },
     );
   });
+
+  it('drops the previous folder tracking when the folder changes', async () => {
+    const onQueueDrained = vi.fn();
+    const running = makeJob({ status: 'running' });
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(queueResponse([running])))
+      .mockResolvedValue(jsonResponse(queueResponse([])));
+
+    const { rerender } = renderHook(({ folder }) => useDownloadQueue(folder, { onQueueDrained }), {
+      initialProps: { folder: FOLDER },
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    // The second folder's queue is idle and was never busy: the switch is not
+    // a drain, so it must not be reported as one.
+    rerender({ folder: '/videos/channel-b' });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    expect(onQueueDrained).not.toHaveBeenCalled();
+  });
 });

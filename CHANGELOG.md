@@ -91,6 +91,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   downloaded outside the queue each time the collection is read
 
 - `sse_streams_open` on `/metrics`: how many download streams the server is holding open right now
+- **The client is linted with the whole React Compiler rule set**: `eslint.config.mjs`
+  spreads the flat `recommended-latest` preset of `eslint-plugin-react-hooks`
+  instead of registering two rules by hand, which turns on seventeen rules
+  (purity, immutability, refs, set-state-in-effect,
+  preserve-manual-memoization and the rest). The nine "ref written during
+  render" findings it surfaced are fixed: the download queue keeps its newest
+  callbacks and resets its per-folder bookkeeping in effects, and the list
+  scroll hook reads a stored position in an effect declared before the one
+  that restores it. A new test in `useDownloadQueue.test.ts` pins the folder
+  switch so a drained queue is never reported for the folder that follows
+  (verified to fail without the reset). `set-state-in-effect` over-reports:
+  it flags an effect that calls an async loader even when the state update
+  lands after the await, so the three fetch-on-mount hooks carry a per-line
+  disable that names the reason
+- **The prose gate covers the whole repository**: `humanizer:gate` also scans
+  the four plans under `docs/plans/` and the landing page, and a new
+  repo-invariant test (`scripts/check-prose-gate-coverage.test.mjs`) fails
+  when a Markdown file, or an HTML document under `docs/`, is covered by
+  neither the gate nor a reasoned exemption. Exemptions carry their reason,
+  and a stale one fails the test as well. Every scanned file now carries a
+  baseline score too, because the gate skips a file it has no entry for: before
+  this, four documents were scanned on every run and never compared. The client
+  and extension HTML is
+  application markup rather than prose, which the rule states instead of
+  exempting it silently
+- **The stylesheets are linted, with a browser contract behind them**:
+  `@eslint/css` joins the flat config for the client stylesheets, which
+  `pnpm run lint:types` already reaches, and AGENTS.md states the target that
+  the new rule enforces: a feature has to be Baseline available as of 2025 to
+  ship without a guard. The first run found one real defect, a deprecated
+  `word-break: break-word` that is now `overflow-wrap: anywhere`, and six
+  deliberate uses of the standard `line-clamp` and the unprefixed
+  `user-select`, neither of which is Baseline yet, so each carries an inline
+  exception that names its reason
 ### Added
 
 - The client says when Elasticsearch is unreachable instead of turning it into

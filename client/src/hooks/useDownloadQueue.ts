@@ -40,14 +40,22 @@ const DEFAULT_POLL_MS = 1500;
 export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOptions = {}) {
   const { pollIntervalMs = DEFAULT_POLL_MS, onJobFinished, onQueueDrained, onQueueChanged, enabled = true } = options;
   const onQueueChangedRef = useRef(onQueueChanged);
-  onQueueChangedRef.current = onQueueChanged;
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const seenFinishedRef = useRef<Set<string>>(new Set());
   const wasActiveRef = useRef(false);
   const callbacksRef = useRef({ onJobFinished, onQueueDrained });
-  callbacksRef.current = { onJobFinished, onQueueDrained };
+
+  // The newest callbacks land in their refs after the render that produced
+  // them. Both are called from async continuations (a poll that settled) and
+  // from event handlers, never during render, so the effect is early enough.
+  // No dependency array on purpose: the refs must hold the latest props after
+  // every render, and listing them would only re-run the same assignment.
+  useEffect(() => {
+    onQueueChangedRef.current = onQueueChanged;
+    callbacksRef.current = { onJobFinished, onQueueDrained };
+  });
   const abortRef = useRef<AbortController | null>(null);
   /**
    * Log tails fetched per job id. The queue list deliberately carries none
@@ -159,21 +167,34 @@ export function useDownloadQueue(folderPath: string, options: UseDownloadQueueOp
     onQueueChangedRef.current?.();
   }, [folderPath, refresh]);
 
-  // Reset per-folder tracking when the folder changes (adjusted during
-  // render instead of in an effect — React docs pattern for resetting state).
+  // Reset per-folder tracking when the folder changes. The state adjustment
+  // runs during render (the React docs pattern for resetting state); the refs
+  // are read by the effects below, never during render, so resetting them
+  // after the render that switched folders is early enough.
   const [jobsFolder, setJobsFolder] = useState(folderPath);
   if (jobsFolder !== folderPath) {
     setJobsFolder(folderPath);
+    setJobs([]);
+  }
+  // Which folder the tracking below belongs to, so the reset effect can tell a
+  // folder switch from the first render.
+  const trackingFolderRef = useRef(folderPath);
+
+  useEffect(() => {
+    if (trackingFolderRef.current === jobsFolder) {
+      return; // first render: the refs below are already empty
+    }
+    trackingFolderRef.current = jobsFolder;
     seenFinishedRef.current = new Set();
     wasActiveRef.current = false;
     logsRef.current = new Map();
-    setJobs([]);
-  }
+  }, [jobsFolder]);
 
   // Load the current state (skipped while disabled — folders without a
   // list.json have no queue worth polling)
   useEffect(() => {
     if (enabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mount fetch, no synchronous update (see the rule note in eslint.config.mjs)
       void refresh();
     }
   }, [refresh, enabled]);
