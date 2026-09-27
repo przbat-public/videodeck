@@ -32,3 +32,6 @@ client/test-results/
 
 # Server-side download queue state (runtime persistence; cwd = server/)
 server/.queue-state.json
+
+# pnpm store that a stray install can leave at the workspace root
+.pnpm-store/
