@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { MAIN_CONTENT_ID } from '../components/AppLayout';
 import { ChannelTable } from '../components/ChannelTable';
 import type { ChannelFilterCounts } from '../components/ChannelToolbar';
 import { ChannelToolbar } from '../components/ChannelToolbar';
@@ -130,7 +131,9 @@ export default function StatusPage(): JSX.Element {
   );
 
   return (
-    <main className="app-main" ref={mainRef} tabIndex={-1}>
+    <main id={MAIN_CONTENT_ID} className="app-main" ref={mainRef} tabIndex={-1}>
+      {/* React 19 hoists the title into <head> */}
+      <title>{t('pageTitle.channels')}</title>
       <div className="status-page" ref={pageRef}>
         <h1>{t('channelConsole.title')}</h1>
 

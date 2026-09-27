@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { VideoListItem } from '@videodeck/shared/api';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppLayout } from '../components/AppLayout';
+import { AppLayout, MAIN_CONTENT_ID } from '../components/AppLayout';
 import { DEBOUNCE_DELAY } from '../components/SearchBar';
 import i18n from '../i18n';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
@@ -198,6 +198,9 @@ describe('VideoListPage', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     Reflect.deleteProperty(window, 'scrollY');
+    // document.title is document-wide: never let one test's title answer for
+    // the next one's assertion.
+    document.title = '';
   });
 
   describe('coming back to the results', () => {
@@ -498,6 +501,17 @@ describe('VideoListPage', () => {
       await user.click(screen.getByRole('button', { name: 'Menu aplikacji' }));
     };
 
+    it('links the shell skip link to the results landmark it renders', async () => {
+      renderWithMenu('/');
+      await screen.findByText('First');
+
+      // The shell's href and this page's landmark have to be the same target,
+      // so the assertion is on the document, not on the id alone.
+      const href = screen.getByRole('link', { name: i18n.t('nav.skipToContent') }).getAttribute('href') ?? '';
+      expect(href).toBe(`#${MAIN_CONTENT_ID}`);
+      expect(document.querySelector(href)).not.toBeNull();
+    });
+
     it('Reload results repeats the search the URL describes', async () => {
       renderWithMenu('/?q=drone&category=lego');
       await screen.findByText('First');
@@ -737,6 +751,41 @@ describe('VideoListPage', () => {
       expect(within(screen.getByRole('main')).getByRole('status')).toHaveTextContent(
         i18n.t('search.loadedMore', { count: 1, loaded: 3 }),
       );
+    });
+  });
+
+  describe('the page title and the heading', () => {
+    it('names the document after the phrase in the URL', async () => {
+      renderAt('/?q=drone');
+      expect(await screen.findByText('First')).toBeInTheDocument();
+
+      // The phrase is data from the URL, not a translated label
+      expect(document.title).toContain('drone');
+      expect(document.title).toBe(i18n.t('pageTitle.resultsQuery', { query: 'drone' }));
+    });
+
+    it('names the app instead of an empty phrase when there is none', async () => {
+      renderAt('/');
+      expect(await screen.findByText('First')).toBeInTheDocument();
+
+      expect(document.title).toBe(i18n.t('pageTitle.results'));
+    });
+
+    it('renders exactly one level-one heading, and it names the results', async () => {
+      renderAt('/?q=drone');
+      expect(await screen.findByText('First')).toBeInTheDocument();
+
+      expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+      expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName(
+        i18n.t('search.headingWithQuery', { query: 'drone' }),
+      );
+    });
+
+    it('names the results on the bare page too', async () => {
+      renderAt('/');
+      expect(await screen.findByText('First')).toBeInTheDocument();
+
+      expect(screen.getByRole('heading', { level: 1 })).toHaveAccessibleName(i18n.t('search.heading'));
     });
   });
 });

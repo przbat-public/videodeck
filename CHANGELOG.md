@@ -135,6 +135,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chrome in both schemes. `useTheme` keeps owning the choice after mount, and
   the storage key it persists to is exported so a test can pin it against the
   inline script instead of trusting two copies of a string
+- **Every route names its document, the results page has a heading, and the
+  shell offers a skip link**: each route renders a `<title>`, which React 19
+  hoists into the head with no effect and no library, so the tab, the history
+  entry and a screen reader all say where the reader is, and the results title
+  carries the search phrase. The list page gains the `<h1>` it never had,
+  visually hidden because the search bar is the visual anchor on that route.
+  The shell starts with a skip link that targets the landmark every route
+  marks with one shared id, so the pair cannot drift apart
 ### Added
 
 - The client says when Elasticsearch is unreachable instead of turning it into

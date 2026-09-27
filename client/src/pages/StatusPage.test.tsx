@@ -2,7 +2,8 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { StatusResponse } from '@videodeck/shared/api';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
 import StatusPage from './StatusPage';
 
@@ -125,10 +126,24 @@ describe('StatusPage', () => {
     installFetch();
   });
 
+  afterEach(() => {
+    // document.title is document-wide: never let one test's title answer for
+    // the next one's assertion.
+    document.title = '';
+  });
+
   it('shows a spinner until the status arrives', () => {
     renderPage();
 
     expect(screen.getByText('Ładowanie statusu...')).toBeInTheDocument();
+  });
+
+  it('names the document after the channel console', async () => {
+    renderPage();
+
+    expect(await screen.findByRole('heading', { level: 1, name: i18n.t('channelConsole.title') })).toBeInTheDocument();
+    expect(document.title).toContain(i18n.t('channelConsole.title'));
+    expect(document.title).toBe(i18n.t('pageTitle.channels'));
   });
 
   it('renders one row per configured folder', async () => {
