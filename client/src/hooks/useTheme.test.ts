@@ -102,8 +102,13 @@ describe('useTheme', () => {
  * frame is light. React and useTheme only take over after mount.
  */
 function prePaintScript(): string {
-  const script = /<script>([\s\S]*?)<\/script>/.exec(indexHtml)?.[1];
-  if (script === undefined || script.trim() === '') {
+  // Parsed, not matched: a regular expression over HTML is what the security
+  // scanner flags here (a tag written in another case slips past it), and the
+  // parser is both stricter and shorter. The page carries one inline script.
+  const parsed = new DOMParser().parseFromString(indexHtml, 'text/html');
+  const inline = [...parsed.querySelectorAll('script')].find((element) => !element.hasAttribute('src'));
+  const script = inline?.textContent ?? '';
+  if (script.trim() === '') {
     throw new Error('client/index.html has no inline pre-paint theme script');
   }
   return script;
