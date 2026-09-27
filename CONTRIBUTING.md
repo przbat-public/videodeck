@@ -11,7 +11,11 @@ Prerequisites:
 - Node.js 24 (`.nvmrc` pins it, the `engines` fields enforce it) + corepack/pnpm 12.4.2 (`packageManager`)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) in `PATH` (downloads; the
   **nightly** channel is recommended: YouTube breaks old releases regularly)
-- Elasticsearch (Docker: `docker run -p 127.0.0.1:9200:9200 -e "discovery.type=single-node" -e "xpack.security.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.5.1`)
+- Elasticsearch. Use the Docker command in the
+  [installation reference](docs/INSTALL.md): it publishes 9200 on loopback and
+  keeps the index in a named volume. A bare `docker run` without the port
+  mapping leaves the app talking to a closed port while the container looks
+  healthy
 - ffmpeg in `PATH` (format merging, SponsorBlock cutting)
 - Chrome only if you work on the browser extension
 

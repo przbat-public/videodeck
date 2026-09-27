@@ -449,6 +449,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/DEPLOYMENT.md` gains a troubleshooting section for the failures the
   stack cannot fix alone: a bootstrap check against `vm.max_map_count`, a port
   9200 that is already taken, and a Docker Desktop that stopped answering
+- The quickstart and the installation reference start Elasticsearch with a
+  command that survives a Docker restart. The old one-liner published 9200 but
+  left the container unnamed and volume-less, so replacing it cost the index,
+  and a node started from the Docker Desktop Run button took no settings at
+  all: security enabled, no published port, and an app that answered
+  `elasticsearch: "down"` while the container itself looked healthy. The
+  documented command names the container, keeps its index in a named volume,
+  bounds the JVM heap so two nodes cannot exhaust the Docker VM, and carries
+  the cluster health check the compose stack uses
 
 ## [1.0.0] - 2026-09-14
 
