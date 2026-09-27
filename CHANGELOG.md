@@ -105,6 +105,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it flags an effect that calls an async loader even when the state update
   lands after the await, so the three fetch-on-mount hooks carry a per-line
   disable that names the reason
+- **React Compiler 1.0 memoizes the client**: `babel-plugin-react-compiler`
+  and `@rolldown/plugin-babel` (both optional peers of `@vitejs/plugin-react`
+  6, whose inline `babel` option is gone) run the compiler preset in
+  `client/vite.config.ts`. Measured on this source, a production build grows by
+  about 15 KB gzipped and takes about 1.2 s longer, so the price is small and
+  the re-render win is the part this environment cannot measure: React DevTools
+  shows the "Memo" badge on compiled components instead. Existing manual
+  memoization stays, because removing it changes compiler output
+### Added
 - **The prose gate covers the whole repository**: `humanizer:gate` also scans
   the four plans under `docs/plans/` and the landing page, and a new
   repo-invariant test (`scripts/check-prose-gate-coverage.test.mjs`) fails
