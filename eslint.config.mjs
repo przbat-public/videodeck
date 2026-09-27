@@ -65,6 +65,16 @@ export default defineConfig([
     rules: commonRules,
   },
 
+  /*
+   * `react-hooks/set-state-in-effect` over-reports. It flags every effect
+   * whose call chain contains setState, an async loader that only updates
+   * state after its await included: a minimal reproduction of exactly that
+   * shape is reported as well. The three fetch-on-mount hooks in client/src
+   * therefore carry a per-line disable naming that reason, instead of the
+   * rule being switched off, so the shape the rule is named after (a
+   * synchronous setState in an effect body) is still caught.
+   */
+
   // Client: browser globals plus the React rule set
   {
     files: ['client/src/**/*.{ts,tsx}'],
@@ -84,14 +94,15 @@ export default defineConfig([
     // Tell the plugin which React version the code targets; React 19 ref-as-
     // prop means forwardRef is gone from the codebase.
     settings: { 'react-x': { version: '19.0.0' } },
-    // react-hooks 7 still ships its presets in eslintrc shape, so the plugin is
-    // registered by hand. Its `recommended-latest` adds the whole React
-    // Compiler rule set — enable that as a separate, deliberate change.
+    // react-hooks 7 ships flat presets, so the whole React Compiler rule set
+    // (purity, immutability, refs, set-state-in-effect, preserve-manual-
+    // memoization and the rest) comes from `configs.flat['recommended-latest']`
+    // rather than a hand-registered pair of rules. It is a superset of
+    // `recommended`, so the newest lint earns its place here.
     plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh },
     rules: {
       ...commonRules,
-      'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
+      ...reactHooks.configs.flat['recommended-latest'].rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },

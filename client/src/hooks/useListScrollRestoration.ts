@@ -40,12 +40,13 @@ export function useListScrollRestoration({
   loadMore,
 }: ListScrollRestorationOptions): void {
   // The key whose stored position has been read; a restored (or absent)
-  // position must not be read again on the next render, or the reader could
+  // position must not be read again on a later render, or the reader could
   // never scroll away from it.
   const handledKeyRef = useRef<string | null>(null);
-  // The position to come back to for the key being rendered. Read during
-  // render, once per key: the store is written by the unmount of the previous
-  // page, so by the time this page renders the value is already correct.
+  // The position to come back to for the key being rendered. Read once per
+  // key, by the effect right below: the store is written by the unmount
+  // cleanup of the previous list, so it cannot move between this render and
+  // that effect.
   const pendingRef = useRef<{ key: string; target: ListPosition } | null>(null);
   // The loaded count a page was last requested at, to detect pages that add nothing
   const requestedAtRef = useRef(-1);
@@ -54,12 +55,17 @@ export function useListScrollRestoration({
   const latestCountRef = useRef(loadedCount);
   const latestScrollYRef = useRef(0);
 
-  if (handledKeyRef.current !== key) {
+  // Declared above the effect that acts on the stored position: effects run in
+  // declaration order, so the restore sees the fresh value in the same commit.
+  useEffect(() => {
+    if (handledKeyRef.current === key) {
+      return;
+    }
     handledKeyRef.current = key;
     const target = readListPosition(key);
     pendingRef.current = target === undefined || target.loadedCount <= 0 ? null : { key, target };
     requestedAtRef.current = -1;
-  }
+  }, [key]);
 
   useEffect(() => {
     latestCountRef.current = loadedCount;

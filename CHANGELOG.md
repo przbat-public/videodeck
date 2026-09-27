@@ -91,6 +91,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   downloaded outside the queue each time the collection is read
 
 - `sse_streams_open` on `/metrics`: how many download streams the server is holding open right now
+- **The client is linted with the whole React Compiler rule set**: `eslint.config.mjs`
+  spreads the flat `recommended-latest` preset of `eslint-plugin-react-hooks`
+  instead of registering two rules by hand, which turns on seventeen rules
+  (purity, immutability, refs, set-state-in-effect,
+  preserve-manual-memoization and the rest). The nine "ref written during
+  render" findings it surfaced are fixed: the download queue keeps its newest
+  callbacks and resets its per-folder bookkeeping in effects, and the list
+  scroll hook reads a stored position in an effect declared before the one
+  that restores it. A new test in `useDownloadQueue.test.ts` pins the folder
+  switch so a drained queue is never reported for the folder that follows
+  (verified to fail without the reset). `set-state-in-effect` over-reports:
+  it flags an effect that calls an async loader even when the state update
+  lands after the await, so the three fetch-on-mount hooks carry a per-line
+  disable that names the reason
 ### Added
 
 - The client says when Elasticsearch is unreachable instead of turning it into

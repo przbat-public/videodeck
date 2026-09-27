@@ -75,6 +75,7 @@ export function FolderSection({
   // needed when it was unknown or after a playlist download created list.json.
   useEffect(() => {
     if (hasChannelUrl && initialListExists === null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mount fetch, the update lands after the await (see the rule note in eslint.config.mjs)
       void checkListExists();
     }
   }, [hasChannelUrl, checkListExists, initialListExists]);
