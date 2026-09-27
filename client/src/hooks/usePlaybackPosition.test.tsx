@@ -154,6 +154,31 @@ describe('usePlaybackPosition', () => {
     expect(screen.getByTestId('offer')).toHaveTextContent('none');
   });
 
+  it('treats an entry that is valid JSON but not an object as no place', () => {
+    // A number parses cleanly and is still not something the hook wrote.
+    localStorage.setItem(playbackPositionKey('hedgehogs'), '42');
+
+    render(<Harness videoId="hedgehogs" />);
+
+    expect(screen.getByTestId('offer')).toHaveTextContent('none');
+  });
+
+  it('ignores a position that is not a finite number', () => {
+    // 1e400 survives JSON.parse as Infinity, which is a number and still not a
+    // place anybody watched.
+    localStorage.setItem(playbackPositionKey('hedgehogs'), '{"time":1e400,"duration":600}');
+
+    render(<Harness videoId="hedgehogs" />);
+
+    expect(screen.getByTestId('offer')).toHaveTextContent('none');
+  });
+
+  it('has nothing to forget when the route carries no video id', () => {
+    render(<Harness videoId="" />);
+
+    expect(() => fireEvent.click(screen.getByRole('button', { name: 'forget' }))).not.toThrow();
+  });
+
   it('survives storage that refuses to be read', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('denied');
