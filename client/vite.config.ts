@@ -1,10 +1,18 @@
-import react from '@vitejs/plugin-react';
+import babel from '@rolldown/plugin-babel';
+import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { defineConfig } from 'vitest/config';
 
 // `ANALYZE=1 npm run build` writes a bundle report (dist/stats.html).
 // Off by default: the report is a one-off inspection, not a build artifact.
 const analyze = process.env.ANALYZE === '1';
+
+// React Compiler 1.0, which memoizes components and hooks automatically, so
+// new code does not reach for useMemo or useCallback by hand. The preset ships
+// with @vitejs/plugin-react 6, which dropped its inline `babel` option, so the
+// compiler rides @rolldown/plugin-babel, the Babel pass of Vite 8's Rolldown.
+// Existing manual memoization stays: removing it changes compiler output.
+const reactCompiler = babel({ presets: [reactCompilerPreset()] });
 
 const vendorChunks: Record<string, string[]> = {
   'react-vendor': ['react', 'react-dom', 'react-router-dom'],
@@ -13,8 +21,18 @@ const vendorChunks: Record<string, string[]> = {
   'list-vendor': ['react-window'],
 };
 
-export default defineConfig({
-  plugins: [react(), ...(analyze ? [visualizer({ gzipSize: true })] : [])],
+export default defineConfig(({ mode }) => ({
+  plugins: [
+    react(),
+    // Vitest sets mode to 'test', and the compiler stays out of that run: it
+    // rewrites every component it compiles, so the v8 coverage of the unit
+    // suite would measure the injected memo caches instead of the source the
+    // tests were written against (statements fell from 97% to 94% with it in).
+    // The compiled output is still exercised end to end, because Playwright
+    // drives this same config's dev server.
+    ...(mode === 'test' ? [] : [reactCompiler]),
+    ...(analyze ? [visualizer({ gzipSize: true })] : []),
+  ],
   // @videodeck/shared resolves through its package exports (pnpm workspace).
   build: {
     rollupOptions: {
@@ -74,4 +92,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
