@@ -65,6 +65,12 @@ services:
       - API_TOKEN=${API_TOKEN:-}
       - REQUIRE_API_TOKEN=${REQUIRE_API_TOKEN:-true}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Summary providers: with both keys set DeepSeek answers, and
+      # SUMMARY_PROVIDER (openai|deepseek) pins the choice. DEEPSEEK_MODEL takes
+      # a model name or `name:effort`, e.g. deepseek-v4-pro:high.
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-}
+      - SUMMARY_PROVIDER=${SUMMARY_PROVIDER:-}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
       # One proxy hop (the client container) sits in front of the server, and
       # the rate limit counts per client IP. Remove this if you reach the

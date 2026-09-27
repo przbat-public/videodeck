@@ -20,6 +20,45 @@ export function getOpenAiApiKey(): string | undefined {
   return process.env.OPENAI_API_KEY;
 }
 
+/**
+ * Endpoint the OpenAI SDK talks to. Unset keeps the SDK default; the deep
+ * server integration points it at the in-process mock instead.
+ */
+export function getOpenAiBaseUrl(): string | undefined {
+  const raw = (process.env.OPENAI_BASE_URL ?? '').trim();
+  return raw.length > 0 ? raw : undefined;
+}
+
+/**
+ * The provider named by the operator, when set. `validateEnv` rejects any
+ * other value at boot, so an unknown string here means a test set it and the
+ * resolver falls back to the key that is present.
+ */
+export function getSummaryProviderOverride(): 'openai' | 'deepseek' | undefined {
+  const raw = (process.env.SUMMARY_PROVIDER ?? '').trim().toLowerCase();
+  return raw === 'openai' || raw === 'deepseek' ? raw : undefined;
+}
+
+/** Lazily read DeepSeek key (only summaries need it) */
+export function getDeepSeekApiKey(): string | undefined {
+  return process.env.DEEPSEEK_API_KEY;
+}
+
+/**
+ * Raw `DEEPSEEK_MODEL`: a model name, optionally suffixed with the reasoning
+ * effort as `name:effort`. llmProviders parses it and owns the default.
+ */
+export function getDeepSeekModel(): string | undefined {
+  const raw = (process.env.DEEPSEEK_MODEL ?? '').trim();
+  return raw.length > 0 ? raw : undefined;
+}
+
+/** DeepSeek endpoint; unset leaves the provider default to llmProviders */
+export function getDeepSeekBaseUrl(): string | undefined {
+  const raw = (process.env.DEEPSEEK_BASE_URL ?? '').trim();
+  return raw.length > 0 ? raw : undefined;
+}
+
 /** Bind address of the HTTP server. Loopback by default — see getApiToken. */
 export function getHost(): string {
   return process.env.HOST || '127.0.0.1';

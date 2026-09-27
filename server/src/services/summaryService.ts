@@ -2,67 +2,52 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Counter } from '@prometheus-io/client';
 import OpenAI from 'openai';
-import { getOpenAiApiKey } from '../config';
 import { metricsRegistry } from '../metricsRegistry';
 import { resolveContainedPath, writeTextAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
+import {
+  resolveSummaryProvider,
+  type SummaryModelProfile,
+  type SummaryProviderProfile,
+  type SummaryRequestExtras,
+} from './llmProviders';
 
 /**
  * AI summaries of video subtitles (GET /api/videos/:identifier/summary).
  *
  * The pure helpers (VTT cleaning, token budgeting) are exported for tests;
  * `generateSummary` ties them together: read the `.summary.txt` cache, and
- * only when it is missing or empty, extract the subtitles' text and ask
- * OpenAI for a Polish summary, walking the model list on 429s. The result is
- * cached on disk, so a summary is generated at most once per video — and a
- * concurrent second request for the same video shares the in-flight call
- * instead of paying for a second one.
+ * only when it is missing or empty, extract the subtitles' text and ask the
+ * configured provider (OpenAI or DeepSeek) for a Polish summary, walking the
+ * model list on 429s. The result is cached on disk, so a summary is generated
+ * at most once per video — and a concurrent second request for the same video
+ * shares the in-flight call instead of paying for a second one.
  */
 
-// Models in order of preference. gpt-4 and gpt-4-turbo were retired by
-// OpenAI and have an 8k context that can never accept the 25k input budget —
-// the fallback chain is gpt-4o → gpt-4o-mini.
-export const SUMMARY_MODELS = ['gpt-4o', 'gpt-4o-mini'] as const;
-
-// Reserve tokens for: system prompt (~50), user prompt (~100), response (2000), and buffer
-// TPM limit is 30000, but we want to be safe with ~25000 tokens for input
-export const SUMMARY_MAX_INPUT_TOKENS = 25000;
-/** Input budget of the smallest fallback model (its context is smaller) */
-export const SUMMARY_FALLBACK_INPUT_TOKENS = 8000;
-
-/** At most this many OpenAI calls run at once, whatever the request load */
+/** At most this many provider calls run at once, whatever the request load */
 export const MAX_CONCURRENT_GENERATIONS = 2;
 
-/** Give up on a hung OpenAI call instead of holding the request forever */
-export const OPENAI_TIMEOUT_MS = 60_000;
-
-/**
- * Approximate USD prices per 1M tokens (input, output). They drift over time;
- * used only for logs and the cost metric — good enough to spot a runaway bill.
- */
-const MODEL_PRICES: Record<(typeof SUMMARY_MODELS)[number], [number, number]> = {
-  'gpt-4o': [2.5, 10],
-  'gpt-4o-mini': [0.15, 0.6],
-};
+/** Give up on a hung provider call instead of holding the request forever */
+export const SUMMARY_REQUEST_TIMEOUT_MS = 60_000;
 
 const summaryRequestsTotal = new Counter({
-  name: 'openai_summary_requests_total',
-  help: 'OpenAI summary requests, by model and outcome',
-  labelNames: ['model', 'status'],
+  name: 'summary_requests_total',
+  help: 'Summary requests, by provider, model and outcome',
+  labelNames: ['provider', 'model', 'status'],
   registers: [metricsRegistry],
 });
 
 const summaryTokensTotal = new Counter({
-  name: 'openai_summary_tokens_total',
-  help: 'Tokens billed for video summaries, by model and kind',
-  labelNames: ['model', 'type'],
+  name: 'summary_tokens_total',
+  help: 'Tokens billed for video summaries, by provider, model and kind',
+  labelNames: ['provider', 'model', 'type'],
   registers: [metricsRegistry],
 });
 
 const summaryEstimatedCostCents = new Counter({
-  name: 'openai_summary_estimated_cost_cents_total',
-  help: 'Estimated USD cents spent on video summaries, by model (approximate pricing)',
-  labelNames: ['model'],
+  name: 'summary_estimated_cost_cents_total',
+  help: 'Estimated USD cents spent on video summaries, by provider and model (approximate pricing)',
+  labelNames: ['provider', 'model'],
   registers: [metricsRegistry],
 });
 
@@ -271,7 +256,7 @@ export async function generateSummary(input: GenerateSummaryInput): Promise<Gene
 
   const pending = inFlight.get(summaryFilePath);
   if (pending) {
-    logger.info(`Summary for ${baseName}: joining the in-flight OpenAI call`);
+    logger.info(`Summary for ${baseName}: joining the in-flight summary call`);
     return pending;
   }
 
@@ -301,54 +286,57 @@ async function writeTruncatedMarker(markerPath: string, truncated: boolean): Pro
 }
 
 export class SummaryUnavailableError extends Error {
-  constructor() {
-    super('OPENAI_API_KEY environment variable is required');
+  /** `message` names the environment variable(s) an operator has to set */
+  constructor(message: string) {
+    super(message);
     this.name = 'SummaryUnavailableError';
   }
 }
 
 async function generateUncached(input: GenerateSummaryInput, summaryFilePath: string): Promise<GeneratedSummary> {
   const { folderPath, baseName, subtitlePath } = input;
-  const apiKey = getOpenAiApiKey();
-  if (!apiKey) {
-    throw new SummaryUnavailableError();
+  const resolution = resolveSummaryProvider();
+  if (resolution.status === 'unconfigured') {
+    throw new SummaryUnavailableError(resolution.message);
   }
+  const profile = resolution.profile;
 
   const realSubtitlePath = await resolveContainedPath(folderPath, subtitlePath);
   const subtitleFileContent = await fs.readFile(realSubtitlePath, 'utf-8');
 
   // Extract only text content from VTT, removing timestamps and metadata
-  // This significantly reduces token count for OpenAI API calls
+  // This significantly reduces token count for provider API calls
   const subtitleText = extractTextFromVttSubtitles(subtitleFileContent);
 
   // No SDK retries (429s walk the model list here) and a hard timeout: a hung
-  // OpenAI call must not pin the request (and the queue behind it) forever.
+  // provider call must not pin the request (and the queue behind it) forever.
   // The SDK refuses browser-like environments unless told otherwise. The
   // server never runs in a browser — the flag only matters under jsdom (the
   // client integration suite boots the real app in a jsdom worker).
-  const openai = new OpenAI({
-    apiKey,
-    timeout: OPENAI_TIMEOUT_MS,
+  const client = new OpenAI({
+    apiKey: profile.apiKey,
+    ...(profile.baseUrl === undefined ? {} : { baseURL: profile.baseUrl }),
+    timeout: SUMMARY_REQUEST_TIMEOUT_MS,
     maxRetries: 0,
     dangerouslyAllowBrowser: typeof window !== 'undefined',
   });
 
   await acquireGenerationSlot();
   try {
-    const { completion, truncated } = await completeWithFallback(openai, subtitleText);
+    const { completion, truncated } = await completeWithFallback(client, profile, subtitleText);
 
     const model = completion.model;
-    summaryRequestsTotal.inc({ model, status: 'ok' });
+    summaryRequestsTotal.inc({ provider: profile.id, model, status: 'ok' });
 
     if (completion.usage) {
-      recordUsage(baseName, model, completion.usage);
+      recordUsage(profile, baseName, model, completion.usage);
     }
 
     // Defensive `?.` on message: the API has returned choices without one
     const summary = completion.choices[0]?.message?.content;
 
     if (!summary) {
-      throw new Error('OpenAI API did not return a summary');
+      throw new Error(`The ${profile.id} API did not return a summary`);
     }
 
     // `finish_reason: 'length'` means the model hit max_tokens mid-sentence:
@@ -387,34 +375,34 @@ interface FallbackResult {
   truncated: boolean;
 }
 
-/**
- * First model of the list that answers; 429s honor Retry-After before
- * walking to the next model, other errors fail fast. The input budget is
- * per-model: the small fallback cannot accept the primary's 25k tokens.
- */
 /** Budget and prepared input for one model of the fallback chain */
-function prepareModelInput(model: string, subtitleText: string): { text: string; truncated: boolean } {
-  const budget = model === 'gpt-4o-mini' ? SUMMARY_FALLBACK_INPUT_TOKENS : SUMMARY_MAX_INPUT_TOKENS;
+function prepareModelInput(model: SummaryModelProfile, subtitleText: string): { text: string; truncated: boolean } {
   const estimatedTokens = estimateTokenCount(subtitleText);
-  const truncated = estimatedTokens > budget;
+  const truncated = estimatedTokens > model.inputBudget;
   if (truncated) {
     logger.warn(
-      `Subtitle text is too long for ${model} (estimated ${estimatedTokens} tokens) — truncating to ${budget}.`,
+      `Subtitle text is too long for ${model.name} (estimated ${estimatedTokens} tokens) — truncating to ${model.inputBudget}.`,
     );
   }
-  return { text: truncateTextToTokenLimit(subtitleText, budget), truncated };
+  return { text: truncateTextToTokenLimit(subtitleText, model.inputBudget), truncated };
 }
+
+/**
+ * The body the SDK sends, plus the provider-only fields its types do not know
+ * about (DeepSeek's `thinking` toggle).
+ */
+type SummaryRequestBody = OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming & SummaryRequestExtras;
 
 /** One completion attempt on one model (throws on any error) */
 async function attemptModel(
-  openai: OpenAI,
-  model: string,
+  client: OpenAI,
+  model: SummaryModelProfile,
   text: string,
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   // The subtitles are UNTRUSTED YouTube-controlled data: delimited and
   // explicitly quarantined so a poisoned transcript cannot steer the model.
-  return openai.chat.completions.create({
-    model,
+  const body: SummaryRequestBody = {
+    model: model.name,
     messages: [
       {
         role: 'system',
@@ -426,9 +414,12 @@ async function attemptModel(
         content: `Przeanalizuj poniższe napisy filmowe i stwórz zwięzłe podsumowanie w języku polskim. Podsumowanie powinno zawierać główne tematy i kluczowe punkty omawiane w filmie. Nie umieszczaj na początku podsumowania o tym że jest to podsumowanie filmu.\n\nNapisy:\n<subtitles>\n${text}\n</subtitles>`,
       },
     ],
-    temperature: 0.7,
-    max_tokens: 2000,
-  });
+    max_tokens: model.maxTokens,
+    // A model in thinking mode ignores the temperature, so the profile leaves it out
+    ...(model.temperature === undefined ? {} : { temperature: model.temperature }),
+    ...model.extras,
+  };
+  return client.chat.completions.create(body);
 }
 
 /**
@@ -436,22 +427,27 @@ async function attemptModel(
  * walking to the next model, other errors fail fast. The input budget is
  * per-model: the small fallback cannot accept the primary's 25k tokens.
  */
-async function completeWithFallback(openai: OpenAI, subtitleText: string): Promise<FallbackResult> {
+async function completeWithFallback(
+  client: OpenAI,
+  profile: SummaryProviderProfile,
+  subtitleText: string,
+): Promise<FallbackResult> {
   let lastError: unknown;
+  const models = profile.models;
 
-  for (const model of SUMMARY_MODELS) {
+  for (const model of models) {
     const { text, truncated } = prepareModelInput(model, subtitleText);
     try {
-      const completion = await attemptModel(openai, model, text);
+      const completion = await attemptModel(client, model, text);
       return { completion, truncated };
     } catch (error) {
       lastError = error;
-      summaryRequestsTotal.inc({ model, status: 'error' });
+      summaryRequestsTotal.inc({ provider: profile.id, model: model.name, status: 'error' });
       if (!isRateLimitError(error)) {
         // For other errors, rethrow immediately
         throw error;
       }
-      if (model === SUMMARY_MODELS[SUMMARY_MODELS.length - 1]) {
+      if (model === models[models.length - 1]) {
         // Every model is rate limited — fail fast, the client decides when to retry
         const detail = error instanceof Error ? error.message : String(error);
         throw new Error(`Rate limit exceeded for all models. Please try again later. Original error: ${detail}`, {
@@ -461,12 +457,12 @@ async function completeWithFallback(openai: OpenAI, subtitleText: string): Promi
       // Respect Retry-After instead of immediately escalating to a (possibly
       // pricier) model — bounded, so a stuck value cannot hang the request.
       const retryAfter = await waitForRetryAfter(error);
-      logger.warn(`Rate limit hit for model ${model} (waited ${retryAfter}s), trying next model...`);
+      logger.warn(`Rate limit hit for model ${model.name} (waited ${retryAfter}s), trying next model...`);
     }
   }
 
   throw new Error(
-    lastError instanceof Error && lastError.message ? lastError.message : 'OpenAI API did not return a response',
+    lastError instanceof Error && lastError.message ? lastError.message : 'The summary API did not return a response',
   );
 }
 
@@ -482,14 +478,22 @@ async function waitForRetryAfter(error: unknown): Promise<number> {
 }
 
 /** Record token usage and the approximate cost of a summary response */
-function recordUsage(baseName: string, model: string, usage: OpenAI.CompletionUsage): void {
-  summaryTokensTotal.inc({ model, type: 'prompt' }, usage.prompt_tokens);
-  summaryTokensTotal.inc({ model, type: 'completion' }, usage.completion_tokens);
-  const [inputPrice, outputPrice] = MODEL_PRICES[model as (typeof SUMMARY_MODELS)[number]] ?? [0, 0];
+function recordUsage(
+  profile: SummaryProviderProfile,
+  baseName: string,
+  model: string,
+  usage: OpenAI.CompletionUsage,
+): void {
+  const provider = profile.id;
+  summaryTokensTotal.inc({ provider, model, type: 'prompt' }, usage.prompt_tokens);
+  summaryTokensTotal.inc({ provider, model, type: 'completion' }, usage.completion_tokens);
+  // The response names the model that answered: price it by name, and fall back
+  // to free rather than guessing a rate for a model no profile knows.
+  const [inputPrice, outputPrice] = profile.models.find((candidate) => candidate.name === model)?.prices ?? [0, 0];
   const costCents =
     (usage.prompt_tokens / 1_000_000) * inputPrice * 100 + (usage.completion_tokens / 1_000_000) * outputPrice * 100;
-  summaryEstimatedCostCents.inc({ model }, costCents);
+  summaryEstimatedCostCents.inc({ provider, model }, costCents);
   logger.info(
-    `Summary for ${baseName}: model=${model} prompt=${usage.prompt_tokens} completion=${usage.completion_tokens} tokens, ≈$${costCents.toFixed(4)}`,
+    `Summary for ${baseName}: provider=${provider} model=${model} prompt=${usage.prompt_tokens} completion=${usage.completion_tokens} tokens, ≈${costCents.toFixed(4)} cents`,
   );
 }

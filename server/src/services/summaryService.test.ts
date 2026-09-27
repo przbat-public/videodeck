@@ -46,6 +46,38 @@ const mockOpenAIInstance = {
   },
 };
 
+/**
+ * Provider variables this suite owns. process.env outlives a test file inside
+ * a jest worker, and the deep server integration is a neighbour, so every case
+ * starts from a clean slate and the originals go back in afterAll.
+ */
+const PROVIDER_ENV_VARS = [
+  'OPENAI_API_KEY',
+  'OPENAI_BASE_URL',
+  'DEEPSEEK_API_KEY',
+  'DEEPSEEK_MODEL',
+  'DEEPSEEK_BASE_URL',
+  'SUMMARY_PROVIDER',
+] as const;
+
+const originalProviderEnv = new Map(PROVIDER_ENV_VARS.map((name) => [name, process.env[name]]));
+
+function clearProviderEnv(): void {
+  for (const name of PROVIDER_ENV_VARS) {
+    delete process.env[name];
+  }
+}
+
+afterAll(() => {
+  for (const [name, value] of originalProviderEnv) {
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
+  }
+});
+
 function mockCompletion(summary: string, finishReason = 'stop') {
   return {
     model: 'gpt-4o',
@@ -169,6 +201,7 @@ describe('generateSummary', () => {
     jest.resetAllMocks();
     resetInFlightSummaries();
     resetSummarySemaphore();
+    clearProviderEnv();
     process.env.OPENAI_API_KEY = 'test-api-key';
     MockedOpenAI.mockImplementation(() => mockOpenAIInstance as unknown as OpenAI);
     // resolveContainedPath: identity realpath keeps the containment check green
@@ -338,7 +371,7 @@ This is a test subtitle`;
       choices: [{}],
     });
 
-    await expect(generateSummary(INPUT)).rejects.toThrow('OpenAI API did not return a summary');
+    await expect(generateSummary(INPUT)).rejects.toThrow('The openai API did not return a summary');
   });
 
   it('propagates subtitle read errors', async () => {
@@ -359,15 +392,23 @@ This is a test subtitle`;
     expect(result.summary).toBe('Summary');
   });
 
-  it('requires an OpenAI API key (typed SummaryUnavailableError)', async () => {
+  it('requires an API key (typed SummaryUnavailableError naming the variables)', async () => {
     delete process.env.OPENAI_API_KEY;
     mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
 
-    try {
-      await expect(generateSummary(INPUT)).rejects.toBeInstanceOf(SummaryUnavailableError);
-    } finally {
-      process.env.OPENAI_API_KEY = 'test-api-key';
-    }
+    const failure = await generateSummary(INPUT).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(SummaryUnavailableError);
+    expect(failure).toMatchObject({ message: 'OPENAI_API_KEY or DEEPSEEK_API_KEY environment variable is required' });
+    expect(mockOpenAIInstance.chat.completions.create).not.toHaveBeenCalled();
+  });
+
+  it('names the DeepSeek variable, and only it, when that provider is pinned without a key', async () => {
+    delete process.env.OPENAI_API_KEY;
+    process.env.SUMMARY_PROVIDER = 'deepseek';
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+
+    await expect(generateSummary(INPUT)).rejects.toThrow('DEEPSEEK_API_KEY environment variable is required');
     expect(mockOpenAIInstance.chat.completions.create).not.toHaveBeenCalled();
   });
 
@@ -473,7 +514,82 @@ This is a test subtitle`;
     });
   });
 
-  it('logs the billed tokens, approximate cost and records cost metrics', async () => {
+  it('switches to DeepSeek on its key alone, with its endpoint and the thinking mode off', async () => {
+    delete process.env.OPENAI_API_KEY;
+    process.env.DEEPSEEK_API_KEY = 'ds-test-key';
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+    mockedFs.readFile.mockResolvedValueOnce(VTT as never);
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue({
+      ...mockCompletion('DeepSeek summary'),
+      model: 'deepseek-flash',
+    });
+
+    const result = await generateSummary(INPUT);
+
+    expect(result.summary).toBe('DeepSeek summary');
+    expect(MockedOpenAI).toHaveBeenCalledWith({
+      apiKey: 'ds-test-key',
+      baseURL: 'https://api.deepseek.com',
+      timeout: 60000,
+      maxRetries: 0,
+      dangerouslyAllowBrowser: false,
+    });
+    const body = mockOpenAIInstance.chat.completions.create.mock.calls[0][0];
+    expect(body.model).toBe('deepseek-flash');
+    // Thinking mode ignores temperature and bills reasoning a summary does not need
+    expect(body.thinking).toEqual({ type: 'disabled' });
+    expect(body.temperature).toBe(0.7);
+    expect(body.max_tokens).toBe(2000);
+  });
+
+  it('sends the reasoning effort from `model:effort` and drops the ignored temperature', async () => {
+    delete process.env.OPENAI_API_KEY;
+    process.env.DEEPSEEK_API_KEY = 'ds-test-key';
+    process.env.DEEPSEEK_MODEL = 'deepseek-v4-pro:max';
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+    mockedFs.readFile.mockResolvedValueOnce(VTT as never);
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue(mockCompletion('Summary'));
+
+    await generateSummary(INPUT);
+
+    const body = mockOpenAIInstance.chat.completions.create.mock.calls[0][0];
+    expect(body.model).toBe('deepseek-v4-pro');
+    expect(body.thinking).toEqual({ type: 'enabled' });
+    expect(body.reasoning_effort).toBe('max');
+    expect(body.temperature).toBeUndefined();
+    // Reasoning shares the output budget, so the cap is higher than 2000
+    expect(body.max_tokens).toBeGreaterThan(2000);
+  });
+
+  it('honours DEEPSEEK_MODEL and DEEPSEEK_BASE_URL, which is how the mock server is reached', async () => {
+    delete process.env.OPENAI_API_KEY;
+    process.env.DEEPSEEK_API_KEY = 'ds-test-key';
+    process.env.DEEPSEEK_MODEL = 'deepseek-v4-pro';
+    process.env.DEEPSEEK_BASE_URL = 'http://127.0.0.1:9999/v1';
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+    mockedFs.readFile.mockResolvedValueOnce(VTT as never);
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue(mockCompletion('Summary'));
+
+    await generateSummary(INPUT);
+
+    expect(MockedOpenAI).toHaveBeenCalledWith(expect.objectContaining({ baseURL: 'http://127.0.0.1:9999/v1' }));
+    expect(mockOpenAIInstance.chat.completions.create.mock.calls[0][0].model).toBe('deepseek-v4-pro');
+  });
+
+  it('keeps OpenAI when SUMMARY_PROVIDER pins it, even though a DeepSeek key is present', async () => {
+    process.env.DEEPSEEK_API_KEY = 'ds-test-key';
+    process.env.SUMMARY_PROVIDER = 'openai';
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+    mockedFs.readFile.mockResolvedValueOnce(VTT as never);
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue(mockCompletion('Summary'));
+
+    await generateSummary(INPUT);
+
+    expect(MockedOpenAI).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'test-api-key' }));
+    expect(mockOpenAIInstance.chat.completions.create.mock.calls[0][0].model).toBe('gpt-4o');
+  });
+
+  it('logs the billed tokens, approximate cost and records cost metrics per provider', async () => {
     const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {
       /* silence the expected billing log */
     });
@@ -487,11 +603,42 @@ This is a test subtitle`;
 
     await generateSummary(INPUT);
 
-    // 100/1M × $0.15 + 50/1M × $0.60 = $0.000045 = ≈$0.0045
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('≈$0.0045'));
-    expect(metricsRegistry.getSingleMetric('openai_summary_requests_total')).toBeDefined();
-    expect(metricsRegistry.getSingleMetric('openai_summary_tokens_total')).toBeDefined();
-    expect(metricsRegistry.getSingleMetric('openai_summary_estimated_cost_cents_total')).toBeDefined();
+    // 100/1M × $0.15 + 50/1M × $0.60 = $0.000045 = 0.0045 cents
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('provider=openai'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('≈0.0045 cents'));
+    expect(metricsRegistry.getSingleMetric('summary_requests_total')).toBeDefined();
+    expect(metricsRegistry.getSingleMetric('summary_tokens_total')).toBeDefined();
+    const costMetric = metricsRegistry.getSingleMetric('summary_estimated_cost_cents_total');
+    expect(costMetric).toBeDefined();
+    expect((await costMetric?.get())?.values).toContainEqual(
+      expect.objectContaining({ labels: { provider: 'openai', model: 'gpt-4o-mini' } }),
+    );
+    infoSpy.mockRestore();
+  });
+
+  it('prices a DeepSeek summary with the DeepSeek rate, not the OpenAI one', async () => {
+    const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {
+      /* silence the expected billing log */
+    });
+    delete process.env.OPENAI_API_KEY;
+    process.env.DEEPSEEK_API_KEY = 'ds-test-key';
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+    mockedFs.readFile.mockResolvedValueOnce(VTT as never);
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue({
+      ...mockCompletion('Summary'),
+      model: 'deepseek-flash',
+      usage: { prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100 },
+    });
+
+    await generateSummary(INPUT);
+
+    // 1000/1M × $0.15 + 100/1M × $0.60 = $0.00021 = 0.021 cents
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('provider=deepseek'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('≈0.0210 cents'));
+    const costMetric = metricsRegistry.getSingleMetric('summary_estimated_cost_cents_total');
+    expect((await costMetric?.get())?.values).toContainEqual(
+      expect.objectContaining({ labels: { provider: 'deepseek', model: 'deepseek-flash' } }),
+    );
     infoSpy.mockRestore();
   });
 });

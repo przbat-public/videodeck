@@ -229,7 +229,7 @@
     "recreateFailed": "Odbudowa indeksów nie powiodła się.",
     "summaryStarting": "Generowanie streszczenia...",
     "summaryDone": "Streszczenie gotowe",
-    "summaryUnavailable": "Streszczenia są wyłączone — ustaw OPENAI_API_KEY na serwerze"
+    "summaryUnavailable": "Streszczenia są wyłączone — ustaw OPENAI_API_KEY albo DEEPSEEK_API_KEY na serwerze"
   },
   "errors": {
     "fetchStatus": "Nie udało się pobrać statusu",

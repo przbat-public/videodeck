@@ -62,6 +62,34 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ ...BASE, PORT: '0' })).toThrow(/PORT/);
   });
 
+  describe('summary provider variables', () => {
+    it('accepts either provider name and the DeepSeek settings', () => {
+      const env = validateEnv({
+        ...BASE,
+        SUMMARY_PROVIDER: 'deepseek',
+        DEEPSEEK_API_KEY: 'ds-key',
+        DEEPSEEK_MODEL: 'deepseek-v4-pro',
+        DEEPSEEK_BASE_URL: 'http://127.0.0.1:9200/v1',
+      });
+
+      expect(env.SUMMARY_PROVIDER).toBe('deepseek');
+      expect(env.DEEPSEEK_MODEL).toBe('deepseek-v4-pro');
+      expect(validateEnv({ ...BASE, SUMMARY_PROVIDER: 'openai' }).SUMMARY_PROVIDER).toBe('openai');
+    });
+
+    it('rejects a provider name that is not one of the two', () => {
+      expect(() => validateEnv({ ...BASE, SUMMARY_PROVIDER: 'deepsek' })).toThrow(/SUMMARY_PROVIDER/);
+    });
+
+    it('rejects a base URL that is not a URL', () => {
+      expect(() => validateEnv({ ...BASE, DEEPSEEK_BASE_URL: 'api.deepseek.com' })).toThrow(/DEEPSEEK_BASE_URL/);
+    });
+
+    it('keeps an unconfigured provider bootable, because summaries are optional', () => {
+      expect(validateEnv({ ...BASE }).SUMMARY_PROVIDER).toBeUndefined();
+    });
+  });
+
   describe('unauthenticated API on a public interface', () => {
     it('refuses to start when HOST is not loopback and no token is configured', () => {
       expect(() => validateEnv({ ...BASE, HOST: '0.0.0.0' })).toThrow(/unauthenticated API on 0\.0\.0\.0/);

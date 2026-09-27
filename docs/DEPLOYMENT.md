@@ -47,6 +47,12 @@ points at `http://<host>:3001`.
    - First searchable content appears after `POST /api/videos/refreshCache`
      (or the "Refresh index", pl: "Odśwież indeks", button on the status page).
 
+   AI summaries are optional. Put `OPENAI_API_KEY` or `DEEPSEEK_API_KEY` in the
+   same `.env` next to the compose file: the stack passes both, together with
+   `SUMMARY_PROVIDER` and `DEEPSEEK_MODEL`. With both keys set DeepSeek answers,
+   unless `SUMMARY_PROVIDER` pins OpenAI. See the summary section in
+   [INSTALL.md](INSTALL.md).
+
 ## Upgrades
 
 ```bash

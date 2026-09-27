@@ -162,6 +162,61 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(env.mockOpenai.requests).toHaveLength(callsBefore + 1); // cache hit — no second call
   });
 
+  it('runs the same pipeline on DeepSeek when its key appears, without a restart', async () => {
+    await env.seedFolder('channel-deepseek', videoFiles('vid00000002', 'Streszczenia na DeepSeeku'));
+    env.setFolders('channel-deepseek');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    // The provider is resolved on every call, so the switch is one environment
+    // variable and not a restart. DEEPSEEK_BASE_URL already points at the mock.
+    const keyBefore = process.env.DEEPSEEK_API_KEY;
+    process.env.DEEPSEEK_API_KEY = 'test-key';
+    try {
+      const baseName = encodeURIComponent('20260101_Streszczenia na DeepSeeku');
+      const response = await env.agent.get(`/api/videos/${baseName}/summary`).expect(200);
+
+      expect(response.body.summary).toBe('Fake summary.');
+      const call = env.mockOpenai.requests.at(-1);
+      expect(call?.model).toBe('deepseek-flash');
+      // Thinking mode would bill reasoning tokens for a task that needs none
+      expect(call?.thinking).toEqual({ type: 'disabled' });
+      expect(call?.prompt).toContain('Deep test subtitle line.');
+    } finally {
+      if (keyBefore === undefined) {
+        delete process.env.DEEPSEEK_API_KEY;
+      } else {
+        process.env.DEEPSEEK_API_KEY = keyBefore;
+      }
+    }
+  });
+
+  it('runs DeepSeek with the reasoning effort from the model variable', async () => {
+    await env.seedFolder('channel-effort', videoFiles('vid00000003', 'Wysiłek rozumowania'));
+    env.setFolders('channel-effort');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    // `name:effort` is the whole setting: the model is bare and the effort turns
+    // thinking mode on. The test environment pins these variables to empty.
+    const keyBefore = process.env.DEEPSEEK_API_KEY ?? '';
+    const modelBefore = process.env.DEEPSEEK_MODEL ?? '';
+    process.env.DEEPSEEK_API_KEY = 'test-key';
+    process.env.DEEPSEEK_MODEL = 'deepseek-flash:high';
+    try {
+      const baseName = encodeURIComponent('20260101_Wysiłek rozumowania');
+      await env.agent.get(`/api/videos/${baseName}/summary`).expect(200);
+
+      const call = env.mockOpenai.requests.at(-1);
+      expect(call?.model).toBe('deepseek-flash');
+      expect(call?.thinking).toEqual({ type: 'enabled' });
+      expect(call?.reasoningEffort).toBe('high');
+    } finally {
+      process.env.DEEPSEEK_API_KEY = keyBefore;
+      process.env.DEEPSEEK_MODEL = modelBefore;
+    }
+  });
+
   it('answers a search whose page crosses the result window with a short page, not a 500', async () => {
     await env.seedFolder('window', videoFiles('vid00000010', 'Okno wyników'));
     env.setFolders('window');

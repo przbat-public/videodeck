@@ -39,7 +39,7 @@ export const getSummary: RouteHandler<{ identifier: string }, VideoSummaryRespon
     }));
   } catch (error) {
     if (error instanceof SummaryUnavailableError) {
-      res.status(503).json({ error: 'Summaries are disabled — set OPENAI_API_KEY on the server' });
+      res.status(503).json({ error: 'Summaries are disabled — set OPENAI_API_KEY or DEEPSEEK_API_KEY on the server' });
       return;
     }
     throw error;

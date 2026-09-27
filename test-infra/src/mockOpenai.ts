@@ -4,14 +4,19 @@ import type { AddressInfo } from 'node:net';
 /**
  * In-memory mock of the OpenAI REST surface the summary service uses
  * (POST /v1/chat/completions). Deep integration tests point `OPENAI_BASE_URL`
- * at it, so the REAL summary pipeline (budgets, fallback chain, retry-after,
- * caching) runs end-to-end without a network or an API key.
+ * (and `DEEPSEEK_BASE_URL`) at it, so the REAL summary pipeline (budgets,
+ * fallback chain, retry-after, caching) runs end-to-end without a network or
+ * an API key.
  */
 
 export interface MockOpenaiCall {
   model: string;
   /** The user message — contains the delimited subtitles the service sent */
   prompt: string;
+  /** Provider-only fields the request carried (DeepSeek's thinking toggle) */
+  thinking?: { type: string };
+  /** Reasoning effort the request asked for, when it asked for one */
+  reasoningEffort?: string;
 }
 
 export interface MockOpenaiOptions {
@@ -90,10 +95,17 @@ export class MockOpenai {
     const body = JSON.parse(Buffer.concat(chunks).toString('utf-8')) as {
       model: string;
       messages: { role: string; content: string }[];
+      thinking?: { type: string };
+      reasoning_effort?: string;
     };
 
     const prompt = body.messages.find((message) => message.role === 'user')?.content ?? '';
-    this.calls.push({ model: body.model, prompt });
+    this.calls.push({
+      model: body.model,
+      prompt,
+      ...(body.thinking === undefined ? {} : { thinking: body.thinking }),
+      ...(body.reasoning_effort === undefined ? {} : { reasoningEffort: body.reasoning_effort }),
+    });
 
     if (this.failStatus !== null) {
       res.writeHead(this.failStatus, { 'content-type': 'application/json' });
