@@ -134,6 +134,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deliberate uses of the standard `line-clamp` and the unprefixed
   `user-select`, neither of which is Baseline yet, so each carries an inline
   exception that names its reason
+- **The landing page reads in both themes and shares the client palette**: it
+  declares `color-scheme: light dark`, carries a dark block built from the same
+  tokens, and its footer link moved to `--color-primary-text`, because the
+  accent as text measured 3.44:1 on the dark background. A guard
+  (`scripts/check-landing-tokens.test.mjs`) compares the page with
+  `client/src/index.css` token by token in both schemes, keeps every literal
+  either token-backed or on a named-exception list, checks text contrast at
+  4.5:1, and fails on an em dash. The page is in the prose baseline now, so its
+  score is a ratchet instead of a report
 - **No more flash of the wrong theme, and one token block instead of two**:
   `client/src/index.css` declares `color-scheme: light dark` once and writes
   the seventeen tokens that differ between themes as

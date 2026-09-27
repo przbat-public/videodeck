@@ -3,13 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>videodeck — search and watch your downloaded YouTube library</title>
+    <title>videodeck: search and watch your downloaded YouTube library</title>
     <meta
       name="description"
       content="videodeck is a self-hosted web app for searching, browsing and watching YouTube videos downloaded with yt-dlp, with a Chrome extension for enqueueing videos from the browser."
     />
     <style>
+      /* A static page cannot import client/src/index.css, so the palette below
+         is a hand copy of its tokens. scripts/check-landing-tokens.test.mjs
+         fails when the two files drift apart. */
       :root {
+        color-scheme: light dark;
         --color-bg: #f5f5f5;
         --color-surface: #fff;
         --color-text: #333;
@@ -18,7 +22,24 @@
         --color-primary: #5a5fd8;
         --color-primary-hover: #4b56c9;
         --color-primary-soft: #eef0ff;
+        --color-primary-text: #4449b3;
         --radius-card: 8px;
+      }
+
+      /* The dark half of the same palette, followed from the OS preference.
+         The page has no theme picker of its own. */
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --color-bg: #16181c;
+          --color-surface: #1d1f24;
+          --color-text: #e6e6e6;
+          --color-text-muted: #9aa0a6;
+          --color-border: #3a3d45;
+          --color-primary: #5a5fd8;
+          --color-primary-hover: #4b56c9;
+          --color-primary-soft: #2e3352;
+          --color-primary-text: #a5adff;
+        }
       }
 
       * {
@@ -148,7 +169,7 @@
       }
 
       footer a {
-        color: var(--color-primary);
+        color: var(--color-primary-text);
         text-decoration: none;
       }
     </style>
