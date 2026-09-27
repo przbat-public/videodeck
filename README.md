@@ -103,6 +103,10 @@ The essentials:
 | `ELASTICSEARCH_URL`   | Elasticsearch address                                                            |
 | `API_TOKEN`           | bearer token protecting `/api`; set it before exposing the server beyond loopback |
 | `OPENAI_API_KEY`      | enables AI summaries (`GET /api/videos/:id/summary`)                            |
+| `DEEPSEEK_API_KEY`    | runs those summaries on DeepSeek instead; `SUMMARY_PROVIDER` pins either provider |
+
+Either key turns summaries on, and adding the DeepSeek one is the switch: with
+both present DeepSeek answers, unless `SUMMARY_PROVIDER=openai` says otherwise.
 
 The full reference (concurrency, rate limits, CORS, host allowlist,
 extension origins and more) is in the installation reference linked above.

@@ -79,7 +79,7 @@ describe('useVideoSummary', () => {
       expect(result.current.state.loading).toBe(false);
     });
 
-    const unavailable = 'Streszczenia są wyłączone — ustaw OPENAI_API_KEY na serwerze';
+    const unavailable = 'Streszczenia są wyłączone — ustaw OPENAI_API_KEY albo DEEPSEEK_API_KEY na serwerze';
     expect(result.current.state.error).toBe(unavailable);
     expect(toast.error).toHaveBeenCalledWith(unavailable, { id: LOADING_TOAST_ID });
     expect(toast.error).not.toHaveBeenCalledWith('Nie udało się wygenerować streszczenia', expect.anything());

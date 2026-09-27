@@ -21,8 +21,8 @@
       {
         "id": "summary-path",
         "label": "Summary path",
-        "focus": ["browser", "server", "openai"],
-        "note": "AI summaries generated on demand and cached."
+        "focus": ["browser", "server", "openai", "deepseek"],
+        "note": "AI summaries generated on demand and cached, on OpenAI or DeepSeek."
       }
     ]
   },
@@ -67,6 +67,14 @@
       "label": "OpenAI",
       "sublabel": "summaries",
       "pos": [460, 110],
+      "size": [120, 60]
+    },
+    {
+      "id": "deepseek",
+      "type": "cloud",
+      "label": "DeepSeek",
+      "sublabel": "summaries",
+      "pos": [640, 110],
       "size": [120, 60]
     },
     {
@@ -136,6 +144,17 @@
       "fromSide": "top",
       "toSide": "bottom",
       "via": [[315, 230], [520, 230]]
+    },
+    {
+      "id": "server-to-deepseek",
+      "from": "server",
+      "to": "deepseek",
+      "label": "summary",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [[315, 200], [700, 200]],
+      "labelDx": 120
     }
   ],
   "cards": [
@@ -154,6 +173,14 @@
       "items": [
         "Server-side yt-dlp queue with pause, resume and persistence across restarts",
         "Fast-fail for members-only and private videos; subtitles land beside the mp4"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Summaries",
+      "items": [
+        "OpenAI or DeepSeek answers, whichever key server/.env carries; SUMMARY_PROVIDER pins it",
+        "Cached beside the subtitles as <name>.summary.txt, so a video is paid for once"
       ]
     },
     {

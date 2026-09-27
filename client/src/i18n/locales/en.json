@@ -205,7 +205,7 @@
     "recreateFailed": "Index rebuild failed.",
     "summaryStarting": "Generating summary...",
     "summaryDone": "Summary ready",
-    "summaryUnavailable": "Summaries are disabled — set OPENAI_API_KEY on the server"
+    "summaryUnavailable": "Summaries are disabled — set OPENAI_API_KEY or DEEPSEEK_API_KEY on the server"
   },
   "errors": {
     "fetchStatus": "Failed to fetch status",

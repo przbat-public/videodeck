@@ -26,6 +26,14 @@ const EnvSchema = z.object({
   ALLOWED_HOSTS: z.string().optional(),
   EXTENSION_ORIGINS: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  OPENAI_BASE_URL: z.url().optional(),
+  SUMMARY_PROVIDER: z
+    .enum(['openai', 'deepseek'])
+    .optional()
+    .describe('Which provider answers summary requests; unset follows the key that is present'),
+  DEEPSEEK_API_KEY: z.string().optional(),
+  DEEPSEEK_MODEL: z.string().optional(),
+  DEEPSEEK_BASE_URL: z.url().optional(),
   DOWNLOAD_CONCURRENCY: positiveInt('DOWNLOAD_CONCURRENCY'),
   UPDATE_CONCURRENCY: positiveInt('UPDATE_CONCURRENCY'),
   DOWNLOAD_MAX_ATTEMPTS: positiveInt('DOWNLOAD_MAX_ATTEMPTS'),

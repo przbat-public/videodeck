@@ -94,6 +94,10 @@ UPDATE_CONCURRENCY=2        # max. number of parallel metadata updates (default 
 DOWNLOAD_MAX_ATTEMPTS=3     # how many times to retry a failed yt-dlp (30 s backoff; YouTube 429 etc.)
 LOG_LEVEL=info              # log level: info (default), warn, error, silent
 OPENAI_API_KEY=sk-REPLACE-ME  # key for AI summaries (GET /api/videos/:id/summary)
+DEEPSEEK_API_KEY=sk-REPLACE-ME  # the same summaries on DeepSeek; with both keys set this one wins
+SUMMARY_PROVIDER=deepseek   # pin the provider: openai or deepseek (default: whichever key is present)
+DEEPSEEK_MODEL=deepseek-v4-pro:high  # model and reasoning effort as `name` or `name:effort` (default deepseek-flash)
+DEEPSEEK_BASE_URL=https://api.deepseek.com  # DeepSeek endpoint (only for a gateway or a test)
 HOST=127.0.0.1              # server bind address (defaults to loopback)
 API_TOKEN=secret            # bearer token protecting /api (see the Security section in the README)
 CORS_ORIGINS=https://example.com  # extra CORS origins (comma-separated), beyond localhost and chrome-extension://
@@ -106,6 +110,8 @@ RATE_LIMIT_WINDOW_MS=600000 # rate-limit window length in ms (default 10 minutes
 **Note:**
 
 - If Elasticsearch runs on a different host or port, update `ELASTICSEARCH_URL` accordingly.
+- **AI summaries run on OpenAI or DeepSeek.** Set one key and that provider answers; with both set DeepSeek wins, because adding its key is the switch. `SUMMARY_PROVIDER` pins the choice either way, and a pinned provider whose key is missing answers `503` instead of spending the other account. One provider call has a 60 s timeout, summaries are cached next to the subtitles as `<name>.summary.txt`, and the first request for a long video can take half a minute.
+- **`DEEPSEEK_MODEL` picks the model and how hard it thinks.** The value is a model name, or `name:effort` where effort is `none`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max`. `deepseek-v4-pro:high` runs that model with thinking mode on at high effort; a bare `deepseek-flash` (the default) keeps thinking off, which is cheaper and enough for a summary, and `deepseek-flash:none` says so out loud. DeepSeek folds the words into three levels, so `low` and `minimal` are the same request. A colon that is not one of those words stays inside the model name, which leaves room for gateway tags like `qwen3:32b`.
 - If you use Docker and get a "Cannot connect to the Docker daemon" error, make sure Docker Desktop is running.
 - After starting the server for the first time, you must manually call the `POST /api/videos/refreshCache` endpoint to index videos into Elasticsearch (this may take a while depending on the number of videos). The same applies after an upgrade that changes the search analyzer (see [docs/API.md](API.md)).
 - **Keep yt-dlp up to date**: YouTube regularly breaks older versions. yt-dlp recommends the `nightly` channel (stable tends to be "stale and prone to external breakage"); the version is shown in the server startup log (`yt-dlp version: ...`), and when downloads start failing with "Sign in to confirm you're not a bot"/429 errors, the first thing to try is `yt-dlp -U` or the `nightly` channel. In a channel's `config.json` you can also enable `impersonate: true` (browser impersonation, without cookies).

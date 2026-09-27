@@ -8,7 +8,7 @@ Monorepo with **pnpm workspaces** (`pnpm-workspace.yaml`), like vita-tracker:
 
 | dir                 | what                                                             | test runner                       |
 | ------------------- | ---------------------------------------------------------------- | --------------------------------- |
-| `server/`           | Express 5 + Elasticsearch + yt-dlp queue + OpenAI summaries      | jest + deep integration           |
+| `server/`           | Express 5 + Elasticsearch + yt-dlp queue + AI summaries          | jest + deep integration           |
 | `client/`           | React 19 + Vite UI, i18n pl/en                                   | vitest + integration + Playwright |
 | `chrome-extension/` | MV3 extension (esbuild)                                          | vitest                            |
 | `shared/`           | zod API contract + helpers (the `@videodeck/shared` package)     |                                  |

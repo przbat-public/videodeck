@@ -4,8 +4,13 @@ import path from 'node:path';
 import {
   getApiToken,
   getCorsOrigins,
+  getDeepSeekApiKey,
+  getDeepSeekBaseUrl,
+  getDeepSeekModel,
   getHost,
   getOpenAiApiKey,
+  getOpenAiBaseUrl,
+  getSummaryProviderOverride,
   getVideosFolderPaths,
   invalidateVideosFolderCache,
 } from './config';
@@ -138,6 +143,70 @@ describe('getOpenAiApiKey', () => {
 
     process.env.OPENAI_API_KEY = 'sk-test';
     expect(getOpenAiApiKey()).toBe('sk-test');
+  });
+});
+
+describe('summary provider settings', () => {
+  const originals = new Map(
+    ['SUMMARY_PROVIDER', 'DEEPSEEK_API_KEY', 'DEEPSEEK_MODEL', 'DEEPSEEK_BASE_URL', 'OPENAI_BASE_URL'].map((name) => [
+      name,
+      process.env[name],
+    ]),
+  );
+
+  beforeEach(() => {
+    for (const name of originals.keys()) {
+      delete process.env[name];
+    }
+  });
+
+  afterAll(() => {
+    for (const [name, value] of originals) {
+      restoreEnv(name, value);
+    }
+  });
+
+  it('getSummaryProviderOverride accepts only the two provider names', () => {
+    expect(getSummaryProviderOverride()).toBeUndefined();
+
+    process.env.SUMMARY_PROVIDER = 'openai';
+    expect(getSummaryProviderOverride()).toBe('openai');
+    process.env.SUMMARY_PROVIDER = 'deepseek';
+    expect(getSummaryProviderOverride()).toBe('deepseek');
+
+    // A typo must not silently pick a provider: validateEnv rejects the value
+    // at boot and the resolver falls back to the key-based choice.
+    process.env.SUMMARY_PROVIDER = 'deepsek';
+    expect(getSummaryProviderOverride()).toBeUndefined();
+  });
+
+  it('reads the DeepSeek settings lazily, as raw values', () => {
+    expect(getDeepSeekApiKey()).toBeUndefined();
+    expect(getDeepSeekModel()).toBeUndefined();
+    expect(getDeepSeekBaseUrl()).toBeUndefined();
+
+    process.env.DEEPSEEK_API_KEY = 'ds-test';
+    // The `:effort` suffix is part of the raw value; llmProviders parses it.
+    process.env.DEEPSEEK_MODEL = 'deepseek-v4-pro:max';
+    process.env.DEEPSEEK_BASE_URL = 'http://127.0.0.1:9999/v1';
+
+    expect(getDeepSeekApiKey()).toBe('ds-test');
+    expect(getDeepSeekModel()).toBe('deepseek-v4-pro:max');
+    expect(getDeepSeekBaseUrl()).toBe('http://127.0.0.1:9999/v1');
+  });
+
+  it('treats a blank DeepSeek value as unset, so the provider default applies', () => {
+    process.env.DEEPSEEK_MODEL = '   ';
+    process.env.DEEPSEEK_BASE_URL = '';
+
+    expect(getDeepSeekModel()).toBeUndefined();
+    expect(getDeepSeekBaseUrl()).toBeUndefined();
+  });
+
+  it('getOpenAiBaseUrl stays undefined so the SDK keeps its own default', () => {
+    expect(getOpenAiBaseUrl()).toBeUndefined();
+    process.env.OPENAI_BASE_URL = 'http://127.0.0.1:9999/v1';
+    expect(getOpenAiBaseUrl()).toBe('http://127.0.0.1:9999/v1');
   });
 });
 
