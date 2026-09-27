@@ -137,10 +137,14 @@ jobs:
       - uses: ./.github/actions/pnpm-setup
       - run: pnpm run typecheck
 
+  # Runs on every pull request on purpose, like the lint job. A matrix job
+  # expands its name only when it runs, so a skipped one reports the raw
+  # `Unit tests (${{ matrix.package }})` and the three names the ruleset
+  # requires never appear. The suites are the cheapest of the heavy jobs, and
+  # they are worth this: a documentation-only pull request has to report every
+  # required check, or it stays blocked.
   unit-tests:
     name: Unit tests (${{ matrix.package }})
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
