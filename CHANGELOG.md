@@ -488,6 +488,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its checks by name, and a check that never reports stays pending, so a change
   to a README sat blocked behind eleven checks that would never run. The
   workflow now starts for every pull request and a small `changes` job decides
+  which jobs do the work: the jobs it skips report as skipped, which GitHub
+  counts as a success. Two jobs run either way. `lint` carries the prose gate,
+  the only check that reads documentation, and the unit-test matrix has to run
+  because a skipped matrix reports its name unexpanded, which is a name the
+  ruleset does not require and a pull request that never unblocks
   which jobs do the work: the lint job runs either way because it carries the
   prose gate, and the jobs it skips report as skipped, which GitHub counts as a
   success
