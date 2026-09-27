@@ -438,6 +438,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - jsdom is pinned to the version the client suite passes on: 30.1.0 broke 27 tests in the Radix menus
 - The API docs point at `POST /api/videos/refreshCache` (they said GET, which answers 404), and the stray ", " fragments left by an earlier edit are gone. The prose gate now also scans `docs/API.md`, `docs/INSTALL.md`, `docs/DEVELOPMENT.md` and `docs/README.pl.md`
 
+- The Docker stack stops falling over on a slow Elasticsearch start. The
+  healthcheck asked the root path, which answers before the cluster accepts
+  index work, and a JVM with a translog to recover spent the whole two minute
+  budget, so the container went unhealthy and `depends_on` refused to start the
+  server behind it. The check now waits for a yellow cluster, a start period
+  gives the boot a minute before the retries count, and the retry budget grows
+  to five minutes. Elasticsearch restarts unless it was stopped on purpose,
+  gets a minute to close cleanly, and its heap moves from 512 MB to 1 GB.
+  `docs/DEPLOYMENT.md` gains a troubleshooting section for the failures the
+  stack cannot fix alone: a bootstrap check against `vm.max_map_count`, a port
+  9200 that is already taken, and a Docker Desktop that stopped answering
+
 ## [1.0.0] - 2026-09-14
 
 First public release.
