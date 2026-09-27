@@ -54,6 +54,11 @@ infrastructure flakiness, and a flaky infra failure is itself a finding.
   output reference them.
 - Workflow changes are code: review them like code (`code-review-and-quality`),
   and watch `actions/` dependency bumps through Dependabot PRs.
+- A documentation-only pull request runs the `lint` job, which carries the
+  prose gate, and skips the heavy jobs. That skip lives inside the workflow,
+  in the `changes` job, never in a `paths-ignore` on the trigger: a trigger
+  that never fires leaves the required checks pending, and the ruleset on
+  `main` requires them by name, so the pull request could not merge at all.
 
 ## Rationalizations
 
