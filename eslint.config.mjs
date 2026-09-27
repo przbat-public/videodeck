@@ -1,6 +1,6 @@
+import css from '@eslint/css';
 import js from '@eslint/js';
 import eslintReact from '@eslint-react/eslint-plugin';
-import css from '@eslint/css';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import biome from 'eslint-config-biome';
 import playwright from 'eslint-plugin-playwright';
