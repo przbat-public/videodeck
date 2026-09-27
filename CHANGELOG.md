@@ -105,6 +105,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it flags an effect that calls an async loader even when the state update
   lands after the await, so the three fetch-on-mount hooks carry a per-line
   disable that names the reason
+- **The prose gate covers the whole repository**: `humanizer:gate` also scans
+  the four plans under `docs/plans/` and the landing page, and a new
+  repo-invariant test (`scripts/check-prose-gate-coverage.test.mjs`) fails
+  when a Markdown file, or an HTML document under `docs/`, is covered by
+  neither the gate nor a reasoned exemption. Exemptions carry their reason,
+  and a stale one fails the test as well. The client and extension HTML is
+  application markup rather than prose, which the rule states instead of
+  exempting it silently
 ### Added
 
 - The client says when Elasticsearch is unreachable instead of turning it into
