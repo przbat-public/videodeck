@@ -130,6 +130,20 @@ test('the gate lists only prose files that exist', () => {
   assert.deepEqual(stale, [], `humanizer:gate lists files that are gone: ${stale.join(', ')}`);
 });
 
+test('every gated file carries a baseline score', () => {
+  // --fail-on-regression only compares a file that has an entry, so a gated
+  // file without one is scanned and then ignored: the gate reports a number
+  // and never acts on it.
+  const baseline = JSON.parse(readFileSync(path.join(ROOT, 'scripts', 'humanizer-baseline.json'), 'utf8'));
+  const missing = gated.filter((file) => baseline[file] === undefined);
+  assert.deepEqual(
+    missing,
+    [],
+    `scanned but never compared: ${missing.join(', ')}. ` +
+      'Add each file to scripts/humanizer-baseline.json with its measured score, so the gate ratchets it.',
+  );
+});
+
 test('no exemption is stale', () => {
   for (const entry of EXEMPT) {
     const covered = allProse.filter(

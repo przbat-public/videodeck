@@ -110,7 +110,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repo-invariant test (`scripts/check-prose-gate-coverage.test.mjs`) fails
   when a Markdown file, or an HTML document under `docs/`, is covered by
   neither the gate nor a reasoned exemption. Exemptions carry their reason,
-  and a stale one fails the test as well. The client and extension HTML is
+  and a stale one fails the test as well. Every scanned file now carries a
+  baseline score too, because the gate skips a file it has no entry for: before
+  this, four documents were scanned on every run and never compared. The client
+  and extension HTML is
   application markup rather than prose, which the rule states instead of
   exempting it silently
 - **The stylesheets are linted, with a browser contract behind them**:
