@@ -26,8 +26,38 @@ First make sure Docker Desktop is running:
 Then start Elasticsearch (ports bound to loopback; there is no password, so ES must not be reachable from the network):
 
 ```bash
-docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.5.1
+docker run -d --name videodeck-elasticsearch --restart unless-stopped \
+  -p 127.0.0.1:9200:9200 \
+  -v videodeck-es-data:/usr/share/elasticsearch/data \
+  -e discovery.type=single-node \
+  -e xpack.security.enabled=false \
+  -e xpack.security.enrollment.enabled=false \
+  -e ES_JAVA_OPTS="-Xms1g -Xmx1g" \
+  --health-cmd 'curl -fs "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null || exit 1' \
+  --health-interval 10s --health-timeout 10s --health-retries 30 --health-start-period 60s \
+  docker.elastic.co/elasticsearch/elasticsearch:9.5.1
 ```
+
+Only the API port is published. The transport port stays inside the container,
+because a single node has nobody to talk to.
+
+The flags that carry weight:
+
+- `--name` plus `-v videodeck-es-data:...` keep the container addressable and
+  the index on disk, so replacing the container costs seconds instead of a full
+  reindex,
+- `--restart unless-stopped` brings the node back with Docker. An explicit
+  `docker stop videodeck-elasticsearch` still keeps it down,
+- `ES_JAVA_OPTS` holds the JVM at 1 GB. Without it the image claims half of the
+  Docker VM, and two nodes started that way are what the OOM killer ends,
+- the four health flags let `docker ps` answer the question that matters while
+  the JVM boots.
+
+Start Elasticsearch with this command rather than the Run button in Docker
+Desktop. That button passes no settings at all, so the node comes up with
+security enabled and no published port: the container looks fine in the
+dashboard, and the app answers `elasticsearch: "down"` because nothing listens
+on 9200.
 
 **Option B: Homebrew (macOS)**
 
@@ -45,10 +75,15 @@ Per the [official Elasticsearch documentation](https://www.elastic.co/guide/en/e
 **Checking whether Elasticsearch is running:**
 
 ```bash
+docker ps --filter name=videodeck-elasticsearch
 curl http://localhost:9200
 ```
 
-You should see a JSON response with information about Elasticsearch.
+You should see a JSON response with information about Elasticsearch, and the
+container should report `(healthy)`. That word means the cluster accepts index
+work, not just that the process is alive. A first boot takes about half a
+minute, and a node that was killed uncleanly spends longer on its translog
+recovery before it gets there.
 
 3. Configure environment variables:
 

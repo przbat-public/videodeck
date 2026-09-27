@@ -457,6 +457,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which jobs do the work: the lint job runs either way because it carries the
   prose gate, and the jobs it skips report as skipped, which GitHub counts as a
   success
+- The quickstart and the installation reference start Elasticsearch with a
+  command that survives a Docker restart. The old one-liner published 9200 but
+  left the container unnamed and volume-less, so replacing it cost the index,
+  and a node started from the Docker Desktop Run button took no settings at
+  all: security enabled, no published port, and an app that answered
+  `elasticsearch: "down"` while the container itself looked healthy. The
+  documented command names the container, keeps its index in a named volume,
+  bounds the JVM heap so two nodes cannot exhaust the Docker VM, and carries
+  the cluster health check the compose stack uses
 
 ## [1.0.0] - 2026-09-14
 

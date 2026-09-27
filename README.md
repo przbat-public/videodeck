@@ -58,11 +58,24 @@ videos straight from YouTube.
 2. Start Elasticsearch (bound to loopback; no password):
 
    ```bash
-   docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.5.1
+   docker run -d --name videodeck-elasticsearch --restart unless-stopped \
+     -p 127.0.0.1:9200:9200 \
+     -v videodeck-es-data:/usr/share/elasticsearch/data \
+     -e discovery.type=single-node \
+     -e xpack.security.enabled=false \
+     -e xpack.security.enrollment.enabled=false \
+     -e ES_JAVA_OPTS="-Xms1g -Xmx1g" \
+     --health-cmd 'curl -fs "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null || exit 1' \
+     --health-interval 10s --health-timeout 10s --health-retries 30 --health-start-period 60s \
+     docker.elastic.co/elasticsearch/elasticsearch:9.5.1
    ```
 
-   Homebrew or a manual install work too: see the
-   [installation reference](docs/INSTALL.md).
+   Run it as written. The name, the volume and the restart policy are what make
+   the node survive a Docker restart without a reindex, and the health flags
+   make `docker ps` show `(healthy)` once the cluster accepts work. The first
+   boot takes about half a minute. Each flag is explained in the
+   [installation reference](docs/INSTALL.md), along with the Homebrew and
+   manual routes.
 
 3. Create `server/.env`:
 
