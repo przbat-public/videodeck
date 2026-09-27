@@ -132,7 +132,9 @@ Seven shared primitives in `client/src/components/ui/`:
   pattern, no skeletons.
 
 Composite patterns: top bar (brand icon, back link on the detail page,
-gear menu), search bar (input + selects), video card
+gear menu), skip link (the first focusable element in the shell, off screen
+until it has focus, pointing at the landmark every route marks with
+`MAIN_CONTENT_ID`), search bar (input + selects), video card
 (thumbnail, title, muted metadata), queue item (status line, progress bar
 while running, log on errors — the server drops the routine progress
 lines before they reach the log), detail player (70% width, poster,
@@ -208,6 +210,13 @@ entrance animations, no parallax.
 - Every input has an accessible name: `aria-label` or a linked `<label>`.
   Radix selects carry `aria-label`; the menu trigger carries the app menu
   label and the menu itself follows the APG menu button pattern.
+- Every route names its document: the page renders a `<title>` and React
+  hoists it into the head, so the tab, the history entry and a screen reader
+  agree on where the reader is. The results route carries the search phrase.
+- Every route renders exactly one `h1`, visually hidden with
+  `.visually-hidden` where the visual hierarchy has no page title of its own
+  (the results route, where the search bar is the anchor). Card titles stay
+  `h3` under it.
 - Error banners use `role="alert"`; toasts are additional, not the only
   signal.
 - A control that is running an action says so: `aria-busy` on the region,
