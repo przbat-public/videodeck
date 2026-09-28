@@ -4,6 +4,7 @@ import { ELASTICSEARCH_URL } from '../config';
 import {
   bulkIndexDocuments,
   createIndexVersion,
+  deleteAllVideosFromFolder,
   deleteIndex,
   getIndexVersions,
   promoteIndexVersion,
@@ -116,6 +117,32 @@ describeIntegration('Elasticsearch integration', () => {
     expect(folded.map((item) => item.baseName)).toContain('20240101_czyszczenie');
   });
 
+  it('matches any query term, tolerates a typo and ignores a substring that is not a token', async () => {
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      indexName,
+      [toDocument(video('20240101_kosmos', 'Historia kosmosu')), toDocument(video('20240102_rower', 'Rower gorski'))],
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, indexName);
+
+    // best_fields with the default operator: one matching term is enough, which
+    // is the scenario the fake pinned as "matches any of the query terms"
+    const anyTerm = await searchVideos('kosmos rower', 'date-desc', [SCRATCH_FOLDER]);
+    expect(anyTerm.map((item) => item.baseName).sort()).toEqual(['20240101_kosmos', '20240102_rower']);
+
+    // fuzziness AUTO: a five-character term gets one edit, and a transposition
+    // is one edit
+    const typo = await searchVideos('hitsoria', 'date-desc', [SCRATCH_FOLDER]);
+    expect(typo.map((item) => item.baseName)).toEqual(['20240101_kosmos']);
+
+    // The other half of the same rule: the analyzer matches tokens, so a
+    // substring two edits beyond the budget does not match, and neither does a
+    // three-character prefix of a six-character token
+    expect(await searchVideos('toria', 'date-desc', [SCRATCH_FOLDER])).toHaveLength(0);
+    expect(await searchVideos('row', 'date-desc', [SCRATCH_FOLDER])).toHaveLength(0);
+  });
+
   it('finds videos by their transcript and never returns the transcript itself', async () => {
     const indexName = await createIndexVersion(SCRATCH_FOLDER);
     await bulkIndexDocuments(
@@ -132,6 +159,24 @@ describeIntegration('Elasticsearch integration', () => {
     expect(results).toHaveLength(1);
     expect(results[0]?.baseName).toBe('20240101_wyklad');
     expect(results[0]).not.toHaveProperty('transcriptText');
+  });
+
+  it('empties a folder through delete_by_query and keeps its index', async () => {
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      indexName,
+      documentsOf([video('20240101_pierwszy', 'Pierwszy dokument'), video('20240102_drugi', 'Drugi dokument')]),
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, indexName);
+
+    // The production path behind "delete every video of this folder": the fake
+    // used to clear the whole index whatever the query said, so this call was
+    // never checked against the cluster.
+    await deleteAllVideosFromFolder(SCRATCH_FOLDER);
+
+    expect(await searchVideos('dokument', 'date-desc', [SCRATCH_FOLDER])).toHaveLength(0);
+    expect(await getIndexVersions(SCRATCH_FOLDER)).toContain(indexName);
   });
 
   it('swaps the alias atomically and serves only the new index version', async () => {

@@ -84,11 +84,12 @@ export default defineConfig(({ mode }) => ({
       thresholds: {
         statements: 97.19,
         branches: 92.59,
-        functions: 96.28,
-        lines: 97.85,
-        // Ratchet: `npm run test:coverage` raises these in place whenever
-        // coverage grows, so they can only move up. Commit the change.
-        autoUpdate: true,
+        functions: 97,
+        lines: 98,
+        // Raising these is a deliberate commit: `autoUpdate` stays off so a
+        // gate run never rewrites this tracked file (it used to, which is how
+        // CI mutated the repository mid-run).
+        autoUpdate: false,
       },
     },
   },
