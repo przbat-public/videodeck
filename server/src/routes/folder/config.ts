@@ -11,6 +11,7 @@ import {
 } from '../../services/folderConfig';
 import { getLibrarySnapshot } from '../../services/libraryState';
 import { writeJsonAtomic } from '../../utils/fsUtils';
+import { createSingleFlight } from '../../utils/singleFlight';
 import type { NoParams, RouteHandler } from '../http';
 import { readBody } from '../http';
 import { configBodySchema, firstZodError } from '../validation';
@@ -51,6 +52,13 @@ export function invalidateStatusCache(): void {
   statusCache = null;
 }
 
+/**
+ * One build per revision, shared by whoever asks while it runs. The cache
+ * below only holds finished bodies, so without this two tabs that load at the
+ * same moment read every config.json twice.
+ */
+const statusBuilds = createSingleFlight<number, StatusResponse>();
+
 export const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, res) => {
   const videosFolderPaths = getVideosFolderPaths();
   // One snapshot for the cache key and the body alike: a library that moves
@@ -69,13 +77,22 @@ export const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, re
     return;
   }
 
-  // Configs live on an external disk: 56 folders read one after another
-  // cost up to 3 s (the same reason categories are read in parallel).
-  // readFolderConfig never throws, so the whole list is always built.
-  // Elasticsearch absence must not take the page down: the folder list, the
-  // configs and list.json presence all come from disk. An unreachable cluster
-  // reports no cached folders and says so, and the client hides the per-row
-  // index chips instead of claiming every channel lost its index.
+  const body = await statusBuilds.run(revision, () => buildStatusBody(videosFolderPaths, library.unavailable));
+  writeStatusCache(revision, body);
+  res.json(body);
+};
+
+/**
+ * The status body as the disks and the cluster describe it right now. Configs
+ * live on an external disk: 56 folders read one after another cost up to 3 s
+ * (the same reason categories are read in parallel), and readFolderConfig never
+ * throws, so the whole list is always built. Elasticsearch absence must not
+ * take the page down: the folder list, the configs and list.json presence all
+ * come from disk, an unreachable cluster reports no cached folders and says so,
+ * and the client hides the per-row index chips instead of claiming every
+ * channel lost its index.
+ */
+async function buildStatusBody(videosFolderPaths: string[], unavailable: readonly string[]): Promise<StatusResponse> {
   const [configs, cachedLookup] = await Promise.all([
     Promise.all(videosFolderPaths.map(readFolderConfig)),
     listCachedFolders(videosFolderPaths).catch(() => null),
@@ -110,13 +127,12 @@ export const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, re
     downloadDefaults: DEFAULT_DOWNLOAD_OPTIONS,
     indexedFolders,
     listExists,
-    unavailableFolders: [...library.unavailable],
+    unavailableFolders: [...unavailable],
     elasticsearch: elasticsearchUp ? 'ok' : 'down',
     status: 'ok',
   };
-  writeStatusCache(revision, body);
-  res.json(body);
-};
+  return body;
+}
 
 export const saveFolderConfig: RouteHandler<NoParams, SaveFolderConfigResponse> = async (req, res) => {
   const parsed = configBodySchema.safeParse(readBody(req));

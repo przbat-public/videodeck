@@ -314,6 +314,23 @@ describe('folder router', () => {
       expect(first.unavailableFolders).toEqual(['/videos/dysk-a']);
       expect(second.unavailableFolders).toEqual(['/videos/dysk-b']);
     });
+
+    it('shares one disk pass between two concurrent status reads', async () => {
+      // A slow disk is the case this guards: both readers arrive before the
+      // first body exists, which is what two tabs opening together look like.
+      mockedReadFolderConfig.mockImplementation(async () => {
+        await new Promise((resolve) => setImmediate(resolve));
+        return null;
+      });
+
+      const [first, second] = await Promise.all([request(app).get('/api/status'), request(app).get('/api/status')]);
+
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+      expect(first.body).toEqual(second.body);
+      // One pass over the two configured folders, not two
+      expect(mockedReadFolderConfig).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('PUT /api/folder/config', () => {
@@ -711,6 +728,26 @@ describe('folder router', () => {
 
       expect(response.status).toBe(403);
       expect(mockedFs.readFile).not.toHaveBeenCalled();
+    });
+
+    it('shares one disk pass between two concurrent summary reads', async () => {
+      // Two disk reads per folder, so a second tab arriving while the first
+      // answer is still being built is the difference between two passes and
+      // one; the delay keeps that window open on purpose.
+      mockedGetDownloadStatuses.mockImplementation(async () => {
+        await new Promise((resolve) => setImmediate(resolve));
+        return { downloadStatuses: {}, lastUpdatedDates: {} };
+      });
+
+      const [first, second] = await Promise.all([
+        request(app).get('/api/folder/summaries'),
+        request(app).get('/api/folder/summaries'),
+      ]);
+
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+      expect(first.body).toEqual(second.body);
+      expect(mockedGetDownloadStatuses).toHaveBeenCalledTimes(2);
     });
   });
 

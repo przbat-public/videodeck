@@ -61,6 +61,9 @@ module.exports = {
       conditionNames: ['require', 'types', 'import', 'node', 'default'],
     },
     // Generated/build output is never part of the dependency graph.
-    exclude: ['(^|/)(dist|coverage|test-results)/'],
+    // Generated output only: Playwright's HTML report carries a bundled trace
+    // viewer whose assets are their own graph, and cruising it reported a
+    // circular dependency that exists in that bundle, not in this repository.
+    exclude: ['(^|/)(dist|coverage|test-results|playwright-report)/'],
   },
 };
