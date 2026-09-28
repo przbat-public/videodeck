@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import * as fsSync from 'node:fs';
 import * as fs from 'node:fs/promises';
 import type { IncomingMessage } from 'node:http';
 import os from 'node:os';
+import path from 'node:path';
 import {
   ClearFinishedResponseSchema,
   downloadVideoEventSchema,
@@ -30,6 +32,7 @@ import {
   readFolderConfig,
 } from '../services/folderConfig';
 import { findEntryByVideoId, getDownloadStatuses, loadIndex, rebuildIndex } from '../services/folderIndex';
+import { reconcileLibrary, resetLibraryState } from '../services/libraryState';
 import { at } from '../test-utils';
 import { activeSseStreamCount } from '../utils/sseRegistry';
 import { invalidateStatusCache, invalidateSummaryCache } from './folder';
@@ -118,6 +121,13 @@ const mockedReadCollection = readCollection as jest.MockedFunction<typeof readCo
 const FOLDER = '/videos/channel-a';
 const OTHER_FOLDER = '/videos/channel-b';
 
+/**
+ * The env value this file inherits. The library snapshot reads the process env
+ * and jest shares one process per worker, so the folder tests restore it when
+ * the file is done instead of leaving the next file an empty library.
+ */
+const inheritedVideosFolderPath = process.env.VIDEOS_FOLDER_PATH;
+
 const enoent = () => Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
@@ -169,6 +179,11 @@ describe('folder router', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {
       /* silence expected error logs */
     });
+    // The library snapshot is module-level and reads the process env on every
+    // read: pin it to an empty library, so only the tests that move it see a
+    // folder and nothing leaks into the next test of this file.
+    process.env.VIDEOS_FOLDER_PATH = '';
+    resetLibraryState();
     mockedGetVideosFolderPaths.mockReturnValue([FOLDER, OTHER_FOLDER]);
     mockedFs.mkdir.mockResolvedValue(undefined);
     mockedFs.writeFile.mockResolvedValue(undefined);
@@ -193,6 +208,15 @@ describe('folder router', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  afterAll(() => {
+    if (inheritedVideosFolderPath === undefined) {
+      delete process.env.VIDEOS_FOLDER_PATH;
+    } else {
+      process.env.VIDEOS_FOLDER_PATH = inheritedVideosFolderPath;
+    }
+    resetLibraryState();
   });
 
   describe('GET /api/status', () => {
@@ -221,6 +245,7 @@ describe('folder router', () => {
         },
         indexedFolders: [FOLDER],
         listExists: { [FOLDER]: true, [OTHER_FOLDER]: true },
+        unavailableFolders: [],
         elasticsearch: 'ok',
         status: 'ok',
       });
@@ -241,6 +266,46 @@ describe('folder router', () => {
       // response says why
       expect(body.indexedFolders).toEqual([]);
       expect(body.elasticsearch).toBe('down');
+    });
+
+    it('reports an unplugged folder as unavailable', async () => {
+      const root = fsSync.mkdtempSync(path.join(os.tmpdir(), 'videodeck-library-'));
+      const folderPath = path.join(root, 'kanal');
+      fsSync.mkdirSync(folderPath, { recursive: true });
+      process.env.VIDEOS_FOLDER_PATH = folderPath;
+      resetLibraryState();
+
+      const online = StatusResponseSchema.parse((await request(app).get('/api/status')).body);
+      expect(online.unavailableFolders).toEqual([]);
+
+      // The drive leaves. The scan behind reconcileLibrary reads the folder
+      // through the mocked fs, which is how this file simulates a path that is
+      // no longer there, and the literal root stays configured either way.
+      fsSync.rmSync(folderPath, { recursive: true, force: true });
+      await reconcileLibrary();
+
+      const offline = StatusResponseSchema.parse((await request(app).get('/api/status')).body);
+      expect(offline.unavailableFolders).toEqual([folderPath]);
+    });
+
+    it('serves a fresh body when the library revision moves without the folder list changing', async () => {
+      // The route reads its folders from the mocked config, so both reads below
+      // report the same list. Only the library moves.
+      process.env.VIDEOS_FOLDER_PATH = '/videos/dysk-a';
+      resetLibraryState();
+      const first = StatusResponseSchema.parse((await request(app).get('/api/status')).body);
+      expect(first.unavailableFolders).toEqual(['/videos/dysk-a']);
+
+      process.env.VIDEOS_FOLDER_PATH = '/videos/dysk-b';
+      const second = StatusResponseSchema.parse((await request(app).get('/api/status')).body);
+
+      // Well inside the 5 s cache window: the folder list alone would have
+      // served the first body again. The path that left is no longer covered
+      // by the configured roots, so the memory drops it, and the new path is
+      // reported as gone: the two bodies differ either way.
+      expect(second.videosFolderPath).toEqual(first.videosFolderPath);
+      expect(first.unavailableFolders).toEqual(['/videos/dysk-a']);
+      expect(second.unavailableFolders).toEqual(['/videos/dysk-b']);
     });
   });
 

@@ -537,6 +537,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   slower writer fail with `ENOENT`, and the console then showed zeroes for a
   channel whose videos are on disk
 
+### Added
+
+- A channel whose drive is unplugged keeps its row on the download page.
+  `GET /api/status` now reports the configured and previously seen folders that
+  are not on disk, so the console renders a row per channel with a "dysk
+  odłączony" chip instead of letting the channel vanish with its volume. The
+  row keeps the queue counters it already had, its expand control and its
+  action menu are disabled with the reason one hover or one Tab away, and it
+  never opens the folder section, because every read behind that section would
+  fail. When no folder is left at all, the page says the drives are unplugged
+  instead of claiming that no path is configured
+
 ## [1.0.0] - 2026-09-14
 
 First public release.

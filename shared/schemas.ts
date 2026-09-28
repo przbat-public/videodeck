@@ -273,6 +273,15 @@ export const StatusResponseSchema = z.object({
   /** Which folders have a list.json (one request instead of one per folder) */
   listExists: z.record(z.string(), z.boolean()),
   /**
+   * Configured folders, and folders the configured roots have produced before,
+   * that are not on disk right now: a drive that was unplugged, or a literal
+   * root whose volume is away. A folder the current roots can no longer produce
+   * leaves the list with them, because it is no longer part of this library. A
+   * literal root stays in `videosFolderPath` either way, so the console keeps
+   * one row per channel instead of letting it vanish without a word.
+   */
+  unavailableFolders: z.array(z.string()),
+  /**
    * Whether the Elasticsearch read behind `indexedFolders` worked. When it is
    * `down`, the list is empty because nothing could be read, not because the
    * folders lost their index, so the console suppresses its index chips.

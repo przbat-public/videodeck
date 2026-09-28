@@ -28,6 +28,7 @@ const consoleStatus = () => ({
   // the "needs attention" filter have something to bite on.
   indexedFolders: folderPaths.filter((_, index) => index >= 5),
   listExists: Object.fromEntries(folderPaths.map((folderPath, index) => [folderPath, index % 5 !== 0])),
+  unavailableFolders: [],
   status: 'ok',
   elasticsearch: 'ok',
 });
@@ -51,10 +52,14 @@ const consoleSummaries = () => ({
 /** The channel name every folder's videos carry in the fake index */
 const channelName = (index: number): string => `Kanał ${String(index + 1).padStart(2, '0')}`;
 
-async function consolePage(page: Page, viewport = { width: 1280, height: 900 }): Promise<void> {
+async function consolePage(
+  page: Page,
+  viewport = { width: 1280, height: 900 },
+  status = consoleStatus(),
+): Promise<void> {
   await page.setViewportSize(viewport);
   await mockApi(page, {
-    status: consoleStatus(),
+    status,
     summaries: consoleSummaries(),
     channels: {
       channels: folderPaths.map((_, index) => channelName(index)),
@@ -114,6 +119,26 @@ test.describe('channel console', () => {
 
     const failed = page.locator('.channel-row', { hasText: 'kanal-03' });
     await expect(failed.getByText('1 błąd')).toBeVisible();
+  });
+
+  test('shows a channel whose drive is gone as unplugged', async ({ page }) => {
+    // The drive of the first channel is away: it leaves the folder list and
+    // the library reports it as unavailable, which must keep its row
+    const [gone] = folderPaths;
+    await consolePage(
+      page,
+      { width: 1280, height: 900 },
+      {
+        ...consoleStatus(),
+        videosFolderPath: folderPaths.slice(1),
+        unavailableFolders: [gone],
+      },
+    );
+
+    const row = page.locator('.channel-row', { hasText: 'kanal-01' });
+    await expect(row.getByText('dysk odłączony')).toBeVisible();
+    await expect(row.getByRole('button', { name: 'Pokaż filmy' })).toBeDisabled();
+    await expect(row.getByRole('button', { name: 'Więcej akcji' })).toBeDisabled();
   });
 
   test('narrows the rows from the filter chips', async ({ page }) => {

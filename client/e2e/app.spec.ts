@@ -321,6 +321,7 @@ test.describe('status page', () => {
         downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
         indexedFolders: ['/videos/e2e'],
         listExists: { '/videos/e2e': true },
+        unavailableFolders: [],
         status: 'ok',
         elasticsearch: 'ok',
       },

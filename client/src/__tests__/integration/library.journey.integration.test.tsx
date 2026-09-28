@@ -1,4 +1,6 @@
-import { act, cleanup, screen, waitFor } from '@testing-library/react';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { folderConfig, videoFiles } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -72,5 +74,46 @@ describe('a drive that arrives while the console is open', () => {
     );
 
     expect(screen.getByText('channel-integration')).toBeInTheDocument();
+  });
+});
+
+describe('a drive that leaves while the console is open', () => {
+  it('keeps its channel on screen as unplugged', async () => {
+    env.watchVideosDir();
+    await renderApp('/download');
+
+    await screen.findByText('channel-two', undefined, { timeout: LIBRARY_CHANGE_TIMEOUT_MS });
+    const revisionBefore = getLibraryRevision();
+
+    // The drive goes away: the folder leaves the watched root in one rename,
+    // the way a volume disappears, so the reconciling scan reports it as
+    // unavailable instead of forgetting it. A recursive delete would race the
+    // app writing its folder index in there.
+    await act(async () => {
+      await fs.rename(env.folder('channel-two'), path.join(env.root, 'channel-two-gone'));
+    });
+
+    /** The row of the channel that left, as the table renders it right now */
+    const channelRow = (): HTMLElement | null => screen.getByText('channel-two').closest('tr');
+
+    await waitFor(
+      () => {
+        expect(getLibraryRevision()).toBeGreaterThan(revisionBefore);
+        // Waiting on that one row and not on a bare chip: the library also
+        // reports paths that were configured earlier and are gone, so a chip
+        // anywhere on the page would pass without this channel moving
+        expect(within(channelRow() as HTMLElement).getByText('dysk odłączony')).toBeInTheDocument();
+      },
+      { timeout: LIBRARY_CHANGE_TIMEOUT_MS },
+    );
+
+    // The row kept its name and its place, and no reload happened: the channel
+    // that never moved is still rendered by the same page
+    const row = channelRow();
+    expect(row).not.toBeNull();
+    expect(screen.getByText('channel-integration')).toBeInTheDocument();
+    // Nothing behind that row can work while the drive is away
+    expect(within(row as HTMLElement).getByRole('button', { name: 'Pokaż filmy' })).toBeDisabled();
+    expect(within(row as HTMLElement).getByRole('button', { name: 'Więcej akcji' })).toBeDisabled();
   });
 });

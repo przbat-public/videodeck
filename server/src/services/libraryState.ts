@@ -160,6 +160,27 @@ function globSegmentToRegExp(segment: string): RegExp {
   return new RegExp(`^${source}$`);
 }
 
+/**
+ * Whether one configured root could still produce this folder, which is what
+ * keeps a remembered folder worth remembering. A literal root covers itself; a
+ * glob root covers the paths its segments match, whether or not the drive is
+ * mounted right now.
+ */
+function coversRoot(folderPath: string, root: string): boolean {
+  if (!hasGlobMagic(root)) {
+    return folderPath === root;
+  }
+  const rootSegments = root.split('/').filter((segment) => segment.length > 0);
+  const folderSegments = folderPath.split('/').filter((segment) => segment.length > 0);
+  if (rootSegments.length !== folderSegments.length) {
+    return false;
+  }
+  return rootSegments.every((segment, index) => {
+    const folderSegment = folderSegments[index] ?? '';
+    return segment.includes('*') ? globSegmentToRegExp(segment).test(folderSegment) : segment === folderSegment;
+  });
+}
+
 /** Direct subdirectory names; [] when unreadable */
 function listDirectories(dir: string): string[] {
   try {
@@ -266,8 +287,10 @@ async function isChannelFolderAsync(folderPath: string): Promise<boolean> {
   }
 }
 
-/** Directories matched by one pattern segment below the given bases (async) */
-async function expandSegmentAsync(segment: string, bases: readonly string[]): Promise<string[]> {
+/** Directories matched by one pattern segment below the given bases (async) */ async function expandSegmentAsync(
+  segment: string,
+  bases: readonly string[],
+): Promise<string[]> {
   const next: string[] = [];
   if (segment.includes('*')) {
     const matcher = globSegmentToRegExp(segment);
@@ -395,12 +418,32 @@ function notifyListeners(): void {
 }
 
 /**
+ * Drop the remembered folders the configured roots can no longer produce. A
+ * folder is remembered because a drive may come back, and what can come back is
+ * what the roots of this moment could produce: the library root that
+ * `VIDEOS_FOLDER_PATH=/videos` remembered before the environment moved on to
+ * `/videos/*` is still on disk, so reporting it as an unplugged drive would be
+ * a lie.
+ */
+function forgetUncoveredFolders(roots: readonly string[]): void {
+  for (const folderPath of [...seenFolders]) {
+    if (!roots.some((root) => coversRoot(folderPath, root))) {
+      seenFolders.delete(folderPath);
+    }
+  }
+}
+
+/**
  * Install one scan as the current snapshot. The revision stays put when
  * nothing changed, so a listener that re-reads on every notification costs
  * nothing on a quiet library.
  */
 function publish(scan: LibraryScan): void {
   const found = new Set(scan.folders);
+  const previous = snapshot;
+  if (previous !== null && !sameList(previous.roots, scan.roots)) {
+    forgetUncoveredFolders(scan.roots);
+  }
   for (const folderPath of scan.folders) {
     seenFolders.add(folderPath);
   }
@@ -408,7 +451,6 @@ function publish(scan: LibraryScan): void {
     ...scan.awayLiterals,
     ...[...seenFolders].filter((folderPath) => !found.has(folderPath)),
   ]);
-  const previous = snapshot;
   const changed =
     previous === null ||
     !sameList(previous.roots, scan.roots) ||
@@ -510,6 +552,20 @@ export function reconcileLibrary(): Promise<void> {
     });
   reconcileInFlight = run;
   return run;
+}
+
+/**
+ * Resolve once no reconcile is running and none is owed. Tests call it before
+ * they tear a tree down: a scan that is still in flight publishes after the
+ * test that started it, and that publish would land in the next one. The
+ * trailing pass a caller may have triggered is awaited too, so the promise
+ * settling means the module is quiet.
+ */
+export async function whenLibraryIdle(): Promise<void> {
+  while (reconcileInFlight !== null) {
+    const running = reconcileInFlight;
+    await running;
+  }
 }
 
 /**

@@ -8,6 +8,7 @@ import type { AttentionReason, ChannelRow } from '../utils/channelTable';
 import { summarizeChannels } from '../utils/channelTable';
 import { Button } from './ui/Button';
 import { Menu, MenuContent, MenuItem, MenuLinkItem, MenuSeparator, MenuTrigger } from './ui/Menu';
+import { Tooltip } from './ui/Tooltip';
 
 interface ChannelTableProps {
   rows: ChannelRow[];
@@ -29,11 +30,13 @@ interface ChannelTableProps {
  * The reasons shown as chips in the channel cell. The others already have a
  * home: the stale counts sit in the video column and the failed jobs in the
  * queue column, so a chip would only repeat them. A missing `list.json` shows
- * as a zero count plus the "fetch the playlist" action.
+ * as a zero count plus the "fetch the playlist" action. A drive that left has
+ * no column of its own and no other way to say it, so it chips.
  */
-const CHANNEL_CELL_REASONS: readonly AttentionReason[] = ['noChannelUrl', 'noIndex'];
+const CHANNEL_CELL_REASONS: readonly AttentionReason[] = ['driveMissing', 'noChannelUrl', 'noIndex'];
 
 type AttentionLabelKey =
+  | 'channelConsole.attention.driveMissing'
   | 'channelConsole.attention.noChannelUrl'
   | 'channelConsole.attention.noList'
   | 'channelConsole.attention.noIndex'
@@ -42,6 +45,7 @@ type AttentionLabelKey =
 
 /** i18n key of every "needs attention" chip */
 const ATTENTION_LABEL_KEYS: Record<AttentionReason, AttentionLabelKey> = {
+  driveMissing: 'channelConsole.attention.driveMissing',
   noChannelUrl: 'channelConsole.attention.noChannelUrl',
   noList: 'channelConsole.attention.noList',
   noIndex: 'channelConsole.attention.noIndex',
@@ -219,6 +223,29 @@ function ChannelActionsCell({
   const { t } = useTranslation();
   const busy = pendingAction !== undefined;
 
+  if (!row.available) {
+    // Every read behind these controls would run against a folder that is not
+    // there. They stay in place, so the row keeps its shape, and they are
+    // disabled with the reason one hover away.
+    return (
+      <td data-label={t('channelConsole.column.actions')}>
+        <Tooltip label={t('channelConsole.actions.driveMissingHint')}>
+          {/* biome-ignore lint/a11y/noNoninteractiveTabindex: the span is the Radix tooltip trigger around the disabled controls; focus is the keyboard path to the hint */}
+          <span className="channel-actions" tabIndex={0}>
+            <Button size="small" disabled>
+              {t('channelConsole.expand')}
+            </Button>
+            <Menu>
+              <MenuTrigger disabled aria-label={t('channelConsole.actions.more')}>
+                <Ellipsis aria-hidden="true" focusable="false" className="channel-menu-icon" />
+              </MenuTrigger>
+            </Menu>
+          </span>
+        </Tooltip>
+      </td>
+    );
+  }
+
   return (
     <td data-label={t('channelConsole.column.actions')} aria-busy={busy}>
       <span className="channel-actions">
@@ -357,7 +384,10 @@ export function ChannelTable({
             <ChannelRowItem
               key={row.folderPath}
               row={row}
-              expanded={state.folder === row.folderPath}
+              // A folder whose drive is gone never opens: everything the
+              // expanded section reads would fail, and the row already says
+              // why. This also covers the URL still naming that folder.
+              expanded={row.available && state.folder === row.folderPath}
               countsLoading={countsLoading}
               pendingAction={pending[row.folderPath]}
               onToggle={toggleRow}

@@ -9,6 +9,7 @@ import {
   readFolderConfig,
   validateFolderConfig,
 } from '../../services/folderConfig';
+import { getLibrarySnapshot } from '../../services/libraryState';
 import { writeJsonAtomic } from '../../utils/fsUtils';
 import type { NoParams, RouteHandler } from '../http';
 import { readBody } from '../http';
@@ -24,20 +25,25 @@ import { requireAllowedFolder } from './guards';
  * it, because the write changes what the status page reports.
  */
 
-/** 5 s cache of GET /api/status keyed by the expanded folder list */
+/**
+ * 5 s cache of GET /api/status, keyed by the library revision. The revision
+ * covers the folder list and the folders that went away (the library bumps it
+ * for either), so the body cannot outlive the library it describes, and a
+ * change that leaves the folder list alone still gets a fresh answer.
+ */
 const STATUS_CACHE_TTL_MS = 5_000;
-let statusCache: { key: string; readAt: number; body: StatusResponse } | null = null;
+let statusCache: { key: number; readAt: number; body: StatusResponse } | null = null;
 
-function readStatusCache(folderPaths: string[]): StatusResponse | undefined {
+function readStatusCache(revision: number): StatusResponse | undefined {
   const cached = statusCache;
-  if (cached === null || cached.key !== folderPaths.join('\n') || Date.now() - cached.readAt >= STATUS_CACHE_TTL_MS) {
+  if (cached === null || cached.key !== revision || Date.now() - cached.readAt >= STATUS_CACHE_TTL_MS) {
     return undefined;
   }
   return cached.body;
 }
 
-function writeStatusCache(folderPaths: string[], body: StatusResponse): void {
-  statusCache = { key: folderPaths.join('\n'), readAt: Date.now(), body };
+function writeStatusCache(revision: number, body: StatusResponse): void {
+  statusCache = { key: revision, readAt: Date.now(), body };
 }
 
 /** Tests: drop the status cache */
@@ -47,12 +53,17 @@ export function invalidateStatusCache(): void {
 
 export const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, res) => {
   const videosFolderPaths = getVideosFolderPaths();
+  // One snapshot for the cache key and the body alike: a library that moves
+  // while this answer is built leaves a body under the older revision, so the
+  // next request asks again instead of serving a mixed state.
+  const library = getLibrarySnapshot();
+  const revision = library.revision;
 
   // The status page polls this endpoint; building it reads every folder's
   // config.json plus one ES alias check per folder (up to ~3 s over
   // external disks). Serve a 5 s cache so a burst of page loads cannot
   // hammer the drives or Elasticsearch.
-  const cached = readStatusCache(videosFolderPaths);
+  const cached = readStatusCache(revision);
   if (cached !== undefined) {
     res.json(cached);
     return;
@@ -99,10 +110,11 @@ export const getStatus: RouteHandler<NoParams, StatusResponse> = async (_req, re
     downloadDefaults: DEFAULT_DOWNLOAD_OPTIONS,
     indexedFolders,
     listExists,
+    unavailableFolders: [...library.unavailable],
     elasticsearch: elasticsearchUp ? 'ok' : 'down',
     status: 'ok',
   };
-  writeStatusCache(videosFolderPaths, body);
+  writeStatusCache(revision, body);
   res.json(body);
 };
 

@@ -13,6 +13,7 @@ import {
   startLibraryWatch,
   stopLibraryWatch,
   subscribeLibraryChanges,
+  whenLibraryIdle,
 } from './libraryState';
 
 /**
@@ -54,9 +55,9 @@ async function settleUntil(predicate: () => boolean): Promise<void> {
 }
 
 /**
- * Real loop turns for a pass the service started on its own. Waiting on the
- * filesystem boundary alone proves a scan began, not that it published, and a
- * publish landing after the test would reach into the next one.
+ * Real loop turns for work the service started on its own, so a pass that is
+ * still in flight cannot publish into the next test. `whenLibraryIdle` is the
+ * deterministic form; this is the belt for the braces.
  */
 async function drainTurns(): Promise<void> {
   for (let turn = 0; turn < SETTLE_TURNS; turn += 1) {
@@ -160,7 +161,10 @@ describe('libraryState', () => {
     resetLibraryState();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // A scan still in flight would publish after this test's environment is
+    // gone and land in the next one, so the module is drained first.
+    await whenLibraryIdle();
     stopLibraryWatch();
     resetLibraryState();
     for (const cleanup of cleanups.splice(0)) {
@@ -263,6 +267,7 @@ describe('libraryState', () => {
     await settleUntil(() => scansOfTheRoot() >= 2);
     // Let the trailing pass publish before the tree goes away, so it cannot
     // land in the next test as a snapshot of a folder that no longer exists.
+    await whenLibraryIdle();
     await drainTurns();
 
     expect(scansOfTheRoot()).toBe(2);
@@ -413,5 +418,24 @@ describe('libraryState', () => {
     expect(getLibrarySnapshot().roots).toEqual([`${otherBase}/*`]);
     expect(fake.closed).toEqual([base]);
     expect(fake.watched).toEqual([base, otherBase]);
+  });
+
+  it('forgets a folder the current roots no longer cover', async () => {
+    const channelA = makeChannelFolder(base, 'kanal-a');
+    // The library root itself is a literal entry before anything narrows it,
+    // which is how the deep test environment boots the app
+    process.env.VIDEOS_FOLDER_PATH = base;
+    startLibraryWatch(fakeWatch().deps);
+    expect(getLibrarySnapshot().folders).toEqual([base]);
+
+    // The configured set becomes the folders under it: the root is no longer
+    // part of the library, and it is still on disk, so reporting it as an
+    // unplugged drive would be a lie
+    process.env.VIDEOS_FOLDER_PATH = `${base}/*`;
+    await reconcileLibrary();
+
+    const snapshot = getLibrarySnapshot();
+    expect(snapshot.folders).toEqual([channelA]);
+    expect(snapshot.unavailable).toEqual([]);
   });
 });

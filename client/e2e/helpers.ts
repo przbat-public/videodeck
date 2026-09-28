@@ -171,6 +171,7 @@ export async function mockApi(page: Page, handlers: MockApiHandlers = {}): Promi
           downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
           indexedFolders: ['/videos/e2e'],
           listExists: { '/videos/e2e': false },
+          unavailableFolders: [],
           status: 'ok',
           elasticsearch: 'ok',
         },

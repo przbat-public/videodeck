@@ -16,6 +16,7 @@ const statusResponse: StatusResponse = {
   downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
   indexedFolders: ['/videos/a'],
   listExists: { '/videos/a': true, '/videos/b': false },
+  unavailableFolders: [],
   status: 'ok',
   elasticsearch: 'ok',
 };
@@ -369,6 +370,26 @@ describe('StatusPage', () => {
     renderPage();
 
     expect(await screen.findByText('Brak skonfigurowanych ścieżek')).toBeInTheDocument();
+  });
+
+  it('says the drives are unplugged when every configured folder is gone', async () => {
+    installFetch({
+      status: () =>
+        json({
+          ...statusResponse,
+          videosFolderPath: [],
+          folderConfigs: {},
+          unavailableFolders: ['/videos/offline'],
+        }),
+    });
+    renderPage();
+
+    // The page knows a folder, so it is not a config problem: the drive left.
+    // The row stays, marked, instead of the channel vanishing with it.
+    expect(await screen.findByText('Wszystkie skonfigurowane dyski są odłączone')).toBeInTheDocument();
+    expect(screen.queryByText('Brak skonfigurowanych ścieżek')).toBeNull();
+    expect(await screen.findByText('/videos/offline')).toBeInTheDocument();
+    expect(screen.getByText('dysk odłączony')).toBeInTheDocument();
   });
 
   it('queues a channel from its row and refreshes the queue and the counts', async () => {
