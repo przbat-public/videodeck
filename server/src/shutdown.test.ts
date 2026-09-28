@@ -59,6 +59,17 @@ describe('shutdown', () => {
     expect(exit).toHaveBeenCalledWith(0);
   });
 
+  it('stops the library watcher before closing the server', () => {
+    const stopLibraryWatch = jest.fn();
+    const exit = jest.fn();
+    const close = jest.fn((callback?: () => void) => callback?.());
+
+    shutdown({ server: { close }, cancelJobs: jest.fn(), exit, stopLibraryWatch });
+
+    expect(stopLibraryWatch).toHaveBeenCalled();
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+
   it('waits for the download queue to drain before closing the server', async () => {
     const cancelJobs = jest.fn();
     const exit = jest.fn();

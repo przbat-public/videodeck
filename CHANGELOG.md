@@ -506,6 +506,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bounds the JVM heap so two nodes cannot exhaust the Docker VM, and carries
   the cluster health check the compose stack uses
 
+### Changed
+
+- The server watches the configured video folders instead of re-scanning them on
+  a timer. `VIDEOS_FOLDER_PATH` keeps its syntax, but the folder list no longer
+  waits for a cache to expire: a drive mounted while the server runs reaches it
+  once the watcher reports the change, and the debounce on that report is 300
+  ms. A backstop scan every minute covers network shares, which deliver no
+  filesystem events at all
+
 ## [1.0.0] - 2026-09-14
 
 First public release.

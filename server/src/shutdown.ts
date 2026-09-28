@@ -8,6 +8,8 @@ export interface ShutdownOptions {
   awaitIdle?: (timeoutMs: number) => Promise<void>;
   /** Ends open SSE streams so server.close() does not wait on keep-alive connections */
   closeSseStreams?: () => void;
+  /** Closes the library watcher (an open fs.watch handle keeps the loop alive) */
+  stopLibraryWatch?: () => void;
   exit?: (code: number) => void;
   /** How long to wait for open connections before forcing an exit */
   forceExitMs?: number;
@@ -41,6 +43,7 @@ export function shutdown(options: ShutdownOptions): void {
   logger.info('Shutting down: cancelling download jobs and closing the server…');
   options.cancelJobs();
   options.closeSseStreams?.();
+  options.stopLibraryWatch?.();
 
   const forceTimer = setTimeout(() => {
     logger.error(`Server did not close within ${forceExitMs} ms — forcing exit`);

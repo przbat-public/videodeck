@@ -36,6 +36,7 @@ export const YTDLP_ARGV_LOG_NAME = '.fake-ytdlp-argv.jsonl';
 type AppModule = typeof import('../../server/src/app.js');
 type FolderRoutesModule = typeof import('../../server/src/routes/folder.js');
 type IndexMaintenanceModule = typeof import('../../server/src/routes/videos/indexMaintenance.js');
+type LibraryStateModule = typeof import('../../server/src/services/libraryState.js');
 
 // Local declaration so both typechecking programs are happy: the server
 // program sees the real @types/jest shape, the client program gets a stub.
@@ -61,6 +62,13 @@ async function loadIndexMaintenanceModule(): Promise<IndexMaintenanceModule> {
     return jest.requireActual<IndexMaintenanceModule>('../../server/src/routes/videos/indexMaintenance');
   }
   return import('../../server/src/routes/videos/indexMaintenance.js');
+}
+
+async function loadLibraryStateModule(): Promise<LibraryStateModule> {
+  if (typeof jest !== 'undefined') {
+    return jest.requireActual<LibraryStateModule>('../../server/src/services/libraryState');
+  }
+  return import('../../server/src/services/libraryState.js');
 }
 
 export interface DeepServerTestEnv {
@@ -147,6 +155,12 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
   // vite-node cannot require() — probe the runtime and use its loader.
   const { createApp } = await loadAppModule();
   const app = createApp();
+  // The real watcher runs for the whole environment, so a suite can create a
+  // channel folder while the app is up and have it reach the folder list.
+  // Behind the app, not in front of it: the snapshot it arms from is the one
+  // the routes read.
+  const libraryState = await loadLibraryStateModule();
+  libraryState.startLibraryWatch();
 
   // Optional real HTTP listener: the client integration suite points its
   // fetch proxy at it instead of driving the app through supertest.
@@ -171,6 +185,10 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
   };
   const setFolders = (...names: string[]): void => {
     process.env.VIDEOS_FOLDER_PATH = names.map(folder).join(';');
+    // The value changed, so the snapshot is rebuilt and the watcher re-armed
+    // on the new roots before the test's next request. A folder created right
+    // after this call is watched, not merely picked up by a later read.
+    libraryState.getLibrarySnapshot();
   };
   const ytDlpCalls = (folderPath: string): Array<{ cwd: string; args: string[] }> => {
     try {
@@ -209,6 +227,9 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
     ytDlpCalls,
     resetServerState,
     async dispose() {
+      // Stop watching before the tree goes away: the handles would outlive the
+      // test and keep firing at a directory that no longer exists.
+      libraryState.stopLibraryWatch();
       if (httpServer) {
         await new Promise<void>((resolve, reject) => httpServer.close((error) => (error ? reject(error) : resolve())));
       }
