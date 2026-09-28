@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import type { MockApiHandlers } from './helpers';
 import { expandChannel, json, mockApi, video } from './helpers';
 
 /**
@@ -9,6 +10,23 @@ import { expandChannel, json, mockApi, video } from './helpers';
  * 200 percent zoom reflow check at the 320px equivalent.
  */
 
+/**
+ * The two surfaces the shell can show on top of a page: the outage banner and
+ * the "a drive arrived" strip. The contract probes below run with them in the
+ * DOM, because a regression in a always-mounted row is exactly what a probe
+ * that never mounts it cannot see.
+ */
+const SHELL_SURFACES: Partial<MockApiHandlers> = {
+  health: { status: 'degraded', elasticsearch: 'down', revision: 1 },
+  libraryFrames: [{ type: 'library', revision: 2, folders: ['/videos/e2e', '/videos/plugged-in'], unavailable: [] }],
+};
+
+/** Fail loudly when a fixture stopped producing the surface it exists for */
+async function expectShellSurfaces(page: Page): Promise<void> {
+  await expect(page.locator('.health-banner')).toBeVisible();
+  await expect(page.locator('.library-notice')).toBeVisible();
+}
+
 const VIEWPORTS = [
   { name: 'phone-360', width: 360, height: 800 },
   { name: 'tablet-768', width: 768, height: 1024 },
@@ -18,7 +36,7 @@ const VIEWPORTS = [
 /** Interactive elements whose hit area must reach 44x44px on touch */
 const TOUCH_SELECTOR = 'button, select, a, input, [role="button"], [role="combobox"], label.ui-checkbox';
 
-async function searchPage(page: Page): Promise<void> {
+async function searchPage(page: Page, extra: Partial<MockApiHandlers> = {}): Promise<void> {
   await mockApi(page, {
     search: () => ({
       videos: [
@@ -27,6 +45,7 @@ async function searchPage(page: Page): Promise<void> {
       ],
       totalCount: 2,
     }),
+    ...extra,
   });
   await page.goto('/');
   await page.locator('.video-card').first().waitFor();
@@ -193,6 +212,17 @@ test.describe('responsive contract', () => {
       expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     });
 
+    test(`no horizontal overflow with the shell surfaces at ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await searchPage(page, SHELL_SURFACES);
+      await expectShellSurfaces(page);
+      for (const url of ['/', '/download']) {
+        await page.goto(url);
+        await page.locator('.app-main').waitFor();
+        expect(await horizontalOverflow(page), `overflow on ${url}`).toBeLessThanOrEqual(0);
+      }
+    });
+
     test(`no horizontal overflow on the detail page at ${viewport.name}`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await mockApi(page);
@@ -226,13 +256,16 @@ test.describe('responsive contract', () => {
 
   test('every touch target reaches 44x44px on a phone', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 800 });
-    await searchPage(page);
+    // With the shell surfaces mounted, so the strip's two buttons are measured
+    await searchPage(page, SHELL_SURFACES);
     for (const url of ['/', '/download']) {
       await page.goto(url);
       await page.locator('.app-main').waitFor();
       const undersized = await page.evaluate(scanTouchTargets, TOUCH_SELECTOR);
       expect(undersized, `undersized touch targets on ${url}`).toEqual([]);
     }
+    await page.goto('/download');
+    await expectShellSurfaces(page);
   });
 
   test('the detail player fills the phone width and keeps 16:9', async ({ page }) => {
@@ -283,7 +316,10 @@ test.describe('theme contrast', () => {
           videos: [video('v1', 'Silnik krokowy'), video('v2', 'Długi tytuł testowy na małym ekranie')],
           totalCount: 2,
         }),
+        ...SHELL_SURFACES,
       });
+      await page.goto('/download');
+      await expectShellSurfaces(page);
       for (const url of ['/', '/download', '/video/deepE2e0001']) {
         const violations = await collectContrastViolations(page, url, theme);
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme);

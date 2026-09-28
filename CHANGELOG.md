@@ -613,6 +613,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the caller asks for `ignore_unavailable`, and `delete_by_query` applies its
   query instead of emptying the index
 
+### Fixed
+
+- A drive that arrives while the tab is hidden is announced when the tab comes
+  back. The arrival was computed per stream connection, and a hidden tab drops
+  the connection, so the one action that indexes the new channels never appeared
+  in the case that matters most on a self-hosted box
+- An arrival notice reaches a screen reader. The live region was mounted
+  together with its text, which is the documented way to lose the announcement
+- The reindex has one run state instead of one per surface. The shell notice and
+  the results page started two runs for one decision and reported two progress
+  toasts, and the notice's disabled reason described an instance rather than the
+  run that was going
+
+### Changed
+
+- A page reads the library-backed endpoints once per load instead of twice. The
+  revision moved moments after mount and aborted the read that had already
+  reached the disk, which over external drives meant two full passes for the
+  same answer
+
 ## [1.0.0] - 2026-09-14
 
 First public release.

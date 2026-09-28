@@ -1,40 +1,28 @@
 import type { JSX } from 'react';
-import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCacheRefresh } from '../hooks/useCacheRefresh';
+import { useLibraryArrivals } from '../hooks/useLibrary';
 import { useElasticsearchState } from '../utils/elasticsearchStatus';
-import { subscribeLibraryFrames } from '../utils/libraryStatus';
+import { clearLibraryArrivals } from '../utils/libraryStatus';
 import { Button } from './ui/Button';
 import { Tooltip } from './ui/Tooltip';
 
 /**
- * "A drive arrived" notice. The event stream says which folders the library
- * gained, and this is the one place that turns that into an offer, because
- * nothing indexes a drive on its own: the operator decides when the disk work
- * starts.
+ * "A drive arrived" notice. The library store says which folders arrived, and
+ * this is the one place that turns that into an offer, because nothing indexes
+ * a drive on its own: the operator decides when the disk work starts.
  *
  * The action is the existing reindex with `onlyMissing`, so a channel whose
  * index survived an earlier session is skipped and keeps serving searches. The
  * notice stands down once the action is taken or dismissed, and the reindex
- * toasts carry the progress from there.
+ * toasts carry the progress from there. What a screen reader hears comes from
+ * `LibraryAnnouncer`, whose live region is mounted before this strip exists.
  */
 export function LibraryNotice(): JSX.Element | null {
   const { t } = useTranslation();
   const elasticsearch = useElasticsearchState();
   const { loading, refreshCache } = useCacheRefresh();
-  const [arrived, setArrived] = useState<string[]>([]);
-
-  useEffect(
-    () =>
-      subscribeLibraryFrames((frame) => {
-        const added = frame.added ?? [];
-        if (added.length === 0) {
-          return; // the opening frame carries the library, not a change
-        }
-        setArrived((previous) => [...previous, ...added.filter((folderPath) => !previous.includes(folderPath))]);
-      }),
-    [],
-  );
+  const arrived = useLibraryArrivals();
 
   if (arrived.length === 0) {
     return null;
@@ -46,12 +34,12 @@ export function LibraryNotice(): JSX.Element | null {
     elasticsearch === 'down' ? t('library.reindexOffline') : loading ? t('reindex.refreshing') : undefined;
 
   const startIndexing = (): void => {
-    setArrived([]);
+    clearLibraryArrivals();
     void refreshCache({ onlyMissing: true });
   };
 
   return (
-    <div className="library-notice" role="status">
+    <div className="library-notice">
       <span className="library-notice-text">{t('library.detected', { count: arrived.length })}</span>
       <div className="library-notice-actions">
         <Tooltip label={disabledReason}>
@@ -64,7 +52,7 @@ export function LibraryNotice(): JSX.Element | null {
             </Button>
           </span>
         </Tooltip>
-        <Button size="small" onClick={() => setArrived([])}>
+        <Button size="small" onClick={clearLibraryArrivals}>
           {t('library.dismiss')}
         </Button>
       </div>

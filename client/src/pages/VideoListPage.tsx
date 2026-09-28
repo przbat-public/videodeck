@@ -18,6 +18,7 @@ import { useRecreateIndices } from '../hooks/useRecreateIndices';
 import { useSearchUrlState } from '../hooks/useSearchUrlState';
 import { useVideoSearch } from '../hooks/useVideoSearch';
 import { useElasticsearchState } from '../utils/elasticsearchStatus';
+import { subscribeReindexFinished } from '../utils/reindexStore';
 
 /**
  * The two names this route gives the search on screen: the tab title and the
@@ -90,10 +91,20 @@ export default function VideoListPage(): JSX.Element {
   }, [search, query, sort, category, channel]);
 
   const handleRefreshCache = useCallback(async (): Promise<void> => {
-    // refreshCache resolves when the server-side reindex is over
+    // The run's outcome is handled where the run lives; this only starts it
     await refreshCache(onlyMissing ? { onlyMissing: true } : undefined);
-    await search({ query, sort, category, channel });
-  }, [refreshCache, onlyMissing, search, query, sort, category, channel]);
+  }, [refreshCache, onlyMissing]);
+
+  // A finished reindex changes what the index holds, so the results on screen
+  // are stale. The rule lives here once and follows every run, including one
+  // the shell's arrival notice started on another page's behalf.
+  useEffect(
+    () =>
+      subscribeReindexFinished(() => {
+        void search({ query, sort, category, channel });
+      }),
+    [search, query, sort, category, channel],
+  );
 
   const handleReload = useCallback(async (): Promise<void> => {
     await search({ query, sort, category, channel });

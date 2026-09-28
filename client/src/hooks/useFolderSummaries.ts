@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import i18n from '../i18n';
 import { apiGet } from '../utils/apiClient';
 import { logError } from '../utils/logError';
-import { useLibraryRevision } from './useLibrary';
+import { useLibraryReadKey } from './useLibrary';
 
 interface UseFolderSummariesResult {
   /** Counts per folder path; empty until the endpoint answers */
@@ -44,7 +44,7 @@ export function useFolderSummaries(enabled = true): UseFolderSummariesResult {
   const [error, setError] = useState<string | null>(null);
   // The counts belong to the folders that are attached right now, so a drive
   // arriving is exactly the moment they have to be read again.
-  const revision = useLibraryRevision();
+  const readKey = useLibraryReadKey();
 
   const load = useCallback(async (signal?: AbortSignal): Promise<void> => {
     setFetching(true);
@@ -66,10 +66,8 @@ export function useFolderSummaries(enabled = true): UseFolderSummariesResult {
       }
     }
   }, []);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the revision is a re-read trigger, not an input; the loader asks the server for the folders that exist now
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || readKey === null) {
       return;
     }
     const controller = new AbortController();
@@ -78,7 +76,7 @@ export function useFolderSummaries(enabled = true): UseFolderSummariesResult {
     return () => {
       controller.abort();
     };
-  }, [enabled, load, revision]);
+  }, [enabled, load, readKey]);
 
   const reload = useCallback((): void => {
     void load();

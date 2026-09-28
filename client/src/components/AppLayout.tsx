@@ -9,6 +9,7 @@ import { AppMenu } from './AppMenu';
 import type { AppMenuSectionSpec } from './appMenuRegistry';
 import { RegisterSectionsContext, SectionsContext, sectionsSignature } from './appMenuRegistry';
 import { ElasticsearchBanner } from './ElasticsearchBanner';
+import { LibraryAnnouncer } from './LibraryAnnouncer';
 import { LibraryNotice } from './LibraryNotice';
 
 /**
@@ -72,6 +73,7 @@ export function AppLayout(): JSX.Element {
         <AppMenu theme={theme} onThemeChange={setTheme} />
       </header>
       <ElasticsearchBanner />
+      <LibraryAnnouncer />
       <LibraryNotice />
       <Outlet />
     </AppMenuProvider>

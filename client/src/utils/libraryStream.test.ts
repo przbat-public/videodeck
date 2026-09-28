@@ -76,16 +76,19 @@ describe('libraryStream', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/api/events', expect.objectContaining({ cache: 'no-store' }));
     expect(getLibraryState().folders).toEqual(['/videos/a']);
-    expect(getLibraryState().streamOpen).toBe(true);
   });
 
   it('drops a frame that does not match the contract', async () => {
-    fetchMock.mockResolvedValue(openResponse(['data: {"type":"mystery"}\n\n']).response);
+    // A mystery frame followed by a valid one: only the valid one may land, so
+    // the store must jump straight to its revision and folders
+    fetchMock.mockResolvedValue(
+      openResponse(['data: {"type":"mystery"}\n\n', libraryFrame(2, ['/videos/a'])]).response,
+    );
 
     start();
-    await vi.waitFor(() => expect(getLibraryState().streamOpen).toBe(true));
+    await vi.waitFor(() => expect(getLibraryState().revision).toBe(2));
 
-    expect(getLibraryState().revision).toBe(0);
+    expect(getLibraryState().folders).toEqual(['/videos/a']);
   });
 
   it('reconnects after the stream ends, waiting out the backoff first', async () => {
@@ -153,7 +156,6 @@ describe('libraryStream', () => {
     await vi.advanceTimersByTimeAsync(LIBRARY_STREAM_MAX_BACKOFF_MS * 2);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(getLibraryState().streamOpen).toBe(false);
   });
 
   it('pauses on a hidden tab and reopens on a visible one', async () => {

@@ -4,30 +4,89 @@ import type { LibraryEvent } from '@videodeck/shared/api';
  * The video library as the browser knows it, in one small store beside
  * `elasticsearchStatus.ts` instead of a context.
  *
- * Two things feed it: the `GET /api/events` stream (the opening frame carries
- * the whole library, later frames say what moved) and the `/api/health` poll,
- * which carries the revision alone and is what keeps a page honest when the
- * stream cannot be opened at all. Pages do not render this state yet: they
- * read the revision and re-read the data they render, so the folder list keeps
- * one source of truth on the server.
+ * Two things feed it: the `GET /api/events` stream (every frame carries the
+ * whole folder list) and the `/api/health` poll, which carries the revision
+ * alone and is what keeps a page honest when the stream cannot be opened at
+ * all. Pages read the revision and re-read the data they render, so the folder
+ * list keeps one source of truth on the server.
+ *
+ * The folder list here is the diff base for the frames, and nothing else: the
+ * console renders drive state from `/api/status`, and the store deliberately
+ * does not keep a second copy of it.
  */
 
 export interface LibraryState {
   /** Revision of the newest snapshot this client has seen; 0 before any */
   revision: number;
-  /** Folders of the newest frame; empty when only the health poll answered */
+  /**
+   * Folders of the newest frame, empty while only the health poll has
+   * answered. Kept as the base the next frame's change is computed against.
+   */
   folders: string[];
-  /** Folders that were configured or seen before and are missing right now */
-  unavailable: string[];
-  /** Whether a stream is currently connected; false is a degraded page */
-  streamOpen: boolean;
 }
 
-const EMPTY_STATE: LibraryState = { revision: 0, folders: [], unavailable: [], streamOpen: false };
+const EMPTY_STATE: LibraryState = { revision: 0, folders: [] };
 
 let state: LibraryState = EMPTY_STATE;
+
+/**
+ * Whether a frame has ever been accepted. The diff base exists only after one:
+ * a page that has read the health answer and nothing else must not treat the
+ * opening frame's whole folder list as "everything just arrived".
+ */
+let hasSnapshot = false;
+
 const listeners = new Set<() => void>();
 const frameListeners = new Set<(frame: LibraryEvent) => void>();
+
+/**
+ * Folders that arrived since the last clear. The notice renders them and the
+ * announcer reads them out, so both surfaces share one list instead of each
+ * keeping its own copy of what "just arrived" means.
+ */
+let arrivals: string[] = [];
+const arrivalListeners = new Set<() => void>();
+
+function emitArrivals(): void {
+  for (const listener of arrivalListeners) {
+    listener();
+  }
+}
+
+/** Folders that arrived since the last clear, oldest arrival first */
+export function getLibraryArrivals(): string[] {
+  return arrivals;
+}
+
+export function subscribeLibraryArrivals(listener: () => void): () => void {
+  arrivalListeners.add(listener);
+  return () => {
+    arrivalListeners.delete(listener);
+  };
+}
+
+/** The operator has seen the arrival, or asked for the reindex it offers */
+export function clearLibraryArrivals(): void {
+  if (arrivals.length === 0) {
+    return;
+  }
+  arrivals = [];
+  emitArrivals();
+}
+
+/** Add what one frame brought, keeping the order and dropping repeats */
+function rememberArrivals(added: readonly string[]): void {
+  if (added.length === 0) {
+    return;
+  }
+  const known = new Set(arrivals);
+  const fresh = added.filter((folderPath) => !known.has(folderPath));
+  if (fresh.length === 0) {
+    return;
+  }
+  arrivals = [...arrivals, ...fresh];
+  emitArrivals();
+}
 
 function emit(): void {
   for (const listener of listeners) {
@@ -44,11 +103,8 @@ function emit(): void {
 function isSameLibrary(next: LibraryState): boolean {
   return (
     next.revision === state.revision &&
-    next.streamOpen === state.streamOpen &&
     next.folders.length === state.folders.length &&
-    next.folders.every((folderPath, index) => folderPath === state.folders[index]) &&
-    next.unavailable.length === state.unavailable.length &&
-    next.unavailable.every((folderPath, index) => folderPath === state.unavailable[index])
+    next.folders.every((folderPath, index) => folderPath === state.folders[index])
   );
 }
 
@@ -87,19 +143,38 @@ export function subscribeLibraryFrames(listener: (frame: LibraryEvent) => void):
   };
 }
 
-/** The state one frame describes. A frame older than the watermark is stale */
+/** Folders of `next` that `before` did not have */
+function foldersAdded(before: ReadonlySet<string>, next: readonly string[]): string[] {
+  return next.filter((folderPath) => !before.has(folderPath));
+}
+
+/**
+ * The state one frame describes. A frame older than the watermark is stale.
+ *
+ * The change is computed here against the last frame this client accepted,
+ * not taken from the frame: the server computes it against the last frame of
+ * one connection, so a tab that let the stream go (hidden, a sleeping laptop,
+ * a reconnect) comes back to an opening frame with no delta at all and would
+ * never hear that a drive arrived meanwhile. The frame's own `added`/`removed`
+ * stay part of the contract for other consumers and are overwritten here with
+ * the change this client actually saw.
+ */
 export function applyLibraryFrame(frame: LibraryEvent): void {
   if (frame.revision < state.revision) {
     return;
   }
-  setState({
-    revision: frame.revision,
-    folders: [...frame.folders],
-    unavailable: [...frame.unavailable],
-    streamOpen: state.streamOpen,
-  });
+  const before = new Set(state.folders);
+  const after = new Set(frame.folders);
+  const described: LibraryEvent = {
+    ...frame,
+    added: hasSnapshot ? foldersAdded(before, frame.folders) : [],
+    removed: hasSnapshot ? state.folders.filter((folderPath) => !after.has(folderPath)) : [],
+  };
+  hasSnapshot = true;
+  setState({ revision: frame.revision, folders: [...frame.folders] });
+  rememberArrivals(described.added ?? []);
   for (const listener of frameListeners) {
-    listener(frame);
+    listener(described);
   }
 }
 
@@ -115,12 +190,10 @@ export function applyLibraryRevision(revision: number): void {
   setState({ ...state, revision });
 }
 
-export function setLibraryStreamOpen(open: boolean): void {
-  setState({ ...state, streamOpen: open });
-}
-
 /** Tests, and a page that wants to start from a clean slate */
 export function resetLibraryState(): void {
   state = EMPTY_STATE;
+  hasSnapshot = false;
+  clearLibraryArrivals();
   emit();
 }

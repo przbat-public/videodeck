@@ -4,8 +4,18 @@ import '@testing-library/jest-dom/vitest';
 import '../i18n';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, vi } from 'vitest';
-import { resetLibraryState } from '../utils/libraryStatus';
+import { applyLibraryRevision, resetLibraryState } from '../utils/libraryStatus';
+import { resetReindexState } from '../utils/reindexStore';
 import { toast } from './toastMock';
+
+/**
+ * The library revision a test starts from. A real page mounts after the
+ * shell's first probe has answered, so the store already knows a revision by
+ * the time the data hooks read: with it the gated read fires once, at mount,
+ * which is the behaviour these tests describe. A test about the "nothing known
+ * yet" state resets the store itself.
+ */
+export const TEST_LIBRARY_REVISION = 1;
 
 // Every component that touches react-hot-toast gets the same mock instance
 // (see test/toastMock.ts); this replaces the six per-file copies. The real
@@ -75,6 +85,10 @@ beforeEach(() => {
   toast.error.mockClear();
   toast.loading.mockClear();
   resetLibraryState();
+  applyLibraryRevision(TEST_LIBRARY_REVISION);
+  // The reindex run is app state too: a run left behind by one test would make
+  // the next one's button disabled for no reason it can see
+  resetReindexState();
 });
 
 // Cleanup after each test
