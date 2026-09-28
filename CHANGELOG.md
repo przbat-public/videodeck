@@ -600,6 +600,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The watched library is three modules now instead of one 761-line file:
+  `libraryScan.ts` turns the environment into the folders that exist (roots,
+  segment globs, the cold-boot scan and the async one), `libraryWatch.ts` owns
+  the handles, the 300 ms debounce and the 60 s backstop, and
+  `libraryState.ts` owns the snapshot, its revision and the subscribers. The
+  public surface is unchanged, and the suite that pins that behaviour did not
+  need a single edit
+- `GET /api/status` and `GET /api/folder/summaries` share one in-flight build
+  per key. Two tabs that open together, or a retry after a slow answer, used to
+  read every folder from disk twice before the first body existed
+- The dependency gate ignores Playwright's HTML report, whose bundled trace
+  viewer is its own module graph, and a repository invariant now fails when a
+  generated directory is missing from that exclude list
 - `pnpm run verify` runs the coverage ratchet, and the Chrome extension is
   measured at all: it had no thresholds, and the client's config rewrote itself
   during a run instead of asking for a deliberate commit. The measured numbers

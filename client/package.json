@@ -23,13 +23,13 @@
     "@videodeck/shared": "workspace:*",
     "i18next": "^26.4.2",
     "i18next-browser-languagedetector": "^8.2.1",
-    "lucide-react": "^1.47.0",
+    "lucide-react": "^1.48.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-hot-toast": "^2.6.1",
-    "react-i18next": "^17.0.14",
+    "react-i18next": "^17.0.15",
     "react-router-dom": "^7.18.4",
-    "react-window": "^2.3.1"
+    "react-window": "^2.3.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
@@ -43,14 +43,14 @@
     "@types/react-dom": "^19.3.0",
     "@videodeck/test-infra": "workspace:*",
     "@vitejs/plugin-react": "^6.1.1",
-    "@vitest/coverage-v8": "^5.0.0",
-    "@vitest/ui": "^5.0.0",
+    "@vitest/coverage-v8": "^5.0.2",
+    "@vitest/ui": "^5.0.2",
     "babel-plugin-react-compiler": "1.0.0",
     "jsdom": "30.0.1",
     "rollup-plugin-visualizer": "^7.1.1",
     "typescript": "^6.0.3",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.0"
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
   },
   "private": true,
   "engines": {

@@ -7,6 +7,7 @@ import { getDownloadStatuses } from '../../services/folderIndex';
 import { summarizeFolder } from '../../services/folderSummary';
 import { logger } from '../../utils/logger';
 import { runPool } from '../../utils/runPool';
+import { createSingleFlight } from '../../utils/singleFlight';
 import type { NoParams, RouteHandler } from '../http';
 import { requireAllowedFolder } from './guards';
 
@@ -24,6 +25,13 @@ const SUMMARY_CACHE_TTL_MS = 5_000;
 /** Folders read at once: the console asks for every channel on one page load */
 const SUMMARY_READ_CONCURRENCY = 8;
 let summaryCache: { key: string; readAt: number; body: FolderSummariesResponse } | null = null;
+
+/**
+ * One build per folder list, shared by whoever asks while it runs. The cache
+ * below only holds finished bodies, and these reads are two disk reads per
+ * folder, so two tabs that load together used to pay for both passes.
+ */
+const summaryBuilds = createSingleFlight<string, FolderSummariesResponse>();
 
 function readSummaryCache(folderPaths: string[]): FolderSummariesResponse | undefined {
   const cached = summaryCache;
@@ -102,12 +110,13 @@ export const getFolderSummaries: RouteHandler<NoParams, FolderSummariesResponse>
     return;
   }
 
-  const summaries: FolderSummariesResponse['summaries'] = {};
-  await runPool(videosFolderPaths, SUMMARY_READ_CONCURRENCY, async (folderPath) => {
-    summaries[folderPath] = await summarizeOne(folderPath);
+  const body = await summaryBuilds.run(videosFolderPaths.join('\n'), async () => {
+    const summaries: FolderSummariesResponse['summaries'] = {};
+    await runPool(videosFolderPaths, SUMMARY_READ_CONCURRENCY, async (folderPath) => {
+      summaries[folderPath] = await summarizeOne(folderPath);
+    });
+    return { summaries };
   });
-
-  const body: FolderSummariesResponse = { summaries };
   writeSummaryCache(videosFolderPaths, body);
   res.json(body);
 };
