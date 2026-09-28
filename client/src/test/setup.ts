@@ -4,6 +4,7 @@ import '@testing-library/jest-dom/vitest';
 import '../i18n';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, vi } from 'vitest';
+import { resetLibraryState } from '../utils/libraryStatus';
 import { toast } from './toastMock';
 
 // Every component that touches react-hot-toast gets the same mock instance
@@ -65,11 +66,15 @@ if (typeof window.matchMedia !== 'function') {
     }) as MediaQueryList;
 }
 
-// Fresh toast history per test, regardless of which file asserts it
+// Fresh toast history per test, regardless of which file asserts it. The
+// library store is module-level state too (the stream writes it, the data
+// hooks read it), so a revision one test moved would otherwise decide whether
+// the next test's mount reads once or twice.
 beforeEach(() => {
   toast.success.mockClear();
   toast.error.mockClear();
   toast.loading.mockClear();
+  resetLibraryState();
 });
 
 // Cleanup after each test

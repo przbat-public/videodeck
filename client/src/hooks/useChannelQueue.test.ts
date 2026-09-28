@@ -3,6 +3,8 @@ import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
+import { libraryFrame } from '../test/libraryFrames';
+import { applyLibraryFrame } from '../utils/libraryStatus';
 import { resetQueueSummaryStore } from '../utils/queueSummaryStore';
 import { useChannelQueue } from './useChannelQueue';
 
@@ -130,5 +132,17 @@ describe('useChannelQueue', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('re-reads the counters when the library revision moves', async () => {
+    fetchMock.mockResolvedValue(json(summary()));
+    renderHook(() => useChannelQueue());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      applyLibraryFrame(libraryFrame({ revision: 2, folders: ['/videos/kanal-a'] }));
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 });

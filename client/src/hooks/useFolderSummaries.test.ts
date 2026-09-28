@@ -3,6 +3,8 @@ import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
+import { libraryFrame } from '../test/libraryFrames';
+import { applyLibraryFrame } from '../utils/libraryStatus';
 import { useFolderSummaries } from './useFolderSummaries';
 
 const fetchMock = installFetchMock();
@@ -135,5 +137,17 @@ describe('useFolderSummaries', () => {
     // numbers it had and shows no banner
     expect(result.current.summaries['/videos/a']).toEqual(body.summaries['/videos/a']);
     expect(result.current.error).toBeNull();
+  });
+
+  it('re-reads the counts when the library revision moves', async () => {
+    fetchMock.mockResolvedValue(json(body));
+    renderHook(() => useFolderSummaries());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      applyLibraryFrame(libraryFrame({ revision: 2, folders: ['/videos/a', '/videos/b'] }));
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 });

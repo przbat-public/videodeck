@@ -1,9 +1,10 @@
 import { Clapperboard } from 'lucide-react';
 import type { JSX, ReactNode } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
+import { startLibraryStream } from '../utils/libraryStream';
 import { AppMenu } from './AppMenu';
 import type { AppMenuSectionSpec } from './appMenuRegistry';
 import { RegisterSectionsContext, SectionsContext, sectionsSignature } from './appMenuRegistry';
@@ -43,6 +44,11 @@ export function AppLayout(): JSX.Element {
   const { pathname } = useLocation();
   const { t } = useTranslation();
   const onDetailPage = pathname.startsWith('/video/');
+
+  // One event stream per app load, held for the session: the library store it
+  // feeds is what lets a drive that arrives or leaves reach an open page
+  // without a reload. Unmounting the shell closes it.
+  useEffect(() => startLibraryStream(), []);
 
   return (
     <AppMenuProvider>

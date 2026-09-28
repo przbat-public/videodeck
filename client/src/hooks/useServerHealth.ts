@@ -2,6 +2,7 @@ import { HealthResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect } from 'react';
 import type { ElasticsearchState } from '../utils/elasticsearchStatus';
 import { setElasticsearchState, useElasticsearchState } from '../utils/elasticsearchStatus';
+import { applyLibraryRevision } from '../utils/libraryStatus';
 
 /** How often the shell asks the readiness probe while the app is open */
 const DEFAULT_POLL_MS = 10_000;
@@ -30,6 +31,10 @@ export function useServerHealth(pollIntervalMs = DEFAULT_POLL_MS): UseServerHeal
       const parsed = HealthResponseSchema.safeParse(await response.json().catch(() => null));
       if (parsed.success) {
         setElasticsearchState(parsed.data.elasticsearch);
+        // The same answer carries the library revision, which is what keeps a
+        // page honest when the event stream never opens: same signal, slower
+        // road.
+        applyLibraryRevision(parsed.data.revision);
         return;
       }
       // An answer we cannot read is not evidence about the cluster

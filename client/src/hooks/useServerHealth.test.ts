@@ -6,6 +6,7 @@ import {
   reportElasticsearchUnavailable,
   resetElasticsearchState,
 } from '../utils/elasticsearchStatus';
+import { getLibraryRevision } from '../utils/libraryStatus';
 import { useServerHealth } from './useServerHealth';
 
 const fetchMock = installFetchMock();
@@ -162,5 +163,15 @@ describe('useServerHealth', () => {
 
     expect(fetchMock.mock.calls.length).toBe(calls);
     vi.useRealTimers();
+  });
+
+  it('moves the library revision from the health answer', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 4 }));
+
+    renderHook(() => useServerHealth());
+
+    // The poll is the fallback for a stream that never opens, so the revision
+    // has to reach the store even when no frame ever does
+    await waitFor(() => expect(getLibraryRevision()).toBe(4));
   });
 });

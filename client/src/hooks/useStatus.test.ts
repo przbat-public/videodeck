@@ -3,7 +3,9 @@ import type { StatusResponse } from '@videodeck/shared/api';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock, jsonResponse } from '../test/fetchMock';
+import { libraryFrame } from '../test/libraryFrames';
 import { getElasticsearchState, resetElasticsearchState } from '../utils/elasticsearchStatus';
+import { applyLibraryFrame } from '../utils/libraryStatus';
 import { useStatus } from './useStatus';
 
 const fetchMock = installFetchMock();
@@ -132,5 +134,17 @@ describe('useStatus', () => {
     await waitFor(() => expect(result.current.state.error).not.toBeNull());
 
     expect(result.current.state.error).toBe('Wystąpił błąd');
+  });
+
+  it('re-reads when the library revision moves', async () => {
+    const { result } = renderHook(() => useStatus());
+    await waitFor(() => expect(result.current.state.statusData).not.toBeNull());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      applyLibraryFrame(libraryFrame({ revision: 2, folders: ['/videos/a', '/videos/b'] }));
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 });

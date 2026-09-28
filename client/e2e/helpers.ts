@@ -97,6 +97,23 @@ export async function mockApi(page: Page, handlers: MockApiHandlers = {}): Promi
     const body = (handlers.health ?? { status: 'ok', elasticsearch: 'ok', revision: 1 }) as { elasticsearch?: string };
     await route.fulfill(json(body, body.elasticsearch === 'down' ? 503 : 200));
   });
+  // GET /api/events: the page holds this stream open for the session, so the
+  // mock answers one opening frame instead of leaking the request to the vite
+  // proxy. The connection then ends, which makes the client reconnect on its
+  // own schedule; a route that stays pending would do the same job, with a
+  // hanging request per page to explain.
+  await context.route('**/api/events', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: `data: ${JSON.stringify({
+        type: 'library',
+        revision: 1,
+        folders: ['/videos/e2e'],
+        unavailable: [],
+      })}\n\n`,
+    }),
+  );
   await context.route('**/api/videos/search**', async (route) => {
     const url = new URL(route.request().url());
     const body = handlers.search?.(url.searchParams) ?? { videos: [], totalCount: 0 };

@@ -90,6 +90,12 @@ export interface DeepServerTestEnv {
   /** Point VIDEOS_FOLDER_PATH at the named folders (config caches per raw value) */
   setFolders(...names: string[]): void;
   /**
+   * Treat every folder under videos/ as the library, so a folder created
+   * while the app runs is a drive arriving rather than a stray directory.
+   * The snapshot is rebuilt and the watcher re-armed before this returns.
+   */
+  watchVideosDir(): void;
+  /**
    * Every yt-dlp invocation that started in `folderPath`, oldest first, as the
    * process boundary saw it (cwd + argv). Only recorded for folders seeded
    * with `YTDLP_ARGV_LOG_NAME`.
@@ -190,6 +196,12 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
     // after this call is watched, not merely picked up by a later read.
     libraryState.getLibrarySnapshot();
   };
+  const watchVideosDir = (): void => {
+    process.env.VIDEOS_FOLDER_PATH = `${videosDir}/*`;
+    // Same rebuild as setFolders, which is what arms the watcher on videos/
+    // itself: the test can create a channel folder straight after this call.
+    libraryState.getLibrarySnapshot();
+  };
   const ytDlpCalls = (folderPath: string): Array<{ cwd: string; args: string[] }> => {
     try {
       return readFileSync(path.join(folderPath, YTDLP_ARGV_LOG_NAME), 'utf-8')
@@ -224,6 +236,7 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
     folder,
     seedFolder,
     setFolders,
+    watchVideosDir,
     ytDlpCalls,
     resetServerState,
     async dispose() {

@@ -522,6 +522,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   paths that are unavailable, and every later frame adds what appeared and what
   left. `GET /health` and `GET /api/health` report the library revision the
   answer was built at
+- A drive plugged in while the app is open reaches the page without a reload:
+  the browser holds `GET /api/events` open for the session, and the download
+  console, the channel filter, the categories and the folder counts re-read
+  what they render when the library revision moves. A tab that cannot open the
+  stream falls back to the `/api/health` poll, which carries the same revision
 
 ### Fixed
 
