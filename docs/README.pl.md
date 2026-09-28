@@ -53,10 +53,24 @@ dodaje filmy do kolejki wprost z YouTube.
 2. Uruchom Elasticsearch (tylko loopback; bez hasła):
 
    ```bash
-   docker run -d -p 127.0.0.1:9200:9200 -p 127.0.0.1:9300:9300 -e "discovery.type=single-node" -e "xpack.security.enabled=false" -e "xpack.security.enrollment.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:9.5.1
+   docker run -d --name videodeck-elasticsearch --restart unless-stopped \
+     -p 127.0.0.1:9200:9200 \
+     -v videodeck-es-data:/usr/share/elasticsearch/data \
+     -e discovery.type=single-node \
+     -e xpack.security.enabled=false \
+     -e xpack.security.enrollment.enabled=false \
+     -e ES_JAVA_OPTS="-Xms1g -Xmx1g" \
+     --health-cmd 'curl -fs "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null || exit 1' \
+     --health-interval 10s --health-timeout 10s --health-retries 30 --health-start-period 60s \
+     docker.elastic.co/elasticsearch/elasticsearch:9.5.1
    ```
 
-   Homebrew albo instalacja ręczna też działają: [docs/INSTALL.md](INSTALL.md).
+   Uruchom ją dokładnie tak, jak jest zapisana. Nazwa, wolumen i polityka
+   restartu sprawiają, że węzeł przeżywa restart Dockera bez reindeksowania,
+   a flagi health pokazują `(healthy)` w `docker ps`, gdy klaster przyjmuje
+   pracę. Pierwszy start trwa około pół minuty. Opis każdej flagi jest
+   w [docs/INSTALL.md](INSTALL.md), razem z wariantem Homebrew i instalacją
+   ręczną.
 
 3. Utwórz `server/.env`:
 
