@@ -212,4 +212,121 @@ describe('FakeElasticsearch controls', () => {
     expect(body.errors).toBe(true);
     expect(body.items[1]?.index.status).toBe(404);
   });
+
+  /** One document in the fixture index, refreshed so the next search sees it */
+  const putDocument = (id: string, source: Record<string, unknown>) =>
+    fetch(`${baseUrl}/videos_x/_doc/${id}?refresh=true`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(source),
+    });
+
+  /** How many documents one analysed multi_match query matches */
+  const matchesFor = async (query: string, field: string): Promise<number> => {
+    const response = await fetch(`${baseUrl}/videos_x/_search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: { multi_match: { query, fields: [field], fuzziness: 'AUTO' } } }),
+    });
+    const body = (await response.json()) as { hits: { total: { value: number } } };
+    return body.hits.total.value;
+  };
+
+  it('matches any of the query terms, the way best_fields with the default operator does', async () => {
+    // Invented tokens, so the count cannot depend on what earlier tests left in
+    // the shared fixture index.
+    await putDocument('operator-or-1', { title: 'Alfaunikat' });
+    await putDocument('operator-or-2', { title: 'Betaunikat' });
+
+    // Elasticsearch's default operator is or, so a document holding one of the
+    // terms matches. The fake required all of them, which made a multi-word
+    // query the real cluster answers come back empty here.
+    expect(await matchesFor('alfaunikat betaunikat', 'title')).toBe(2);
+  });
+
+  it('matches whole tokens rather than substrings', async () => {
+    await putDocument('token-1', { title: 'Gammaunikat' });
+
+    // Inside the token, and three edits away from an eleven-character one,
+    // while a seven-character term gets a fuzziness budget of two
+    expect(await matchesFor('maunikat', 'title')).toBe(0);
+  });
+
+  it('tolerates a typo inside the fuzziness AUTO budget', async () => {
+    await putDocument('typo-1', { title: 'Deltaunikat' });
+
+    // One insertion, and a term longer than five characters gets a budget of two
+    expect(await matchesFor('deltauniikat', 'title')).toBe(1);
+  });
+
+  it('refuses a typo outside the fuzziness AUTO budget', async () => {
+    await putDocument('typo-2', { title: 'Zetatrafore' });
+
+    // Four characters get a budget of one, and 'zeta' is five edits from
+    // 'zetatrafore': the substring match the fake used to do answered here
+    expect(await matchesFor('zeta', 'title')).toBe(0);
+  });
+
+  it('empties an index for a match_all delete and keeps the index itself', async () => {
+    await putDocument('clear-1', { title: 'Pierwszydokument' });
+
+    const response = await fetch(`${baseUrl}/videos_x/_delete_by_query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: { match_all: {} } }),
+    });
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { deleted: number }).deleted).toBeGreaterThan(0);
+
+    // The index survives (that is the difference from deleting it), so the next
+    // incremental write does not have to rebuild it
+    const head = await fetch(`${baseUrl}/videos_x`, { method: 'HEAD' });
+    expect(head.status).toBe(200);
+    expect(await matchesFor('pierwszydokument', 'title')).toBe(0);
+  });
+
+  it('refuses to create an index that already exists, like the cluster', async () => {
+    await putDocument('exists-1', { title: 'Trzymadokument' });
+
+    const response = await fetch(`${baseUrl}/videos_x`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ settings: {}, mappings: {} }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { type: string } };
+    expect(body.error.type).toBe('resource_already_exists_exception');
+
+    // A refused create must not replace the index the fixture shares
+    const total = ((await (await search()).json()) as { hits: { total: { value: number } } }).hits.total.value;
+    expect(total).toBeGreaterThan(0);
+  });
+
+  it('answers index_not_found_exception when a missing index is deleted', async () => {
+    const missing = await fetch(`${baseUrl}/videos_missing`, { method: 'DELETE' });
+    expect(missing.status).toBe(404);
+    const body = (await missing.json()) as { error: { type: string } };
+    expect(body.error.type).toBe('index_not_found_exception');
+
+    // The flag the production deletes pass for a path that may already be gone
+    const ignored = await fetch(`${baseUrl}/videos_missing?ignore_unavailable=true`, { method: 'DELETE' });
+    expect(ignored.status).toBe(200);
+  });
+
+  it('deletes only the documents a delete_by_query matches', async () => {
+    await putDocument('delete-keep', { title: 'Zostajetoken' });
+    await putDocument('delete-drop', { title: 'Znikatoken' });
+
+    const response = await fetch(`${baseUrl}/videos_x/_delete_by_query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: { term: { title: 'Znikatoken' } } }),
+    });
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { deleted: number }).deleted).toBe(1);
+
+    expect(await matchesFor('zostajetoken', 'title')).toBe(1);
+    expect(await matchesFor('znikatoken', 'title')).toBe(0);
+  });
 });

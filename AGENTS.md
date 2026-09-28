@@ -42,7 +42,7 @@ pnpm run verify
 ```
 
 (`verify` chains format, lint, lint:types, lint:scripts, test:scripts,
-knip, lint:deps, humanizer:gate, typecheck, test, test:integration and
+knip, lint:deps, humanizer:gate, typecheck, test:coverage, test:integration and
 the client e2e suite, in that order.)
 
 ## Linting (Biome + ESLint)
