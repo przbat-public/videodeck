@@ -18,7 +18,15 @@ import { expandChannel, json, mockApi, video } from './helpers';
  */
 const SHELL_SURFACES: Partial<MockApiHandlers> = {
   health: { status: 'degraded', elasticsearch: 'down', revision: 1 },
-  libraryFrames: [{ type: 'library', revision: 2, folders: ['/videos/e2e', '/videos/plugged-in'], unavailable: [] }],
+  libraryFrames: [
+    {
+      type: 'library',
+      revision: 2,
+      folders: ['/videos/e2e', '/videos/plugged-in'],
+      unavailable: [],
+      added: ['/videos/plugged-in'],
+    },
+  ],
 };
 
 /** Fail loudly when a fixture stopped producing the surface it exists for */
