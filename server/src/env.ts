@@ -26,6 +26,15 @@ const EnvSchema = z.object({
   CORS_ORIGINS: z.string().optional(),
   ALLOWED_HOSTS: z.string().optional(),
   EXTENSION_ORIGINS: z.string().optional(),
+  TRUST_PROXY: z
+    .string()
+    .optional()
+    .refine((value) => value === undefined || value.trim().toLowerCase() !== 'true', {
+      message:
+        'a bare true trusts every hop, so a client can pick its own rate-limit key with X-Forwarded-For; ' +
+        'set the number of proxies in front of the server (1 for the shipped compose stack), false, loopback or a subnet',
+    })
+    .describe('Express trust proxy: a hop count, false, loopback or a subnet'),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: z.url().optional(),
   SUMMARY_PROVIDER: z

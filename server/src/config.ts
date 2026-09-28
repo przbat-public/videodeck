@@ -142,18 +142,22 @@ export function getRateLimitWindowMs(): number {
  * household shares one bucket, and with a too-wide setting a client can spoof
  * its address with `X-Forwarded-For`.
  *
- * `TRUST_PROXY` accepts the values Express understands: a hop count (`1` for
- * the single nginx hop of the shipped compose stack), `loopback`, a subnet, or
- * `false`. Unset means "trust nobody", which is right when the server is
- * reached directly.
+ * `TRUST_PROXY` accepts a hop count (`1` for the single nginx hop of the
+ * shipped compose stack), `loopback`, a subnet, or `false`. Unset means "trust
+ * nobody", which is right when the server is reached directly. A bare `true` is
+ * refused: it trusts every hop, which turns the rate-limit key into a header
+ * the client picks, and express-rate-limit flags the value as permissive.
  */
 export function getTrustProxy(): string | number | boolean | undefined {
   const raw = (process.env.TRUST_PROXY ?? '').trim();
   if (raw.length === 0) {
     return undefined;
   }
-  if (raw === 'true') {
-    return true;
+  if (raw.toLowerCase() === 'true') {
+    throw new Error(
+      'TRUST_PROXY=true trusts every hop, so a client can pick its own rate-limit key with X-Forwarded-For. ' +
+        'Set the number of proxies in front of the server (1 for the shipped compose stack), false, loopback or a subnet.',
+    );
   }
   if (raw === 'false') {
     return false;
