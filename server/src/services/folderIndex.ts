@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { listVisibleFiles as sharedListVisibleFiles, writeJsonAtomic } from '../utils/fsUtils';
+import { listVisibleFiles as sharedListVisibleFiles, writeJsonAtomic, writeTextAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { runPool } from '../utils/runPool';
 
@@ -199,9 +199,11 @@ async function writeArchive(folderPath: string, ids: Iterable<string>): Promise<
     .sort()
     .map((id) => `youtube ${id}`);
   const content = lines.length > 0 ? `${lines.join('\n')}\n` : '';
-  const archivePath = path.join(folderPath, ARCHIVE_FILE);
-  await fs.writeFile(`${archivePath}.tmp`, content, 'utf-8');
-  await fs.rename(`${archivePath}.tmp`, archivePath);
+  // Through the atomic writer, which names its temp file per write: two
+  // readers rebuilding the same folder at once (two tabs, or a page and the
+  // library frame behind it) used to share one temp name, and the slower
+  // writer renamed a path the faster one had already moved.
+  await writeTextAtomic(path.join(folderPath, ARCHIVE_FILE), content);
 }
 
 /**

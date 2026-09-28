@@ -523,6 +523,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   left. `GET /health` and `GET /api/health` report the library revision the
   answer was built at
 
+### Fixed
+
+- Two readers of the same folder no longer fight over `archive.txt`. The file
+  goes through the shared atomic writer, which names its temp file per write;
+  the fixed name meant that two readers rebuilding a folder with no index yet
+  (two browser tabs, or a page and the library frame that follows it) made the
+  slower writer fail with `ENOENT`, and the console then showed zeroes for a
+  channel whose videos are on disk
+
 ## [1.0.0] - 2026-09-14
 
 First public release.
