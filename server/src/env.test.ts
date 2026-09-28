@@ -107,4 +107,18 @@ describe('validateEnv', () => {
       expect(validateEnv({ ...BASE, HOST: '::1' }).HOST).toBe('::1');
     });
   });
+
+  describe('trust proxy', () => {
+    it('refuses a bare true, which trusts every hop in front of the server', () => {
+      expect(() => validateEnv({ ...BASE, TRUST_PROXY: 'true' })).toThrow(/TRUST_PROXY/);
+      expect(() => validateEnv({ ...BASE, TRUST_PROXY: ' TRUE ' })).toThrow(/TRUST_PROXY/);
+    });
+
+    it('accepts a hop count, false, loopback and a subnet', () => {
+      expect(validateEnv({ ...BASE, TRUST_PROXY: '1' }).TRUST_PROXY).toBe('1');
+      expect(validateEnv({ ...BASE, TRUST_PROXY: 'false' }).TRUST_PROXY).toBe('false');
+      expect(validateEnv({ ...BASE, TRUST_PROXY: 'loopback' }).TRUST_PROXY).toBe('loopback');
+      expect(validateEnv({ ...BASE, TRUST_PROXY: '10.0.0.0/8' }).TRUST_PROXY).toBe('10.0.0.0/8');
+    });
+  });
 });

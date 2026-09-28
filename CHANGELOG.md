@@ -558,6 +558,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scans on its own: the notice stands down once the action is taken or
   dismissed, and the next arrival raises it again
 
+### Fixed
+
+- A shutdown waits for the queue state file. The flush ran unawaited and the
+  drain that was meant to keep the process alive returns at once when no yt-dlp
+  child is running, so a pause flag or a job enqueued in the last moments could
+  be lost
+- `TRUST_PROXY=true` is refused with a message naming what to set instead, and
+  the client's nginx forwards `X-Forwarded-For`. The shipped stack ran with the
+  permissive value while the proxy sent no such header, so the rate-limit key
+  was whatever the caller claimed, and honest browsers shared one bucket
+
+### Changed
+
+- The server and client containers carry `restart: unless-stopped`, so the app
+  tier comes back after a host reboot instead of waiting for `docker compose up`
+- CI builds both images on every code change and smoke-tests them without
+  Elasticsearch: the unprivileged user, the pinned yt-dlp, the degraded health
+  answer, the token check and the SPA served through the proxy
+
 ## [1.0.0] - 2026-09-14
 
 First public release.

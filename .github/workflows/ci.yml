@@ -279,6 +279,82 @@ jobs:
             chrome-extension/options.js
           retention-days: 14
 
+  docker-images:
+    name: Docker images (build + smoke)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
+      # The images are what a self-hosted operator actually runs, and until this
+      # job existed nothing built them before a release: a broken --prod install
+      # (the shared contract has its own zod dependency) or a failed client
+      # build first showed up on somebody's server.
+      - name: Build both images
+        run: |
+          docker build -f server/Dockerfile -t videodeck-server:ci .
+          docker build -f client/Dockerfile -t videodeck-client:ci .
+      - name: Smoke-test the server image
+        run: |
+          # The image runs as the unprivileged node user and ships a pinned
+          # yt-dlp, so a base-image bump that breaks either is caught here.
+          test "$(docker run --rm videodeck-server:ci id -u)" = "1000"
+          docker run --rm videodeck-server:ci yt-dlp --version
+          # No Elasticsearch on purpose: the server answers 503 and reports the
+          # cluster as down, which still proves the compiled entrypoint loaded
+          # every workspace import from the production-only install. The token
+          # is required because the process must bind 0.0.0.0 to be reachable
+          # through the published port.
+          docker network create smoke
+          docker run -d --name server --network smoke --network-alias server -p 8091:3001 \
+            -e VIDEOS_FOLDER_PATH=/tmp \
+            -e ELASTICSEARCH_URL=http://127.0.0.1:9 \
+            -e QUEUE_STATE_FILE=/tmp/queue-state.json \
+            -e HOST=0.0.0.0 \
+            -e API_TOKEN=smoke \
+            -e REQUIRE_API_TOKEN=true \
+            videodeck-server:ci
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /tmp/health.json -w '%{http_code}' -H 'Authorization: Bearer smoke' http://127.0.0.1:8091/api/health || true)
+            [ "$code" = "503" ] && break
+            sleep 1
+          done
+          test "$code" = "503"
+          grep -q '"elasticsearch":"down"' /tmp/health.json
+          # The token is enforced inside the image, not only in the tests
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8091/api/health)" = "401"
+      - name: Smoke-test the client image
+        run: |
+          # On the same network as the server, so nginx resolves its upstream at
+          # startup (nginx refuses to start when the name does not resolve).
+          docker run -d --name client --network smoke -p 8092:80 -e API_TOKEN=smoke videodeck-client:ci
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8092/ -o /tmp/index.html || true
+            grep -q '<div id="root">' /tmp/index.html && break
+            sleep 1
+          done
+          grep -q '<div id="root">' /tmp/index.html
+          # Through the proxy: the client container holds the token and adds it,
+          # so the answer is the server's Elasticsearch-down body rather than a
+          # 401, and a broken proxy_pass would answer 502 instead.
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /tmp/proxied.json -w '%{http_code}' http://127.0.0.1:8092/api/health || true)
+            [ "$code" = "503" ] && break
+            sleep 1
+          done
+          test "$code" = "503"
+          grep -q '"elasticsearch":"down"' /tmp/proxied.json
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          docker logs server || true
+          docker logs client || true
+
   e2e:
     name: Playwright E2E (mocked API)
     needs: changes
