@@ -18,8 +18,8 @@ rollback path.
 ## Pre-launch checklist
 
 1. Full gate one-liner green on `main`; CI green on `main`.
-2. Bump the version in all four `package.json` files (root, `server/`,
-   `client/`, `chrome-extension/`), in lockstep.
+2. Bump the version in all six `package.json` files (root, `server/`,
+   `client/`, `chrome-extension/`, `shared/`, `test-infra/`), in lockstep.
 3. Move `## [Unreleased]` in `CHANGELOG.md` to a dated release entry.
 4. Tag and release:
    `git tag vX.Y.Z && git push origin vX.Y.Z`, then
@@ -39,10 +39,12 @@ docs breaks operator upgrades.
 
 ## Rollback
 
-- Operators roll back by redeploying the previous image tag; the queue
-  state file (`server/.queue-state.json`) and the ES indices must survive
-  a version hop. Do not ship a change that rewrites those formats without
-  a migration story or an explicit "reindex required" note.
+- Operators roll back by checking out the previous tag and rebuilding the
+  stack (`docker compose up -d --build`); the repository builds both images
+  from context and publishes none, so there is no image tag to redeploy. The
+  queue state file (`server/.queue-state.json`) and the ES indices must
+  survive a version hop. Do not ship a change that rewrites those formats
+  without a migration story or an explicit "reindex required" note.
 - A bad release gets a revert PR on `main` and a new patch tag; do not
   edit or move an existing tag.
 

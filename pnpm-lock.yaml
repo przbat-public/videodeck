@@ -236,6 +236,9 @@ importers:
       '@types/chrome':
         specifier: ^0.3.0
         version: 0.3.0
+      '@vitest/coverage-v8':
+        specifier: ^5.0.0
+        version: 5.0.1(vitest@5.0.1)
       esbuild:
         specifier: ^0.28.0
         version: 0.28.2
