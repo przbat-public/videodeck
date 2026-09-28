@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { DownloadOptions, JobType } from '@videodeck/shared/api';
+import { isSafeVideoStem } from '../utils/videoStem';
 import { assertExtraArgsAllowed, DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 
 /**
@@ -111,6 +112,12 @@ export interface YtDlpJobSpec {
 
 export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
   const options = job.options ?? DEFAULT_DOWNLOAD_OPTIONS;
+  // Last line before spawn: the stem lands inside a path template, and every
+  // caller (index lookup, restored state file, the next one somebody adds)
+  // goes through here, so an unusable stem stops at this boundary.
+  if (job.baseName !== undefined && !isSafeVideoStem(job.baseName)) {
+    throw new Error('refusing yt-dlp output template: baseName must be a single path segment');
+  }
   if (job.type === 'update') {
     if (!job.baseName) {
       throw new Error('update job requires baseName');

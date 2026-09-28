@@ -9,6 +9,7 @@ import {
   ClearFinishedResponseSchema,
   downloadVideoEventSchema,
   EnqueueJobsResponseSchema,
+  FOLDER_UNAVAILABLE_CODE,
   FolderListResponseSchema,
   FolderSummariesResponseSchema,
   QueueListResponseSchema,
@@ -186,6 +187,9 @@ describe('folder router', () => {
     resetLibraryState();
     mockedGetVideosFolderPaths.mockReturnValue([FOLDER, OTHER_FOLDER]);
     mockedFs.mkdir.mockResolvedValue(undefined);
+    // The mounted-folder guard asks the disk before anything is created; the
+    // unmounted case has its own tests.
+    mockedFs.stat.mockResolvedValue({ isDirectory: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockedFs.writeFile.mockResolvedValue(undefined);
     mockedFs.open.mockResolvedValue(mockFileHandle as unknown as import('node:fs/promises').FileHandle);
     mockedFs.rename.mockResolvedValue(undefined);
@@ -278,10 +282,13 @@ describe('folder router', () => {
       const online = StatusResponseSchema.parse((await request(app).get('/api/status')).body);
       expect(online.unavailableFolders).toEqual([]);
 
-      // The drive leaves. The scan behind reconcileLibrary reads the folder
-      // through the mocked fs, which is how this file simulates a path that is
-      // no longer there, and the literal root stays configured either way.
+      // The drive leaves. The scan behind reconcileLibrary asks the mocked fs
+      // whether the folder is a directory, so the mock has to fail for it: the
+      // file's default answers "yes" for the mounted-folder guard, and a path
+      // that is gone is exactly what an unplugged volume looks like. The
+      // literal root stays configured either way.
       fsSync.rmSync(folderPath, { recursive: true, force: true });
+      mockedFs.stat.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
       await reconcileLibrary();
 
       const offline = StatusResponseSchema.parse((await request(app).get('/api/status')).body);
@@ -329,6 +336,22 @@ describe('folder router', () => {
       expect((await put({ maxHeight: 100 })).body.error).toMatch(/maxHeight/);
       expect((await put({ subLangs: 'en' })).body.error).toMatch(/subLangs/);
       expect((await put({ writeComments: 'yes' })).body.error).toMatch(/writeComments/);
+      expect(mockedFs.open).not.toHaveBeenCalled();
+    });
+
+    it('refuses to save a config for a folder whose drive is away', async () => {
+      // Saving mkdir'd the folder first, so a config for a drive that is not
+      // mounted landed on the internal disk, and every later read (status,
+      // search, downloads) looked at that empty directory instead of the drive.
+      mockedFs.stat.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+      const response = await request(app)
+        .put('/api/folder/config')
+        .send({ folderPath: FOLDER, config: { channelUrl: 'https://www.youtube.com/@a' } });
+
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({ code: FOLDER_UNAVAILABLE_CODE });
+      expect(mockedFs.mkdir).not.toHaveBeenCalled();
       expect(mockedFs.open).not.toHaveBeenCalled();
     });
 
@@ -754,6 +777,26 @@ describe('folder router', () => {
       expect(mockedSpawn).not.toHaveBeenCalled();
     });
 
+    it('refuses a playlist download into a folder whose drive is away', async () => {
+      // The listing is written into the folder, so a folder that is not there
+      // right now must not be materialised on the internal disk for it.
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
+      mockedFs.stat.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      // Without the guard the request keeps going and the automocked spawn never
+      // answers, so the test has to fail on the 409 rather than hang waiting.
+      fakeYtDlp('{"id":"v1","title":"One"}\n');
+
+      const response = await request(app)
+        .post('/api/folder/download-playlist')
+        .send({ folderPath: FOLDER })
+        .timeout({ response: 1000, deadline: 2000 });
+
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({ code: FOLDER_UNAVAILABLE_CODE });
+      expect(mockedFs.mkdir).not.toHaveBeenCalled();
+      expect(mockedSpawn).not.toHaveBeenCalled();
+    });
+
     it('runs yt-dlp without a shell, appends /videos and stores NDJSON as an array', async () => {
       mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
       fakeYtDlp('{"id":"v1","title":"One"}\n{"id":"v2","title":"Two"}\n');
@@ -864,6 +907,23 @@ describe('folder router', () => {
       expect(response.body.skipped).toEqual([{ videoId: '', reason: 'videoId or videoUrl is required' }]);
       expect(at(spawnCalls, 0).cwd).toBe(FOLDER);
       expect(at(spawnCalls, 0).args).toContain('--download-archive');
+    });
+
+    it('refuses to enqueue into a folder whose drive is away', async () => {
+      // A literal root stays in the allowlist while its volume is unmounted, so
+      // without this check the request either answered a generic 500 (EACCES) or
+      // created the folder on the internal disk and downloaded there instead.
+      mockedFs.stat.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: 'aaaaaaaaaaa' }] });
+
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({ code: FOLDER_UNAVAILABLE_CODE });
+      expect(String(response.body.message)).toContain('not mounted');
+      expect(mockedFs.mkdir).not.toHaveBeenCalled();
+      expect(spawnCalls).toHaveLength(0);
     });
 
     it('canonicalizes URLs carrying playlist context (yt-dlp would walk the whole playlist)', async () => {
@@ -1098,6 +1158,22 @@ describe('folder router', () => {
 
       expect(response.status).toBe(400);
       expect(response.body).toEqual({ error: 'videoUrl must be a YouTube video URL' });
+      expect(spawnCalls).toHaveLength(0);
+    });
+
+    it('refuses a download into a folder whose drive is away', async () => {
+      mockedFs.stat.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+      const response = await request(app)
+        .post('/api/folder/download-video')
+        .send({ folderPath: FOLDER, videoUrl: 'https://www.youtube.com/watch?v=aaaaaaaaaaa' })
+        // Without the guard this request opens the progress stream and never
+        // ends, so the test has to fail on the answer rather than hang.
+        .timeout({ response: 1000, deadline: 2000 });
+
+      expect(response.status).toBe(409);
+      expect(response.body).toMatchObject({ code: FOLDER_UNAVAILABLE_CODE });
+      expect(mockedFs.mkdir).not.toHaveBeenCalled();
       expect(spawnCalls).toHaveLength(0);
     });
 

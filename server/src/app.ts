@@ -23,6 +23,7 @@ import videosRouter from './routes/videos';
 import { isElasticsearchUnavailable } from './services/elasticsearchErrors';
 import { checkElasticsearchConnection, noteElasticsearchUnavailable } from './services/elasticsearchService';
 import { getLibraryRevision } from './services/libraryState';
+import { readApiToken } from './utils/apiToken';
 import { logger } from './utils/logger';
 import { describeError, LogThrottle } from './utils/logThrottle';
 
@@ -199,7 +200,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   // /health and /health/live stay public; /metrics and everything else are
   // behind the token when set (metrics leak route cardinality and OpenAI
   // cost counters). REQUIRE_API_TOKEN closes open mode entirely.
-  const auth = createAuthMiddleware(options.apiToken, isTokenRequired(), {
+  const auth = createAuthMiddleware(readApiToken(options.apiToken), isTokenRequired(), {
     extraOrigins: extraCorsOrigins,
     extensionOrigins,
   });

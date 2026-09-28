@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { createApp } from './app';
+import { startServing } from './boot';
 import { ELASTICSEARCH_URL, getApiToken, getHost } from './config';
 import { validateEnv } from './env';
 import { downloadQueue, restoreQueueState } from './services/downloadQueue';
@@ -52,35 +53,44 @@ async function startServer() {
     const apiToken = getApiToken();
     const host = getHost();
     const app = createApp(apiToken ? { apiToken } : {});
-    const server = app.listen(PORT, host, () => {
-      logger.info(`Server running on http://${host}:${PORT}`);
-      if (!apiToken) {
-        logger.warn(
-          'API_TOKEN is not set — the API is unauthenticated and reachable by every local process and browser tab. Set it in .env and in the Chrome extension options.',
-        );
-      }
-    });
-
-    // One clear line about Elasticsearch at boot. With it down, search, the
-    // index read on the status page and every reindex degrade, and the first
-    // request would otherwise be where the operator finds out.
-    void checkElasticsearchConnection().then((up) => {
-      if (!up) {
-        logger.warn(
-          `Elasticsearch is not reachable at ${ELASTICSEARCH_URL} — search, index reads and indexing degrade until it comes back`,
-        );
-      }
-    });
-
-    // Housekeeping against Elasticsearch: sweep index versions orphaned by a
-    // crashed reindex and warn about indices still on the legacy mapping.
-    // Fire-and-forget — ES may be down at boot and both checks are optional.
-    void sweepOrphanIndexVersions().catch(() => {
-      /* logged inside */
-    });
-    void warnOnLegacyMappings().catch(() => {
-      /* logged inside */
-    });
+    // The port opens first and the Elasticsearch housekeeping follows without
+    // being awaited: a cluster that is slow or down at boot delays nothing, and
+    // a failing check is one warning instead of a dead server.
+    const server = startServing(
+      () =>
+        app.listen(PORT, host, () => {
+          logger.info(`Server running on http://${host}:${PORT}`);
+          if (!apiToken) {
+            logger.warn(
+              'API_TOKEN is not set — the API is unauthenticated and reachable by every local process and browser tab. Set it in .env and in the Chrome extension options.',
+            );
+          }
+        }),
+      [
+        {
+          // One clear line about Elasticsearch at boot. With it down, search,
+          // the index read on the status page and every reindex degrade, and
+          // the first request would otherwise be where the operator finds out.
+          name: 'Elasticsearch boot probe',
+          run: async () => {
+            const up = await checkElasticsearchConnection();
+            if (!up) {
+              logger.warn(
+                `Elasticsearch is not reachable at ${ELASTICSEARCH_URL} — search, index reads and indexing degrade until it comes back`,
+              );
+            }
+          },
+        },
+        {
+          name: 'Orphan index sweep',
+          run: () => sweepOrphanIndexVersions(),
+        },
+        {
+          name: 'Legacy mapping check',
+          run: () => warnOnLegacyMappings(),
+        },
+      ],
+    );
 
     // Ctrl+C / docker stop: stop the yt-dlp jobs (the state file keeps them for
     // the next boot), end SSE streams and close cleanly once the killed

@@ -159,6 +159,14 @@ describe('createApp auth wiring', () => {
     expect(response.status).not.toBe(401);
   });
 
+  it('treats a blank token option as no token rather than as a configured one', async () => {
+    // index.ts asks getApiToken() before it passes anything, and this is the
+    // other half of that agreement: a whitespace token must not turn /api into
+    // "guarded by a token nobody can send".
+    const response = await request(createApp({ apiToken: '   ' })).get('/api/status');
+    expect(response.status).not.toBe(401);
+  });
+
   it('reports a degraded health when Elasticsearch is down', async () => {
     mockedCheckElasticsearch.mockResolvedValue(false);
 

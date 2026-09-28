@@ -54,6 +54,22 @@ describe('buildYtDlpArgs', () => {
       );
     }
   });
+
+  it('refuses a baseName that could leave the folder', () => {
+    // The last line before spawn: whatever produced the stem (the folder index,
+    // the queue state file, a caller added tomorrow), yt-dlp never receives a
+    // `-o` template that points somewhere else.
+    const refused = ['../../etc/passwd', 'sub/dir', 'sub\\dir', '..', '', 'a\u0000b', 'x'.repeat(201)];
+    for (const baseName of refused) {
+      expect(() => buildYtDlpArgs({ ...job, type: 'update', baseName })).toThrow(/baseName/);
+    }
+    // A download job ignores the field, but a caller that set one has it
+    // checked rather than silently dropped.
+    expect(() => buildYtDlpArgs({ ...job, baseName: '../x' })).toThrow(/baseName/);
+    expect(buildYtDlpArgs({ ...job, type: 'update', baseName: '20260101_Ok [abc]' })).toContain(
+      '20260101_Ok [abc].%(ext)s',
+    );
+  });
 });
 
 describe('getYtDlpVersion', () => {

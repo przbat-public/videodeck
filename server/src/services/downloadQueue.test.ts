@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { QueueJob } from '@videodeck/shared/api';
 import { at } from '../test-utils';
 import { removePartialDownloads, writeTextAtomic } from '../utils/fsUtils';
+import { logger } from '../utils/logger';
 import type { EnqueueRequest, SpawnedProcess } from './downloadQueue';
 import {
   clearIndexRetries,
@@ -1635,6 +1636,46 @@ describe('queue state persistence', () => {
 
     await expect(restoreQueueState(queue, stateFile)).resolves.toBe(1);
     expect(queue.list().map((job) => job.videoId)).toEqual(['ok']);
+    expect(spawn.spawnFn).not.toHaveBeenCalled();
+  });
+
+  it('drops a restored update job whose baseName could leave the folder', async () => {
+    // The state file is written by us but read by hand-edited accident too, and
+    // the stem ends up in yt-dlp's -o template. An update job without a usable
+    // stem cannot be performed at all, so it is dropped rather than repaired;
+    // a download job ignores the field and keeps working.
+    jest.spyOn(logger, 'warn').mockImplementation(() => {
+      /* the drop is the assertion */
+    });
+    await fs.writeFile(
+      stateFile,
+      JSON.stringify({
+        paused: true,
+        jobs: [
+          { folderPath: '/videos/channel-a', videoId: 'good', type: 'update', baseName: '20240101_good' },
+          { folderPath: '/videos/channel-a', videoId: 'escape', type: 'update', baseName: '../../etc/passwd' },
+          { folderPath: '/videos/channel-a', videoId: 'slash', type: 'update', baseName: 'sub/dir' },
+          { folderPath: '/videos/channel-a', videoId: 'empty', type: 'update', baseName: '' },
+          { folderPath: '/videos/channel-a', videoId: 'download', baseName: 'sub/dir' },
+        ],
+      }),
+    );
+
+    const spawn = createFakeSpawn();
+    const queue = new DownloadQueue({
+      spawnFn: spawn.spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+
+    await expect(restoreQueueState(queue, stateFile)).resolves.toBe(2);
+
+    const restored = queue.list('/videos/channel-a');
+    expect(restored.map((job) => [job.videoId, job.baseName])).toEqual([
+      ['good', '20240101_good'],
+      ['download', undefined],
+    ]);
     expect(spawn.spawnFn).not.toHaveBeenCalled();
   });
 

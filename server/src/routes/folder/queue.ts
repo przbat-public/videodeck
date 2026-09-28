@@ -24,7 +24,7 @@ import { stripUndefined } from '../../utils/objectUtils';
 import type { NoParams, RouteHandler } from '../http';
 import { errnoCode, readBody, readString } from '../http';
 import { firstZodError, queueBodySchema } from '../validation';
-import { requireAllowedFolder } from './guards';
+import { requireAllowedFolder, requireMountedFolder } from './guards';
 
 /**
  * The queue endpoints: the injected queue as a REST surface.
@@ -171,6 +171,9 @@ export function createQueueHandlers(queue: DownloadQueueLike) {
     }
     const { type, videos } = parsed.data;
 
+    if (!(await requireMountedFolder(folderPath, res))) {
+      return;
+    }
     await fs.mkdir(folderPath, { recursive: true });
     const options = await loadDownloadOptions(folderPath);
 

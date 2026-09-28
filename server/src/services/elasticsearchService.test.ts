@@ -31,6 +31,7 @@ import {
   SEARCH_FIELDS,
   searchVideos,
   searchVideosWithTotal,
+  sweepOrphanIndexVersions,
   toDocument,
 } from './elasticsearchService';
 
@@ -73,6 +74,14 @@ const ALIAS_A = getIndexNameFromFolderPath(FOLDER_A);
 const ALIAS_B = getIndexNameFromFolderPath(FOLDER_B);
 
 const notFound = () => Object.assign(new Error('index_not_found'), { meta: { statusCode: 404 } });
+
+/** The creation stamp `buildIndexVersionName` appends, for the current moment */
+function stampOfNow(): string {
+  return new Date()
+    .toISOString()
+    .replace(/[-:.TZ]/g, '')
+    .slice(0, 17);
+}
 
 function video(overrides: Partial<VideoListItem> = {}): VideoListItem {
   return {
@@ -220,6 +229,24 @@ describe('elasticsearchService', () => {
     it('rethrows other errors', async () => {
       mockClient.indices.getAlias.mockRejectedValue(new Error('boom'));
       await expect(getIndexVersions(FOLDER_A)).rejects.toThrow('boom');
+    });
+  });
+
+  describe('sweepOrphanIndexVersions', () => {
+    it('keeps an index this process is still writing into', async () => {
+      // The sweep runs at boot, right after the port opens, and a reindex can
+      // already be building a physical index that is not behind the alias yet.
+      // The name carries its creation stamp, so anything born after this
+      // process started is work in progress, not an orphan of a crashed run.
+      const createdByThisRun = `${ALIAS_A}_${stampOfNow()}`;
+      const orphanFromBefore = `${ALIAS_A}_20200101000000000`;
+      aliasPointsAt();
+      physicalIndices(orphanFromBefore, createdByThisRun);
+
+      await sweepOrphanIndexVersions([FOLDER_A]);
+
+      const deleted = mockClient.indices.delete.mock.calls.map(([request]) => request.index);
+      expect(deleted).toEqual([orphanFromBefore]);
     });
   });
 
@@ -423,6 +450,22 @@ describe('elasticsearchService', () => {
         ignore_unavailable: true,
       });
       expect(mockClient.indices.delete).not.toHaveBeenCalledWith(expect.objectContaining({ index: ALIAS_A }));
+    });
+
+    it('aborts before the alias swap when the orphan listing fails', async () => {
+      // The listing feeds the stale set, which used to be computed after the
+      // swap and outside any guard. A cluster that refused that one call made
+      // promoteIndexVersion reject, and the caller then discarded the index the
+      // alias already pointed at: every search answered empty until a full
+      // reindex. Listing first means the alias only moves once the promotion
+      // can no longer fail.
+      aliasPointsAt(`${ALIAS_A}_old`);
+      mockClient.indices.get.mockRejectedValue(new Error('listing refused'));
+
+      await expect(promoteIndexVersion(FOLDER_A, `${ALIAS_A}_new`)).rejects.toThrow('listing refused');
+
+      expect(mockClient.indices.updateAliases).not.toHaveBeenCalled();
+      expect(mockClient.indices.delete).not.toHaveBeenCalled();
     });
 
     it('sweeps orphaned versions left by a crashed reindex', async () => {

@@ -8,7 +8,7 @@ import { writeJsonAtomic } from '../../utils/fsUtils';
 import { logger } from '../../utils/logger';
 import type { NoParams, RouteHandler } from '../http';
 import { readBody, readString, sendError } from '../http';
-import { requireAllowedFolder } from './guards';
+import { requireAllowedFolder, requireMountedFolder } from './guards';
 
 /**
  * The channel fetch behind POST /api/folder/download-playlist.
@@ -25,6 +25,13 @@ import { requireAllowedFolder } from './guards';
 export const downloadPlaylist: RouteHandler<NoParams, DownloadPlaylistResponse> = async (req, res) => {
   const folderPath = requireAllowedFolder(readBody(req).folderPath, res);
   if (!folderPath) return;
+
+  // Before the config read, not just before the write: the read would answer
+  // 404 "create config.json" for a folder whose drive is away, which sends the
+  // operator after the wrong problem.
+  if (!(await requireMountedFolder(folderPath, res))) {
+    return;
+  }
 
   const config = await readFolderConfig(folderPath);
   if (!config) {

@@ -5,6 +5,7 @@ import { toWatchUrl } from '@videodeck/shared/youtube';
 import { logger } from '../../utils/logger';
 import { stripUndefined } from '../../utils/objectUtils';
 import { normalizeFolderPath } from '../../utils/videoPathUtils';
+import { isSafeVideoStem } from '../../utils/videoStem';
 import type { EnqueueRequest } from './queue';
 
 /**
@@ -62,6 +63,39 @@ function isRestorableFolder(folderPath: string): boolean {
   );
 }
 
+/** What a persisted `baseName` turned out to be */
+type RestoredBaseName = { kind: 'none' } | { kind: 'safe'; value: string } | { kind: 'unusable' };
+
+/**
+ * The folder and id a restored job needs, or null when the record is not one
+ * of ours: the path has to be absolute, normalised and free of `..`, so a
+ * hand-edited state file cannot point the queue at another directory.
+ */
+function readRestorableIdentity(record: Record<string, unknown>): { folderPath: string; videoId: string } | null {
+  const { folderPath, videoId } = record;
+  if (typeof folderPath !== 'string' || !isRestorableFolder(folderPath)) {
+    return null;
+  }
+  if (typeof videoId !== 'string' || videoId.length === 0) {
+    return null;
+  }
+  return { folderPath, videoId };
+}
+
+/**
+ * The stem of a restored job. It becomes a path template in yt-dlp's `-o`
+ * argument, so a value that is not one path segment is never carried over.
+ */
+function readPersistedBaseName(value: unknown): RestoredBaseName {
+  if (value === undefined) {
+    return { kind: 'none' };
+  }
+  if (typeof value === 'string' && isSafeVideoStem(value)) {
+    return { kind: 'safe', value };
+  }
+  return { kind: 'unusable' };
+}
+
 /**
  * Convert one persisted job back into an enqueue request. Entries that do not
  * look like a job we wrote (corrupt hand-edited file) are skipped, and
@@ -77,24 +111,32 @@ export function toEnqueueRequest(job: unknown): EnqueueRequest | null {
     return null;
   }
   const record = job as Record<string, unknown>;
-  const { folderPath, videoId } = record;
-  if (typeof folderPath !== 'string' || !isRestorableFolder(folderPath)) {
+  const identity = readRestorableIdentity(record);
+  if (identity === null) {
     return null;
   }
-  if (typeof videoId !== 'string' || videoId.length === 0) {
-    return null;
-  }
+  const { folderPath, videoId } = identity;
   const options = record.options === undefined ? null : DownloadOptionsSchema.safeParse(record.options);
   if (options && !options.success) {
     logger.warn(`Queue state: dropping unreadable options of job ${videoId}`);
+  }
+  const type = record.type === 'update' ? 'update' : 'download';
+  const baseName = readPersistedBaseName(record.baseName);
+  if (baseName.kind === 'unusable') {
+    // An update job cannot run without a usable stem, while a download job
+    // ignores the field.
+    logger.warn(`Queue state: job ${videoId} carries a baseName that is not a single path segment`);
+    if (type === 'update') {
+      return null;
+    }
   }
   return {
     folderPath,
     videoId,
     videoUrl: toWatchUrl(videoId),
     ...(typeof record.title === 'string' ? { title: record.title } : {}),
-    type: record.type === 'update' ? 'update' : 'download',
-    ...(typeof record.baseName === 'string' ? { baseName: record.baseName } : {}),
+    type,
+    ...(baseName.kind === 'safe' ? { baseName: baseName.value } : {}),
     ...(options?.success ? { options: options.data } : {}),
   };
 }

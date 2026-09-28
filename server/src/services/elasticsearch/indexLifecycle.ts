@@ -239,18 +239,21 @@ export async function promoteIndexVersion(folderPath: string, indexName: string)
     await esClient.indices.delete({ index: alias });
   }
 
-  // Everything before this line may fail and leave the old index untouched;
-  // everything after the swap is best-effort cleanup that must never throw —
-  // an exception here used to propagate to scanFolder, which then discarded
-  // the index that was ALREADY the alias target (silent empty search results).
-  await esClient.indices.updateAliases({
-    actions: [...previous.map((index) => ({ remove: { index, alias } })), { add: { index: indexName, alias } }],
-  });
-
+  // The stale set is computed BEFORE the swap: listing every physical version
+  // is the one step here that can still fail, and failing after the swap left
+  // scanFolder to discard the index the alias already pointed at, so every
+  // search answered empty until a full reindex. Everything before the swap may
+  // throw and leave the old index in place; everything after it is best-effort
+  // cleanup that never throws.
   const stale = new Set([
     ...previous,
     ...(await listAllIndexVersions(folderPath)).filter((name) => name !== indexName),
   ]);
+
+  await esClient.indices.updateAliases({
+    actions: [...previous.map((index) => ({ remove: { index, alias } })), { add: { index: indexName, alias } }],
+  });
+
   for (const index of stale) {
     try {
       await esClient.indices.delete({ index, ignore_unavailable: true });
@@ -419,10 +422,45 @@ export async function recreateAllIndices(): Promise<void> {
 }
 
 /**
+ * When this module loaded, which is the boot: `index.ts` pulls the
+ * Elasticsearch services in before it listens, so every index created after
+ * this point belongs to work this process started.
+ */
+const PROCESS_STARTED_AT_MS = Date.now();
+
+/**
+ * Creation time of a versioned index, read from the stamp
+ * `buildIndexVersionName` appends, or null for a name this build did not write.
+ */
+export function indexCreationTimeMs(indexName: string): number | null {
+  const stamp = indexName.slice(indexName.lastIndexOf('_') + 1);
+  const match = stamp.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{3})$/);
+  if (match === null) {
+    return null;
+  }
+  const [, year, month, day, hour, minute, second, millisecond] = match.map(Number);
+  return Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1, hour ?? 0, minute ?? 0, second ?? 0, millisecond ?? 0);
+}
+
+/**
+ * Whether the index was born after this process started. Such an index is not
+ * behind an alias yet because the reindex writing into it has not finished, so
+ * it is work in progress, never an orphan of a crashed run.
+ */
+function isIndexFromThisRun(indexName: string): boolean {
+  const created = indexCreationTimeMs(indexName);
+  return created !== null && created >= PROCESS_STARTED_AT_MS;
+}
+
+/**
  * Delete physical index versions that are not behind their folder alias —
  * orphans left by a reindex that crashed mid-way (cleanup normally lives in
  * promoteIndexVersion). Runs at startup; failures are logged, never thrown,
  * because ES may simply be down at boot.
+ *
+ * Indices this process created are skipped: the sweep runs right after the port
+ * opens, so a reindex that a first request already triggered is building one,
+ * and deleting it would fail that reindex and leave stale search results.
  */
 export async function sweepOrphanIndexVersions(folderPaths: string[] = getVideosFolderPaths()): Promise<void> {
   for (const folderPath of folderPaths) {
@@ -430,9 +468,10 @@ export async function sweepOrphanIndexVersions(folderPaths: string[] = getVideos
       const aliasTargets = new Set(await getIndexVersions(folderPath));
       const all = await listAllIndexVersions(folderPath);
       for (const index of all) {
-        if (!aliasTargets.has(index)) {
-          await deleteIndexBestEffort(index);
+        if (aliasTargets.has(index) || isIndexFromThisRun(index)) {
+          continue;
         }
+        await deleteIndexBestEffort(index);
       }
     } catch (error) {
       logger.warn(`Cannot sweep orphans of ${folderPath}: ${error instanceof Error ? error.message : String(error)}`);

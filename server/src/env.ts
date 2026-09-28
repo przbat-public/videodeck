@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { readApiToken } from './utils/apiToken';
 
 /**
  * Startup validation of the environment (zod — parse, don't trust).
@@ -58,7 +59,7 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
  */
 function crossFieldProblems(env: ValidatedEnv): string[] {
   const problems: string[] = [];
-  if (env.API_TOKEN === undefined && env.REQUIRE_API_TOKEN !== 'true' && !LOOPBACK_HOSTS.has(env.HOST)) {
+  if (readApiToken(env.API_TOKEN) === undefined && env.REQUIRE_API_TOKEN !== 'true' && !LOOPBACK_HOSTS.has(env.HOST)) {
     problems.push(
       `HOST: refusing to serve an unauthenticated API on ${env.HOST} — set API_TOKEN (recommended) or REQUIRE_API_TOKEN=true`,
     );

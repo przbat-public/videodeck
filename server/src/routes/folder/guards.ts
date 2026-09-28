@@ -1,4 +1,6 @@
+import fs from 'node:fs/promises';
 import type { ApiError } from '@videodeck/shared/api';
+import { FOLDER_UNAVAILABLE_CODE } from '@videodeck/shared/schemas';
 import type { Response } from 'express';
 import { getVideosFolderPaths } from '../../config';
 import { logger } from '../../utils/logger';
@@ -39,4 +41,32 @@ export function requireAllowedFolder<Res>(value: unknown, res: Response<Res | Ap
   // provably free of user input, which is what lets taint analysis (CodeQL
   // js/path-injection) treat this check as the sanitizer it is.
   return normalizeFolderPath(allowed);
+}
+
+/**
+ * The folder has to be a directory right now, before anything is created in
+ * it. A literal root stays in the allowlist while its volume is away, so
+ * without this check a request either answered a generic 500 (EACCES) or,
+ * worse, `mkdir -p` created a real directory on the internal disk and yt-dlp
+ * downloaded there instead of onto the drive.
+ *
+ * Answers 409 with a machine-readable code and reports back false, the way
+ * `requireAllowedFolder` does.
+ */
+export async function requireMountedFolder<Res>(folderPath: string, res: Response<Res | ApiError>): Promise<boolean> {
+  try {
+    if ((await fs.stat(folderPath)).isDirectory()) {
+      return true;
+    }
+  } catch {
+    // Reported below: ENOENT, ENOTDIR and a permission error all mean the same
+    // thing to the caller, which is that nothing may be written here.
+  }
+  logger.warn(`Refused folder that is not mounted: ${folderPath}`);
+  res.status(409).json({
+    error: 'Folder is not available',
+    message: `The drive for ${folderPath} is not mounted right now, or the folder is gone`,
+    code: FOLDER_UNAVAILABLE_CODE,
+  });
+  return false;
 }

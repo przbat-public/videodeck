@@ -557,6 +557,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   survived an earlier session is skipped and keeps serving searches. Nothing
   scans on its own: the notice stands down once the action is taken or
   dismissed, and the next arrival raises it again
+### Security
+
+- The output name of a queue job is validated as a single path segment before
+  it reaches yt-dlp. The `.videos-index.json` entry and the restored state file
+  were trusted, so a base name carrying `../` moved the `-o` template outside
+  the channel folder and let yt-dlp write its sidecars there
+- An empty `API_TOKEN` counts as unset everywhere. It passed validation because
+  only `undefined` was checked, so an environment that renders `API_TOKEN=`
+  disabled the guard which refuses to serve an unauthenticated API on a
+  non-loopback host
+
+### Fixed
+
+- A reindex no longer deletes the index it has just promoted. The orphan listing
+  that followed the alias swap could throw, and the catch path discarded the
+  index the alias already pointed at, which left the channel searching empty
+- The boot-time orphan sweep no longer deletes the index version a reindex is
+  still writing into
+- Enqueueing into a folder whose drive is not mounted answers 409 with the
+  `folder_unavailable` code, instead of a generic 500 or a download onto the
+  internal disk
 
 ## [1.0.0] - 2026-09-14
 

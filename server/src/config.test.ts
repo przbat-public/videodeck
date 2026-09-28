@@ -228,11 +228,19 @@ describe('lazy server settings', () => {
     expect(getHost()).toBe('0.0.0.0');
   });
 
-  it('getApiToken reads the env lazily', () => {
+  it('getApiToken reads the env lazily, and a blank value counts as unset', () => {
+    const original = process.env.API_TOKEN;
     delete process.env.API_TOKEN;
     expect(getApiToken()).toBeUndefined();
-    process.env.API_TOKEN = 'sekret';
+    // The compose file renders an unset variable as an empty string, and a
+    // token of spaces is nobody's secret: both mean "no token configured".
+    process.env.API_TOKEN = '';
+    expect(getApiToken()).toBeUndefined();
+    process.env.API_TOKEN = '   ';
+    expect(getApiToken()).toBeUndefined();
+    process.env.API_TOKEN = ' sekret ';
     expect(getApiToken()).toBe('sekret');
+    restoreEnv('API_TOKEN', original);
   });
 
   it('getCorsOrigins splits and trims the list', () => {
