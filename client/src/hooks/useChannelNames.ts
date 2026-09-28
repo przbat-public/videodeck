@@ -1,6 +1,7 @@
 import { ChannelsResponseSchema } from '@videodeck/shared/schemas';
 import { useEffect, useState } from 'react';
 import { apiGet } from '../utils/apiClient';
+import { useLibraryRevision } from './useLibrary';
 
 interface UseChannelNamesResult {
   /** Distinct channel names from Elasticsearch, for the channel filter */
@@ -17,7 +18,11 @@ interface UseChannelNamesResult {
 export function useChannelNames(): UseChannelNamesResult {
   const [channels, setChannels] = useState<string[]>([]);
   const [folders, setFolders] = useState<Record<string, string>>({});
+  // Channels come from the folders that are attached right now, so a library
+  // move is what this list has to follow.
+  const revision = useLibraryRevision();
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the revision is a re-read trigger, not an input; the loader asks the server for the folders that exist now
   useEffect(() => {
     const controller = new AbortController();
     apiGet('/api/videos/channels', ChannelsResponseSchema, {
@@ -32,7 +37,7 @@ export function useChannelNames(): UseChannelNamesResult {
       })
       .catch(() => undefined);
     return () => controller.abort();
-  }, []);
+  }, [revision]);
 
   return { channels, folders };
 }

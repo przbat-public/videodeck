@@ -15,6 +15,7 @@ import {
   resolveDownloadOptions,
   validateFolderConfig,
 } from './folderConfig';
+import { reconcileLibrary, resetLibraryState } from './libraryState';
 
 jest.mock('../config');
 
@@ -428,11 +429,13 @@ describe('folderConfig', () => {
 
     describe('across configured folders', () => {
       let folders: string[];
+      let originalFolderPath: string | undefined;
 
       const writeConfig = (dir: string, config: unknown) =>
         fs.writeFile(path.join(dir, 'config.json'), JSON.stringify(config), 'utf-8');
 
       beforeEach(async () => {
+        originalFolderPath = process.env.VIDEOS_FOLDER_PATH;
         invalidateCategoryCache();
         folders = await Promise.all([0, 1, 2, 3].map(() => fs.mkdtemp(path.join(os.tmpdir(), 'folder-category-'))));
         mockedGetVideosFolderPaths.mockReturnValue(folders);
@@ -445,6 +448,12 @@ describe('folderConfig', () => {
 
       afterEach(async () => {
         jest.restoreAllMocks();
+        if (originalFolderPath === undefined) {
+          delete process.env.VIDEOS_FOLDER_PATH;
+        } else {
+          process.env.VIDEOS_FOLDER_PATH = originalFolderPath;
+        }
+        resetLibraryState();
         await Promise.all(folders.map((dir) => fs.rm(dir, { recursive: true, force: true })));
       });
 
@@ -494,6 +503,20 @@ describe('folderConfig', () => {
 
         mockedGetVideosFolderPaths.mockReturnValue([at(folders, 1)]);
         expect(await listCategories()).toEqual(['psychology']);
+      });
+
+      it('drops the cached categories when the library changes', async () => {
+        expect(await getFolderPathsForCategory('lego')).toEqual([]);
+        await writeConfig(at(folders, 3), { category: 'lego' });
+
+        // Two library states in a row: the second one is a change, and a change
+        // reaches every subscriber (a drive arriving or leaving looks like this)
+        process.env.VIDEOS_FOLDER_PATH = path.join(os.tmpdir(), 'folder-category-before');
+        await reconcileLibrary();
+        process.env.VIDEOS_FOLDER_PATH = path.join(os.tmpdir(), 'folder-category-after');
+        await reconcileLibrary();
+
+        expect(await getFolderPathsForCategory('lego')).toEqual([at(folders, 3)]);
       });
     });
   });

@@ -145,6 +145,23 @@ describe('folderIndex', () => {
 
       expect(Object.keys(index.entries)).toEqual(['id-visible']);
     });
+
+    it('lets several readers rebuild the same folder at the same time', async () => {
+      await writeVideo(dir, '20240101_First', 'id-first');
+      await writeVideo(dir, '20240102_Second', 'id-second');
+
+      // A folder without an index gets rebuilt by whoever asks first, and more
+      // than one reader can ask at once: an open page and the library frame
+      // that follows it, or simply two browser tabs. They all write
+      // archive.txt through a temp file, so a shared temp name makes the
+      // slower writer rename a path the faster one has already moved.
+      const readers = await Promise.all(Array.from({ length: 5 }, () => rebuildIndex(dir)));
+
+      for (const index of readers) {
+        expect(Object.keys(index.entries).sort()).toEqual(['id-first', 'id-second']);
+      }
+      await expect(readArchiveIds(dir)).resolves.toEqual(new Set(['id-first', 'id-second']));
+    });
   });
 
   describe('loadIndex', () => {

@@ -20,6 +20,11 @@ export const ELASTICSEARCH_UNAVAILABLE_CODE = 'elasticsearch_unavailable';
 export const HealthResponseSchema = z.object({
   status: z.enum(['ok', 'degraded']),
   elasticsearch: z.enum(['ok', 'down']),
+  /**
+   * Revision of the library snapshot this answer was built at, so a client can
+   * tell a stale page from a current one without reading the whole library.
+   */
+  revision: z.number().int().nonnegative(),
 });
 
 export const ApiErrorSchema = z.object({
@@ -268,6 +273,15 @@ export const StatusResponseSchema = z.object({
   /** Which folders have a list.json (one request instead of one per folder) */
   listExists: z.record(z.string(), z.boolean()),
   /**
+   * Configured folders, and folders the configured roots have produced before,
+   * that are not on disk right now: a drive that was unplugged, or a literal
+   * root whose volume is away. A folder the current roots can no longer produce
+   * leaves the list with them, because it is no longer part of this library. A
+   * literal root stays in `videosFolderPath` either way, so the console keeps
+   * one row per channel instead of letting it vanish without a word.
+   */
+  unavailableFolders: z.array(z.string()),
+  /**
    * Whether the Elasticsearch read behind `indexedFolders` worked. When it is
    * `down`, the list is empty because nothing could be read, not because the
    * folders lost their index, so the console suppresses its index chips.
@@ -448,6 +462,27 @@ export const downloadVideoEventSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+/**
+ * One Server-Sent Event of GET /api/events: the video library changed, or this
+ * is the frame a fresh connection opens with. The stream carries identity and
+ * notification, never page data: a frame says which folders the library holds
+ * right now and what moved, and the client re-reads the data it renders. The
+ * union has one member today; a new member is additive, and a client ignores a
+ * type it does not know.
+ */
+export const libraryEventSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('library'),
+    /** Revision of the snapshot this frame describes */
+    revision: z.number().int().nonnegative(),
+    folders: z.array(z.string()),
+    unavailable: z.array(z.string()),
+    /** Folders this frame adds, and drops; absent on the opening frame */
+    added: z.array(z.string()).optional(),
+    removed: z.array(z.string()).optional(),
+  }),
+]);
+
 /** Derived contract types (re-exported from api.ts) */
 export type VideoComment = z.infer<typeof VideoCommentSchema>;
 export type CommentWithReplies = z.infer<typeof CommentWithRepliesSchema>;
@@ -486,5 +521,6 @@ export type RebuildIndexResponse = z.infer<typeof RebuildIndexResponseSchema>;
 export type DownloadPlaylistResponse = z.infer<typeof DownloadPlaylistResponseSchema>;
 export type SaveFolderConfigResponse = z.infer<typeof SaveFolderConfigResponseSchema>;
 export type DownloadVideoEvent = z.infer<typeof downloadVideoEventSchema>;
+export type LibraryEvent = z.infer<typeof libraryEventSchema>;
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;

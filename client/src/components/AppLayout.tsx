@@ -1,13 +1,15 @@
 import { Clapperboard } from 'lucide-react';
 import type { JSX, ReactNode } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
+import { startLibraryStream } from '../utils/libraryStream';
 import { AppMenu } from './AppMenu';
 import type { AppMenuSectionSpec } from './appMenuRegistry';
 import { RegisterSectionsContext, SectionsContext, sectionsSignature } from './appMenuRegistry';
 import { ElasticsearchBanner } from './ElasticsearchBanner';
+import { LibraryNotice } from './LibraryNotice';
 
 /**
  * Holds the section registry and provides it to the top bar and the pages.
@@ -44,6 +46,11 @@ export function AppLayout(): JSX.Element {
   const { t } = useTranslation();
   const onDetailPage = pathname.startsWith('/video/');
 
+  // One event stream per app load, held for the session: the library store it
+  // feeds is what lets a drive that arrives or leaves reach an open page
+  // without a reload. Unmounting the shell closes it.
+  useEffect(() => startLibraryStream(), []);
+
   return (
     <AppMenuProvider>
       {/* First stop in the tab order: a keyboard user leaves the top bar in
@@ -65,6 +72,7 @@ export function AppLayout(): JSX.Element {
         <AppMenu theme={theme} onThemeChange={setTheme} />
       </header>
       <ElasticsearchBanner />
+      <LibraryNotice />
       <Outlet />
     </AppMenuProvider>
   );

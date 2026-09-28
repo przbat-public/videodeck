@@ -8,6 +8,7 @@ import {
   sweepOrphanIndexVersions,
   warnOnLegacyMappings,
 } from './services/elasticsearchService';
+import { startLibraryWatch, stopLibraryWatch } from './services/libraryState';
 import { getYtDlpVersion } from './services/ytdlp';
 import { installShutdownHandlers } from './shutdown';
 import { logger } from './utils/logger';
@@ -26,6 +27,10 @@ async function startServer() {
   try {
     await validateVideosFolder();
     logger.info('Videos folder(s) validated');
+
+    // Watch the library roots from here on: a drive plugged in while the
+    // server runs has to reach the folder list without a restart.
+    startLibraryWatch();
 
     // Re-enqueue jobs persisted by a previous run (reboot recovery).
     const restored = await restoreQueueState();
@@ -90,6 +95,7 @@ async function startServer() {
       },
       awaitIdle: (timeoutMs) => downloadQueue.waitForIdle(timeoutMs),
       closeSseStreams: closeAllSseStreams,
+      stopLibraryWatch,
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

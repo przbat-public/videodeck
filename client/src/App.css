@@ -35,6 +35,34 @@
   font-size: 0.95rem;
 }
 
+/* A drive that arrived while the page was open: a state of the library, with
+   one action. The accent wash separates it from the danger-toned banner above. */
+.library-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0.6rem 2rem;
+  background: var(--color-primary-soft);
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.library-notice-text {
+  font-size: 0.95rem;
+}
+
+.library-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* Search Bar */
 .search-bar {
   display: flex;

@@ -51,7 +51,8 @@
   "status": {
     "loading": "Loading status...",
     "foldersTitle": "Video folder configuration",
-    "noFolders": "No configured paths"
+    "noFolders": "No configured paths",
+    "drivesUnplugged": "Every configured drive is unplugged"
   },
   "queue": {
     "title": "Download queue:",
@@ -308,6 +309,7 @@
       "failed": "{{count}} failed"
     },
     "attention": {
+      "driveMissing": "drive unplugged",
       "noChannelUrl": "no channelUrl",
       "noList": "no list.json",
       "noIndex": "no ES index",
@@ -322,6 +324,7 @@
       "cancel": "Cancel the channel's jobs",
       "editConfig": "Edit config.json",
       "more": "More actions",
+      "driveMissingHint": "The drive is unplugged, so this channel's actions cannot work",
       "working": "Working...",
       "nothingToDo": "Nothing to do here",
       "listFailed": "Could not read the channel's video list",
@@ -334,5 +337,12 @@
     "searchInChannel": "Search in this channel",
     "empty": "No channel matches the filter",
     "countsError": "Could not count the videos: {{message}}"
+  },
+  "library": {
+    "detected_one": "{{count}} new channel found on a drive",
+    "detected_other": "{{count}} new channels found on a drive",
+    "reindexNew": "Index the new channels",
+    "reindexOffline": "Elasticsearch is down, so indexing is off",
+    "dismiss": "Dismiss"
   }
 }

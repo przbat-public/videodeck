@@ -506,6 +506,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bounds the JVM heap so two nodes cannot exhaust the Docker VM, and carries
   the cluster health check the compose stack uses
 
+### Changed
+
+- The server watches the configured video folders instead of re-scanning them on
+  a timer. `VIDEOS_FOLDER_PATH` keeps its syntax, but the folder list no longer
+  waits for a cache to expire: a drive mounted while the server runs reaches it
+  once the watcher reports the change, and the debounce on that report is 300
+  ms. A backstop scan every minute covers network shares, which deliver no
+  filesystem events at all
+
+### Added
+
+- `GET /api/events` streams library changes over Server-Sent Events. The frame
+  a connection opens with carries the current revision, the folders and the
+  paths that are unavailable, and every later frame adds what appeared and what
+  left. `GET /health` and `GET /api/health` report the library revision the
+  answer was built at
+- A drive plugged in while the app is open reaches the page without a reload:
+  the browser holds `GET /api/events` open for the session, and the download
+  console, the channel filter, the categories and the folder counts re-read
+  what they render when the library revision moves. A tab that cannot open the
+  stream falls back to the `/api/health` poll, which carries the same revision
+
+### Fixed
+
+- Two readers of the same folder no longer fight over `archive.txt`. The file
+  goes through the shared atomic writer, which names its temp file per write;
+  the fixed name meant that two readers rebuilding a folder with no index yet
+  (two browser tabs, or a page and the library frame that follows it) made the
+  slower writer fail with `ENOENT`, and the console then showed zeroes for a
+  channel whose videos are on disk
+
+### Added
+
+- A channel whose drive is unplugged keeps its row on the download page.
+  `GET /api/status` now reports the configured and previously seen folders that
+  are not on disk, so the console renders a row per channel with a "dysk
+  odłączony" chip instead of letting the channel vanish with its volume. The
+  row keeps the queue counters it already had, its expand control and its
+  action menu are disabled with the reason one hover or one Tab away, and it
+  never opens the folder section, because every read behind that section would
+  fail. When no folder is left at all, the page says the drives are unplugged
+  instead of claiming that no path is configured
+
+### Added
+
+- A drive that arrives while the app is open is announced in the shell with the
+  number of channels it brought and one action ("Zaindeksuj nowe kanały"). That
+  action runs the existing reindex with `onlyMissing`, so a channel whose index
+  survived an earlier session is skipped and keeps serving searches. Nothing
+  scans on its own: the notice stands down once the action is taken or
+  dismissed, and the next arrival raises it again
+
 ## [1.0.0] - 2026-09-14
 
 First public release.

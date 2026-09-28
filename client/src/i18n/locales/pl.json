@@ -53,7 +53,8 @@
   "status": {
     "loading": "Ładowanie statusu...",
     "foldersTitle": "Konfiguracja folderów wideo",
-    "noFolders": "Brak skonfigurowanych ścieżek"
+    "noFolders": "Brak skonfigurowanych ścieżek",
+    "drivesUnplugged": "Wszystkie skonfigurowane dyski są odłączone"
   },
   "queue": {
     "title": "Kolejka pobierania:",
@@ -336,6 +337,7 @@
       "failed": "{{count}} błąd"
     },
     "attention": {
+      "driveMissing": "dysk odłączony",
       "noChannelUrl": "brak channelUrl",
       "noList": "brak list.json",
       "noIndex": "brak indeksu ES",
@@ -350,6 +352,7 @@
       "cancel": "Anuluj zadania kanału",
       "editConfig": "Edytuj config.json",
       "more": "Więcej akcji",
+      "driveMissingHint": "Dysk jest odłączony, więc akcje tego kanału nie zadziałają",
       "working": "Pracuję...",
       "nothingToDo": "Nie ma tu nic do zrobienia",
       "listFailed": "Nie udało się wczytać listy filmów kanału",
@@ -362,5 +365,14 @@
     "searchInChannel": "Szukaj w tym kanale",
     "empty": "Żaden kanał nie pasuje do filtra",
     "countsError": "Nie udało się policzyć filmów: {{message}}"
+  },
+  "library": {
+    "detected_one": "Wykryto {{count}} nowy kanał na dysku",
+    "detected_few": "Wykryto {{count}} nowe kanały na dysku",
+    "detected_many": "Wykryto {{count}} nowych kanałów na dysku",
+    "detected_other": "Wykryto {{count}} nowych kanałów na dysku",
+    "reindexNew": "Zaindeksuj nowe kanały",
+    "reindexOffline": "Elasticsearch nie odpowiada, więc indeksowanie jest wyłączone",
+    "dismiss": "Ukryj"
   }
 }

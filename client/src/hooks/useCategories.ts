@@ -1,6 +1,7 @@
 import { CategoriesResponseSchema } from '@videodeck/shared/schemas';
 import { useEffect, useState } from 'react';
 import { apiGet } from '../utils/apiClient';
+import { useLibraryRevision } from './useLibrary';
 
 interface UseCategoriesResult {
   categories: string[];
@@ -14,7 +15,11 @@ interface UseCategoriesResult {
  */
 export function useCategories(): UseCategoriesResult {
   const [categories, setCategories] = useState<string[]>([]);
+  // Categories live in the folders' config.json, so a drive that arrives can
+  // bring new ones: the filter follows the library revision.
+  const revision = useLibraryRevision();
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the revision is a re-read trigger, not an input; the loader asks the server for the folders that exist now
   useEffect(() => {
     const controller = new AbortController();
 
@@ -37,7 +42,7 @@ export function useCategories(): UseCategoriesResult {
     return () => {
       controller.abort();
     };
-  }, []);
+  }, [revision]);
 
   return { categories };
 }

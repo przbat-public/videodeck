@@ -25,6 +25,11 @@
       "import": "./progress.ts",
       "require": "./progress.ts"
     },
+    "./sse": {
+      "types": "./sse.ts",
+      "import": "./sse.ts",
+      "require": "./sse.ts"
+    },
     "./youtube": {
       "types": "./youtube.ts",
       "import": "./youtube.ts",

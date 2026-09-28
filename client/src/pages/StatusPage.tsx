@@ -155,10 +155,13 @@ export default function StatusPage(): JSX.Element {
         )}
 
         {statusData &&
-          (statusData.videosFolderPath.length === 0 ? (
+          (statusData.videosFolderPath.length === 0 && statusData.unavailableFolders.length === 0 ? (
             <p>{t('status.noFolders')}</p>
           ) : (
             <>
+              {/* No folder is on disk, but the library remembers some: the
+                  drives are unplugged, which is not a config problem */}
+              {statusData.videosFolderPath.length === 0 && <p>{t('status.drivesUnplugged')}</p>}
               <ChannelToolbar state={consoleState} counts={counts} onChange={changeConsoleState} />
               <ChannelTable
                 rows={visibleRows}

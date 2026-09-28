@@ -1,6 +1,8 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { installFetchMock, jsonResponse } from '../test/fetchMock';
+import { libraryFrame } from '../test/libraryFrames';
+import { applyLibraryFrame } from '../utils/libraryStatus';
 import { useCategories } from './useCategories';
 
 const fetchMock = installFetchMock();
@@ -63,5 +65,17 @@ describe('useCategories', () => {
       expect(fetchMock).toHaveBeenCalled();
     });
     expect(result.current.categories).toEqual([]);
+  });
+
+  it('re-reads when the library revision moves', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ categories: ['fpv'] }));
+    renderHook(() => useCategories());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      applyLibraryFrame(libraryFrame({ revision: 2, folders: ['/videos/a', '/videos/b'] }));
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 });

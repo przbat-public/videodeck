@@ -5,6 +5,7 @@ import { FolderKindSchema } from '@videodeck/shared/schemas';
 import { isYoutubeChannelUrl } from '@videodeck/shared/youtube';
 import { getVideosFolderPaths } from '../config';
 import { logger } from '../utils/logger';
+import { subscribeLibraryChanges } from './libraryState';
 
 /**
  * Per-folder `config.json` (shape: `FolderConfig` in shared/api.ts).
@@ -446,6 +447,10 @@ let categoryCache: CategoryCache | null = null;
 export function invalidateCategoryCache(): void {
   categoryCache = null;
 }
+
+// A config written on a drive that just appeared must never be served from a
+// cache built before the drive existed, so every library change drops it.
+subscribeLibraryChanges(invalidateCategoryCache);
 
 /** folderPath → category, for every configured folder that declares one */
 async function readCategories(): Promise<Map<string, string>> {

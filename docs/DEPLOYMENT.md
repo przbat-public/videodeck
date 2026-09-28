@@ -19,6 +19,23 @@ points at `http://<host>:3001`.
    (`/path/to/videos` is your library root; the container path must match
    `VIDEOS_FOLDER_PATH`.)
 
+   **Removable drives: mount the parent, not the drive.** A bind mount is fixed
+   when the container is created, so a path that points at one drive cannot see
+   a drive mounted later, and the server's watch cannot help. Mount the
+   directory the drives appear in and let `VIDEOS_FOLDER_PATH` glob over it:
+
+   ```yaml
+   volumes:
+     - /Volumes:/volumes
+   ```
+   ```
+   VIDEOS_FOLDER_PATH=/volumes/*/*
+   ```
+
+   The container then sees every mount and unmount as it happens. Docker
+   Desktop on macOS has to share the directory first (Settings, Resources,
+   File sharing), which `/Volumes` is part of by default.
+
 2. Generate an API token and set it in `.env` next to the compose file
    (the compose file reads `${API_TOKEN}`):
    ```bash

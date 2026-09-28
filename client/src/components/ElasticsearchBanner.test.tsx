@@ -14,7 +14,7 @@ describe('ElasticsearchBanner', () => {
   });
 
   it('says nothing while the stack is healthy', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok' }));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1 }));
 
     render(<ElasticsearchBanner />);
 
@@ -23,7 +23,7 @@ describe('ElasticsearchBanner', () => {
   });
 
   it('names what is off and what still works when Elasticsearch is down', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'degraded', elasticsearch: 'down' }, 503));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'degraded', elasticsearch: 'down', revision: 1 }, 503));
 
     render(<ElasticsearchBanner />);
 
@@ -33,12 +33,12 @@ describe('ElasticsearchBanner', () => {
   });
 
   it('clears itself when the retry finds the cluster again', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'degraded', elasticsearch: 'down' }, 503));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'degraded', elasticsearch: 'down', revision: 1 }, 503));
     const user = userEvent.setup();
     render(<ElasticsearchBanner />);
     await screen.findByRole('status');
 
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok' }));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1 }));
     await user.click(screen.getByRole('button', { name: 'Sprawdź ponownie' }));
 
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull());

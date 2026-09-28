@@ -13,9 +13,10 @@ export type ChannelSort = 'name' | 'attention' | 'updated' | 'missing';
 
 /**
  * Why a channel needs attention, in the order the row shows the reasons.
- * `noChannelUrl` comes first because nothing else can happen without it.
+ * `driveMissing` comes first because a folder that is not there cannot be read
+ * at all, so nothing else about it is known.
  */
-export const ATTENTION_REASONS = ['noChannelUrl', 'noList', 'noIndex', 'failed', 'stale'] as const;
+export const ATTENTION_REASONS = ['driveMissing', 'noChannelUrl', 'noList', 'noIndex', 'failed', 'stale'] as const;
 export type AttentionReason = (typeof ATTENTION_REASONS)[number];
 
 /** What one channel's queue is doing, as GET /api/folder/queue/summaries reports it */
@@ -46,6 +47,11 @@ export interface ChannelRow {
   indexed: boolean | null;
   /** `list.json` exists (false), does not (true) or is still unknown (null) */
   listExists: boolean | null;
+  /**
+   * Whether the folder is on disk right now. False means its drive went away,
+   * so every field read from the folder is unknown and its actions cannot work.
+   */
+  available: boolean;
   /** Counts from GET /api/folder/summaries; absent until they arrive */
   summary?: FolderSummary;
   queue: ChannelQueueCounts;
@@ -88,53 +94,92 @@ export function foldersWithFinishedJobs(
  * `indexed` is `null` while the status could not read Elasticsearch at all: the
  * console then reports no index state instead of chipping every channel, and
  * the banner above the table says why.
+ *
+ * A folder whose drive is away short-circuits the rules that read the folder:
+ * its config, its list.json and its index are all unknown, so the drive is the
+ * whole story and the only reason left is the queue it already had.
  */
 function attentionReasons(row: Omit<ChannelRow, 'attention'>): AttentionReason[] {
   const reasons = new Set<AttentionReason>();
-  if (!(row.configured || row.collection)) {
-    reasons.add('noChannelUrl');
-  }
-  if (row.listExists === false && !row.collection) {
-    reasons.add('noList');
-  }
-  if (row.indexed === false) {
-    reasons.add('noIndex');
+  if (row.available) {
+    if (!(row.configured || row.collection)) {
+      reasons.add('noChannelUrl');
+    }
+    if (row.listExists === false && !row.collection) {
+      reasons.add('noList');
+    }
+    if (row.indexed === false) {
+      reasons.add('noIndex');
+    }
+    if ((row.summary?.stale ?? 0) > 0) {
+      reasons.add('stale');
+    }
+  } else {
+    reasons.add('driveMissing');
   }
   if (row.queue.failed > 0) {
     reasons.add('failed');
   }
-  if ((row.summary?.stale ?? 0) > 0) {
-    reasons.add('stale');
-  }
   return ATTENTION_REASONS.filter((reason) => reasons.has(reason));
 }
 
-/** One row per configured folder, in the order /api/status reports them */
+interface RowContext {
+  status: StatusResponse;
+  summaries: Record<string, FolderSummary>;
+  queueByFolder: Readonly<Record<string, ChannelQueueCounts>>;
+  channelsByFolder: Record<string, string>;
+  unavailable: ReadonlySet<string>;
+}
+
+/** One row. Everything read from the folder is skipped while it is away */
+function buildRow(context: RowContext, folderPath: string): ChannelRow {
+  const { status, summaries, queueByFolder, channelsByFolder, unavailable } = context;
+  const available = !unavailable.has(folderPath);
+  const config = available ? (status.folderConfigs[folderPath] ?? null) : null;
+  const category = config?.category?.trim();
+  const summary = available ? summaries[folderPath] : undefined;
+  const channelName = available ? channelsByFolder[folderPath] : undefined;
+  const base = {
+    folderPath,
+    name: folderName(folderPath),
+    available,
+    ...(channelName ? { channelName } : {}),
+    ...(category ? { category } : {}),
+    configured: Boolean(config?.channelUrl),
+    collection: config?.kind === 'collection',
+    indexed: available && status.elasticsearch !== 'down' ? status.indexedFolders.includes(folderPath) : null,
+    listExists: available ? (status.listExists[folderPath] ?? null) : null,
+    ...(summary ? { summary } : {}),
+    // Jobs that were already queued keep their counters: the queue knows the
+    // folder by path, and a drive that left does not erase its history
+    queue: queueByFolder[folderPath] ?? NO_QUEUE_COUNTS,
+  };
+  return { ...base, attention: attentionReasons(base) };
+}
+
+/**
+ * One row per configured folder, in the order /api/status reports them, plus a
+ * row for every folder whose drive is gone. The second list is what keeps a
+ * channel on screen when its volume is unplugged: a glob root simply stops
+ * matching it, and a literal root stays in the folder list while its drive is
+ * away, which is why the two lists overlap and the merge must not double a row.
+ */
 export function buildChannelRows(
   status: StatusResponse,
   summaries: Record<string, FolderSummary>,
   queueByFolder: Readonly<Record<string, ChannelQueueCounts>>,
   channelsByFolder: Record<string, string> = {},
 ): ChannelRow[] {
-  return status.videosFolderPath.map((folderPath) => {
-    const config = status.folderConfigs[folderPath] ?? null;
-    const category = config?.category?.trim();
-    const summary = summaries[folderPath];
-    const channelName = channelsByFolder[folderPath];
-    const base = {
-      folderPath,
-      name: folderName(folderPath),
-      ...(channelName ? { channelName } : {}),
-      ...(category ? { category } : {}),
-      configured: Boolean(config?.channelUrl),
-      collection: config?.kind === 'collection',
-      indexed: status.elasticsearch === 'down' ? null : status.indexedFolders.includes(folderPath),
-      listExists: status.listExists[folderPath] ?? null,
-      ...(summary ? { summary } : {}),
-      queue: queueByFolder[folderPath] ?? NO_QUEUE_COUNTS,
-    };
-    return { ...base, attention: attentionReasons(base) };
-  });
+  const unavailable = new Set(status.unavailableFolders);
+  const context: RowContext = { status, summaries, queueByFolder, channelsByFolder, unavailable };
+  const rows = status.videosFolderPath.map((folderPath) => buildRow(context, folderPath));
+  const listed = new Set(status.videosFolderPath);
+  for (const folderPath of status.unavailableFolders) {
+    if (!listed.has(folderPath)) {
+      rows.push(buildRow(context, folderPath));
+    }
+  }
+  return rows;
 }
 
 /** Apply the text filter and the active chip */

@@ -19,6 +19,7 @@ const status: StatusResponse = {
   downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
   indexedFolders: ['/videos/kanal-a', '/videos/kanal-b'],
   listExists: { '/videos/kanal-b': true, '/videos/kanal-a': true, '/videos/kanal-c': false },
+  unavailableFolders: [],
   status: 'ok',
   elasticsearch: 'ok',
 };
@@ -105,6 +106,43 @@ describe('buildChannelRows', () => {
     expect(built[1]?.queue).toEqual({ running: 1, queued: 1, failed: 1, firstError: 'yt-dlp exited with code 1' });
     expect(built[0]?.queue).toEqual({ running: 0, queued: 0, failed: 1, firstError: 'members-only' });
     expect(built[2]?.queue).toEqual({ running: 0, queued: 0, failed: 0 });
+  });
+
+  it('keeps a row for a folder whose drive is gone', () => {
+    const built = buildChannelRows({ ...status, unavailableFolders: ['/videos/kanal-offline'] }, summaries.summaries, {
+      '/videos/kanal-offline': counts({ running: 1, failed: 2, firstError: 'drive gone' }),
+    });
+
+    const offline = built.find((row) => row.folderPath === '/videos/kanal-offline');
+    expect(offline).toMatchObject({
+      // The name still comes from the path: config.json is on the drive that
+      // is not there, so nothing else about the channel is knowable
+      name: 'kanal-offline',
+      available: false,
+      configured: false,
+      collection: false,
+      // Unknown, not missing: the drive cannot be read, so no chip claims the
+      // channel lost its index or its list.json
+      indexed: null,
+      listExists: null,
+      // Jobs that were already in the queue keep their counters
+      queue: counts({ running: 1, failed: 2, firstError: 'drive gone' }),
+    });
+    expect(offline?.channelName).toBeUndefined();
+    expect(offline?.attention).toEqual(['driveMissing', 'failed']);
+  });
+
+  it('marks a literal root the status reports as both configured and gone', () => {
+    // A literal VIDEOS_FOLDER_PATH entry stays in the folder list when its
+    // volume is away, so the two lists overlap and the row must not double
+    const built = buildChannelRows({ ...status, unavailableFolders: ['/videos/kanal-a'] }, summaries.summaries, {});
+
+    expect(built.map((row) => row.folderPath)).toEqual(['/videos/kanal-b', '/videos/kanal-a', '/videos/kanal-c']);
+    expect(built[1]).toMatchObject({ available: false, configured: false, indexed: null, listExists: null });
+    // Without the drive there is no config to read, so the rules that read one
+    // stay quiet and the drive is the only reason the row reports
+    expect(built[1]?.attention).toEqual(['driveMissing']);
+    expect(built[0]).toMatchObject({ available: true, configured: true });
   });
 
   it('lists why a channel needs attention, worst first', () => {

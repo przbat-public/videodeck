@@ -1,3 +1,4 @@
+import type { HealthResponse } from '@videodeck/shared/api';
 import express from 'express';
 import request from 'supertest';
 import { createApp } from '../app';
@@ -150,7 +151,7 @@ describe('createApp auth wiring', () => {
 
     const health = await request(app).get('/health');
     expect(health.status).toBe(200);
-    expect(health.body).toEqual({ status: 'ok', elasticsearch: 'ok' });
+    expect(health.body).toEqual({ status: 'ok', elasticsearch: 'ok', revision: expect.any(Number) });
   });
 
   it('leaves /api open without a configured token', async () => {
@@ -164,7 +165,32 @@ describe('createApp auth wiring', () => {
     const health = await request(createApp()).get('/health');
 
     expect(health.status).toBe(503);
-    expect(health.body).toEqual({ status: 'degraded', elasticsearch: 'down' });
+    expect(health.body).toEqual({ status: 'degraded', elasticsearch: 'down', revision: expect.any(Number) });
+  });
+
+  it('reports the library revision and moves it when the library changes', async () => {
+    const original = process.env.VIDEOS_FOLDER_PATH;
+    try {
+      process.env.VIDEOS_FOLDER_PATH = '/test/videos';
+      const app = createApp();
+
+      const first = await request(app).get('/api/health');
+      const firstBody = first.body as HealthResponse;
+      expect(firstBody.status).toBe('ok');
+      expect(Number.isInteger(firstBody.revision)).toBe(true);
+      expect(firstBody.revision).toBeGreaterThan(0);
+
+      // The same library answers the same revision: the number belongs to the
+      // library, not to the 5 s Elasticsearch cache the probe keeps
+      const again = await request(app).get('/api/health');
+      expect((again.body as HealthResponse).revision).toBe(firstBody.revision);
+
+      process.env.VIDEOS_FOLDER_PATH = '/test/videos/extra';
+      const moved = await request(app).get('/api/health');
+      expect((moved.body as HealthResponse).revision).toBeGreaterThan(firstBody.revision);
+    } finally {
+      process.env.VIDEOS_FOLDER_PATH = original;
+    }
   });
 
   it('exposes Prometheus metrics', async () => {
@@ -210,7 +236,7 @@ describe('createApp auth wiring', () => {
     const response = await request(app).get('/api/health');
 
     expect(response.status).toBe(503);
-    expect(response.body).toEqual({ status: 'degraded', elasticsearch: 'down' });
+    expect(response.body).toEqual({ status: 'degraded', elasticsearch: 'down', revision: expect.any(Number) });
     // The API namespace is the one the dev proxy and nginx forward
     expect(response.headers['cache-control']).toBe('no-store');
   });

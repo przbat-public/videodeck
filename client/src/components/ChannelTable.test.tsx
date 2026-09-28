@@ -14,6 +14,7 @@ const row = (overrides: Partial<ChannelRow> = {}): ChannelRow => ({
   collection: false,
   indexed: true,
   listExists: true,
+  available: true,
   queue: { running: 0, queued: 0, failed: 0 },
   attention: [],
   ...overrides,
@@ -121,6 +122,44 @@ describe('ChannelTable', () => {
     // list.json has no column of its own any more; the row says it with an
     // empty count and the "Pobierz playlistę" action instead
     expect(screen.queryByText('brak list.json')).toBeNull();
+  });
+
+  it('marks a channel whose drive is gone and disables what cannot work', async () => {
+    const user = userEvent.setup();
+    // The URL still names the folder, which is the state the console is left
+    // in when a drive leaves while its row is expanded
+    renderTable(
+      [
+        row({
+          folderPath: '/videos/kanal-offline',
+          name: 'kanal-offline',
+          available: false,
+          attention: ['driveMissing'],
+          queue: { running: 1, queued: 0, failed: 0 },
+        }),
+      ],
+      { ...DEFAULT_CHANNEL_CONSOLE_STATE, folder: '/videos/kanal-offline' },
+    );
+
+    expect(screen.getByText('dysk odłączony')).toBeInTheDocument();
+    // The jobs it already had keep their counters: the queue knows the folder
+    // by path
+    expect(screen.getByText('1 w toku')).toBeInTheDocument();
+
+    // Nothing inside the folder can be read, so neither control offers a way in
+    expect(screen.getByRole('button', { name: 'Pokaż filmy' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Więcej akcji' })).toBeDisabled();
+    expect(screen.queryByText('filmy kanału kanal-offline')).toBeNull();
+
+    // The reason is one hover (or one Tab) away, not only a disabled control.
+    // The anchor is the span around the disabled controls: a disabled button
+    // gets no pointer events of its own.
+    const anchor = screen.getByRole('button', { name: 'Pokaż filmy' }).parentElement as HTMLElement;
+    await user.hover(anchor);
+
+    expect(
+      await screen.findByRole('tooltip', { name: 'Dysk jest odłączony, więc akcje tego kanału nie zadziałają' }),
+    ).toBeInTheDocument();
   });
 
   it('chips a queue that is only waiting', () => {

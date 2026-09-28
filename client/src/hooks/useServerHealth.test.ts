@@ -6,6 +6,7 @@ import {
   reportElasticsearchUnavailable,
   resetElasticsearchState,
 } from '../utils/elasticsearchStatus';
+import { getLibraryRevision } from '../utils/libraryStatus';
 import { useServerHealth } from './useServerHealth';
 
 const fetchMock = installFetchMock();
@@ -17,7 +18,7 @@ describe('useServerHealth', () => {
   });
 
   it('reports a healthy stack', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok' }));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1 }));
 
     const { result } = renderHook(() => useServerHealth());
 
@@ -26,7 +27,7 @@ describe('useServerHealth', () => {
   });
 
   it('reports a degraded stack with Elasticsearch down', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'degraded', elasticsearch: 'down' }, 503));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'degraded', elasticsearch: 'down', revision: 1 }, 503));
 
     const { result } = renderHook(() => useServerHealth());
 
@@ -55,7 +56,7 @@ describe('useServerHealth', () => {
   });
 
   it('picks up a failure another request already reported', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok' }));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1 }));
     const { result } = renderHook(() => useServerHealth());
     await waitFor(() => expect(result.current.elasticsearch).toBe('ok'));
 
@@ -65,11 +66,11 @@ describe('useServerHealth', () => {
   });
 
   it('rechecks on demand', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'degraded', elasticsearch: 'down' }, 503));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'degraded', elasticsearch: 'down', revision: 1 }, 503));
     const { result } = renderHook(() => useServerHealth());
     await waitFor(() => expect(result.current.elasticsearch).toBe('down'));
 
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok' }));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1 }));
     await act(async () => {
       await result.current.recheck();
     });
@@ -79,12 +80,12 @@ describe('useServerHealth', () => {
   });
 
   it('rechecks when the window regains focus', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'degraded', elasticsearch: 'down' }, 503));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'degraded', elasticsearch: 'down', revision: 1 }, 503));
     const { result } = renderHook(() => useServerHealth());
     await waitFor(() => expect(result.current.elasticsearch).toBe('down'));
     const calls = fetchMock.mock.calls.length;
 
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok' }));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1 }));
     await act(async () => {
       window.dispatchEvent(new Event('focus'));
     });
@@ -96,11 +97,11 @@ describe('useServerHealth', () => {
   it('rechecks when the tab becomes visible again', async () => {
     const visibility = vi.spyOn(document, 'visibilityState', 'get');
     visibility.mockReturnValue('hidden');
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'degraded', elasticsearch: 'down' }, 503));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'degraded', elasticsearch: 'down', revision: 1 }, 503));
     const { result } = renderHook(() => useServerHealth());
     await waitFor(() => expect(result.current.elasticsearch).toBe('down'));
 
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok' }));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1 }));
     visibility.mockReturnValue('visible');
     await act(async () => {
       document.dispatchEvent(new Event('visibilitychange'));
@@ -113,7 +114,7 @@ describe('useServerHealth', () => {
   it('skips the poll while the tab is hidden', async () => {
     vi.useFakeTimers();
     const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok' }));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1 }));
     renderHook(() => useServerHealth(1_000));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -131,7 +132,7 @@ describe('useServerHealth', () => {
 
   it('polls again while the tab is visible', async () => {
     vi.useFakeTimers();
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok' }));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1 }));
     renderHook(() => useServerHealth(1_000));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -148,7 +149,7 @@ describe('useServerHealth', () => {
 
   it('stops polling after unmount', async () => {
     vi.useFakeTimers();
-    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok' }));
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1 }));
     const { unmount } = renderHook(() => useServerHealth(1_000));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -162,5 +163,15 @@ describe('useServerHealth', () => {
 
     expect(fetchMock.mock.calls.length).toBe(calls);
     vi.useRealTimers();
+  });
+
+  it('moves the library revision from the health answer', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 4 }));
+
+    renderHook(() => useServerHealth());
+
+    // The poll is the fallback for a stream that never opens, so the revision
+    // has to reach the store even when no frame ever does
+    await waitFor(() => expect(getLibraryRevision()).toBe(4));
   });
 });

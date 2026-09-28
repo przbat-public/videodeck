@@ -69,7 +69,7 @@ function refreshCacheResponse(url: string): MockResponse {
 function installFetch(handlers: FetchHandlers = {}): FetchMock {
   /** The plain GETs, keyed by URL; the method-dependent ones are below */
   const routes: Record<string, () => MockResponse> = {
-    '/api/health': () => json(handlers.health ?? { status: 'ok', elasticsearch: 'ok' }),
+    '/api/health': () => json(handlers.health ?? { status: 'ok', elasticsearch: 'ok', revision: 1 }),
     '/api/videos/categories': () => json({ categories: handlers.categories ?? CATEGORIES }),
     '/api/videos/channels': () => json({ channels: ['Kanał A'] }),
     '/api/videos/recreateIndices/status': () => json({ running: false, foldersDone: 1, foldersTotal: 1, errors: [] }),
@@ -543,7 +543,7 @@ describe('VideoListPage', () => {
     });
 
     it('turns the index actions off while Elasticsearch is down', async () => {
-      installFetch({ health: { status: 'degraded', elasticsearch: 'down' } });
+      installFetch({ health: { status: 'degraded', elasticsearch: 'down', revision: 1 } });
       renderWithMenu('/');
       await screen.findByText('First');
       // The banner is rendered by the shell and names the state
