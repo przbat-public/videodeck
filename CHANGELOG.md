@@ -613,6 +613,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The dependency gate ignores Playwright's HTML report, whose bundled trace
   viewer is its own module graph, and a repository invariant now fails when a
   generated directory is missing from that exclude list
+- `pnpm run verify` runs the coverage ratchet, and the Chrome extension is
+  measured at all: it had no thresholds, and the client's config rewrote itself
+  during a run instead of asking for a deliberate commit. The measured numbers
+  are committed, and the server's stale floor moves up to them
+- The fake Elasticsearch answers search the way the real cluster does: any term
+  matches rather than all of them, a typo inside the AUTO budget matches, and
+  matching happens on tokens instead of substrings. The deep suites had been
+  validating a search engine nobody runs, in both directions
+- Index operations in the fake answer like the cluster as well: creating an
+  index that exists is a 400, deleting one that is not there is a 404 unless
+  the caller asks for `ignore_unavailable`, and `delete_by_query` applies its
+  query instead of emptying the index
 
 ## [1.0.0] - 2026-09-14
 

@@ -5,13 +5,15 @@
   "description": "Chrome extension (MV3) for video-search-app: enqueue video downloads from the browser through the server download queue (SSE)",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/background.ts src/content.ts src/popup.ts src/options.ts --tsconfig=tsconfig.json --bundle --format=iife --target=chrome88 --outdir=.",
+    "build": "esbuild src/background.ts src/content.ts src/popup.ts src/options.ts --tsconfig=tsconfig.json --bundle --format=iife --target=chrome102 --outdir=.",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.0",
+    "@vitest/coverage-v8": "^5.0.0",
     "esbuild": "^0.28.0",
     "fast-check": "^4.10.2",
     "typescript": "^6.0.3",

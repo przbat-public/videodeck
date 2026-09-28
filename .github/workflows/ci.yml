@@ -204,8 +204,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
       # Coverage thresholds are the ratchet: the run fails when coverage drops
-      # below the committed numbers. Locally, `pnpm run test:coverage` raises
-      # them in place whenever coverage grows — commit the change.
+      # below the committed numbers, for the server, the client and the
+      # extension. Raising them is a deliberate commit; nothing rewrites a
+      # tracked file during a gate run.
       - name: Enforce coverage thresholds (server + client)
         run: pnpm run test:coverage
 

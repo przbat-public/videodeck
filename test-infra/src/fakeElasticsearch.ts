@@ -177,6 +177,88 @@ function termsOf(query: string): string[] {
     .filter((term) => term.length > 0);
 }
 
+/**
+ * Lucene's AUTO fuzziness: no edits for one or two characters, one up to five,
+ * two beyond that. The production query asks for AUTO, so the fake has to know
+ * the same budget or a typo the cluster tolerates comes back empty here.
+ */
+function autoFuzzinessBudget(term: string): number {
+  if (term.length <= 2) {
+    return 0;
+  }
+  return term.length <= 5 ? 1 : 2;
+}
+
+/** The edit budget one query term gets from the request's `fuzziness` */
+function fuzzinessBudget(term: string, fuzziness: unknown): number {
+  if (typeof fuzziness === 'number') {
+    return fuzziness;
+  }
+  if (typeof fuzziness === 'string' && fuzziness.toUpperCase() === 'AUTO') {
+    return autoFuzzinessBudget(term);
+  }
+  return 0;
+}
+
+/**
+ * Whether two tokens are within `max` edits of each other:
+ * Damerau-Levenshtein with adjacent transpositions, like Lucene's fuzzy query,
+ * and bounded, so a fuzzy search over a deep suite stays cheap.
+ */
+/** The state one Damerau-Levenshtein row needs from the row above it */
+interface EditRow {
+  left: string;
+  right: string;
+  row: number;
+  previous: number[];
+  twoRowsBack: number[] | null;
+}
+
+/** One Damerau-Levenshtein row, including adjacent transpositions */
+function nextEditRow({ left, right, row, previous, twoRowsBack }: EditRow): number[] {
+  const current = new Array<number>(right.length + 1).fill(0);
+  current[0] = row;
+  for (let column = 1; column <= right.length; column += 1) {
+    const substitution = (previous[column - 1] ?? 0) + (left[row - 1] === right[column - 1] ? 0 : 1);
+    const transposed =
+      row > 1 && column > 1 && left[row - 1] === right[column - 2] && left[row - 2] === right[column - 1]
+        ? (twoRowsBack?.[column - 2] ?? Number.MAX_SAFE_INTEGER) + 1
+        : Number.MAX_SAFE_INTEGER;
+    current[column] = Math.min((previous[column] ?? 0) + 1, (current[column - 1] ?? 0) + 1, substitution, transposed);
+  }
+  return current;
+}
+
+/**
+ * Whether two tokens are within `max` edits of each other:
+ * Damerau-Levenshtein with adjacent transpositions, like Lucene's fuzzy query,
+ * and bounded, so a fuzzy search over a deep suite stays cheap.
+ */
+function withinEditDistance(left: string, right: string, max: number): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (max <= 0 || Math.abs(left.length - right.length) > max) {
+    return false;
+  }
+  let twoRowsBack: number[] | null = null;
+  let previous = Array.from({ length: right.length + 1 }, (_unused, index) => index);
+  for (let row = 1; row <= left.length; row += 1) {
+    const current = nextEditRow({ left, right, row, previous, twoRowsBack });
+    if (Math.min(...current) > max) {
+      return false;
+    }
+    twoRowsBack = previous;
+    previous = current;
+  }
+  return (previous[right.length] ?? 0) <= max;
+}
+
+/** Whether an analysed field holds one query term, exactly or within budget */
+function holdsTerm(text: string, term: string, budget: number): boolean {
+  return termsOf(text).some((token) => withinEditDistance(token, term, budget));
+}
+
 function readJsonBody(req: IncomingMessage, rawBody: string): unknown {
   if (req.headers['content-type']?.includes('ndjson')) {
     return rawBody;
@@ -349,7 +431,7 @@ export class FakeElasticsearch {
       }
 
       if (!this.handleWellKnownRoutes(req, res, url, name, suffix, body)) {
-        this.handleNamedRoutes(req, res, name, body);
+        this.handleNamedRoutes(req, res, name, body, url.searchParams);
       }
     } catch (error) {
       const message = `fake-elasticsearch: ${error instanceof Error ? error.message : String(error)} at ${req.method} ${url.pathname}`;
@@ -396,7 +478,7 @@ export class FakeElasticsearch {
       return true;
     }
     if (suffix === '_delete_by_query') {
-      this.deleteByQuery(res, name);
+      this.deleteByQuery(res, name, body);
       return true;
     }
     if (suffix === '_refresh') {
@@ -477,7 +559,13 @@ export class FakeElasticsearch {
   }
 
   /** Index/alias-name endpoints (exists, get, create, delete) */
-  private handleNamedRoutes(req: IncomingMessage, res: ServerResponse, name: string, body: unknown): void {
+  private handleNamedRoutes(
+    req: IncomingMessage,
+    res: ServerResponse,
+    name: string,
+    body: unknown,
+    searchParams: URLSearchParams,
+  ): void {
     switch (req.method) {
       case 'HEAD': {
         const exists = this.indices.has(name) || this.aliases.has(name);
@@ -490,24 +578,54 @@ export class FakeElasticsearch {
         return;
       }
       case 'PUT': {
-        const mappings = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
-        this.indices.set(name, { documents: new Map(), mappings });
-        this.json(res, 200, { acknowledged: true, index: name });
+        this.createNamedIndex(res, name, body);
         return;
       }
       case 'DELETE': {
-        this.indices.delete(name);
-        for (const [alias, index] of this.aliases) {
-          if (index === name) {
-            this.aliases.delete(alias);
-          }
-        }
-        this.json(res, 200, { acknowledged: true });
+        this.deleteNamedIndex(res, name, searchParams);
         return;
       }
       default:
         this.json(res, 405, { error: `fake-elasticsearch: unsupported ${req.method}` });
     }
+  }
+
+  /** PUT /:index — refuses to replace an index the cluster already holds */
+  private createNamedIndex(res: ServerResponse, name: string, body: unknown): void {
+    if (this.indices.has(name)) {
+      this.json(res, 400, {
+        error: { type: 'resource_already_exists_exception', index: name },
+        status: 400,
+      });
+      return;
+    }
+    const mappings = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+    this.indices.set(name, { documents: new Map(), mappings });
+    this.json(res, 200, { acknowledged: true, index: name });
+  }
+
+  /**
+   * DELETE /:index — 404 for a name nothing holds, unless the caller passed
+   * `ignore_unavailable`, which is the flag the production deletes use for a
+   * path that may already be gone.
+   */
+  private deleteNamedIndex(res: ServerResponse, name: string, searchParams: URLSearchParams): void {
+    if (!this.indices.has(name)) {
+      const ignored = searchParams.get('ignore_unavailable');
+      if (ignored === 'true' || ignored === '') {
+        this.json(res, 200, { acknowledged: true });
+        return;
+      }
+      this.json(res, 404, notFound(name));
+      return;
+    }
+    this.indices.delete(name);
+    for (const [alias, index] of this.aliases) {
+      if (index === name) {
+        this.aliases.delete(alias);
+      }
+    }
+    this.json(res, 200, { acknowledged: true });
   }
 
   private handleGet(res: ServerResponse, name: string): void {
@@ -614,11 +732,21 @@ export class FakeElasticsearch {
     this.json(res, 201, { _index: index, _id: docId, result: 'created', _shards: { successful: 1, failed: 0 } });
   }
 
-  private deleteByQuery(res: ServerResponse, target: string): void {
+  private deleteByQuery(res: ServerResponse, target: string, body: unknown): void {
+    const query = (body ?? {}) as { query?: Record<string, unknown> };
     let deleted = 0;
     for (const entry of this.resolveTargets(target)) {
-      deleted += entry.documents.size;
-      entry.documents.clear();
+      if (query.query === undefined) {
+        deleted += entry.documents.size;
+        entry.documents.clear();
+        continue;
+      }
+      for (const [id, doc] of [...entry.documents]) {
+        if (this.matches(doc, query.query)) {
+          entry.documents.delete(id);
+          deleted += 1;
+        }
+      }
     }
     this.json(res, 200, { deleted });
   }
@@ -708,7 +836,7 @@ export class FakeElasticsearch {
 
   private matches(doc: DocumentEntry, query: Record<string, unknown>): boolean {
     const { multi_match: multi, bool } = query as {
-      multi_match?: { query?: string; fields?: string[] };
+      multi_match?: { query?: string; fields?: string[]; fuzziness?: unknown };
       bool?: { must?: unknown[]; filter?: unknown[] };
     };
     if (bool) {
@@ -728,7 +856,13 @@ export class FakeElasticsearch {
         return true;
       }
       const fields = (multi.fields ?? []).map((field) => this.fieldKey(field));
-      return terms.every((term) => fields.some((field) => fold(String(doc.source[field] ?? '')).includes(term)));
+      // best_fields with Elasticsearch's default operator: one term in one
+      // field is enough, compared against analysed tokens rather than raw
+      // substrings, with the edit budget the request asked for.
+      return terms.some((term) => {
+        const budget = fuzzinessBudget(term, multi.fuzziness);
+        return fields.some((field) => holdsTerm(String(doc.source[field] ?? ''), term, budget));
+      });
     }
     const clause = Object.entries(query)[0];
     if (!clause) {
