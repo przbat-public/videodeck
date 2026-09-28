@@ -165,14 +165,12 @@ export function applyLibraryFrame(frame: LibraryEvent): void {
   }
   const before = new Set(state.folders);
   const after = new Set(frame.folders);
-  const described: LibraryEvent = {
-    ...frame,
-    added: hasSnapshot ? foldersAdded(before, frame.folders) : [],
-    removed: hasSnapshot ? state.folders.filter((folderPath) => !after.has(folderPath)) : [],
-  };
+  const added = hasSnapshot ? foldersAdded(before, frame.folders) : [];
+  const removed = hasSnapshot ? state.folders.filter((folderPath) => !after.has(folderPath)) : [];
+  const described: LibraryEvent = { ...frame, added, removed };
   hasSnapshot = true;
   setState({ revision: frame.revision, folders: [...frame.folders] });
-  rememberArrivals(described.added ?? []);
+  rememberArrivals(added);
   for (const listener of frameListeners) {
     listener(described);
   }

@@ -80,11 +80,12 @@ function scheduleReconnect(): void {
  * A hidden tab drops the connection and a visible one reopens it. The opening
  * frame carries the whole library, so nothing can be missed in between, and a
  * background tab holds no socket for a server that has other readers.
+ *
+ * The listener exists only while a stream does (`stopLibraryStream` detaches it
+ * before it returns), so there is no `active` check here. `connect` keeps its
+ * own, which is what makes a stray visible event after a stop harmless.
  */
 function onVisibilityChange(): void {
-  if (!active) {
-    return;
-  }
   if (document.visibilityState === 'hidden') {
     clearRetry();
     controller?.abort();

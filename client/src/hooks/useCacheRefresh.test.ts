@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
 import { toast } from '../test/toastMock';
-import { resetReindexState, subscribeReindexFinished } from '../utils/reindexStore';
+import {
+  DEFAULT_POLL_INTERVAL_MS,
+  resetReindexState,
+  refreshCache as startReindexRun,
+  subscribeReindexFinished,
+} from '../utils/reindexStore';
 import { formatReindexProgress, formatReindexResult, useCacheRefresh } from './useCacheRefresh';
 
 const LOADING_TOAST_ID = 'toast-id';
@@ -77,6 +82,14 @@ describe('formatReindexProgress', () => {
   it('omits parts that are not known yet', () => {
     expect(formatReindexProgress(withoutFolder(running({ foldersTotal: 0, filesTotal: 0, indexed: 0 })))).toBe(
       'Indeksowanie · 0 zindeksowanych',
+    );
+  });
+
+  it('falls back to the whole path when there is no segment to name', () => {
+    // A folder at the filesystem root is all separators, so its last segment is
+    // empty: the path itself beats a blank part in the toast
+    expect(formatReindexProgress(running({ currentFolder: '/' }))).toBe(
+      'Indeksowanie · folder 1/2 · / · 3/10 plików · 3 zindeksowanych',
     );
   });
 });
@@ -458,5 +471,84 @@ describe('useCacheRefresh', () => {
       id: LOADING_TOAST_ID,
     });
     expect(result.current.loading).toBe(false);
+  });
+
+  it('reports folder errors without a detail line the server did not send', async () => {
+    mockServer(jsonResponse({ status: 'ok' }), [
+      jsonResponse(finished({ errors: ['Error scanning folder /videos/x'] })),
+    ]);
+
+    const { result } = renderHook(() => useCacheRefresh());
+
+    await act(async () => {
+      await result.current.refreshCache();
+    });
+
+    expect(toast.error).toHaveBeenCalledWith('Indeksowanie zakończone: 20 filmów zindeksowanych, 1 błąd folderu.', {
+      id: LOADING_TOAST_ID,
+    });
+  });
+
+  it('skips the status poll while the tab is hidden, and picks the progress up when it returns', async () => {
+    vi.useFakeTimers();
+    mockServer(jsonResponse({ status: 'ok' }), [
+      jsonResponse(running()),
+      jsonResponse(running({ foldersDone: 1, currentFolder: '/videos/channel-b', filesDone: 5, indexed: 15 })),
+      jsonResponse(finished()),
+    ]);
+    const { result } = renderHook(() => useCacheRefresh({ pollIntervalMs: 1000 }));
+
+    let done: Promise<void> | undefined;
+    act(() => {
+      done = result.current.refreshCache();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(statusCalls()).toBe(1);
+
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    // Hidden means "do not ask": the server keeps working with no reader, and
+    // the run stays in flight rather than erroring or finishing early
+    expect(statusCalls()).toBe(1);
+    expect(result.current.status?.running).toBe(true);
+
+    visibility.mockRestore();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+      await done;
+    });
+
+    expect(statusCalls()).toBe(3);
+    expect(toast.success).toHaveBeenCalledWith('Indeksowanie zakończone: 20 filmów zindeksowanych', {
+      id: LOADING_TOAST_ID,
+    });
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('polls at the store default when the caller asks for no interval', async () => {
+    vi.useFakeTimers();
+    mockServer(jsonResponse({ status: 'ok' }), [jsonResponse(running()), jsonResponse(finished())]);
+
+    // The store's own entry point, as a surface that does not care about the
+    // cadence calls it
+    const done = startReindexRun();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(statusCalls()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_POLL_INTERVAL_MS - 1);
+    expect(statusCalls()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await done;
+
+    expect(statusCalls()).toBe(2);
+    expect(toast.success).toHaveBeenCalledWith('Indeksowanie zakończone: 20 filmów zindeksowanych', {
+      id: LOADING_TOAST_ID,
+    });
   });
 });

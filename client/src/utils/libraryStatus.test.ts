@@ -5,8 +5,10 @@ import { libraryFrame } from '../test/libraryFrames';
 import {
   applyLibraryFrame,
   applyLibraryRevision,
+  getLibraryArrivals,
   getLibraryState,
   resetLibraryState,
+  subscribeLibraryArrivals,
   subscribeLibraryFrames,
   subscribeLibraryState,
 } from './libraryStatus';
@@ -104,6 +106,36 @@ describe('libraryStatus store', () => {
     applyLibraryFrame(libraryFrame({ revision: 4, folders: ['/videos/a', '/videos/plugged-in'] }));
 
     expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({ added: ['/videos/plugged-in'], removed: [] }));
+  });
+
+  it('keeps one notice entry when a folder leaves and comes back before it is read', () => {
+    // The notice lists what arrived since the operator last saw it, so a drive
+    // unplugged and plugged back in must not be announced a second time
+    const arrivals = vi.fn();
+    const unsubscribe = subscribeLibraryArrivals(arrivals);
+    applyLibraryFrame(libraryFrame({ revision: 3, folders: ['/videos/a'] }));
+    applyLibraryFrame(libraryFrame({ revision: 4, folders: ['/videos/a', '/videos/plugged-in'] }));
+    expect(getLibraryArrivals()).toEqual(['/videos/plugged-in']);
+    arrivals.mockClear();
+
+    applyLibraryFrame(libraryFrame({ revision: 5, folders: ['/videos/a'] }));
+    applyLibraryFrame(libraryFrame({ revision: 6, folders: ['/videos/a', '/videos/plugged-in'] }));
+    unsubscribe();
+
+    expect(getLibraryArrivals()).toEqual(['/videos/plugged-in']);
+    expect(arrivals).not.toHaveBeenCalled();
+  });
+
+  it('stops handing frames to a subscriber that unsubscribed', () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeLibraryFrames(listener);
+    applyLibraryFrame(libraryFrame({ revision: 3, folders: ['/videos/a'] }));
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    applyLibraryFrame(libraryFrame({ revision: 4, folders: ['/videos/a', '/videos/b'] }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it('treats the first frame of a session as a snapshot, not as a change', () => {

@@ -174,4 +174,86 @@ describe('libraryStream', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('answers a visible event with the connection it already holds', async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValue(openResponse([libraryFrame(2, ['/videos/a'])]).response);
+
+    start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // The tab was never hidden, so there is nothing to reopen
+    setVisibility('visible');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getLibraryState().revision).toBe(2);
+  });
+
+  it('holds no connection while the tab is hidden, and opens one when it is shown', async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValue(openResponse([libraryFrame(2, ['/videos/a'])]).response);
+
+    // A page loaded into a background tab: nothing to read until someone looks
+    setVisibility('hidden');
+    start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    setVisibility('visible');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getLibraryState().revision).toBe(2);
+  });
+
+  it('drops a response that lands after the tab hid, and leaves the connection that replaced it alone', async () => {
+    vi.useFakeTimers();
+    let answerAborted!: (response: Response) => void;
+    fetchMock
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            answerAborted = resolve;
+          }),
+      )
+      .mockResolvedValue(openResponse([libraryFrame(2, ['/videos/a'])]).response);
+
+    start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    setVisibility('hidden');
+    setVisibility('visible');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(getLibraryState().revision).toBe(2);
+
+    // The browser is free to answer a request the page no longer wants, so the
+    // aborted response arrives anyway and must not reach the store
+    answerAborted(openResponse([libraryFrame(9, ['/videos/ghost'])]).response);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(getLibraryState().revision).toBe(2);
+    expect(getLibraryState().folders).toEqual(['/videos/a']);
+
+    // Nor may its bookkeeping touch the live connection: a visible event still
+    // finds a controller to hold, so no third request, and nothing to retry
+    setVisibility('visible');
+    await vi.advanceTimersByTimeAsync(LIBRARY_STREAM_INITIAL_BACKOFF_MS * 4);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('applies every frame one connection delivers', async () => {
+    fetchMock.mockResolvedValue(
+      openResponse([libraryFrame(2, ['/videos/a']), libraryFrame(3, ['/videos/a', '/videos/b'])]).response,
+    );
+
+    start();
+    await vi.waitFor(() => expect(getLibraryState().revision).toBe(3));
+
+    expect(getLibraryState().folders).toEqual(['/videos/a', '/videos/b']);
+  });
 });

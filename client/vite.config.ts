@@ -82,10 +82,10 @@ export default defineConfig(({ mode }) => ({
       // Set just under the current numbers: a ratchet against regressions,
       // not a target. Raise them as coverage grows.
       thresholds: {
-        statements: 97.19,
-        branches: 92.59,
-        functions: 97,
-        lines: 98,
+        statements: 98.08,
+        branches: 93.61,
+        functions: 97.44,
+        lines: 98.49,
         // Raising these is a deliberate commit: `autoUpdate` stays off so a
         // gate run never rewrites this tracked file (it used to, which is how
         // CI mutated the repository mid-run).

@@ -37,7 +37,6 @@ const IDLE_STATE: ReindexState = { loading: false, status: null };
 
 let state: ReindexState = IDLE_STATE;
 let inFlight: Promise<void> | null = null;
-let controller: AbortController | null = null;
 const listeners = new Set<() => void>();
 const finishedListeners = new Set<(status: ReindexStatus) => void>();
 
@@ -152,12 +151,9 @@ async function pollReindexUntilFinished(
 ): Promise<ReindexStatus> {
   let current = await fetchStatus(signal);
   setState({ loading: true, status: current });
-  while (current.running && !signal.aborted) {
+  while (current.running) {
     toast.loading(formatReindexProgress(current), { id: loadingToastId });
     await sleep(pollIntervalMs);
-    if (signal.aborted) {
-      return current;
-    }
     // A hidden tab still owns the run, it just stops asking: the server keeps
     // working and the next visible poll picks the progress up where it is
     if (document.visibilityState === 'hidden') {
@@ -193,14 +189,8 @@ async function runReindex(
     const url = onlyMissing ? '/api/videos/refreshCache?onlyMissing=1' : '/api/videos/refreshCache';
     await startReindex(url, current.signal, loadingToastId);
     const finished = await pollReindexUntilFinished(current.signal, pollIntervalMs, loadingToastId);
-    if (current.signal.aborted) {
-      return;
-    }
     reportReindexResult(finished, loadingToastId);
   } catch (err) {
-    if (current.signal.aborted) {
-      return;
-    }
     toast.error(err instanceof Error ? err.message : i18n.t('reindex.startFailed'), { id: loadingToastId });
   }
 }
@@ -209,13 +199,15 @@ async function runReindex(
  * Start a reindex, or join the one already running. The promise resolves when
  * the run is over, so a caller that wants to act on the outcome can await it,
  * and a second caller gets the same run instead of a second job.
+ *
+ * No surface stops a run, so the controller here only carries the signal the
+ * requests take; the run is followed to the end whoever started it.
  */
 export function refreshCache(options: ReindexRunOptions = {}): Promise<void> {
   if (inFlight !== null) {
     return inFlight;
   }
   const current = new AbortController();
-  controller = current;
   setState({ loading: true, status: state.status });
   const loadingToastId = toast.loading(i18n.t('reindex.starting'));
 
@@ -226,9 +218,6 @@ export function refreshCache(options: ReindexRunOptions = {}): Promise<void> {
     options.onlyMissing === true,
   ).finally(() => {
     inFlight = null;
-    if (controller === current) {
-      controller = null;
-    }
     setState({ loading: false, status: state.status });
   });
 
@@ -238,7 +227,6 @@ export function refreshCache(options: ReindexRunOptions = {}): Promise<void> {
 /** Tests: forget the run state (the poller of a live run is not touched) */
 export function resetReindexState(): void {
   inFlight = null;
-  controller = null;
   state = IDLE_STATE;
   emit();
 }
