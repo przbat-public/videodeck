@@ -549,6 +549,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fail. When no folder is left at all, the page says the drives are unplugged
   instead of claiming that no path is configured
 
+### Added
+
+- A drive that arrives while the app is open is announced in the shell with the
+  number of channels it brought and one action ("Zaindeksuj nowe kanały"). That
+  action runs the existing reindex with `onlyMissing`, so a channel whose index
+  survived an earlier session is skipped and keeps serving searches. Nothing
+  scans on its own: the notice stands down once the action is taken or
+  dismissed, and the next arrival raises it again
+
 ## [1.0.0] - 2026-09-14
 
 First public release.

@@ -365,5 +365,14 @@
     "searchInChannel": "Szukaj w tym kanale",
     "empty": "Żaden kanał nie pasuje do filtra",
     "countsError": "Nie udało się policzyć filmów: {{message}}"
+  },
+  "library": {
+    "detected_one": "Wykryto {{count}} nowy kanał na dysku",
+    "detected_few": "Wykryto {{count}} nowe kanały na dysku",
+    "detected_many": "Wykryto {{count}} nowych kanałów na dysku",
+    "detected_other": "Wykryto {{count}} nowych kanałów na dysku",
+    "reindexNew": "Zaindeksuj nowe kanały",
+    "reindexOffline": "Elasticsearch nie odpowiada, więc indeksowanie jest wyłączone",
+    "dismiss": "Ukryj"
   }
 }

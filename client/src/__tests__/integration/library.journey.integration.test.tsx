@@ -1,9 +1,11 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { folderConfig, videoFiles } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import i18n from '../../i18n';
 import { getLibraryRevision } from '../../utils/libraryStatus';
 import { renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
@@ -27,6 +29,10 @@ let env: DeepServerTestEnv;
  * duration, and a busy CI machine is not a failure.
  */
 const LIBRARY_CHANGE_TIMEOUT_MS = 20_000;
+
+/** The alias the server derives from a folder path (elasticsearchService) */
+const folderAlias = (folderPath: string): string =>
+  `videos_${createHash('sha256').update(folderPath).digest('hex').substring(0, 16)}`;
 
 beforeAll(async () => {
   env = await startBackend();
@@ -74,6 +80,39 @@ describe('a drive that arrives while the console is open', () => {
     );
 
     expect(screen.getByText('channel-integration')).toBeInTheDocument();
+  });
+
+  it('offers one reindex for the channel that just arrived, and indexes nothing before the click', async () => {
+    env.watchVideosDir();
+    const { user } = await renderApp('/download');
+
+    await screen.findByText('channel-integration', undefined, { timeout: LIBRARY_CHANGE_TIMEOUT_MS });
+
+    await act(async () => {
+      await env.seedFolder('channel-newdrive', {
+        ...videoFiles('newdrive0001', 'Film z nowego dysku'),
+        'config.json': folderConfig('https://www.youtube.com/@newdrive'),
+      });
+    });
+
+    // The arrival is announced with its count, and the one action that can
+    // index it sits in the same strip
+    const notice = await screen.findByText(i18n.t('library.detected', { count: 1 }), undefined, {
+      timeout: LIBRARY_CHANGE_TIMEOUT_MS,
+    });
+    const alias = folderAlias(env.folder('channel-newdrive'));
+
+    // Detection is not indexing: nothing wrote a cache for that folder yet,
+    // and search would find none of its videos
+    expect(env.fakeEs.aliasOf(alias)).toBeUndefined();
+
+    await user.click(screen.getByRole('button', { name: i18n.t('library.reindexNew') }));
+
+    // The click is what starts the disk work, and the notice stands down for
+    // the reindex toasts to take over
+    await waitFor(() => expect(env.fakeEs.aliasOf(alias)).toBeDefined(), { timeout: LIBRARY_CHANGE_TIMEOUT_MS });
+    expect(notice).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: i18n.t('library.reindexNew') })).toBeNull();
   });
 });
 

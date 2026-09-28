@@ -59,6 +59,11 @@ export interface MockApiHandlers {
   channels?: unknown;
   /** Body of GET /api/health; a degraded stack is `{ status: 'degraded', elasticsearch: 'down', revision: 1 }` */
   health?: unknown;
+  /**
+   * Frames the mocked GET /api/events stream delivers AFTER its opening one,
+   * which is how a drive arriving while the page is open looks to the client.
+   */
+  libraryFrames?: unknown[];
   /** Body of the folder queue GET (log-free, capped); defaults to an empty queue */
   queue?: unknown;
   /** Body of GET /api/folder/queue/summaries; defaults to zeroed counters */
@@ -101,19 +106,19 @@ export async function mockApi(page: Page, handlers: MockApiHandlers = {}): Promi
   // mock answers one opening frame instead of leaking the request to the vite
   // proxy. The connection then ends, which makes the client reconnect on its
   // own schedule; a route that stays pending would do the same job, with a
-  // hanging request per page to explain.
-  await context.route('**/api/events', (route) =>
-    route.fulfill({
+  // hanging request per page to explain. A test may add frames after the
+  // opening one, which is what a drive arriving mid-session looks like.
+  await context.route('**/api/events', (route) => {
+    const frames = [
+      { type: 'library', revision: 1, folders: ['/videos/e2e'], unavailable: [] },
+      ...(handlers.libraryFrames ?? []),
+    ];
+    return route.fulfill({
       status: 200,
       contentType: 'text/event-stream',
-      body: `data: ${JSON.stringify({
-        type: 'library',
-        revision: 1,
-        folders: ['/videos/e2e'],
-        unavailable: [],
-      })}\n\n`,
-    }),
-  );
+      body: frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(''),
+    });
+  });
   await context.route('**/api/videos/search**', async (route) => {
     const url = new URL(route.request().url());
     const body = handlers.search?.(url.searchParams) ?? { videos: [], totalCount: 0 };
