@@ -56,6 +56,8 @@ services:
       # checkout, where those files do not exist.
       context: .
       dockerfile: server/Dockerfile
+    # A host reboot brings the whole stack back, not just the database.
+    restart: unless-stopped
     environment:
       - HOST=0.0.0.0
       - PORT=3001
@@ -73,8 +75,10 @@ services:
       - SUMMARY_PROVIDER=${SUMMARY_PROVIDER:-}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
       # One proxy hop (the client container) sits in front of the server, and
-      # the rate limit counts per client IP. Remove this if you reach the
-      # server directly and let a header decide who the client is.
+      # the rate limit counts per client IP. nginx forwards X-Forwarded-For, so
+      # this describes the connection rather than trusting a header. Remove it
+      # when the server is reached directly, and never set a bare `true`: the
+      # server refuses it, because it lets a client pick its own bucket.
       - TRUST_PROXY=${TRUST_PROXY:-1}
     volumes:
       # Replace /path/to/videos with your library root. The container user
@@ -93,6 +97,8 @@ services:
     build:
       context: .
       dockerfile: client/Dockerfile
+    # Same as the server: after a reboot the UI comes back on its own.
+    restart: unless-stopped
     environment:
       # The UI container talks to the server on the browser's behalf and holds
       # the token for it: the browser sends no Authorization header of its own.

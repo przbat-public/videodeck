@@ -11,6 +11,7 @@ import {
   getOpenAiApiKey,
   getOpenAiBaseUrl,
   getSummaryProviderOverride,
+  getTrustProxy,
   getVideosFolderPaths,
   invalidateVideosFolderCache,
 } from './config';
@@ -240,5 +241,42 @@ describe('lazy server settings', () => {
     expect(getCorsOrigins()).toEqual([]);
     process.env.CORS_ORIGINS = ' https://a.example , https://b.example ';
     expect(getCorsOrigins()).toEqual(['https://a.example', 'https://b.example']);
+  });
+});
+
+describe('getTrustProxy', () => {
+  const originalTrustProxy = process.env.TRUST_PROXY;
+
+  afterEach(() => {
+    restoreEnv('TRUST_PROXY', originalTrustProxy);
+  });
+
+  it('is undefined when unset or blank, which trusts nobody', () => {
+    delete process.env.TRUST_PROXY;
+    expect(getTrustProxy()).toBeUndefined();
+    process.env.TRUST_PROXY = '   ';
+    expect(getTrustProxy()).toBeUndefined();
+  });
+
+  it('reads a hop count, false, loopback and a subnet', () => {
+    process.env.TRUST_PROXY = '1';
+    expect(getTrustProxy()).toBe(1);
+    process.env.TRUST_PROXY = '2';
+    expect(getTrustProxy()).toBe(2);
+    process.env.TRUST_PROXY = 'false';
+    expect(getTrustProxy()).toBe(false);
+    process.env.TRUST_PROXY = 'loopback';
+    expect(getTrustProxy()).toBe('loopback');
+    process.env.TRUST_PROXY = '192.168.0.0/16';
+    expect(getTrustProxy()).toBe('192.168.0.0/16');
+  });
+
+  it('refuses a bare true, which would trust a client-supplied header', () => {
+    // express-rate-limit refuses this value too (ERR_ERL_PERMISSIVE_TRUST_PROXY),
+    // and with every hop trusted the rate-limit key is just X-Forwarded-For.
+    process.env.TRUST_PROXY = 'true';
+    expect(() => getTrustProxy()).toThrow(/TRUST_PROXY/);
+    process.env.TRUST_PROXY = ' TRUE ';
+    expect(() => getTrustProxy()).toThrow(/TRUST_PROXY/);
   });
 });
