@@ -4,6 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
 import { toast } from '../test/toastMock';
+import {
+  DEFAULT_POLL_INTERVAL_MS,
+  resetReindexState,
+  refreshCache as startReindexRun,
+  subscribeReindexFinished,
+} from '../utils/reindexStore';
 import { formatReindexProgress, formatReindexResult, useCacheRefresh } from './useCacheRefresh';
 
 const LOADING_TOAST_ID = 'toast-id';
@@ -61,6 +67,11 @@ function mockServer(startResponse: MockResponse, statuses: MockResponse[]) {
 
 const statusCalls = () => fetchMock.mock.calls.filter(([url]) => url === STATUS_URL).length;
 
+/** A run is app state now, so a test that leaves one behind would decide the next */
+beforeEach(() => {
+  resetReindexState();
+});
+
 describe('formatReindexProgress', () => {
   it('shows folder, file progress and indexed count', () => {
     expect(formatReindexProgress(running())).toBe(
@@ -71,6 +82,14 @@ describe('formatReindexProgress', () => {
   it('omits parts that are not known yet', () => {
     expect(formatReindexProgress(withoutFolder(running({ foldersTotal: 0, filesTotal: 0, indexed: 0 })))).toBe(
       'Indeksowanie · 0 zindeksowanych',
+    );
+  });
+
+  it('falls back to the whole path when there is no segment to name', () => {
+    // A folder at the filesystem root is all separators, so its last segment is
+    // empty: the path itself beats a blank part in the toast
+    expect(formatReindexProgress(running({ currentFolder: '/' }))).toBe(
+      'Indeksowanie · folder 1/2 · / · 3/10 plików · 3 zindeksowanych',
     );
   });
 });
@@ -229,7 +248,7 @@ describe('useCacheRefresh', () => {
     expect(result.current.status?.running).toBe(false);
   });
 
-  it('stops polling after unmount', async () => {
+  it('keeps following the run after the surface that started it unmounts', async () => {
     vi.useFakeTimers();
     mockServer(jsonResponse({ status: 'ok' }), [jsonResponse(running()), jsonResponse(finished())]);
 
@@ -251,9 +270,72 @@ describe('useCacheRefresh', () => {
       await done;
     });
 
-    // the loop noticed the abort after the sleep and never asked again
-    expect(statusCalls()).toBe(1);
+    // The run belongs to the app, not to the component that started it: it is
+    // followed to the end and reported once, so a page the operator navigated
+    // away from cannot leave a half-tracked job behind
+    expect(statusCalls()).toBe(2);
+    expect(toast.success).toHaveBeenCalled();
     vi.useRealTimers();
+  });
+
+  it('shares one run between two surfaces instead of one run each', async () => {
+    vi.useFakeTimers();
+    mockServer(jsonResponse({ status: 'ok' }), [jsonResponse(running()), jsonResponse(finished())]);
+    const first = renderHook(() => useCacheRefresh({ pollIntervalMs: 1000 }));
+    const second = renderHook(() => useCacheRefresh({ pollIntervalMs: 1000 }));
+
+    let done: Promise<void> | undefined;
+    act(() => {
+      done = first.result.current.refreshCache();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Both surfaces describe the same server job
+    expect(second.result.current.loading).toBe(true);
+    expect(second.result.current.status?.running).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+      await done;
+    });
+
+    expect(fetchMock.mock.calls.filter(([url]) => url === START_URL)).toHaveLength(1);
+    expect(second.result.current.loading).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('joins the run in flight instead of starting a second one', async () => {
+    mockServer(jsonResponse({ status: 'ok' }), [jsonResponse(finished())]);
+    const { result } = renderHook(() => useCacheRefresh());
+
+    let first: Promise<void> | undefined;
+    let second: Promise<void> | undefined;
+    await act(async () => {
+      first = result.current.refreshCache();
+      second = result.current.refreshCache();
+      await Promise.all([first, second]);
+    });
+
+    expect(fetchMock.mock.calls.filter(([url]) => url === START_URL)).toHaveLength(1);
+    // One run, one progress toast: the id is minted by the run, not the click
+    expect(toast.loading).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells every finished subscriber once, with the final status', async () => {
+    mockServer(jsonResponse({ status: 'ok' }), [jsonResponse(finished())]);
+    const heard: ReindexStatus[] = [];
+    const unsubscribe = subscribeReindexFinished((status) => heard.push(status));
+    const { result } = renderHook(() => useCacheRefresh());
+
+    await act(async () => {
+      await result.current.refreshCache();
+    });
+    unsubscribe();
+
+    expect(heard).toHaveLength(1);
+    expect(heard[0]?.indexed).toBe(20);
   });
 
   it('follows an already running reindex on 409 instead of failing', async () => {
@@ -389,5 +471,84 @@ describe('useCacheRefresh', () => {
       id: LOADING_TOAST_ID,
     });
     expect(result.current.loading).toBe(false);
+  });
+
+  it('reports folder errors without a detail line the server did not send', async () => {
+    mockServer(jsonResponse({ status: 'ok' }), [
+      jsonResponse(finished({ errors: ['Error scanning folder /videos/x'] })),
+    ]);
+
+    const { result } = renderHook(() => useCacheRefresh());
+
+    await act(async () => {
+      await result.current.refreshCache();
+    });
+
+    expect(toast.error).toHaveBeenCalledWith('Indeksowanie zakończone: 20 filmów zindeksowanych, 1 błąd folderu.', {
+      id: LOADING_TOAST_ID,
+    });
+  });
+
+  it('skips the status poll while the tab is hidden, and picks the progress up when it returns', async () => {
+    vi.useFakeTimers();
+    mockServer(jsonResponse({ status: 'ok' }), [
+      jsonResponse(running()),
+      jsonResponse(running({ foldersDone: 1, currentFolder: '/videos/channel-b', filesDone: 5, indexed: 15 })),
+      jsonResponse(finished()),
+    ]);
+    const { result } = renderHook(() => useCacheRefresh({ pollIntervalMs: 1000 }));
+
+    let done: Promise<void> | undefined;
+    act(() => {
+      done = result.current.refreshCache();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(statusCalls()).toBe(1);
+
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    // Hidden means "do not ask": the server keeps working with no reader, and
+    // the run stays in flight rather than erroring or finishing early
+    expect(statusCalls()).toBe(1);
+    expect(result.current.status?.running).toBe(true);
+
+    visibility.mockRestore();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+      await done;
+    });
+
+    expect(statusCalls()).toBe(3);
+    expect(toast.success).toHaveBeenCalledWith('Indeksowanie zakończone: 20 filmów zindeksowanych', {
+      id: LOADING_TOAST_ID,
+    });
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('polls at the store default when the caller asks for no interval', async () => {
+    vi.useFakeTimers();
+    mockServer(jsonResponse({ status: 'ok' }), [jsonResponse(running()), jsonResponse(finished())]);
+
+    // The store's own entry point, as a surface that does not care about the
+    // cadence calls it
+    const done = startReindexRun();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(statusCalls()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(DEFAULT_POLL_INTERVAL_MS - 1);
+    expect(statusCalls()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await done;
+
+    expect(statusCalls()).toBe(2);
+    expect(toast.success).toHaveBeenCalledWith('Indeksowanie zakończone: 20 filmów zindeksowanych', {
+      id: LOADING_TOAST_ID,
+    });
   });
 });

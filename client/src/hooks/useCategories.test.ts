@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { installFetchMock, jsonResponse } from '../test/fetchMock';
 import { libraryFrame } from '../test/libraryFrames';
-import { applyLibraryFrame } from '../utils/libraryStatus';
+import { applyLibraryFrame, applyLibraryRevision, resetLibraryState } from '../utils/libraryStatus';
 import { useCategories } from './useCategories';
 
 const fetchMock = installFetchMock();
@@ -77,5 +77,23 @@ describe('useCategories', () => {
     });
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  it('waits for the first library value before it reads', async () => {
+    // Nothing is known yet, so a read now would be superseded by the one that
+    // follows the first revision: one disk pass instead of two
+    resetLibraryState();
+    fetchMock.mockResolvedValue(jsonResponse({ categories: ['fpv'] }));
+
+    const { result } = renderHook(() => useCategories());
+
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    act(() => {
+      applyLibraryRevision(1);
+    });
+
+    await waitFor(() => expect(result.current.categories).toEqual(['fpv']));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

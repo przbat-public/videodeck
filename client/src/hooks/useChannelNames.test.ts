@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { installFetchMock, jsonResponse } from '../test/fetchMock';
 import { libraryFrame } from '../test/libraryFrames';
-import { applyLibraryFrame } from '../utils/libraryStatus';
+import { applyLibraryFrame, applyLibraryRevision, resetLibraryState } from '../utils/libraryStatus';
 import { useChannelNames } from './useChannelNames';
 
 const fetchMock = installFetchMock();
@@ -74,5 +74,23 @@ describe('useChannelNames', () => {
     });
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+
+  it('waits for the first library value before it reads', async () => {
+    // The channels come from the folders attached right now, so a read before
+    // the first revision would answer a library that is already stale
+    resetLibraryState();
+    fetchMock.mockResolvedValue(jsonResponse({ channels: ['fpv channel'], folders: {} }));
+
+    const { result } = renderHook(() => useChannelNames());
+
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    act(() => {
+      applyLibraryRevision(1);
+    });
+
+    await waitFor(() => expect(result.current.channels).toEqual(['fpv channel']));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

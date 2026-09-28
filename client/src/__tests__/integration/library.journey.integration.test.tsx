@@ -96,10 +96,13 @@ describe('a drive that arrives while the console is open', () => {
     });
 
     // The arrival is announced with its count, and the one action that can
-    // index it sits in the same strip
-    const notice = await screen.findByText(i18n.t('library.detected', { count: 1 }), undefined, {
-      timeout: LIBRARY_CHANGE_TIMEOUT_MS,
-    });
+    // index it sits in the same strip. The sentence also lives in the shell's
+    // live region, so the query names the visible one.
+    const notice = await screen.findByText(
+      i18n.t('library.detected', { count: 1 }),
+      { selector: '.library-notice-text' },
+      { timeout: LIBRARY_CHANGE_TIMEOUT_MS },
+    );
     const alias = folderAlias(env.folder('channel-newdrive'));
 
     // Detection is not indexing: nothing wrote a cache for that folder yet,

@@ -1,6 +1,6 @@
 import { libraryEventSchema } from '@videodeck/shared/schemas';
 import { feedSseBuffer, parseSseEvent } from '@videodeck/shared/sse';
-import { applyLibraryFrame, setLibraryStreamOpen } from './libraryStatus';
+import { applyLibraryFrame } from './libraryStatus';
 
 /**
  * The browser's end of `GET /api/events`: one request per app load, held open
@@ -53,7 +53,6 @@ export function stopLibraryStream(): void {
   clearRetry();
   controller?.abort();
   controller = null;
-  setLibraryStreamOpen(false);
 }
 
 function clearRetry(): void {
@@ -81,16 +80,16 @@ function scheduleReconnect(): void {
  * A hidden tab drops the connection and a visible one reopens it. The opening
  * frame carries the whole library, so nothing can be missed in between, and a
  * background tab holds no socket for a server that has other readers.
+ *
+ * The listener exists only while a stream does (`stopLibraryStream` detaches it
+ * before it returns), so there is no `active` check here. `connect` keeps its
+ * own, which is what makes a stray visible event after a stop harmless.
  */
 function onVisibilityChange(): void {
-  if (!active) {
-    return;
-  }
   if (document.visibilityState === 'hidden') {
     clearRetry();
     controller?.abort();
     controller = null;
-    setLibraryStreamOpen(false);
     return;
   }
   attempt = 0;
@@ -114,7 +113,6 @@ async function connect(): Promise<void> {
     if (!response.ok || response.body === null) {
       throw new Error(`library stream answered ${response.status}`);
     }
-    setLibraryStreamOpen(true);
     await readFrames(response.body, current.signal);
   } catch {
     // Swallowed on purpose: the health poll keeps the revision moving and the
@@ -124,7 +122,6 @@ async function connect(): Promise<void> {
       controller = null;
     }
     if (active && !current.signal.aborted) {
-      setLibraryStreamOpen(false);
       scheduleReconnect();
     }
   }

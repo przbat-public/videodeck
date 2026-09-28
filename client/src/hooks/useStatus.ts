@@ -6,7 +6,7 @@ import type { StatusData } from '../reducers/statusReducer';
 import { initialState, StatusActionType, statusReducer } from '../reducers/statusReducer';
 import { apiGet } from '../utils/apiClient';
 import { reportElasticsearchReachable, reportElasticsearchUnavailable } from '../utils/elasticsearchStatus';
-import { useLibraryRevision } from './useLibrary';
+import { useLibraryReadKey } from './useLibrary';
 
 interface UseStatusResult {
   state: { statusData: StatusData | null; loading: boolean; error: string | null };
@@ -26,7 +26,9 @@ export function useStatus(): UseStatusResult {
   const [state, dispatch] = useReducer(statusReducer, initialState);
   // A drive that arrives or leaves moves the revision, and the folder list is
   // what this hook renders: re-read on the move instead of polling for it.
-  const revision = useLibraryRevision();
+  // `null` is the moment before the first value lands, when a read would only
+  // be thrown away by the one that follows it.
+  const readKey = useLibraryReadKey();
 
   const load = useCallback(async (signal?: AbortSignal): Promise<void> => {
     try {
@@ -59,15 +61,16 @@ export function useStatus(): UseStatusResult {
       dispatch({ type: StatusActionType.FETCH_ERROR, payload: errorMessage });
     }
   }, []);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the revision is a re-read trigger, not an input; the loader asks the server for the folders that exist now
   useEffect(() => {
+    if (readKey === null) {
+      return;
+    }
     const controller = new AbortController();
     void load(controller.signal);
     return () => {
       controller.abort();
     };
-  }, [load, revision]);
+  }, [load, readKey]);
 
   const reload = useCallback((): void => {
     void load();

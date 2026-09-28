@@ -1,7 +1,7 @@
 import type { QueueCounts, QueueFolderCounts } from '@videodeck/shared/api';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { refreshQueueSummary, useQueueSummary } from '../utils/queueSummaryStore';
-import { useLibraryRevision } from './useLibrary';
+import { useLibraryReadKey } from './useLibrary';
 
 /** The empty answers, so a consumer without a summary yet reads zeroes */
 const NO_JOBS_BY_FOLDER: Record<string, QueueFolderCounts> = {};
@@ -26,18 +26,24 @@ interface UseChannelQueueResult {
 export function useChannelQueue(enabled = true): UseChannelQueueResult {
   const { summary, error } = useQueueSummary(enabled);
   const refresh = useCallback(() => refreshQueueSummary(), []);
-  const revision = useLibraryRevision();
+  const readKey = useLibraryReadKey();
+  const baselineRef = useRef<number | null>(null);
 
   // The counters are per folder, and the folder set is what the library
-  // revision moves. Revision 0 is the state before anything is known: the
-  // store's own first read already covers the mount, so this skips it rather
-  // than asking twice for the same thing.
+  // revision moves. The store behind `useQueueSummary` reads once when its
+  // first subscriber arrives, which is the mount, so the first key this hook
+  // sees must not start a second read for the same thing: it only records the
+  // baseline the later moves are compared against.
   useEffect(() => {
-    if (!enabled || revision === 0) {
+    if (!enabled || readKey === null) {
+      return;
+    }
+    if (baselineRef.current === null) {
+      baselineRef.current = readKey;
       return;
     }
     void refresh();
-  }, [enabled, refresh, revision]);
+  }, [enabled, refresh, readKey]);
 
   return {
     counts: summary?.counts ?? NO_COUNTS,

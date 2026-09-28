@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import i18n from '../i18n';
 import { installFetchMock, jsonResponse } from '../test/fetchMock';
 import { resetElasticsearchState, setElasticsearchState } from '../utils/elasticsearchStatus';
-import { applyLibraryFrame } from '../utils/libraryStatus';
+import { applyLibraryFrame, resetLibraryState } from '../utils/libraryStatus';
 import { LibraryNotice } from './LibraryNotice';
 
 const fetchMock = installFetchMock();
@@ -18,6 +18,19 @@ const frame = (overrides: Partial<LibraryEvent> = {}): LibraryEvent => ({
   unavailable: [],
   ...overrides,
 });
+
+/**
+ * A drive arriving the way the stream reports it: one frame describes the
+ * library as it was, the next one describes it with `arrived` in it. The store
+ * computes the change from the two lists, so a single frame would look like
+ * the opening snapshot of a page load and rightly raise nothing.
+ */
+function arrive(before: string[], arrived: string[], revision = 2): void {
+  act(() => {
+    applyLibraryFrame(frame({ revision: revision - 1, folders: before }));
+    applyLibraryFrame(frame({ revision, folders: [...before, ...arrived] }));
+  });
+}
 
 /** GET /api/videos/refreshCache/status once the run is over */
 const finishedRun = {
@@ -46,24 +59,25 @@ function mockReindexServer(): void {
 
 const reindexButton = (): HTMLElement => screen.getByRole('button', { name: i18n.t('library.reindexNew') });
 
+/** Whether the strip is on screen: its action is the part nobody can miss */
+const noticeIsGone = (): boolean => screen.queryByRole('button', { name: i18n.t('library.reindexNew') }) === null;
+
 describe('LibraryNotice', () => {
   beforeEach(() => {
     fetchMock.mockReset();
     resetElasticsearchState();
+    resetLibraryState();
   });
 
   it('says how many channels arrived and offers one reindex', () => {
     render(<LibraryNotice />);
 
-    act(() => {
-      applyLibraryFrame(frame({ added: ['/videos/a', '/videos/b'] }));
-    });
+    arrive(['/videos/a'], ['/videos/b', '/videos/c']);
 
-    const notice = screen.getByRole('status');
-    expect(notice).toHaveTextContent(i18n.t('library.detected', { count: 2 }));
+    const text = screen.getByText(i18n.t('library.detected', { count: 2 }));
     // The count itself: a missing catalog key would render the raw key and
     // still match the assertion above, which is what this line rules out
-    expect(notice).toHaveTextContent('2');
+    expect(text).toHaveTextContent('2');
     expect(reindexButton()).toBeEnabled();
   });
 
@@ -74,16 +88,14 @@ describe('LibraryNotice', () => {
       applyLibraryFrame(frame());
     });
 
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(noticeIsGone()).toBe(true);
   });
 
   it('indexes the new folders with onlyMissing when the action runs', async () => {
     mockReindexServer();
     const user = userEvent.setup();
     render(<LibraryNotice />);
-    act(() => {
-      applyLibraryFrame(frame({ added: ['/videos/a'] }));
-    });
+    arrive(['/videos/a'], ['/videos/b']);
 
     await user.click(reindexButton());
 
@@ -96,35 +108,27 @@ describe('LibraryNotice', () => {
     mockReindexServer();
     const user = userEvent.setup();
     render(<LibraryNotice />);
-    act(() => {
-      applyLibraryFrame(frame({ added: ['/videos/a'] }));
-    });
+    arrive(['/videos/a'], ['/videos/b'], 2);
 
     await user.click(reindexButton());
     await waitFor(() => {
-      expect(screen.queryByRole('status')).toBeNull();
+      expect(noticeIsGone()).toBe(true);
     });
 
     // A second drive arrives while the first run is under way
-    act(() => {
-      applyLibraryFrame(frame({ revision: 3, folders: ['/videos/a', '/videos/b', '/videos/c'], added: ['/videos/c'] }));
-    });
+    arrive(['/videos/a', '/videos/b'], ['/videos/c'], 3);
 
-    const notice = screen.getByRole('status');
-    expect(notice).toHaveTextContent(i18n.t('library.detected', { count: 1 }));
-    expect(notice).toHaveTextContent('1');
+    expect(screen.getByText(i18n.t('library.detected', { count: 1 }))).toHaveTextContent('1');
   });
 
   it('is dismissed without indexing anything', async () => {
     const user = userEvent.setup();
     render(<LibraryNotice />);
-    act(() => {
-      applyLibraryFrame(frame({ added: ['/videos/a'] }));
-    });
+    arrive(['/videos/a'], ['/videos/b']);
 
     await user.click(screen.getByRole('button', { name: i18n.t('library.dismiss') }));
 
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(noticeIsGone()).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -132,9 +136,7 @@ describe('LibraryNotice', () => {
     setElasticsearchState('down');
     const user = userEvent.setup();
     render(<LibraryNotice />);
-    act(() => {
-      applyLibraryFrame(frame({ added: ['/videos/a'] }));
-    });
+    arrive(['/videos/a'], ['/videos/b']);
 
     expect(reindexButton()).toBeDisabled();
 
@@ -150,14 +152,10 @@ describe('LibraryNotice', () => {
     fetchMock.mockImplementation(async () => await new Promise<never>(() => undefined));
     const user = userEvent.setup();
     render(<LibraryNotice />);
-    act(() => {
-      applyLibraryFrame(frame({ added: ['/videos/a'] }));
-    });
+    arrive(['/videos/a'], ['/videos/b'], 2);
 
     await user.click(reindexButton());
-    act(() => {
-      applyLibraryFrame(frame({ revision: 3, folders: ['/videos/a', '/videos/c'], added: ['/videos/c'] }));
-    });
+    arrive(['/videos/a', '/videos/b'], ['/videos/c'], 3);
 
     expect(reindexButton()).toBeDisabled();
   });
