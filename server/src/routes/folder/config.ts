@@ -14,7 +14,7 @@ import { writeJsonAtomic } from '../../utils/fsUtils';
 import type { NoParams, RouteHandler } from '../http';
 import { readBody } from '../http';
 import { configBodySchema, firstZodError } from '../validation';
-import { requireAllowedFolder } from './guards';
+import { requireAllowedFolder, requireMountedFolder } from './guards';
 
 /**
  * GET /api/status and PUT /api/folder/config, plus the status cache they
@@ -139,6 +139,10 @@ export const saveFolderConfig: RouteHandler<NoParams, SaveFolderConfigResponse> 
   }
   const folderPath = requireAllowedFolder(rawFolderPath, res);
   if (!folderPath) return;
+
+  if (!(await requireMountedFolder(folderPath, res))) {
+    return;
+  }
 
   await fs.mkdir(folderPath, { recursive: true });
   await writeJsonAtomic(folderPath, 'config.json', validConfig);

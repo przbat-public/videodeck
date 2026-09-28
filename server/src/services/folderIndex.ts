@@ -3,6 +3,7 @@ import path from 'node:path';
 import { listVisibleFiles as sharedListVisibleFiles, writeJsonAtomic, writeTextAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { runPool } from '../utils/runPool';
+import { isSafeVideoStem } from '../utils/videoStem';
 
 /**
  * Per-folder index of downloaded videos.
@@ -147,22 +148,76 @@ async function statOrNull(filePath: string): Promise<import('node:fs').Stats | n
   }
 }
 
+/**
+ * One entry as the index file carries it, kept only when it is shaped like an
+ * entry we wrote and its `baseName` is a single path segment. The stem later
+ * reaches yt-dlp's `-o` template, so a poisoned one is dropped here, where the
+ * file is read, instead of travelling any further.
+ */
+function parseIndexEntry(value: unknown): FolderIndexEntry | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const { baseName, videoFile, infoMtime } = record;
+  if (typeof baseName !== 'string' || !isSafeVideoStem(baseName)) {
+    return null;
+  }
+  if (typeof videoFile !== 'string' || typeof infoMtime !== 'string') {
+    return null;
+  }
+  return {
+    baseName,
+    videoFile,
+    infoMtime,
+    ...(typeof record.title === 'string' ? { title: record.title } : {}),
+  };
+}
+
+/** The stored index, with every entry that cannot be used left out */
+function toFolderIndex(parsed: unknown): { index: FolderIndex; dropped: number } | null {
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    !('version' in parsed) ||
+    parsed.version !== 1 ||
+    !('entries' in parsed) ||
+    typeof parsed.entries !== 'object' ||
+    parsed.entries === null
+  ) {
+    return null;
+  }
+  const builtAt = 'builtAt' in parsed && typeof parsed.builtAt === 'string' ? parsed.builtAt : '';
+  const entries: Record<string, FolderIndexEntry> = {};
+  let dropped = 0;
+  for (const [id, value] of Object.entries(parsed.entries as Record<string, unknown>)) {
+    const entry = parseIndexEntry(value);
+    if (entry === null) {
+      dropped += 1;
+      continue;
+    }
+    entries[id] = entry;
+  }
+  return { index: { version: 1, builtAt, entries }, dropped };
+}
+
 async function readIndexFile(folderPath: string): Promise<FolderIndex | null> {
   try {
     const raw = await fs.readFile(path.join(folderPath, INDEX_FILE), 'utf-8');
     const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      'version' in parsed &&
-      parsed.version === 1 &&
-      'entries' in parsed &&
-      typeof parsed.entries === 'object' &&
-      parsed.entries !== null
-    ) {
-      return parsed as FolderIndex;
+    const result = toFolderIndex(parsed);
+    if (result === null) {
+      return null;
     }
-    return null;
+    if (result.dropped > 0) {
+      // One line per read, naming the file: a folder whose index carries
+      // poisoned stems is worth a look, but a rebuild can fix it and the rest
+      // of the entries stay usable.
+      logger.warn(
+        `Folder index at ${path.join(folderPath, INDEX_FILE)} dropped ${result.dropped} entry(ies) whose baseName is not a single path segment`,
+      );
+    }
+    return result.index;
   } catch {
     return null;
   }

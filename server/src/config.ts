@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { getLibrarySnapshot, parseLibraryRoots, resetLibraryState } from './services/libraryState';
+import { readApiToken } from './utils/apiToken';
 
 dotenv.config();
 
@@ -65,7 +66,7 @@ export function getHost(): string {
  * (single-user local mode) and a warning is logged at startup.
  */
 export function getApiToken(): string | undefined {
-  return process.env.API_TOKEN;
+  return readApiToken(process.env.API_TOKEN);
 }
 
 /**

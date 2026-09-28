@@ -12,7 +12,7 @@ import { normalizeFolderPath } from '../../utils/videoPathUtils';
 import type { NoParams, RouteHandler } from '../http';
 import { readBody, readString, sendError } from '../http';
 import { firstZodError } from '../validation';
-import { requireAllowedFolder } from './guards';
+import { requireAllowedFolder, requireMountedFolder } from './guards';
 import type { DownloadQueueLike } from './queue';
 
 /**
@@ -70,6 +70,9 @@ export function createDownloadVideo(queue: DownloadQueueLike): RouteHandler<NoPa
       if (!allowedFolders.includes(request.folderPath)) {
         logger.warn(`Rejected folderPath not in the allowed list: ${request.folderPath}`);
         res.status(403).json({ error: `Folder path is not in the allowed list: ${request.folderPath}` });
+        return;
+      }
+      if (!(await requireMountedFolder(request.folderPath, res))) {
         return;
       }
       await fs.mkdir(request.folderPath, { recursive: true });

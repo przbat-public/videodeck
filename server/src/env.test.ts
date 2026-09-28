@@ -101,6 +101,14 @@ describe('validateEnv', () => {
       expect(validateEnv({ ...BASE, HOST: '0.0.0.0', REQUIRE_API_TOKEN: 'true' }).HOST).toBe('0.0.0.0');
     });
 
+    it('treats an empty or blank API_TOKEN as no token at all', () => {
+      // docker-compose renders `API_TOKEN=${API_TOKEN:-}`, so an unset variable
+      // reaches the server as an empty string. Reading that as "configured"
+      // let the guard below pass while every request was served unauthenticated.
+      expect(() => validateEnv({ ...BASE, HOST: '0.0.0.0', API_TOKEN: '' })).toThrow(/unauthenticated API/);
+      expect(() => validateEnv({ ...BASE, HOST: '0.0.0.0', API_TOKEN: '   ' })).toThrow(/unauthenticated API/);
+    });
+
     it('keeps the loopback default unauthenticated, which is the dev setup', () => {
       expect(validateEnv({ ...BASE }).HOST).toBe('127.0.0.1');
       expect(validateEnv({ ...BASE, HOST: 'localhost' }).HOST).toBe('localhost');

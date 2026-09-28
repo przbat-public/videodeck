@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { entry } from '../test-utils';
+import { logger } from '../utils/logger';
 import {
   ARCHIVE_FILE,
   extractTitleFromHead,
@@ -192,6 +193,44 @@ describe('folderIndex', () => {
       const index = await loadIndex(dir);
 
       expect(Object.keys(index.entries)).toEqual(['id-first']);
+    });
+
+    it('drops an entry whose baseName could leave the folder', async () => {
+      // The index is a file on the video folder, which is a network share as
+      // often as it is a local disk, and a stem with a separator reaches
+      // yt-dlp's -o template. Every entry is checked where it is read.
+      const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {
+        /* the drop is the assertion */
+      });
+      const entryFor = (baseName: string) => ({
+        baseName,
+        videoFile: `${baseName}.mp4`,
+        infoMtime: '2024-01-01T00:00:00.000Z',
+      });
+      await fs.writeFile(
+        path.join(dir, INDEX_FILE),
+        JSON.stringify({
+          version: 1,
+          builtAt: '2024-01-01T00:00:00.000Z',
+          entries: {
+            'id-good': entryFor('20240101_Good'),
+            'id-escape': entryFor('../../etc/passwd'),
+            'id-slash': entryFor('sub/dir'),
+            'id-backslash': entryFor('sub\\dir'),
+            'id-dot': entryFor('..'),
+            'id-empty': entryFor(''),
+            'id-nul': entryFor('a\u0000b'),
+            'id-long': entryFor('x'.repeat(201)),
+          },
+        }),
+        'utf-8',
+      );
+
+      const index = await loadIndex(dir);
+
+      expect(Object.keys(index.entries)).toEqual(['id-good']);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain('baseName');
     });
   });
 

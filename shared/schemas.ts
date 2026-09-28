@@ -16,6 +16,13 @@ import { z } from 'zod';
  */
 export const ELASTICSEARCH_UNAVAILABLE_CODE = 'elasticsearch_unavailable';
 
+/**
+ * Code the API answers with when the folder a request names is not on disk
+ * right now (409): the drive its literal root points at is not mounted, and
+ * creating the folder would write to the internal disk instead of the drive.
+ */
+export const FOLDER_UNAVAILABLE_CODE = 'folder_unavailable';
+
 /** GET /health: the readiness probe the UI and the extension share */
 export const HealthResponseSchema = z.object({
   status: z.enum(['ok', 'degraded']),
@@ -31,8 +38,8 @@ export const ApiErrorSchema = z.object({
   error: z.string(),
   message: z.string().optional(),
   /**
-   * Machine-readable reason for the failures the client translates itself.
-   * Only `elasticsearch_unavailable` (503) is defined so far.
+   * Machine-readable reason for the failures the client translates itself:
+   * `elasticsearch_unavailable` (503) and `folder_unavailable` (409).
    */
   code: z.string().optional(),
 });
