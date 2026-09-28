@@ -30,6 +30,7 @@ export type {
   FolderSummariesResponse,
   FolderSummary,
   HealthResponse,
+  LibraryEvent,
   ListExistsResponse,
   QueueCounts,
   QueueFolderCounts,

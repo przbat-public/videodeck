@@ -57,7 +57,7 @@ export interface MockApiHandlers {
   list?: unknown;
   /** Body of GET /api/videos/channels: the filter names and the folder map */
   channels?: unknown;
-  /** Body of GET /api/health; a degraded stack is `{ status: 'degraded', elasticsearch: 'down' }` */
+  /** Body of GET /api/health; a degraded stack is `{ status: 'degraded', elasticsearch: 'down', revision: 1 }` */
   health?: unknown;
   /** Body of the folder queue GET (log-free, capped); defaults to an empty queue */
   queue?: unknown;
@@ -94,7 +94,7 @@ export async function mockApi(page: Page, handlers: MockApiHandlers = {}): Promi
   const context = page.context();
   // The readiness probe behind the outage banner (see ElasticsearchBanner)
   await context.route('**/api/health', async (route) => {
-    const body = (handlers.health ?? { status: 'ok', elasticsearch: 'ok' }) as { elasticsearch?: string };
+    const body = (handlers.health ?? { status: 'ok', elasticsearch: 'ok', revision: 1 }) as { elasticsearch?: string };
     await route.fulfill(json(body, body.elasticsearch === 'down' ? 503 : 200));
   });
   await context.route('**/api/videos/search**', async (route) => {

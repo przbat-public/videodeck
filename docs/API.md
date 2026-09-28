@@ -17,6 +17,14 @@ Dependency-free liveness probe: `200 { status: 'ok' }` when the server process r
 
 Prometheus: `http_requests_total` and `http_request_duration_seconds` (method/route/status labels on the counter, method/route on the histogram; unknown paths go to the `unmatched` label so as not to multiply series per URL), `download_queue_size`, and summary cost metrics: `summary_requests_total`, `summary_tokens_total`, `summary_estimated_cost_cents_total`, each labelled with the provider (`openai` or `deepseek`) and the model (a USD estimate based on approximate model pricing; DeepSeek is priced at its off-peak rate).
 
+### GET /api/events
+
+Server-Sent Events stream of library changes. The frame a connection opens with describes the library of that moment: `revision`, the channel `folders` and the paths that are configured or remembered but `unavailable`, which is how a page says "drive unplugged" instead of dropping the channel. Every later frame repeats those fields and adds `added` and `removed` against the frame sent before it.
+
+A client that connects late, or reconnects after a dropped connection, resyncs from its first frame, so it never has to poll the folder list. Frames are `data: <json>` blocks, and both sides parse them with the same schema (`libraryEventSchema` in `shared/schemas.ts`). An idle stream carries a `: ping` comment every 15 s; the client image's nginx closes a connection after an hour, so a reconnect is expected rather than an error.
+
+The stream is notification only. It says which folders the library holds and what moved; the page re-reads `/api/status` and the rest of its data, and `revision` in `GET /health` and `GET /api/health` carries the same number for a client that cannot hold the stream open.
+
 ### POST /api/videos/refreshCache
 
 Refreshes and reindexes all videos from the configured folders into Elasticsearch.

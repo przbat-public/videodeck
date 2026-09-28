@@ -515,6 +515,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ms. A backstop scan every minute covers network shares, which deliver no
   filesystem events at all
 
+### Added
+
+- `GET /api/events` streams library changes over Server-Sent Events. The frame
+  a connection opens with carries the current revision, the folders and the
+  paths that are unavailable, and every later frame adds what appeared and what
+  left. `GET /health` and `GET /api/health` report the library revision the
+  answer was built at
+
 ## [1.0.0] - 2026-09-14
 
 First public release.

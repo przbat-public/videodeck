@@ -8,7 +8,7 @@ import { json, mockApi } from './helpers';
  * pages that work from disk keep working.
  */
 
-const DOWN_HEALTH = { status: 'degraded', elasticsearch: 'down' };
+const DOWN_HEALTH = { status: 'degraded', elasticsearch: 'down', revision: 1 };
 
 test.describe('Elasticsearch down', () => {
   test('shows one banner, turns the index actions off and clears on retry', async ({ page }) => {
@@ -28,7 +28,9 @@ test.describe('Elasticsearch down', () => {
 
     // The cluster comes back (by hand here: the dev proxy answers again), and
     // the banner's retry is the user-visible way to notice
-    await page.context().route('**/api/health', (route) => route.fulfill(json({ status: 'ok', elasticsearch: 'ok' })));
+    await page
+      .context()
+      .route('**/api/health', (route) => route.fulfill(json({ status: 'ok', elasticsearch: 'ok', revision: 1 })));
     await page.getByRole('button', { name: 'Sprawdź ponownie' }).click();
 
     await expect(page.locator('.health-banner')).toHaveCount(0);

@@ -15,12 +15,14 @@ import {
   isTokenRequired,
 } from './config';
 import { metricsBody, metricsRegistry, recordRequest } from './metrics';
+import { getEvents } from './routes/events';
 import type { DownloadQueueLike } from './routes/folder';
 import { createFolderRouter } from './routes/folder';
 import { createAuthMiddleware, isAllowedCorsOrigin } from './routes/http';
 import videosRouter from './routes/videos';
 import { isElasticsearchUnavailable } from './services/elasticsearchErrors';
 import { checkElasticsearchConnection, noteElasticsearchUnavailable } from './services/elasticsearchService';
+import { getLibraryRevision } from './services/libraryState';
 import { logger } from './utils/logger';
 import { describeError, LogThrottle } from './utils/logThrottle';
 
@@ -212,6 +214,10 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
     next();
   });
 
+  // The library-change stream, mounted ahead of the routers below: it never
+  // ends on its own, so it must not be matched by anything that answers first.
+  app.get('/api/events', getEvents);
+
   app.use('/api/videos', videosRouter);
   // /api/status, /api/folder/* (config, list.json, download queue)
   app.use('/api', createFolderRouter(options.downloadQueue));
@@ -233,6 +239,9 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
     res.status(esUp ? 200 : 503).json({
       status: esUp ? 'ok' : 'degraded',
       elasticsearch: esUp ? 'ok' : 'down',
+      // The library this answer was built at, so a client can tell a stale page
+      // from a current one without reading the folder list
+      revision: getLibraryRevision(),
     });
   };
   app.get('/health', healthHandler);
