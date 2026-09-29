@@ -97,13 +97,57 @@ export interface FolderFiles {
 }
 
 /**
+ * Thumbnail extensions accepted as a sidecar.
+ */
+const THUMBNAIL_EXTENSIONS = ['.webp', '.jpg'];
+
+/**
+ * Numbered variant of one thumbnail, as `--write-all-thumbnails` names them:
+ * `<base>.<any-token>_<level>.<ext>` (`20231201_X.mp4_4.webp`), the level
+ * growing with the image size.
+ */
+const THUMBNAIL_VARIANT = /^[^.]*_(\d+)\.(?:webp|jpg)$/i;
+
+/**
+ * Thumbnail of one video. The plain sidecar (`<base>.webp`) wins; without one,
+ * the highest numbered variant found is used. That second rule is what keeps a
+ * channel downloaded with `--write-all-thumbnails` searchable at all: its only
+ * images are variants, and every video of the channel used to be skipped as
+ * "missing thumbnail".
+ */
+function findThumbnailFile(baseName: string, visibleFiles: string[]): string | undefined {
+  const isImage = (file: string): boolean =>
+    THUMBNAIL_EXTENSIONS.some((extension) => file.toLowerCase().endsWith(extension));
+  const sidecar = visibleFiles.find((file) => isImage(file) && getBaseName(file) === baseName);
+  if (sidecar !== undefined) {
+    return sidecar;
+  }
+
+  const prefix = `${baseName}.`;
+  let best: { file: string; level: number } | undefined;
+  for (const file of visibleFiles) {
+    if (!file.startsWith(prefix)) {
+      continue;
+    }
+    const match = THUMBNAIL_VARIANT.exec(file.slice(prefix.length));
+    if (match === null) {
+      continue;
+    }
+    const level = Number(match[1]);
+    if (best === undefined || level > best.level) {
+      best = { file, level };
+    }
+  }
+  return best?.file;
+}
+
+/**
  * Locate the sidecar files that belong to a base name.
  */
 export function findVideoFiles(baseName: string, visibleFiles: string[]): FolderFiles {
   const videoFile = visibleFiles.find((f) => (f.endsWith('.mp4') || f.endsWith('.mkv')) && getBaseName(f) === baseName);
-  const thumbnailFile = visibleFiles.find(
-    (f) => (f.endsWith('.webp') || f.endsWith('.jpg')) && getBaseName(f) === baseName,
-  );
+  const thumbnailFile = findThumbnailFile(baseName, visibleFiles);
+
   const isSubtitle = (f: string) =>
     f.endsWith('.vtt') && (getBaseName(f) === baseName || getBaseName(f).startsWith(`${baseName}.`));
   const subtitleFiles = visibleFiles.filter(isSubtitle);
