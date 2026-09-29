@@ -84,6 +84,16 @@ export interface ReindexConflictResponse extends ApiError {
   status: ReindexStatus;
 }
 
+/**
+ * 409 body of the index maintenance routes when the OTHER job holds the lock
+ * (`INDEX_RECREATION_RUNNING_CODE` / `REINDEX_RUNNING_CODE`). There is no
+ * status the caller may act on: the one it could read belongs to the last run
+ * of its own kind, not to the job that refused it.
+ */
+export interface IndexMaintenanceConflictResponse extends ApiError {
+  code: string;
+}
+
 // ---------------------------------------------------------------------------
 // Folders — /api/folder
 // ---------------------------------------------------------------------------

@@ -138,6 +138,8 @@ describe('elasticsearchService', () => {
     mockClient.indices.refresh.mockResolvedValue({});
     mockClient.bulk.mockResolvedValue({ errors: false, items: [] });
     mockClient.index.mockResolvedValue({});
+    // An existing alias holds documents unless a test says otherwise
+    mockClient.count.mockResolvedValue({ count: 1 });
     aliasPointsAt();
   });
 
@@ -260,6 +262,20 @@ describe('elasticsearchService', () => {
       expect(lookup.elasticsearchUp).toBe(true);
       expect(mockClient.indices.existsAlias).toHaveBeenCalledWith({ name: ALIAS_A });
       expect(mockClient.indices.existsAlias).toHaveBeenCalledWith({ name: ALIAS_B });
+    });
+
+    it('treats an index a recreation left empty as uncached, so onlyMissing refills it', async () => {
+      // `recreateIndex` publishes a fresh EMPTY version behind the alias. The
+      // alias alone then says "cached" while the folder is not searchable at
+      // all, so a reindex with onlyMissing skipped every folder and reported
+      // "nothing to do" over an empty library.
+      mockClient.count.mockResolvedValue({ count: 0 });
+
+      const lookup = await listCachedFolders([FOLDER_A]);
+
+      expect(lookup.folders).toEqual(new Set());
+      expect(lookup.elasticsearchUp).toBe(true);
+      expect(mockClient.count).toHaveBeenCalledWith({ index: ALIAS_A });
     });
 
     it('treats a failed alias check as uncached instead of throwing', async () => {

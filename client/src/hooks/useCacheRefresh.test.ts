@@ -1,6 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReindexStatus } from '@videodeck/shared/api';
+import { INDEX_RECREATION_RUNNING_CODE } from '@videodeck/shared/schemas';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
 import { toast } from '../test/toastMock';
@@ -9,8 +11,9 @@ import {
   resetReindexState,
   refreshCache as startReindexRun,
   subscribeReindexFinished,
+  subscribeReindexProgress,
 } from '../utils/reindexStore';
-import { formatReindexProgress, formatReindexResult, useCacheRefresh } from './useCacheRefresh';
+import { formatReindexMenuLabel, formatReindexProgress, formatReindexResult, useCacheRefresh } from './useCacheRefresh';
 
 const LOADING_TOAST_ID = 'toast-id';
 
@@ -70,6 +73,25 @@ const statusCalls = () => fetchMock.mock.calls.filter(([url]) => url === STATUS_
 /** A run is app state now, so a test that leaves one behind would decide the next */
 beforeEach(() => {
   resetReindexState();
+});
+
+describe('formatReindexMenuLabel', () => {
+  it('names the folder the run is on, so the menu shows progress without the toast', () => {
+    expect(formatReindexMenuLabel(running({ foldersDone: 55, foldersTotal: 90 }))).toBe(
+      i18n.t('reindex.refreshingProgress', { done: 56, total: 90 }),
+    );
+  });
+
+  it('falls back to the plain label before the first status arrives', () => {
+    expect(formatReindexMenuLabel(null)).toBe(i18n.t('reindex.refreshing'));
+    expect(formatReindexMenuLabel(running({ foldersTotal: 0 }))).toBe(i18n.t('reindex.refreshing'));
+  });
+
+  it('never counts past the total', () => {
+    expect(formatReindexMenuLabel(running({ foldersDone: 90, foldersTotal: 90 }))).toBe(
+      i18n.t('reindex.refreshingProgress', { done: 90, total: 90 }),
+    );
+  });
 });
 
 describe('formatReindexProgress', () => {
@@ -347,13 +369,74 @@ describe('useCacheRefresh', () => {
       await result.current.refreshCache();
     });
 
-    expect(toast.loading).toHaveBeenCalledWith('Indeksowanie już trwa — śledzę postęp...', {
+    expect(toast.loading).toHaveBeenCalledWith(i18n.t('reindex.alreadyRunning'), {
       id: LOADING_TOAST_ID,
     });
-    expect(toast.success).toHaveBeenCalledWith('Indeksowanie zakończone: 20 filmów zindeksowanych', {
+    expect(toast.success).toHaveBeenCalledWith(i18n.t('reindex.finished', { indexed: 20, skipped: 0 }), {
       id: LOADING_TOAST_ID,
     });
     expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('reports a refused start when the index rebuild holds the lock, never a stale success', async () => {
+    // The 409 comes from POST /recreateIndices' job. /refreshCache/status still
+    // describes the LAST reindex, so following it (as the plain 409 path does)
+    // toasts a success for a run that never started.
+    mockServer(
+      jsonResponse(
+        {
+          error: 'Index recreation running',
+          message: 'An index recreation is in progress',
+          code: INDEX_RECREATION_RUNNING_CODE,
+        },
+        409,
+      ),
+      [jsonResponse(finished())],
+    );
+
+    const { result } = renderHook(() => useCacheRefresh());
+
+    await act(async () => {
+      await result.current.refreshCache();
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(i18n.t('reindex.recreationRunning'), { id: LOADING_TOAST_ID });
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(statusCalls()).toBe(0);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('announces every finished folder so the open results can catch up mid-run', async () => {
+    vi.useFakeTimers();
+    mockServer(jsonResponse({ status: 'ok' }), [
+      jsonResponse(running({ foldersDone: 0, foldersTotal: 3 })),
+      jsonResponse(running({ foldersDone: 1, foldersTotal: 3 })),
+      jsonResponse(finished({ foldersDone: 3, foldersTotal: 3 })),
+    ]);
+    const heard: number[] = [];
+    const unsubscribe = subscribeReindexProgress((status) => heard.push(status.foldersDone));
+
+    const { result } = renderHook(() => useCacheRefresh({ pollIntervalMs: 1000 }));
+    let done: Promise<void> | undefined;
+    act(() => {
+      done = result.current.refreshCache();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+      await done;
+    });
+    unsubscribe();
+
+    // The last status arrives as the finished event, not as a progress step,
+    // so a page never searches twice for the same folder.
+    expect(heard).toEqual([0, 1]);
   });
 
   it('reports folder errors from the final status as an error toast', async () => {

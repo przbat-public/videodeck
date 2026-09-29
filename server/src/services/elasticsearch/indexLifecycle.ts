@@ -177,11 +177,25 @@ export const indexCacheLogThrottle = new LogThrottle(30_000);
 const CACHE_CHECK_CONCURRENCY = 8;
 
 /**
+ * Whether the folder's index holds any document.
+ *
+ * An alias that exists but is empty is NOT a cache. That is the exact state
+ * `recreateIndex` publishes, and reading it as "cached" made a reindex with
+ * `onlyMissing` skip every folder and toast "nothing to do" over a library the
+ * recreation had just emptied. The empty check also keeps the channel console
+ * honest: a folder with nothing behind its alias is not searchable.
+ */
+async function hasDocuments(alias: string): Promise<boolean> {
+  const response = await getProbeClient().count({ index: alias });
+  return response.count > 0;
+}
+
+/**
  * Which of the given folders already have a search cache in Elasticsearch
- * (their alias exists). Aliases are named after folder paths and persist in
- * ES independently of the disks, so after a disk swap this tells which of
- * the currently mounted folders can be searched right away — a reindex is
- * only needed for the rest.
+ * (their alias exists AND its index holds documents). Aliases are named after
+ * folder paths and persist in ES independently of the disks, so after a disk
+ * swap this tells which of the currently mounted folders can be searched right
+ * away — a reindex is only needed for the rest.
  *
  * A folder whose check fails (ES down mid-request) counts as uncached: the
  * status page should never 500 because of one hiccup.
@@ -193,7 +207,7 @@ export async function listCachedFolders(folderPaths: string[]): Promise<CachedFo
     const alias = getIndexNameFromFolderPath(folderPath);
     try {
       const exists = await getProbeClient().indices.existsAlias({ name: alias });
-      if (exists) {
+      if (exists && (await hasDocuments(alias))) {
         folders.add(folderPath);
       }
     } catch (error) {

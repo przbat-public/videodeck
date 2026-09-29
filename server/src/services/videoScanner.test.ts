@@ -142,6 +142,53 @@ describe('videoScanner', () => {
       expect(found.subtitleFile).toBe('20231201_X.pl.vtt');
       expect(found.subtitleFiles).toEqual(['20231201_X.pl.vtt']);
     });
+
+    it('accepts the numbered thumbnail variants yt-dlp writes for every size', () => {
+      // `--write-all-thumbnails` names the variants `<video>.<level>.<ext>`, so
+      // a channel downloaded that way used to lose EVERY video to the
+      // "missing thumbnail" skip (360 videos in electronics-mr-electron).
+      const found = findVideoFiles('20231201_X', [
+        '20231201_X.info.json',
+        '20231201_X.mp4',
+        '20231201_X.mp4_0.jpg',
+        '20231201_X.mp4_1.jpg',
+        '20231201_X.mp4_4.webp',
+      ]);
+
+      expect(found.thumbnailFile).toBe('20231201_X.mp4_4.webp');
+    });
+
+    it('prefers the plain sidecar over a numbered variant', () => {
+      const found = findVideoFiles('20231201_X', [
+        '20231201_X.info.json',
+        '20231201_X.mp4',
+        '20231201_X.webp',
+        '20231201_X.mp4_4.webp',
+      ]);
+
+      expect(found.thumbnailFile).toBe('20231201_X.webp');
+    });
+
+    it('takes the highest variant that exists, not a fixed level', () => {
+      const found = findVideoFiles('20231201_X', [
+        '20231201_X.info.json',
+        '20231201_X.mp4',
+        '20231201_X.mp4_0.jpg',
+        '20231201_X.mp4_3.webp',
+      ]);
+
+      expect(found.thumbnailFile).toBe('20231201_X.mp4_3.webp');
+    });
+
+    it('never borrows the variants of a different video', () => {
+      const found = findVideoFiles('20231201_X', [
+        '20231201_X.info.json',
+        '20231201_X.mp4',
+        '20231201_X_extra.mp4_4.webp',
+      ]);
+
+      expect(found.thumbnailFile).toBeUndefined();
+    });
   });
 
   describe('buildVideoItem', () => {
@@ -192,6 +239,21 @@ describe('videoScanner', () => {
       expect(result.video.comments).toHaveLength(1);
       expect(mockedFs.readFile).toHaveBeenCalledWith(`${FOLDER}/20231201_TestVideo1.info.json`, 'utf-8');
       expect(mockedFs.readFile).toHaveBeenCalledWith(`${FOLDER}/20231201_TestVideo1.en.vtt`, 'utf-8');
+    });
+
+    it('indexes a video whose only thumbnail is a numbered variant', async () => {
+      mockedFs.readFile.mockResolvedValue(JSON.stringify({ id: 'abcdefghijk', title: 'T' }));
+
+      const result = await buildVideoItem(FOLDER, '20231201_TestVideo1', [
+        '20231201_TestVideo1.info.json',
+        '20231201_TestVideo1.mp4',
+        '20231201_TestVideo1.mp4_0.jpg',
+        '20231201_TestVideo1.mp4_4.webp',
+      ]);
+
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') return;
+      expect(result.video.thumbnailPath).toBe('20231201_TestVideo1.mp4_4.webp');
     });
 
     it('indexes the transcript of every subtitle language on disk', async () => {

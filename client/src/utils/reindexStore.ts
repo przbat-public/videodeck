@@ -1,5 +1,5 @@
 import type { ReindexStatus } from '@videodeck/shared/api';
-import { ReindexStatusSchema } from '@videodeck/shared/schemas';
+import { INDEX_RECREATION_RUNNING_CODE, ReindexStatusSchema } from '@videodeck/shared/schemas';
 import toast from 'react-hot-toast';
 import i18n from '../i18n';
 import { ApiRequestError, apiGet, apiSend } from './apiClient';
@@ -39,6 +39,7 @@ let state: ReindexState = IDLE_STATE;
 let inFlight: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 const finishedListeners = new Set<(status: ReindexStatus) => void>();
+const progressListeners = new Set<(status: ReindexStatus) => void>();
 
 function emit(): void {
   for (const listener of listeners) {
@@ -74,6 +75,33 @@ export function subscribeReindexFinished(listener: (status: ReindexStatus) => vo
   };
 }
 
+/**
+ * Every folder the run finishes while it is still going. A full reindex of a
+ * large library takes the better part of an hour and the results page used to
+ * stay frozen for all of it; this is what lets the list fill in as the index
+ * does. The final status is NOT announced here — `subscribeReindexFinished`
+ * owns that, so a page never searches twice for the same folder.
+ */
+export function subscribeReindexProgress(listener: (status: ReindexStatus) => void): () => void {
+  progressListeners.add(listener);
+  return () => {
+    progressListeners.delete(listener);
+  };
+}
+
+/** Folders already announced as finished in the run being followed */
+let announcedFolders = -1;
+
+function reportProgress(status: ReindexStatus): void {
+  if (!status.running || status.foldersDone <= announcedFolders) {
+    return;
+  }
+  announcedFolders = status.foldersDone;
+  for (const listener of [...progressListeners]) {
+    listener(status);
+  }
+}
+
 function folderName(folderPath?: string): string {
   if (!folderPath) return '';
   const parts = folderPath.split('/').filter(Boolean);
@@ -104,6 +132,20 @@ export function formatReindexProgress(status: ReindexStatus): string {
     i18n.t('reindex.progressIndexed', { count: status.indexed }),
   ].filter(Boolean);
   return parts.join(' · ');
+}
+
+/**
+ * Short label of the run for the menu item, so the progress is readable
+ * without watching the toast: "Refreshing… 56/90".
+ */
+export function formatReindexMenuLabel(status: ReindexStatus | null): string {
+  if (status === null || status.foldersTotal === 0) {
+    return i18n.t('reindex.refreshing');
+  }
+  return i18n.t('reindex.refreshingProgress', {
+    done: Math.min(status.foldersDone + 1, status.foldersTotal),
+    total: status.foldersTotal,
+  });
 }
 
 /** Final message once the run is over */
@@ -138,6 +180,12 @@ async function startReindex(url: string, signal: AbortSignal, loadingToastId: st
     if (!(err instanceof ApiRequestError) || err.status !== 409) {
       throw err;
     }
+    if (err.code === INDEX_RECREATION_RUNNING_CODE) {
+      // The rebuild holds the lock. Nothing was started AND the status below
+      // still describes the last reindex, so following it would toast a
+      // success for a run that never happened. Say what is actually going on.
+      throw new Error(i18n.t('reindex.recreationRunning'), { cause: err });
+    }
     // A run is already going; the poll below follows it to the end
     toast.loading(i18n.t('reindex.alreadyRunning'), { id: loadingToastId });
   }
@@ -151,6 +199,7 @@ async function pollReindexUntilFinished(
 ): Promise<ReindexStatus> {
   let current = await fetchStatus(signal);
   setState({ loading: true, status: current });
+  reportProgress(current);
   while (current.running) {
     toast.loading(formatReindexProgress(current), { id: loadingToastId });
     await sleep(pollIntervalMs);
@@ -161,6 +210,7 @@ async function pollReindexUntilFinished(
     }
     current = await fetchStatus(signal);
     setState({ loading: true, status: current });
+    reportProgress(current);
   }
   return current;
 }
@@ -208,6 +258,9 @@ export function refreshCache(options: ReindexRunOptions = {}): Promise<void> {
     return inFlight;
   }
   const current = new AbortController();
+  // A new run reports its folders from the start; the first status is a step
+  // of its own, so a page that joins mid-run refreshes right away.
+  announcedFolders = -1;
   setState({ loading: true, status: state.status });
   const loadingToastId = toast.loading(i18n.t('reindex.starting'));
 
@@ -227,6 +280,7 @@ export function refreshCache(options: ReindexRunOptions = {}): Promise<void> {
 /** Tests: forget the run state (the poller of a live run is not touched) */
 export function resetReindexState(): void {
   inFlight = null;
+  announcedFolders = -1;
   state = IDLE_STATE;
   emit();
 }

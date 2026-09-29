@@ -4,6 +4,8 @@ import { reportElasticsearchUnavailable } from './elasticsearchStatus';
 export interface ApiFailure {
   /** Server-supplied message; the contract guarantees the `error` field */
   message?: string;
+  /** Machine-readable reason the client acts on (`code` of the answer body) */
+  code?: string | undefined;
   /** True when the answer said Elasticsearch cannot be reached */
   elasticsearchDown: boolean;
 }
@@ -24,5 +26,5 @@ export async function readApiFailure(response: Response): Promise<ApiFailure> {
     reportElasticsearchUnavailable();
   }
   // `error` is required by the contract, so there is always something to show
-  return { message: parsed.data.message ?? parsed.data.error, elasticsearchDown };
+  return { message: parsed.data.message ?? parsed.data.error, code: parsed.data.code, elasticsearchDown };
 }

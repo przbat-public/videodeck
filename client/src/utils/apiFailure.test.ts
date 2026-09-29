@@ -17,13 +17,13 @@ describe('readApiFailure', () => {
   it('reads the message the server sent', async () => {
     const failure = await readApiFailure(response({ error: 'folder not allowed', message: 'Folder not allowed' }));
 
-    expect(failure).toEqual({ message: 'Folder not allowed', elasticsearchDown: false });
+    expect(failure).toEqual({ message: 'Folder not allowed', code: undefined, elasticsearchDown: false });
   });
 
   it('falls back to the error field', async () => {
     const failure = await readApiFailure(response({ error: 'boom' }, 500));
 
-    expect(failure).toEqual({ message: 'boom', elasticsearchDown: false });
+    expect(failure).toEqual({ message: 'boom', code: undefined, elasticsearchDown: false });
   });
 
   it('reports an unreachable cluster and turns the banner on', async () => {
@@ -31,14 +31,18 @@ describe('readApiFailure', () => {
       response({ error: 'Elasticsearch is not reachable', code: 'elasticsearch_unavailable' }),
     );
 
-    expect(failure).toEqual({ message: 'Elasticsearch is not reachable', elasticsearchDown: true });
+    expect(failure).toEqual({
+      message: 'Elasticsearch is not reachable',
+      code: 'elasticsearch_unavailable',
+      elasticsearchDown: true,
+    });
     expect(getElasticsearchState()).toBe('down');
   });
 
   it('survives a body that is not the API error shape', async () => {
     const failure = await readApiFailure(response({ unexpected: true }));
 
-    expect(failure).toEqual({ elasticsearchDown: false });
+    expect(failure).toEqual({ code: undefined, elasticsearchDown: false });
     expect(getElasticsearchState()).toBe('unknown');
   });
 
@@ -51,6 +55,6 @@ describe('readApiFailure', () => {
       },
     } as unknown as Response);
 
-    expect(failure).toEqual({ elasticsearchDown: false });
+    expect(failure).toEqual({ code: undefined, elasticsearchDown: false });
   });
 });

@@ -1,10 +1,12 @@
 import type {
   AcceptedResponse,
   ApiError,
+  IndexMaintenanceConflictResponse,
   RecreateIndicesStatus,
   ReindexConflictResponse,
   ReindexStatus,
 } from '@videodeck/shared/api';
+import { INDEX_RECREATION_RUNNING_CODE, REINDEX_RUNNING_CODE } from '@videodeck/shared/schemas';
 import {
   getRecreateIndicesStatus,
   isRecreateIndicesRunning,
@@ -26,6 +28,16 @@ import { readString } from '../http';
  */
 
 /**
+ * The two index maintenance jobs. The lock is one slot for both, because they
+ * rewrite the same aliases, but each conflict answer names the job that holds
+ * it: only a running reindex can be joined by a reindex caller, and only a
+ * running recreation by a recreation caller. Without that, a caller refused by
+ * the OTHER job read the status of the last run of its own kind and reported it
+ * as the outcome of a request that never started anything.
+ */
+type IndexMaintenanceJob = 'reindex' | 'recreate';
+
+/**
  * One index maintenance job at a time. A reindex and an index recreation both
  * rewrite the folder aliases, so running them together interleaves the alias
  * promotions and orphans the index the other job is writing into. The service
@@ -33,11 +45,20 @@ import { readString } from '../http';
  * the window between accepting a request and the service reporting itself as
  * running, and the service flags also catch a job started outside these routes.
  */
-let indexMaintenanceRunning = false;
+let indexMaintenanceRunning: IndexMaintenanceJob | null = null;
 
-/** True while a reindex or an index recreation is under way */
-function isIndexMaintenanceRunning(): boolean {
-  return indexMaintenanceRunning || isReindexRunning() || isRecreateIndicesRunning();
+/** Which job holds the lock right now, or null when the slot is free */
+function runningIndexMaintenanceJob(): IndexMaintenanceJob | null {
+  if (indexMaintenanceRunning !== null) {
+    return indexMaintenanceRunning;
+  }
+  if (isReindexRunning()) {
+    return 'reindex';
+  }
+  if (isRecreateIndicesRunning()) {
+    return 'recreate';
+  }
+  return null;
 }
 
 /**
@@ -47,7 +68,7 @@ function isIndexMaintenanceRunning(): boolean {
  * started a job hands the next one a 409.
  */
 export function resetIndexMaintenanceState(): void {
-  indexMaintenanceRunning = false;
+  indexMaintenanceRunning = null;
 }
 
 // GET /api/videos/refreshCache/status - Progress of the running/last reindex
@@ -62,13 +83,28 @@ export const getRefreshStatus: RouteHandler<NoParams, ReindexStatus> = (_req, re
 // POST (not GET) because starting a reindex is a side effect: a GET could be
 // triggered by a cross-site navigation in browsers that do not send
 // Sec-Fetch-Site.
-export const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConflictResponse> = (req, res) => {
-  if (isIndexMaintenanceRunning()) {
-    res.status(409).json({
-      error: 'Reindex already running',
-      message: 'A reindex is already in progress',
-      status: getReindexStatus(),
-    });
+export const startRefresh: RouteHandler<
+  NoParams,
+  AcceptedResponse | ReindexConflictResponse | ApiError | IndexMaintenanceConflictResponse
+> = (req, res) => {
+  const running = runningIndexMaintenanceJob();
+  if (running !== null) {
+    // A running reindex answers with its live status, which the caller may
+    // follow; a running recreation answers with a code instead, because the
+    // reindex status still describes the previous run.
+    res.status(409).json(
+      running === 'recreate'
+        ? {
+            error: 'Index recreation running',
+            message: 'An index recreation is in progress',
+            code: INDEX_RECREATION_RUNNING_CODE,
+          }
+        : {
+            error: 'Reindex already running',
+            message: 'A reindex is already in progress',
+            status: getReindexStatus(),
+          },
+    );
     return;
   }
 
@@ -77,13 +113,13 @@ export const startRefresh: RouteHandler<NoParams, AcceptedResponse | ReindexConf
   logger.info(`Cache refresh requested${onlyMissing ? ' (onlyMissing)' : ''}...`);
 
   // Start the refresh process asynchronously (fire and forget)
-  indexMaintenanceRunning = true;
+  indexMaintenanceRunning = 'reindex';
   refreshVideosCache(onlyMissing ? { onlyMissing: true } : undefined)
     .catch((error: unknown) => {
       logger.error('Error refreshing cache in background:', error);
     })
     .finally(() => {
-      indexMaintenanceRunning = false;
+      indexMaintenanceRunning = null;
     });
 
   // Return immediately
@@ -99,25 +135,37 @@ export const getRecreateIndicesStatusHandler: RouteHandler<NoParams, RecreateInd
 };
 
 // POST /api/videos/recreateIndices - Recreate all Elasticsearch indices
-export const recreateIndices: RouteHandler<NoParams, AcceptedResponse | ApiError> = (_req, res) => {
-  if (isIndexMaintenanceRunning()) {
-    res.status(409).json({
-      error: 'Index recreation already running',
-      message: 'Index recreation is already in progress',
-    });
+export const recreateIndices: RouteHandler<NoParams, AcceptedResponse | ApiError | IndexMaintenanceConflictResponse> = (
+  _req,
+  res,
+) => {
+  const running = runningIndexMaintenanceJob();
+  if (running !== null) {
+    res.status(409).json(
+      running === 'reindex'
+        ? {
+            error: 'Reindex running',
+            message: 'A reindex is in progress',
+            code: REINDEX_RUNNING_CODE,
+          }
+        : {
+            error: 'Index recreation already running',
+            message: 'Index recreation is already in progress',
+          },
+    );
     return;
   }
   logger.info('Recreate indices requested...');
 
   // Start the recreate process asynchronously (fire and forget); the client
   // polls /api/videos/recreateIndices/status until it finishes.
-  indexMaintenanceRunning = true;
+  indexMaintenanceRunning = 'recreate';
   recreateAllIndices()
     .catch((error: unknown) => {
       logger.error('Error recreating indices in background:', error);
     })
     .finally(() => {
-      indexMaintenanceRunning = false;
+      indexMaintenanceRunning = null;
     });
 
   // Return immediately

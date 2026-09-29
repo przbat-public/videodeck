@@ -2,6 +2,7 @@ import type { ReindexStatus } from '@videodeck/shared/api';
 import { useCallback, useSyncExternalStore } from 'react';
 import {
   DEFAULT_POLL_INTERVAL_MS,
+  formatReindexMenuLabel,
   formatReindexProgress,
   formatReindexResult,
   getReindexState,
@@ -33,7 +34,7 @@ export interface UseCacheRefreshOptions {
   pollIntervalMs?: number;
 }
 
-export { DEFAULT_POLL_INTERVAL_MS, formatReindexProgress, formatReindexResult };
+export { DEFAULT_POLL_INTERVAL_MS, formatReindexMenuLabel, formatReindexProgress, formatReindexResult };
 
 export function useCacheRefresh(options: UseCacheRefreshOptions = {}): UseCacheRefreshResult {
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;

@@ -4,6 +4,8 @@ import type { CommentWithReplies, ReindexStatus, VideoComment, VideoListItem } f
 import {
   ChannelsResponseSchema,
   CommentsResponseSchema,
+  INDEX_RECREATION_RUNNING_CODE,
+  REINDEX_RUNNING_CODE,
   RecreateIndicesStatusSchema,
   ReindexStatusSchema,
   SearchResponseSchema,
@@ -461,13 +463,19 @@ describe('videos router', () => {
       expect(mockedRefreshVideosCache).not.toHaveBeenCalled();
     });
 
-    it('returns 409 while an index recreation is running', async () => {
+    it('returns 409 naming the recreation as the lock holder, not a stale reindex status', async () => {
       mockedIsRecreateIndicesRunning.mockReturnValue(true);
 
       const response = await request(app).post('/api/videos/refreshCache');
 
       expect(response.status).toBe(409);
-      expect(response.body).toMatchObject({ error: 'Reindex already running' });
+      // Without the code the client reads /refreshCache/status, which still
+      // describes the LAST reindex, and toasts it as this request's result.
+      expect(response.body).toMatchObject({
+        error: 'Index recreation running',
+        code: INDEX_RECREATION_RUNNING_CODE,
+      });
+      expect(response.body.status).toBeUndefined();
       expect(mockedRefreshVideosCache).not.toHaveBeenCalled();
     });
   });
@@ -544,15 +552,16 @@ describe('videos router', () => {
       expect(mockedRecreateAllIndices).not.toHaveBeenCalled();
     });
 
-    it('should return 409 while a reindex is running', async () => {
+    it('should return 409 naming the reindex as the lock holder', async () => {
       mockedIsReindexRunning.mockReturnValue(true);
 
       const response = await request(app).post('/api/videos/recreateIndices');
 
       expect(response.status).toBe(409);
       expect(response.body).toEqual({
-        error: 'Index recreation already running',
-        message: 'Index recreation is already in progress',
+        error: 'Reindex running',
+        message: 'A reindex is in progress',
+        code: REINDEX_RUNNING_CODE,
       });
       expect(mockedRecreateAllIndices).not.toHaveBeenCalled();
     });
