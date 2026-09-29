@@ -23,6 +23,20 @@ export const ELASTICSEARCH_UNAVAILABLE_CODE = 'elasticsearch_unavailable';
  */
 export const FOLDER_UNAVAILABLE_CODE = 'folder_unavailable';
 
+/**
+ * Code of `POST /api/videos/refreshCache` (409) when the index recreation is
+ * the job holding the maintenance lock. A caller may not join that job, so
+ * without the code it reads the PREVIOUS reindex's status as the outcome of its
+ * own request and reports a success that never ran.
+ */
+export const INDEX_RECREATION_RUNNING_CODE = 'index_recreation_running';
+
+/**
+ * Code of `POST /api/videos/recreateIndices` (409) while a reindex holds the
+ * lock — the mirror of `INDEX_RECREATION_RUNNING_CODE`.
+ */
+export const REINDEX_RUNNING_CODE = 'reindex_running';
+
 /** GET /health: the readiness probe the UI and the extension share */
 export const HealthResponseSchema = z.object({
   status: z.enum(['ok', 'degraded']),
