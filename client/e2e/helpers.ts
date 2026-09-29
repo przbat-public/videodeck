@@ -28,8 +28,10 @@ export const video = (baseName: string, title: string, overrides: Partial<E2eVid
 
 /** JSON response helper */
 /**
- * Expands a channel row on the download console so its folder section (config,
- * playlist, video list) renders. Without a name the first channel is used.
+ * Expands a channel row on the download console so its folder section (config
+ * form and video list, which loads with the row) renders. The row only opens
+ * once the status reports its list.json, which the default mock does. Without
+ * a name the first channel is used.
  */
 export async function expandChannel(page: Page, name?: string): Promise<void> {
   const row =
@@ -188,7 +190,9 @@ export async function mockApi(page: Page, handlers: MockApiHandlers = {}): Promi
           folderConfigs: { '/videos/e2e': { channelUrl: 'https://yt/@e2e', category: 'fpv' } },
           downloadDefaults: { maxHeight: 2160, subLangs: ['en'], writeComments: true },
           indexedFolders: ['/videos/e2e'],
-          listExists: { '/videos/e2e': false },
+          // The console opens a row on its list.json, so the default channel
+          // has one: a spec that wants a shut row passes its own status
+          listExists: { '/videos/e2e': true },
           unavailableFolders: [],
           status: 'ok',
           elasticsearch: 'ok',
@@ -199,8 +203,7 @@ export async function mockApi(page: Page, handlers: MockApiHandlers = {}): Promi
   await context.route('**/api/folder/summaries', (route) =>
     route.fulfill(json(handlers.summaries ?? { summaries: {} })),
   );
-  // list-exists and list calls used by the status page's folder section
-  await context.route('**/api/folder/list-exists**', (route) => route.fulfill(json({ exists: false })));
+  // The list the folder section loads on its own
   await context.route('**/api/folder/list**', (route) =>
     route.fulfill(
       json(

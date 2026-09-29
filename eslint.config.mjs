@@ -70,7 +70,7 @@ export default defineConfig([
    * `react-hooks/set-state-in-effect` over-reports. It flags every effect
    * whose call chain contains setState, an async loader that only updates
    * state after its await included: a minimal reproduction of exactly that
-   * shape is reported as well. The three fetch-on-mount hooks in client/src
+   * shape is reported as well. The fetch-on-mount effects in client/src
    * therefore carry a per-line disable naming that reason, instead of the
    * rule being switched off, so the shape the rule is named after (a
    * synchronous setState in an effect body) is still caught.

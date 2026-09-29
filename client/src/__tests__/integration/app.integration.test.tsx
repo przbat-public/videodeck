@@ -2,7 +2,7 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { queryCardByTitle } from './drivers/searchDrivers';
-import { channelRow, folderSection } from './drivers/statusDrivers';
+import { channelRow, fetchPlaylist, folderSection } from './drivers/statusDrivers';
 import { refreshCacheAndWait, renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
 
@@ -84,14 +84,14 @@ describe('client integration — real backend', () => {
   it('downloads the playlist and runs a queue job through the fake yt-dlp', async () => {
     const page = await renderApp('/download');
 
-    // The console keeps every folder behind its channel row, so the seeded
-    // folder is expanded first; its section then offers the playlist download
-    // and the fake yt-dlp answers with two NDJSON entries.
-    const section = await folderSection(env.folder('channel-integration'));
-    await page.user.click(within(section).getByRole('button', { name: 'Pobierz playlistę' }));
-    await within(section).findByText(/Plik list\.json już istnieje/);
+    // The console keeps every folder behind its channel row. The seeded folder
+    // has no list.json yet, so its row leads with the playlist fetch; the fake
+    // yt-dlp answers with two NDJSON entries.
+    await fetchPlaylist(page.user, env.folder('channel-integration'));
 
-    await page.user.click(within(section).getByRole('button', { name: 'Pobierz listę filmów' }));
+    // The list.json that fetch wrote is what the row opens on, and the videos
+    // are already loaded by the time the section renders
+    const section = await folderSection(env.folder('channel-integration'));
     await within(section).findByText('Fake playlist video 1');
 
     // Enqueue the first entry: the real queue spawns the fake yt-dlp, which

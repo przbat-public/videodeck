@@ -1,7 +1,7 @@
 import type { ChannelVideo, JobType, QueueJob } from '@videodeck/shared/api';
 import { FolderListResponseSchema } from '@videodeck/shared/schemas';
-import type { JSX, Ref } from 'react';
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import type { JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 import { List, type RowComponentProps, useDynamicRowHeight, useListRef } from 'react-window';
@@ -23,6 +23,12 @@ import { VideoListHeader } from './VideoListHeader';
 const DEFAULT_ROW_HEIGHT = 58;
 
 /**
+ * How long a bulk confirmation stays armed. One click arms it, the next one
+ * within the window runs the action; after that the button asks again.
+ */
+export const ARMED_BULK_WINDOW_MS = 5000;
+
+/**
  * react-window re-renders and re-measures every row when `rowProps` changes
  * identity, so the empty object has to be shared, not rebuilt per render.
  */
@@ -35,19 +41,17 @@ interface VideoListSectionProps {
   onQueueChanged?: () => void;
 }
 
-export interface VideoListSectionHandle {
-  loadVideos: () => Promise<void>;
-}
-
 /**
- * React 19 passes `ref` as a regular prop — no forwardRef wrapper needed.
+ * A channel's videos with their download state, loaded as soon as the section
+ * opens: the console's "show videos" toggle is the whole gesture, and the list
+ * it promises is already there when the rows render. A folder without a
+ * `list.json` has nothing to show and renders nothing at all.
  */
 export function VideoListSection({
   folderPath,
   listExists,
   onQueueChanged,
-  ref,
-}: VideoListSectionProps & { ref?: Ref<VideoListSectionHandle> }): JSX.Element | null {
+}: VideoListSectionProps): JSX.Element | null {
   const [videos, setVideos] = useState<ChannelVideo[]>([]);
   const [downloadStatuses, setDownloadStatuses] = useState<Record<string, boolean>>({});
   const [lastUpdatedDates, setLastUpdatedDates] = useState<Record<string, string>>({});
@@ -77,11 +81,9 @@ export function VideoListSection({
     setHasLoadedVideos(true);
   }, [folderPath, t]);
 
-  // Visible reload (spinner), used by the parent and on demand
+  // Visible reload (spinner): the section runs it on open, and the drained
+  // queue runs it again to pick up the exact dates the server wrote
   const loadVideos = useCallback(async () => {
-    if (!listExists) {
-      return;
-    }
     try {
       setIsLoadingVideos(true);
       setVideosError(null);
@@ -93,7 +95,19 @@ export function VideoListSection({
     } finally {
       setIsLoadingVideos(false);
     }
-  }, [fetchList, listExists, t]);
+  }, [fetchList, t]);
+
+  // The console's "show videos" toggle opens this section, which is the same
+  // decision as loading the list: the rows arrive on their own instead of
+  // behind a second button. Re-runs when the folder changes (loadVideos
+  // depends on it) and when a playlist fetch turns a missing list into a real
+  // one under an already open row.
+  useEffect(() => {
+    if (listExists) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mount fetch, the update lands after the await (see the rule note in eslint.config.mjs)
+      void loadVideos();
+    }
+  }, [listExists, loadVideos]);
 
   // When a job finishes, reflect it locally right away; the queue-drained
   // callback re-syncs exact dates from the server.
@@ -145,8 +159,6 @@ export function VideoListSection({
     setVideosError(null);
     setHasLoadedVideos(false);
   }
-
-  useImperativeHandle(ref, () => ({ loadVideos }), [loadVideos]);
 
   const enqueueVideos = useCallback(
     async (items: ChannelVideo[], type: JobType) => {
@@ -272,7 +284,7 @@ export function VideoListSection({
       if (armedTimerRef.current !== null) {
         window.clearTimeout(armedTimerRef.current);
       }
-      armedTimerRef.current = window.setTimeout(() => setArmedBulk(null), 5000);
+      armedTimerRef.current = window.setTimeout(() => setArmedBulk(null), ARMED_BULK_WINDOW_MS);
       return;
     }
     setArmedBulk(null);

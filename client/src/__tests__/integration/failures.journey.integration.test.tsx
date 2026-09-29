@@ -75,7 +75,6 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
 
     const page = await renderApp('/download');
     const section = await folderSection(folderPath);
-    await page.user.click(within(section).getByRole('button', { name: 'Pobierz listę filmów' }));
     await within(section).findByText('Tylko dla członków');
 
     await page.user.click(within(section).getByRole('button', { name: 'Pobierz wszystkie' }));

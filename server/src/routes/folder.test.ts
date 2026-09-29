@@ -877,6 +877,41 @@ describe('folder router', () => {
       expect(response.body.message).toBeUndefined();
       expect(mockedFs.open).not.toHaveBeenCalled();
     });
+
+    it('makes the next status report the list.json it just wrote', async () => {
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
+      // The console asked before the fetch: with no readable list.json, the
+      // cached status answer says the folder has none
+      mockedFs.access.mockRejectedValue(enoent());
+      expect((await request(app).get('/api/status')).body.listExists[FOLDER]).toBe(false);
+
+      fakeYtDlp('{"id":"v1","title":"One"}\n');
+      await request(app).post('/api/folder/download-playlist').send({ folderPath: FOLDER });
+
+      // The fetch wrote list.json. A status served from the 5 s cache would
+      // still report the old answer and leave the console's "show videos"
+      // toggle disabled after the reader fetched the playlist.
+      mockedFs.access.mockResolvedValue(undefined);
+      expect((await request(app).get('/api/status')).body.listExists[FOLDER]).toBe(true);
+    });
+
+    it('makes the next counts read the videos it just wrote', async () => {
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
+      mockedGetDownloadStatuses.mockResolvedValue({ downloadStatuses: {}, lastUpdatedDates: {} });
+      // The console counted the folder before the fetch: an unreadable
+      // list.json is a channel with no videos
+      mockedFs.readFile.mockRejectedValue(enoent());
+      expect((await request(app).get('/api/folder/summaries')).body.summaries[FOLDER].videos).toBe(0);
+
+      fakeYtDlp('{"id":"v1","title":"One"}\n');
+      await request(app).post('/api/folder/download-playlist').send({ folderPath: FOLDER });
+
+      // The counts follow the list the fetch wrote instead of the 5 s cache
+      mockedFs.readFile.mockResolvedValue(
+        JSON.stringify([{ id: 'v1', title: 'One', url: 'https://www.youtube.com/watch?v=v1' }]),
+      );
+      expect((await request(app).get('/api/folder/summaries')).body.summaries[FOLDER].videos).toBe(1);
+    });
   });
 
   describe('GET /api/folder/video-downloaded', () => {

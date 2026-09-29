@@ -111,7 +111,6 @@ async function folderListPage(page: Page): Promise<void> {
   );
   await page.goto('/download');
   await expandChannel(page);
-  await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
   await page.getByText('Pobrany dawno temu').waitFor();
 }
 
@@ -432,10 +431,12 @@ test.describe('reported layout defects', () => {
     expect(Math.abs((layout?.summaryTop ?? 0) - (layout?.firstLineTop ?? 0))).toBeLessThan(1);
   });
 
-  test('the video list sits half a rhythm under the playlist actions, with no divider', async ({ page }) => {
+  test('the video list sits half a rhythm under the row, with no divider', async ({ page }) => {
     // The section opened with a 1.5rem margin, 1.5rem padding and a border
     // line above it: three rhythms of air inside a row that already sits in
-    // the table. A 0.5rem margin is all that separates it now.
+    // the table. A 0.5rem margin is all that separates it from the row now.
+    // The container keeps that rhythm whether or not the config form is open
+    // above it.
     await page.setViewportSize({ width: 1280, height: 720 });
     await folderListPage(page);
     const spacing = await page.locator('.videos-list-section').evaluate((el) => {
@@ -510,7 +511,6 @@ test.describe('long unbroken content', () => {
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto('/download');
     await expandChannel(page);
-    await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
     await page.getByText(unbroken.slice(0, 40)).waitFor();
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
@@ -578,7 +578,6 @@ test.describe('long unbroken content', () => {
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto('/download');
     await expandChannel(page);
-    await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
     await page.getByText(log[19] ?? '').waitFor();
 
     const rows = page.locator('.video-item');

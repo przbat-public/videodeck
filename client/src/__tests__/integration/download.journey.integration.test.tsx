@@ -6,7 +6,7 @@ import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv'
 import { folderConfig, videoFiles } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { findCardByTitle, queryCardByTitle, typeAndCommitPhrase } from './drivers/searchDrivers';
-import { channelRow, folderSection } from './drivers/statusDrivers';
+import { channelRow, fetchPlaylist, folderSection } from './drivers/statusDrivers';
 import type { RenderedApp } from './render-app';
 import { refreshCacheAndWait, renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
@@ -113,21 +113,22 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
 
     const page = await renderApp('/download');
     const row = await channelRow(folderPath);
-    const section = await folderSection(folderPath);
-    // No list.json yet: the console row has nothing to count
+    // No list.json yet: the console row has nothing to count and no videos to
+    // show, so its toggle stays shut until the playlist arrives
     await within(row).findByText('0 filmów', undefined, { timeout: 15_000 });
+    expect(within(row).getByRole('button', { name: 'Pokaż filmy' })).toBeDisabled();
 
     // 1. Pause the global queue first, so the enqueue below provably waits.
     await page.user.click(await screen.findByRole('button', { name: 'Pauza kolejki' }));
     await screen.findByRole('button', { name: 'Wznów kolejkę' });
 
-    // 2. Pull the channel playlist (the fake yt-dlp answers --flat-playlist
-    //    with two entries) and load the resulting list.json into the rows.
-    //    The console row above learns the new count from the same click.
-    await page.user.click(within(section).getByRole('button', { name: 'Pobierz playlistę' }));
-    await within(section).findByText(/Plik list\.json już istnieje/);
+    // 2. Pull the channel playlist from the row menu (the fake yt-dlp answers
+    //    --flat-playlist with two entries). The console row above learns the
+    //    new count from the same click, and the list.json it wrote is what the
+    //    row now opens on: the videos load with the row.
+    await fetchPlaylist(page.user, folderPath);
     await within(row).findByText('2 filmów', undefined, { timeout: 15_000 });
-    await page.user.click(within(section).getByRole('button', { name: 'Pobierz listę filmów' }));
+    const section = await folderSection(folderPath);
     await within(section).findByText('Fake playlist video 1');
 
     // 3. Download everything while the queue is paused: both rows sit in
@@ -214,7 +215,6 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
     await pauseQueueFromUi(page);
     try {
       const section = await folderSection(folderPath);
-      await page.user.click(within(section).getByRole('button', { name: 'Pobierz listę filmów' }));
       await within(section).findByText('Film do anulowania');
 
       await page.user.click(within(section).getByRole('button', { name: 'Pobierz' }));

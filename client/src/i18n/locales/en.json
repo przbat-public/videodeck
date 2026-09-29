@@ -156,16 +156,6 @@
     "extraArgsPlaceholder": "e.g. --no-playlist --match-filter \"duration < 7200\"",
     "extraArgsAllowed": "allowed: --no-playlist, --no-warnings, --no-write-*, --sleep-* (including --min/--max-sleep-interval), --limit-rate, --match-filter, --retries"
   },
-  "playlist": {
-    "checking": "Checking list.json status...",
-    "exists": "list.json already exists. Click the button below to update the video list.",
-    "missing": "list.json does not exist. Click the button below to create the video list from the channel.",
-    "update": "Update playlist",
-    "download": "Download playlist",
-    "downloading": "Downloading...",
-    "loadVideos": "Load video list",
-    "noChannelUrl": "No YouTube channel URL configured"
-  },
   "reindex": {
     "start": "Refresh index",
     "refreshing": "Refreshing...",
@@ -333,14 +323,16 @@
       "nothingToDo": "Nothing to do here",
       "listFailed": "Could not read the channel's video list",
       "cancelled": "Cancelled the channel's jobs",
-      "playlistQueued": "Fetching the channel's playlist"
+      "playlistQueued": "Fetching the channel's playlist",
+      "updatePlaylist": "Update playlist"
     },
     "collection": "collection",
     "expand": "Show videos",
     "collapse": "Hide videos",
     "searchInChannel": "Search in this channel",
     "empty": "No channel matches the filter",
-    "countsError": "Could not count the videos: {{message}}"
+    "countsError": "Could not count the videos: {{message}}",
+    "expandHintNoList": "Fetch the channel playlist first"
   },
   "library": {
     "detected_one": "{{count}} new channel found on a drive",

@@ -29,9 +29,10 @@ interface ChannelTableProps {
 /**
  * The reasons shown as chips in the channel cell. The others already have a
  * home: the stale counts sit in the video column and the failed jobs in the
- * queue column, so a chip would only repeat them. A missing `list.json` shows
- * as a zero count plus the "fetch the playlist" action. A drive that left has
- * no column of its own and no other way to say it, so it chips.
+ * queue column, so a chip would only repeat them. A missing `list.json` keeps
+ * its home too: the disabled "show videos" toggle names it on hover, and the
+ * row menu leads with the fetch that fills it in. A drive that left has no
+ * column of its own and no other way to say it, so it chips.
  */
 const CHANNEL_CELL_REASONS: readonly AttentionReason[] = ['driveMissing', 'noChannelUrl', 'noIndex'];
 
@@ -122,7 +123,7 @@ interface ChannelRowMenuProps {
   onEditConfig: (row: ChannelRow) => void;
 }
 
-/** What can be bulk-done with the folder, above the menu's first separator */
+/** What can be bulk-done with the folder, closed by the menu's last separator */
 function ChannelBulkItems({ row, busy, onAction }: Omit<ChannelRowMenuProps, 'onEditConfig'>): JSX.Element {
   const { t } = useTranslation();
   const { summary } = row;
@@ -130,20 +131,6 @@ function ChannelBulkItems({ row, busy, onAction }: Omit<ChannelRowMenuProps, 'on
   // decide what looks pointless; the actions themselves read list.json, which
   // is the authority, so an unknown count disables nothing.
   const countsKnown = summary !== undefined;
-
-  if (row.listExists === false && !row.collection) {
-    return (
-      <>
-        {/* Without list.json there is nothing to update or download, so
-            the playlist is the only bulk entry on offer. Without a
-            channel URL there is not even that. */}
-        <MenuItem disabled={busy || !row.configured} onSelect={() => onAction(row, 'playlist')}>
-          {t('channelConsole.actions.downloadPlaylist')}
-        </MenuItem>
-        <MenuSeparator />
-      </>
-    );
-  }
 
   return (
     <>
@@ -174,9 +161,42 @@ function ChannelBulkItems({ row, busy, onAction }: Omit<ChannelRowMenuProps, 'on
 }
 
 /**
- * The row's queue actions behind the ⋯ trigger: what can be bulk-done with the
- * channel, cancelling its jobs, the config form and the search link. Every one
- * of them lives here, so the row never repeats an action as a button.
+ * The top of the row menu: the playlist fetch, and the bulk actions it feeds.
+ * The fetch comes first, because everything below it reads the `list.json` it
+ * writes: without one there is nothing to update or download, so the fetch is
+ * the only entry its section holds. A separator splits the two sections.
+ */
+function ChannelMenuSections({ row, busy, onAction }: Omit<ChannelRowMenuProps, 'onEditConfig'>): JSX.Element {
+  const { t } = useTranslation();
+  // list.json is the authority for the bulk actions, not the counts, and a
+  // collection has no playlist to be missing
+  const showsBulkActions = row.collection || row.listExists !== false;
+
+  return (
+    <>
+      {/* A collection holds single downloads: it has no playlist to fetch */}
+      {!row.collection && (
+        <>
+          <MenuItem disabled={busy || !row.configured} onSelect={() => onAction(row, 'playlist')}>
+            {t(
+              row.listExists === true
+                ? 'channelConsole.actions.updatePlaylist'
+                : 'channelConsole.actions.downloadPlaylist',
+            )}
+          </MenuItem>
+          <MenuSeparator />
+        </>
+      )}
+      {showsBulkActions && <ChannelBulkItems row={row} busy={busy} onAction={onAction} />}
+    </>
+  );
+}
+
+/**
+ * The row's queue actions behind the ⋯ trigger: the playlist fetch, what can be
+ * bulk-done with the channel, cancelling its jobs, the config form and the
+ * search link. Every one of them lives here, so the row never repeats an
+ * action as a button.
  */
 function ChannelRowMenu({ row, busy, onAction, onEditConfig }: ChannelRowMenuProps): JSX.Element {
   const { t } = useTranslation();
@@ -189,7 +209,7 @@ function ChannelRowMenu({ row, busy, onAction, onEditConfig }: ChannelRowMenuPro
         <Ellipsis aria-hidden="true" focusable="false" className="channel-menu-icon" />
       </MenuTrigger>
       <MenuContent>
-        <ChannelBulkItems row={row} busy={busy} onAction={onAction} />
+        <ChannelMenuSections row={row} busy={busy} onAction={onAction} />
         <MenuItem disabled={busy || activeJobs === 0} onSelect={() => onAction(row, 'cancel')}>
           {t('channelConsole.actions.cancel')}
         </MenuItem>
@@ -211,6 +231,11 @@ function ChannelRowMenu({ row, busy, onAction, onEditConfig }: ChannelRowMenuPro
  * The row's actions: the expand toggle and the ⋯ menu. Every queue action
  * lives in the menu, so a row never repeats one of them as a button and the
  * three controls that used to crowd the column are gone.
+ *
+ * The toggle shows the channel's videos, so it needs the `list.json` they come
+ * from: without one it is disabled with the reason one hover away, and the
+ * playlist fetch that creates the file leads the row menu. A collection reads
+ * the folder index instead, so it always opens.
  */
 function ChannelActionsCell({
   row,
@@ -246,12 +271,28 @@ function ChannelActionsCell({
     );
   }
 
+  // An open row keeps its toggle: the action that opened it (the config form)
+  // may not have needed a list, and leaving it open with no way back is worse
+  // than the list it cannot show.
+  const cannotShowVideos = !expanded && !row.collection && row.listExists !== true;
+
+  const toggle = (
+    <Button size="small" onClick={() => onToggle(row)} disabled={cannotShowVideos}>
+      {expanded ? t('channelConsole.collapse') : t('channelConsole.expand')}
+    </Button>
+  );
+
   return (
     <td data-label={t('channelConsole.column.actions')} aria-busy={busy}>
       <span className="channel-actions">
-        <Button size="small" onClick={() => onToggle(row)}>
-          {expanded ? t('channelConsole.collapse') : t('channelConsole.expand')}
-        </Button>
+        {cannotShowVideos ? (
+          <Tooltip label={t('channelConsole.expandHintNoList')}>
+            {/* biome-ignore lint/a11y/noNoninteractiveTabindex: the span is the Radix tooltip trigger around the disabled toggle; focus is the keyboard path to the hint */}
+            <span tabIndex={0}>{toggle}</span>
+          </Tooltip>
+        ) : (
+          toggle
+        )}
         <ChannelRowMenu row={row} busy={busy} onAction={onAction} onEditConfig={onEditConfig} />
         {busy && <span className="channel-badge channel-badge--info">{t('channelConsole.actions.working')}</span>}
       </span>

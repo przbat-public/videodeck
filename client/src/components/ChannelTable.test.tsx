@@ -213,6 +213,54 @@ describe('ChannelTable', () => {
     expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_CHANNEL_CONSOLE_STATE, folder: '/videos/kanal-a' });
   });
 
+  it('closes the row it cannot fill: no list.json, no video list', () => {
+    renderTable([row({ listExists: false, attention: ['noList'] })]);
+
+    // The toggle reads list.json, so without one there is nothing to show and
+    // the playlist fetch in the row menu is the way out
+    expect(screen.getByRole('button', { name: 'Pokaż filmy' })).toBeDisabled();
+  });
+
+  it('leaves a folder the status could not answer for closed', () => {
+    renderTable([row({ listExists: null })]);
+
+    // Unknown is not "already there": the row opens only on a known list
+    expect(screen.getByRole('button', { name: 'Pokaż filmy' })).toBeDisabled();
+  });
+
+  it('opens a collection, whose videos need no list.json', () => {
+    renderTable([collectionRow()]);
+
+    expect(screen.getByRole('button', { name: 'Pokaż filmy' })).toBeEnabled();
+  });
+
+  it('closes a row that was opened without a list.json', async () => {
+    const user = userEvent.setup();
+    // A row opened from its config entry has no list yet; the toggle still
+    // closes it instead of sitting disabled
+
+    const { onChange } = renderTable([row({ listExists: false, attention: ['noList'] })], {
+      ...DEFAULT_CHANNEL_CONSOLE_STATE,
+      folder: '/videos/kanal-a',
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Ukryj filmy' }));
+
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_CHANNEL_CONSOLE_STATE, folder: '' });
+  });
+
+  it('names the reason the toggle is disabled when the list is missing', async () => {
+    const user = userEvent.setup();
+    renderTable([row({ listExists: false, attention: ['noList'] })]);
+
+    // The anchor is the span around the disabled button: a disabled button
+    // gets no pointer events of its own.
+    const anchor = screen.getByRole('button', { name: 'Pokaż filmy' }).parentElement as HTMLElement;
+    await user.hover(anchor);
+
+    expect(await screen.findByRole('tooltip', { name: 'Najpierw pobierz playlistę kanału' })).toBeInTheDocument();
+  });
+
   it('collapses the expanded row again from its toggle', async () => {
     const user = userEvent.setup();
     const { onChange } = renderTable([row()], { ...DEFAULT_CHANNEL_CONSOLE_STATE, folder: '/videos/kanal-a' });
@@ -379,17 +427,41 @@ describe('ChannelTable', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('lists the three bulk actions with download all after the two updates', async () => {
+  it('leads the row menu with the playlist, a divider, then the bulk actions', async () => {
     const user = userEvent.setup();
     const { onAction } = renderTable([row({ summary: { videos: 40, downloaded: 20, notDownloaded: 20, stale: 5 } })]);
 
     await openRowMenu(user);
 
+    // The playlist keeps the channel's list.json current, so it opens the
+    // menu; the divider then splits it from the actions that work on the list
     const labels = screen.getAllByRole('menuitem').map((item) => item.textContent?.trim());
-    expect(labels.slice(0, 3)).toEqual(['Aktualizuj stare', 'Aktualizuj wszystkie', 'Pobierz wszystkie']);
+    expect(labels.slice(0, 4)).toEqual([
+      'Aktualizuj playlistę',
+      'Aktualizuj stare',
+      'Aktualizuj wszystkie',
+      'Pobierz wszystkie',
+    ]);
+    expect(screen.getAllByRole('separator')).toHaveLength(2);
 
-    await user.click(screen.getByRole('menuitem', { name: 'Pobierz wszystkie' }));
-    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'download');
+    await user.click(screen.getByRole('menuitem', { name: 'Aktualizuj playlistę' }));
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'playlist');
+  });
+
+  it('offers the playlist download to a channel that has no list yet', async () => {
+    const user = userEvent.setup();
+    const { onAction } = renderTable([row({ listExists: false, attention: ['noList'] })]);
+
+    await openRowMenu(user);
+
+    // Nothing to update or download without a list, so the playlist is the
+    // only entry of its section
+    const labels = screen.getAllByRole('menuitem').map((item) => item.textContent?.trim());
+    expect(labels).toEqual(['Pobierz playlistę', 'Anuluj zadania kanału', 'Edytuj config.json']);
+    expect(screen.getAllByRole('separator')).toHaveLength(1);
+    await user.click(screen.getByRole('menuitem', { name: 'Pobierz playlistę' }));
+
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'playlist');
   });
 
   it('disables the menu download when nothing is missing', async () => {
@@ -399,20 +471,6 @@ describe('ChannelTable', () => {
     await openRowMenu(user);
 
     expect(screen.getByRole('menuitem', { name: 'Pobierz wszystkie' })).toHaveAttribute('data-disabled');
-  });
-
-  it('fetches the playlist from the menu when the channel has no list to work from', async () => {
-    const user = userEvent.setup();
-    const { onAction } = renderTable([row({ listExists: false, attention: ['noList'] })]);
-
-    await openRowMenu(user);
-    // Nothing to update or download without a list, so the playlist is the
-    // only bulk entry on offer
-    expect(screen.queryByRole('menuitem', { name: 'Aktualizuj wszystkie' })).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: 'Pobierz wszystkie' })).toBeNull();
-    await user.click(screen.getByRole('menuitem', { name: 'Pobierz playlistę' }));
-
-    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'playlist');
   });
 
   it('offers a collection the updates and its queue, none of the channel actions', async () => {

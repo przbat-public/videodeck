@@ -6,7 +6,7 @@ import i18n from '../i18n';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
 import { toast } from '../test/toastMock';
 import { isOlderThanMonth } from '../utils/videoDates';
-import { VideoListSection } from './VideoListSection';
+import { ARMED_BULK_WINDOW_MS, VideoListSection } from './VideoListSection';
 
 const FOLDER = '/videos/channel-a';
 const QUEUE_URL = `/api/folder/queue?folderPath=${encodeURIComponent(FOLDER)}`;
@@ -90,27 +90,19 @@ const postCalls = (fetchMock: FetchMock) =>
     .filter(([url, init]) => url === '/api/folder/queue' && (init as RequestInit)?.method === 'POST')
     .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
 
-/** The section must expose loadVideos through its ref; a missing handle is a test bug */
-const loadVideosViaRef = (ref: { current: null | { loadVideos: () => Promise<void> } }): Promise<void> => {
-  const handle = ref.current;
-  if (!handle) {
-    throw new Error('VideoListSection did not expose loadVideos');
-  }
-  return handle.loadVideos();
-};
-
-async function renderLoaded() {
-  const ref = { current: null as null | { loadVideos: () => Promise<void> } };
+/** Render the section for a channel whose list.json is already there */
+function renderSection(listExists = true) {
   render(
     <MemoryRouter>
-      <VideoListSection ref={ref} folderPath={FOLDER} listExists={true} />
+      <VideoListSection folderPath={FOLDER} listExists={listExists} />
     </MemoryRouter>,
   );
-  await act(async () => {
-    await loadVideosViaRef(ref);
-  });
+}
+
+/** The section loads its own list: a loaded one is just its rendered count */
+async function renderLoaded() {
+  renderSection();
   await screen.findByText(/Liczba filmów: 4/);
-  return ref;
 }
 
 describe('isOlderThanMonth', () => {
@@ -125,11 +117,14 @@ describe('isOlderThanMonth', () => {
   });
 });
 
+/** The silenced reporter: a failed read is logged, and the test asserts that */
+let errorLog: ReturnType<typeof vi.spyOn>;
+
 describe('VideoListSection', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true, now });
     vi.clearAllMocks();
-    vi.spyOn(console, 'error').mockImplementation(() => {
+    errorLog = vi.spyOn(console, 'error').mockImplementation(() => {
       /* silence the expected error logs */
     });
   });
@@ -149,6 +144,16 @@ describe('VideoListSection', () => {
     expect(container.innerHTML).toBe('');
   });
 
+  it('loads the channel list as soon as it opens, with no second click', async () => {
+    const fetchMock = installFetch({});
+    renderSection();
+
+    // "Show videos" on the console is the same action as "load the list": the
+    // rows arrive with the section instead of behind a button of their own.
+    expect(await screen.findByText(/Liczba filmów: 4/)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(LIST_URL);
+  });
+
   it('loads videos on demand and summarises statuses', async () => {
     installFetch({});
     await renderLoaded();
@@ -161,39 +166,67 @@ describe('VideoListSection', () => {
     expect(screen.getAllByRole('button', { name: 'Pobierz' })).toHaveLength(2); // v3 + v4 (disabled)
   });
 
-  it('reports a reload that did not come back', async () => {
+  it('reports a list that did not come back', async () => {
     const base = installFetch({});
     globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) =>
       url.startsWith('/api/folder/list') ? json({}, 500) : base(url, init),
     ) as unknown as typeof fetch;
-    const ref = { current: null as null | { loadVideos: () => Promise<void> } };
-    render(
-      <MemoryRouter>
-        <VideoListSection ref={ref} folderPath={FOLDER} listExists={true} />
-      </MemoryRouter>,
-    );
-
-    await act(async () => {
-      await loadVideosViaRef(ref);
-    });
+    renderSection();
 
     expect(await screen.findByText(i18n.t('app.error', { message: i18n.t('errors.loadVideos') }))).toBeInTheDocument();
   });
 
-  it('does nothing when the folder has no list.json', async () => {
+  it('reports a failure that is not an Error at all', async () => {
+    const base = installFetch({});
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/folder/list')) {
+        // A rejected fetch can carry anything: the section must not assume
+        // an Error and lose the message it has
+        return Promise.reject('boom');
+      }
+      return base(url, init);
+    }) as unknown as typeof fetch;
+    renderSection();
+
+    expect(await screen.findByText(i18n.t('app.error', { message: i18n.t('errors.occurred') }))).toBeInTheDocument();
+  });
+
+  it('asks for nothing while the folder has no list.json', () => {
     const fetchMock = installFetch({});
-    const ref = { current: null as null | { loadVideos: () => Promise<void> } };
-    render(
+    renderSection(false);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('drops the rows of the channel it left when the console opens another one', async () => {
+    const base = installFetch({});
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) =>
+      url.includes('channel-b')
+        ? json({
+            videos: [{ id: 'b1', title: 'Drugi kanał', url: 'https://yt/b1' }],
+            downloadStatuses: {},
+            lastUpdatedDates: {},
+          })
+        : base(url, init),
+    ) as unknown as typeof fetch;
+    const view = render(
       <MemoryRouter>
-        <VideoListSection ref={ref} folderPath={FOLDER} listExists={false} />
+        <VideoListSection folderPath={FOLDER} listExists={true} />
+      </MemoryRouter>,
+    );
+    await screen.findByText(/Liczba filmów: 4/);
+
+    view.rerender(
+      <MemoryRouter>
+        <VideoListSection folderPath="/videos/channel-b" listExists={true} />
       </MemoryRouter>,
     );
 
-    await act(async () => {
-      await loadVideosViaRef(ref);
-    });
-
-    expect(fetchMock).not.toHaveBeenCalled();
+    // The rows of the previous channel are gone with its state, and the new
+    // folder is what the section reads next
+    expect(await screen.findByText(/Drugi kanał/)).toBeInTheDocument();
+    expect(screen.queryByText(/Fresh/)).toBeNull();
+    expect(screen.getByText(/Liczba filmów: 1/)).toBeInTheDocument();
   });
 
   it('exposes the windowed rows as list items', async () => {
@@ -278,17 +311,8 @@ describe('VideoListSection', () => {
         skipped: [],
       }),
     });
-    const ref = { current: null as null | { loadVideos: () => Promise<void> } };
-    render(
-      <MemoryRouter>
-        <VideoListSection ref={ref} folderPath={FOLDER} listExists={true} />
-      </MemoryRouter>,
-    );
-    await act(async () => {
-      await loadVideosViaRef(ref);
-    });
+    renderSection();
     await screen.findByText(/Liczba filmów: 60/);
-
     fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj wszystkie' }));
 
     expect(await screen.findByRole('button', { name: 'Na pewno? (60 filmów)' })).toBeInTheDocument();
@@ -298,6 +322,31 @@ describe('VideoListSection', () => {
 
     await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
     expect(postCalls(fetchMock)[0]?.videos).toHaveLength(60);
+  });
+
+  it('asks again for a large bulk download once the confirmation window passes', async () => {
+    const many = Array.from({ length: 60 }, (_, i) => ({
+      id: `v${i}`,
+      title: `Video ${i}`,
+      url: `https://www.youtube.com/watch?v=v${i}`,
+    }));
+    const fetchMock = installFetch({
+      list: () => ({ videos: many, downloadStatuses: {}, lastUpdatedDates: {} }),
+    });
+    renderSection();
+    await screen.findByText(/Liczba filmów: 60/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pobierz wszystkie' }));
+    expect(await screen.findByRole('button', { name: 'Na pewno? (60 filmów)' })).toBeInTheDocument();
+
+    // The window passes with no second click: the button goes back to its
+    // plain label instead of keeping a stale arm over sixty downloads
+    act(() => {
+      vi.advanceTimersByTime(ARMED_BULK_WINDOW_MS);
+    });
+
+    expect(screen.getByRole('button', { name: 'Pobierz wszystkie' })).toBeInTheDocument();
+    expect(postCalls(fetchMock)).toHaveLength(0);
   });
 
   it('a single item button enqueues just that video', async () => {
@@ -372,6 +421,25 @@ describe('VideoListSection', () => {
     await waitFor(() => expect(listCalls.length).toBeGreaterThanOrEqual(2));
   });
 
+  it('keeps the rows when the list read after a drained queue fails', async () => {
+    let queueState: QueueJob[] = [makeJob({ status: 'running' })];
+    const base = installFetch({
+      queue: () => ({ jobs: queueState, total: queueState.length, paused: false }),
+    });
+    await renderLoaded();
+
+    // The queue drains while the list endpoint is down: the re-sync is the
+    // section's own bookkeeping, so its failure leaves the rows untouched
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) =>
+      url.startsWith('/api/folder/list') ? json({}, 500) : base(url, init),
+    ) as unknown as typeof fetch;
+    queueState = [];
+
+    await waitFor(() => expect(errorLog).toHaveBeenCalled(), { timeout: 4000 });
+    expect(screen.getByText(/Liczba filmów: 4/)).toBeInTheDocument();
+    expect(screen.getByText(/Fresh/)).toBeInTheDocument();
+  });
+
   it('"Anuluj wszystko" cancels the folder queue', async () => {
     const fetchMock = installFetch({
       queue: () => ({ jobs: [makeJob({ status: 'queued' })], total: 1, paused: false }),
@@ -381,5 +449,25 @@ describe('VideoListSection', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Anuluj wszystko' }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(QUEUE_URL, { method: 'DELETE' }));
+  });
+
+  it('keeps the row it failed to cancel on screen', async () => {
+    const base = installFetch({
+      queue: () => ({ jobs: [makeJob({ status: 'running', progress: 10 })], total: 1, paused: false }),
+    });
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        throw new Error('network down');
+      }
+      return base(url, init);
+    }) as unknown as typeof fetch;
+    await renderLoaded();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Anuluj' }));
+
+    // A cancel that never reached the server must not empty the row: the
+    // failure is logged and the job keeps its state
+    await waitFor(() => expect(errorLog).toHaveBeenCalled());
+    expect(screen.getByText('Pobieranie: 10%')).toBeInTheDocument();
   });
 });

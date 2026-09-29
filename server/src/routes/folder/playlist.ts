@@ -8,7 +8,9 @@ import { writeJsonAtomic } from '../../utils/fsUtils';
 import { logger } from '../../utils/logger';
 import type { NoParams, RouteHandler } from '../http';
 import { readBody, readString, sendError } from '../http';
+import { invalidateStatusCache } from './config';
 import { requireAllowedFolder, requireMountedFolder } from './guards';
+import { invalidateSummaryCache } from './summaries';
 
 /**
  * The channel fetch behind POST /api/folder/download-playlist.
@@ -91,6 +93,11 @@ export const downloadPlaylist: RouteHandler<NoParams, DownloadPlaylistResponse> 
 
   const listPath = path.join(folderPath, 'list.json');
   await writeJsonAtomic(folderPath, 'list.json', entries);
+  // The file the console reads its row state and its counts from just changed,
+  // and both answers are cached for seconds: without this the row it fetched
+  // for keeps reporting "no list" and "0 videos" until the window lapses.
+  invalidateStatusCache();
+  invalidateSummaryCache();
   res.json({
     success: true,
     message: 'Playlist downloaded successfully',

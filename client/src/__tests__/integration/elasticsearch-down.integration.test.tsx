@@ -35,16 +35,24 @@ afterEach(() => {
 
 describe('Elasticsearch goes away and comes back', () => {
   it('keeps the console, banners the outage and recovers through the retry', async () => {
+    // channel-integration is seeded without a playlist, and the console only
+    // opens a row that has one: give it a list.json so this test starts from
+    // the healthy console a reader would see
+    await env.seedFolder('channel-integration', {
+      'list.json': JSON.stringify([
+        { id: 'deepE2e0001', title: 'Głęboka integracja', url: 'https://www.youtube.com/watch?v=deepE2e0001' },
+      ]),
+    });
     await refreshCacheAndWait();
     const folderPath = env.folder('channel-integration');
 
     const page = await renderApp('/download');
     const section = await folderSection(folderPath);
 
-    // Healthy first: the channel row is there and no banner is up. The
-    // banner's own retry names it, because the results page carries a status
-    // region of its own (the "loaded N more" announcement).
-    await within(section).findByRole('button', { name: 'Pobierz playlistę' });
+    // Healthy first: the channel row is there with its videos, and no banner
+    // is up. The banner's own retry names it, because the results page carries
+    // a status region of its own (the "loaded N more" announcement).
+    await within(section).findByText(/Głęboka integracja/);
     expect(screen.queryByRole('button', { name: 'Sprawdź ponownie' })).toBeNull();
 
     await env.fakeEs.stop();
