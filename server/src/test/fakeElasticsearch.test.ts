@@ -138,6 +138,47 @@ describe('FakeElasticsearch controls', () => {
     expect(await hitsFor('kosmosu', 'title')).toBe(0);
   });
 
+  it('buckets a terms aggregation only on a field the index mapping declares', async () => {
+    // The mapping the server writes: folderPath is a keyword, channelName is
+    // text with a keyword subfield. A cluster buckets the first two names and
+    // answers an unmapped field with no buckets at all, never an error, which
+    // is how `folderPath.keyword` stayed silent for so long.
+    await fetch(`${baseUrl}/videos_agg`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        settings: {},
+        mappings: {
+          properties: {
+            folderPath: { type: 'keyword' },
+            channelName: { type: 'text', fields: { keyword: { type: 'keyword' } } },
+          },
+        },
+      }),
+    });
+    await bulk([
+      { index: { _index: 'videos_agg', _id: 'agg1' } },
+      { folderPath: '/videos/a', channelName: 'Alpha' },
+      { index: { _index: 'videos_agg', _id: 'agg2' } },
+      { folderPath: '/videos/b', channelName: 'Beta' },
+    ]);
+
+    const bucketsFor = async (field: string): Promise<string[]> => {
+      const response = await fetch(`${baseUrl}/videos_agg/_search`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ size: 0, aggs: { by: { terms: { field } } } }),
+      });
+      const body = (await response.json()) as { aggregations: { by: { buckets: Array<{ key: string }> } } };
+      return body.aggregations.by.buckets.map((bucket) => bucket.key);
+    };
+
+    expect(await bucketsFor('folderPath')).toEqual(['/videos/a', '/videos/b']);
+    expect(await bucketsFor('channelName.keyword')).toEqual(['Alpha', 'Beta']);
+    expect(await bucketsFor('folderPath.keyword')).toEqual([]);
+    expect(await bucketsFor('unmapped')).toEqual([]);
+  });
+
   it('refuses a page past the result window the way Elasticsearch does', async () => {
     // A real cluster rejects `from + size > index.max_result_window` (10000 by
     // default) with this 400 body; a fake that slices happily hides the bug.

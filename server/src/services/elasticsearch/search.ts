@@ -224,35 +224,41 @@ function buildHighlights(highlight: Record<string, string[]> | undefined): Recor
 }
 
 /**
- * Channel metadata for the UI. One query answers both questions: the distinct
- * names behind the search filter, and which channel each folder holds (a
- * sub-aggregation per folder bucket), so the console can link to the search
- * page with a value the search actually filters by.
+ * How many channel names one folder may contribute. A folder whose channel was
+ * renamed keeps the old name on its older videos, and both names point at the
+ * same category; ten leaves room for a few renames without unbounded buckets.
  */
-export interface ChannelNames {
-  /** Distinct channel names across the configured folders, for the filter UI */
-  channels: string[];
-  /** Folder path to the channel name its videos carry, for the console link */
-  folders: Record<string, string>;
-}
+const CHANNEL_NAMES_PER_FOLDER = 10;
 
-/** Terms bucket shape of the two aggregations below */
+/**
+ * Where each folder's channels live: folder path to the channel names its
+ * documents carry, most frequent first.
+ *
+ * The route turns this into the search filter's list and the console's
+ * per-folder search link, so both read the same names the search filters by.
+ */
+export type ChannelsByFolder = Record<string, string[]>;
+
+/** Terms bucket shape of the folder aggregation below */
 interface TermsBucket {
   key: string;
   channel?: { buckets?: Array<{ key: string }> };
 }
 
 /**
- * Channel metadata for the UI. One query answers both questions: the distinct
- * names behind the search filter, and which channel each folder holds (a
- * sub-aggregation per folder bucket), so the console can link to the search
- * page with a value the search actually filters by.
+ * The channel names behind every configured folder, in one query: a terms
+ * bucket per folder with its channel names as a sub-aggregation.
+ *
+ * The folder field is `folderPath`, which the index maps as a keyword. Asking
+ * for `folderPath.keyword` reads a field that does not exist, and a cluster
+ * answers that with zero buckets instead of an error, which is how this map
+ * stayed empty in production.
  *
  * Like searchVideos, it skips aliases that do not exist yet: a freshly
  * attached drive adds folders nobody has indexed, and the filter must keep
  * working for the indexed ones instead of failing the whole request.
  */
-export async function listChannelNames(): Promise<ChannelNames> {
+export async function listChannelsByFolder(): Promise<ChannelsByFolder> {
   assertElasticsearchReachable();
   const esClient = getElasticsearchClient();
   const response = await esClient.search<VideoDocument>({
@@ -260,32 +266,25 @@ export async function listChannelNames(): Promise<ChannelNames> {
     ignore_unavailable: true,
     size: 0,
     aggs: {
-      channels: { terms: { field: 'channelName.keyword', size: 200 } },
       folders: {
-        terms: { field: 'folderPath.keyword', size: 500 },
-        aggs: { channel: { terms: { field: 'channelName.keyword', size: 1 } } },
+        terms: { field: 'folderPath', size: 500 },
+        aggs: { channel: { terms: { field: 'channelName.keyword', size: CHANNEL_NAMES_PER_FOLDER } } },
       },
     },
   });
-  const aggregations = response.aggregations as
-    | { channels?: { buckets?: TermsBucket[] }; folders?: { buckets?: TermsBucket[] } }
-    | undefined;
-
-  const channels = (aggregations?.channels?.buckets ?? [])
-    .map((bucket) => bucket.key)
-    .sort((a, b) => a.localeCompare(b));
+  const aggregations = response.aggregations as { folders?: { buckets?: TermsBucket[] } } | undefined;
 
   // A folder whose videos carry no channel name is left out: the console then
   // hides its search link instead of pointing at a filter that matches nothing
-  const folders: Record<string, string> = {};
+  const folders: ChannelsByFolder = {};
   for (const bucket of aggregations?.folders?.buckets ?? []) {
-    const [topChannel] = bucket.channel?.buckets ?? [];
-    if (topChannel !== undefined) {
-      folders[bucket.key] = topChannel.key;
+    const names = (bucket.channel?.buckets ?? []).map((channel) => channel.key);
+    if (names.length > 0) {
+      folders[bucket.key] = names;
     }
   }
 
-  return { channels, folders };
+  return folders;
 }
 
 export async function getAllVideos(sortOption: SortOption = 'date-desc'): Promise<VideoListItem[]> {
