@@ -1,7 +1,7 @@
 import type { CategoriesResponse, ChannelsResponse, SearchResponse } from '@videodeck/shared/api';
 import type { SearchOptions } from '../../services/elasticsearchService';
-import { listChannelNames, SEARCH_DEFAULT_LIMIT } from '../../services/elasticsearchService';
-import { getFolderPathsForCategory, listCategories } from '../../services/folderConfig';
+import { listChannelsByFolder, SEARCH_DEFAULT_LIMIT } from '../../services/elasticsearchService';
+import { getFolderPathsForCategory, listCategories, listChannelFolders } from '../../services/folderConfig';
 import { getVideos } from '../../services/videoScanner';
 import { stripUndefined } from '../../utils/objectUtils';
 import type { NoParams, RouteHandler } from '../http';
@@ -13,7 +13,8 @@ import { parseNonNegativeInt, parseOffset, parseSortOption } from './helpers';
  *
  * Categories come from the folder config service, which caches them for a few
  * seconds and drops that cache on a config write; channel names come from
- * Elasticsearch. Both are read per request, so no copy lives here.
+ * Elasticsearch, and the route joins the two so the channel filter can group
+ * its options by category. Both are read per request, so no copy lives here.
  */
 
 // GET /api/videos/search?q={query}&sort={sortOption}&category={category}&offset=&limit=
@@ -40,8 +41,38 @@ export const getCategories: RouteHandler<NoParams, CategoriesResponse> = async (
   res.json({ categories: await listCategories() });
 };
 
-// GET /api/videos/channels - distinct channel names for the filter UI, plus
-// the channel of every folder for the console's search link
+// GET /api/videos/channels - the channels the filter offers, the category of
+// each one's folder, and the channel of every folder for the console's search
+// link. A folder of single downloads gathers channels from all over YouTube,
+// so it feeds the console map but not the filter list.
 export const getChannelNames: RouteHandler<NoParams, ChannelsResponse> = async (_req, res) => {
-  res.json(await listChannelNames());
+  const [channelsByFolder, channelFolders] = await Promise.all([listChannelsByFolder(), listChannelFolders()]);
+  const categoryByFolder = new Map(channelFolders.map((folder) => [folder.folderPath, folder.category]));
+
+  const channels = new Set<string>();
+  const channelCategories: Record<string, string> = {};
+  const folders: Record<string, string> = {};
+  for (const [folderPath, names] of Object.entries(channelsByFolder)) {
+    const [mostFrequent] = names;
+    if (mostFrequent === undefined) {
+      continue;
+    }
+    folders[folderPath] = mostFrequent;
+    if (!categoryByFolder.has(folderPath)) {
+      continue;
+    }
+    const category = categoryByFolder.get(folderPath);
+    for (const name of names) {
+      channels.add(name);
+      if (category !== undefined) {
+        channelCategories[name] = category;
+      }
+    }
+  }
+
+  res.json({
+    channels: [...channels].sort((a, b) => a.localeCompare(b)),
+    folders,
+    channelCategories,
+  });
 };

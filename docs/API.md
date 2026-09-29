@@ -147,6 +147,22 @@ The category **does not go into Elasticsearch**. Every folder has its own index 
 
 The `config.json` files are read in parallel, and the folder → category map is kept in memory for 5 s (`CATEGORY_CACHE_TTL_MS`), because on an external drive a sequential read of 56 files on every search cost 0.7–3 s. A write through `PUT /api/folder/config` clears the cache immediately; a file changed by hand on disk becomes visible after at most 5 s.
 
+### GET /api/videos/channels
+
+The channels the search filter offers, the category of each one's folder, and the channel of every folder for the console's "search in this channel" link.
+
+```json
+{
+  "channels": ["Alpha", "Beta"],
+  "folders": { "/videos/alpha": "Alpha", "/videos/singles": "Somebody Else" },
+  "channelCategories": { "Alpha": "fpv", "Beta": "psychology" }
+}
+```
+
+`channels` holds only names a channel folder carries. A folder of single downloads (`kind: "collection"`) gathers channels from all over YouTube, so its one-off names would outnumber the real ones; they stay filterable through `?channel=` but are not offered. `channelCategories` omits a channel whose folder declares no category, and the client lists those without a header. `folders` maps every folder that has indexed videos to its most frequent channel name, which is what the console needs for its search link; the filter list comes from the channel folders alone.
+
+The names come from one Elasticsearch aggregation over the folder path, with each folder's channel names as a sub-aggregation, and the categories are joined in from the same `config.json` read the category filter uses.
+
 ### GET /api/videos/file/:filename?folder=<path>
 
 Serves video files (.mp4) and thumbnails (.webp).

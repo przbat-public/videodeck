@@ -9,6 +9,7 @@ import {
   getFolderPathsForCategory,
   invalidateCategoryCache,
   listCategories,
+  listChannelFolders,
   loadDownloadOptions,
   readFolderConfig,
   resolveCategory,
@@ -469,6 +470,19 @@ describe('folderConfig', () => {
       it('returns no folders for an unknown or blank category', async () => {
         expect(await getFolderPathsForCategory('lego')).toEqual([]);
         expect(await getFolderPathsForCategory('   ')).toEqual([]);
+      });
+
+      it('lists the folders that stand for a channel, with the category each declares', async () => {
+        // A collection gathers single downloads from many channels, so it is
+        // nobody's channel and stays out of the list
+        await writeConfig(at(folders, 1), { category: 'psychology', kind: 'collection' });
+
+        expect(await listChannelFolders()).toEqual([
+          { folderPath: at(folders, 0), category: 'fpv' },
+          { folderPath: at(folders, 2), category: 'FPV' },
+          // a channel folder that declares no category keeps its place
+          { folderPath: at(folders, 3) },
+        ]);
       });
 
       it('reads every config once per TTL window, in parallel', async () => {

@@ -434,11 +434,19 @@ export function resolveCategory(config: FolderConfig | null | undefined): string
  */
 export const CATEGORY_CACHE_TTL_MS = 5_000;
 
+interface FolderFacts {
+  folderPath: string;
+  /** The category config.json declares, trimmed, omitted when it declares none */
+  category?: string;
+  /** `kind: "collection"`: single downloads, so not a channel of its own */
+  collection: boolean;
+}
+
 interface CategoryCache {
   /** Configured folders the entry was built for (they can differ in tests) */
   key: string;
   readAt: number;
-  categories: Map<string, string>;
+  folders: FolderFacts[];
 }
 
 let categoryCache: CategoryCache | null = null;
@@ -452,26 +460,27 @@ export function invalidateCategoryCache(): void {
 // cache built before the drive existed, so every library change drops it.
 subscribeLibraryChanges(invalidateCategoryCache);
 
-/** folderPath → category, for every configured folder that declares one */
-async function readCategories(): Promise<Map<string, string>> {
+/** What every configured folder declares, read once per TTL window */
+async function readFolderFacts(): Promise<FolderFacts[]> {
   const folderPaths = getVideosFolderPaths();
   const key = folderPaths.join('\n');
   const now = Date.now();
   if (categoryCache !== null && categoryCache.key === key && now - categoryCache.readAt < CATEGORY_CACHE_TTL_MS) {
-    return categoryCache.categories;
+    return categoryCache.folders;
   }
 
   const configs = await Promise.all(folderPaths.map((folderPath) => readFolderConfig(folderPath)));
-  const categories = new Map<string, string>();
-  folderPaths.forEach((folderPath, index) => {
+  const folders = folderPaths.map((folderPath, index): FolderFacts => {
     const category = resolveCategory(configs[index]);
-    if (category) {
-      categories.set(folderPath, category);
-    }
+    return {
+      folderPath,
+      ...(category === undefined ? {} : { category }),
+      collection: configs[index]?.kind === 'collection',
+    };
   });
 
-  categoryCache = { key, readAt: now, categories };
-  return categories;
+  categoryCache = { key, readAt: now, folders };
+  return folders;
 }
 
 /**
@@ -480,7 +489,10 @@ async function readCategories(): Promise<Map<string, string>> {
  */
 export async function listCategories(): Promise<string[]> {
   const byLowercase = new Map<string, string>();
-  for (const category of (await readCategories()).values()) {
+  for (const { category } of await readFolderFacts()) {
+    if (category === undefined) {
+      continue;
+    }
     const key = category.toLowerCase();
     if (!byLowercase.has(key)) {
       byLowercase.set(key, category);
@@ -500,10 +512,32 @@ export async function getFolderPathsForCategory(category: string): Promise<strin
     return [];
   }
   const folderPaths: string[] = [];
-  for (const [folderPath, folderCategory] of await readCategories()) {
-    if (folderCategory.toLowerCase() === wanted) {
-      folderPaths.push(folderPath);
+  for (const folder of await readFolderFacts()) {
+    if (folder.category?.toLowerCase() === wanted) {
+      folderPaths.push(folder.folderPath);
     }
   }
   return folderPaths;
+}
+
+/** One configured folder that stands for a channel, with the category it declares */
+export interface ChannelFolder {
+  folderPath: string;
+  /** Omitted when config.json declares no category */
+  category?: string;
+}
+
+/**
+ * Configured folders that stand for a channel, in configuration order. A
+ * collection (`kind: "collection"`) gathers single downloads from many
+ * channels, so it belongs to none of them and is left out here.
+ */
+export async function listChannelFolders(): Promise<ChannelFolder[]> {
+  const folders = await readFolderFacts();
+  return folders
+    .filter((folder) => !folder.collection)
+    .map((folder) => ({
+      folderPath: folder.folderPath,
+      ...(folder.category === undefined ? {} : { category: folder.category }),
+    }));
 }
