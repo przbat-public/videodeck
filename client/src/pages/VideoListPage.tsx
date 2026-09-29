@@ -54,7 +54,7 @@ export default function VideoListPage(): JSX.Element {
   const resultsBusy = videoLoading || videoLoadingMore;
   const { loading: refreshLoading, refreshCache } = useCacheRefresh();
   const { categories } = useCategories();
-  const { channels } = useChannelNames();
+  const { channels, channelCategories } = useChannelNames();
   const { loading: recreateIndicesLoading, recreateIndices } = useRecreateIndices();
   const elasticsearchDown = useElasticsearchState() === 'down';
   const [onlyMissing, setOnlyMissing] = useState(false);
@@ -197,6 +197,7 @@ export default function VideoListPage(): JSX.Element {
         channel={channel}
         categories={categories}
         channels={channels}
+        channelCategories={channelCategories}
         onChange={setSearchState}
       />
 

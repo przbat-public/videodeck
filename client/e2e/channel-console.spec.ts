@@ -64,6 +64,7 @@ async function consolePage(
     channels: {
       channels: folderPaths.map((_, index) => channelName(index)),
       folders: Object.fromEntries(folderPaths.map((folderPath, index) => [folderPath, channelName(index)])),
+      channelCategories: Object.fromEntries(folderPaths.map((_, index) => [channelName(index), 'fpv'])),
     },
     // The console polls the counters, not the job list
     queueSummary: {

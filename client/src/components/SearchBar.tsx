@@ -3,6 +3,7 @@ import type { KeyboardEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { groupChannelsByCategory } from '../utils/channelGroups';
 import type { SearchState } from '../utils/searchUrlState';
 import { SORT_OPTIONS } from '../utils/searchUrlState';
 import { Button } from './ui/Button';
@@ -18,6 +19,8 @@ interface SearchBarProps {
   categories?: string[];
   /** Channel names offered by the server; the filter hides when there is nothing to pick */
   channels?: string[];
+  /** Category of each channel's folder; a channel missing here has none */
+  channelCategories?: Record<string, string>;
   onChange: (next: SearchState) => void;
 }
 
@@ -35,6 +38,7 @@ export default function SearchBar({
   channel,
   categories = [],
   channels = [],
+  channelCategories = {},
   onChange,
 }: SearchBarProps) {
   const { t } = useTranslation();
@@ -169,10 +173,11 @@ export default function SearchBar({
           onChange={(value) => commitWith({ channel: value })}
           className="channel-select"
           aria-label={t('search.channel')}
-          items={[
-            { value: '', label: t('search.allChannels') },
-            ...channelOptions.map((name) => ({ value: name, label: name })),
-          ]}
+          items={[{ value: '', label: t('search.allChannels') }]}
+          groups={groupChannelsByCategory(channelOptions, channelCategories).map((group) => ({
+            label: group.category === '' ? t('search.uncategorizedChannels') : group.category,
+            items: group.channels.map((name) => ({ value: name, label: name })),
+          }))}
         />
       )}
       {text && (

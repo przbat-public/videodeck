@@ -71,7 +71,10 @@ function installFetch(handlers: FetchHandlers = {}): FetchMock {
   const routes: Record<string, () => MockResponse> = {
     '/api/health': () => json(handlers.health ?? { status: 'ok', elasticsearch: 'ok', revision: 1 }),
     '/api/videos/categories': () => json({ categories: handlers.categories ?? CATEGORIES }),
-    '/api/videos/channels': () => json({ channels: ['Kanał A'] }),
+    // The whole contract, not just the list: a fixture missing a field fails the
+    // schema parse, and the hook reports that the same way it reports an outage
+    '/api/videos/channels': () =>
+      json({ channels: ['Kanał A'], folders: { '/videos/a': 'Kanał A' }, channelCategories: { 'Kanał A': 'fpv' } }),
     '/api/videos/recreateIndices/status': () => json({ running: false, foldersDone: 1, foldersTotal: 1, errors: [] }),
   };
 

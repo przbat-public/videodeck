@@ -113,6 +113,26 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
     expect(await findSearchInput()).toHaveValue('');
   });
 
+  it('groups the channel filter by category and leaves single downloads out of it', async () => {
+    // A folder of single downloads (`kind: "collection"`) gathers channels from
+    // all over YouTube. Those names belong to no channel folder, so the filter
+    // must not offer them: they would outnumber the real channels.
+    await env.seedFolder('channel-singles', {
+      ...videoFiles('deepE2e0005', 'Pojedynczy film', { channel: 'Kanał jednorazowy' }),
+      'config.json': JSON.stringify({ category: 'pojedyncze', kind: 'collection' }),
+    });
+    env.setFolders('channel-integration', 'channel-two', 'channel-singles');
+    await refreshCacheAndWait();
+
+    const page = await renderApp('/');
+    await findCardByTitle('Głęboka integracja');
+    await page.user.click(await channelSelect());
+
+    expect(await screen.findByRole('group', { name: 'tests' })).toHaveTextContent('Deep test channel');
+    expect(screen.getByRole('group', { name: 'other' })).toHaveTextContent('Drugi kanał');
+    expect(screen.queryByRole('option', { name: 'Kanał jednorazowy' })).toBeNull();
+  });
+
   it('scopes the search to one category folder', async () => {
     const page = await renderApp('/');
     await findCardByTitle('Drugi kanał wideo');
