@@ -664,6 +664,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Elasticsearch resolves subfields from the stored mapping, so the integration
   suites catch this class of mistake
 
+### Fixed
+
+- **A reindex fills the indices a rebuild emptied**: `onlyMissing` read a
+  folder as cached when its alias existed, which is exactly what "Odbuduj
+  indeksy" leaves behind (a fresh empty version behind every alias). A refresh
+  right after a rebuild skipped all 90 folders and reported "nothing to do"
+  over an empty library. A folder now counts as cached only when its index
+  holds documents, which also stops the channel console from calling an empty
+  channel indexed
+- **A reindex no longer reports a rebuild's outcome as its own**: both index
+  jobs share one lock, so a refresh request refused while the rebuild ran read
+  `/refreshCache/status`, which still described the previous reindex, and
+  toasted its numbers
+  as a success. The 409 now names the job holding the lock
+  (`index_recreation_running`, `reindex_running`, and the mirror on the
+  rebuild's route), and the client refuses honestly instead of joining a job it
+  cannot follow
+- **A channel whose thumbnails are numbered variants is searchable**: yt-dlp's
+  `--write-all-thumbnails` names them `<video>.mp4_4.webp` instead of
+  `<video>.webp`, which the scanner did not recognise, so every video of such a
+  channel was skipped as "missing thumbnail", 360 of them in one folder on
+  this library. The plain sidecar still wins, and the highest numbered variant
+  is the fallback
+- **A long reindex shows progress while it runs**: the results page
+  re-reads the current search as each folder lands instead of waiting for the
+  whole run (which is the better part of an hour on a 43k-video library), the
+  gear menu shows the folder counter, and the rebuild's toast says the indices
+  it left are empty and need a refresh
+
 ## [1.0.0] - 2026-09-14
 
 First public release.
