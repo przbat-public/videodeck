@@ -9,7 +9,7 @@ import SearchBar from '../components/SearchBar';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
 import { Loading } from '../components/ui/Loading';
 import VideoList from '../components/VideoList';
-import { useCacheRefresh } from '../hooks/useCacheRefresh';
+import { formatReindexMenuLabel, useCacheRefresh } from '../hooks/useCacheRefresh';
 import { useCategories } from '../hooks/useCategories';
 import { useChannelNames } from '../hooks/useChannelNames';
 import { useListScrollRestoration } from '../hooks/useListScrollRestoration';
@@ -18,7 +18,7 @@ import { useRecreateIndices } from '../hooks/useRecreateIndices';
 import { useSearchUrlState } from '../hooks/useSearchUrlState';
 import { useVideoSearch } from '../hooks/useVideoSearch';
 import { useElasticsearchState } from '../utils/elasticsearchStatus';
-import { subscribeReindexFinished } from '../utils/reindexStore';
+import { subscribeReindexFinished, subscribeReindexProgress } from '../utils/reindexStore';
 
 /**
  * The two names this route gives the search on screen: the tab title and the
@@ -52,7 +52,7 @@ export default function VideoListPage(): JSX.Element {
   } = useVideoSearch();
   // Whatever is in flight makes the results busy; the page itself stays usable
   const resultsBusy = videoLoading || videoLoadingMore;
-  const { loading: refreshLoading, refreshCache } = useCacheRefresh();
+  const { loading: refreshLoading, status: reindexStatus, refreshCache } = useCacheRefresh();
   const { categories } = useCategories();
   const { channels, channelCategories } = useChannelNames();
   const { loading: recreateIndicesLoading, recreateIndices } = useRecreateIndices();
@@ -95,16 +95,23 @@ export default function VideoListPage(): JSX.Element {
     await refreshCache(onlyMissing ? { onlyMissing: true } : undefined);
   }, [refreshCache, onlyMissing]);
 
-  // A finished reindex changes what the index holds, so the results on screen
-  // are stale. The rule lives here once and follows every run, including one
-  // the shell's arrival notice started on another page's behalf.
-  useEffect(
-    () =>
-      subscribeReindexFinished(() => {
-        void search({ query, sort, category, channel });
-      }),
-    [search, query, sort, category, channel],
-  );
+  // A reindex changes what the index holds, so the results on screen go stale
+  // while it runs and are wrong once it ends. One rule follows every run,
+  // including one the shell's arrival notice started on another page's behalf:
+  // re-read the current search when a folder lands (a large library takes the
+  // better part of an hour, and the list used to sit frozen for all of it) and
+  // once more when the run is over.
+  useEffect(() => {
+    const reRead = (): void => {
+      void search({ query, sort, category, channel });
+    };
+    const unsubscribeFinished = subscribeReindexFinished(reRead);
+    const unsubscribeProgress = subscribeReindexProgress(reRead);
+    return () => {
+      unsubscribeFinished();
+      unsubscribeProgress();
+    };
+  }, [search, query, sort, category, channel]);
 
   const handleReload = useCallback(async (): Promise<void> => {
     await search({ query, sort, category, channel });
@@ -153,7 +160,8 @@ export default function VideoListPage(): JSX.Element {
       items: [
         {
           key: 'refresh',
-          label: refreshLoading ? t('reindex.refreshing') : t('reindex.start'),
+          // The counter keeps a long run visible outside the toast
+          label: refreshLoading ? formatReindexMenuLabel(reindexStatus) : t('reindex.start'),
           // Both index actions need the cluster; the banner above the page
           // says why they are off
           disabled: refreshLoading || elasticsearchDown,

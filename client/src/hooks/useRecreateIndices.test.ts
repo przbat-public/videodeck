@@ -1,6 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { RecreateIndicesStatus } from '@videodeck/shared/api';
+import { REINDEX_RUNNING_CODE } from '@videodeck/shared/schemas';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
 import type { MockResponse } from '../test/fetchMock';
 import { installFetchMock } from '../test/fetchMock';
 import { toast } from '../test/toastMock';
@@ -82,7 +84,7 @@ describe('useRecreateIndices', () => {
     expect(fetchMock).toHaveBeenCalledWith(START_URL, { method: 'POST', signal: expect.any(AbortSignal) });
     expect(fetchMock).toHaveBeenCalledWith(STATUS_URL, { signal: expect.any(AbortSignal) });
     expect(toast.loading).toHaveBeenCalledWith('Rozpoczynanie odbudowy indeksów...');
-    expect(toast.success).toHaveBeenCalledWith('Odbudowa indeksów zakończona', { id: LOADING_TOAST_ID });
+    expect(toast.success).toHaveBeenCalledWith(i18n.t('toast.recreateDone'), { id: LOADING_TOAST_ID });
     expect(toast.error).not.toHaveBeenCalled();
     expect(result.current.loading).toBe(false);
     expect(result.current.status?.running).toBe(false);
@@ -122,7 +124,7 @@ describe('useRecreateIndices', () => {
       await done;
     });
     expect(statusCalls()).toBe(3);
-    expect(toast.success).toHaveBeenCalledWith('Odbudowa indeksów zakończona', { id: LOADING_TOAST_ID });
+    expect(toast.success).toHaveBeenCalledWith(i18n.t('toast.recreateDone'), { id: LOADING_TOAST_ID });
     expect(result.current.loading).toBe(false);
   });
 
@@ -159,11 +161,31 @@ describe('useRecreateIndices', () => {
       await result.current.recreateIndices();
     });
 
-    expect(toast.loading).toHaveBeenCalledWith('Odbudowa indeksów już trwa — czekam na jej zakończenie', {
+    expect(toast.loading).toHaveBeenCalledWith(i18n.t('toast.recreateAlreadyRunning'), {
       id: LOADING_TOAST_ID,
     });
-    expect(toast.success).toHaveBeenCalledWith('Odbudowa indeksów zakończona', { id: LOADING_TOAST_ID });
+    expect(toast.success).toHaveBeenCalledWith(i18n.t('toast.recreateDone'), { id: LOADING_TOAST_ID });
     expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('reports a refused start when a reindex holds the lock, never a stale success', async () => {
+    // Mirror of the reindex path: the 409 comes from the reindex, so
+    // /recreateIndices/status still describes the LAST rebuild.
+    mockServer(
+      jsonResponse({ error: 'Reindex running', message: 'A reindex is in progress', code: REINDEX_RUNNING_CODE }, 409),
+      [jsonResponse(finished())],
+    );
+
+    const { result } = renderHook(() => useRecreateIndices());
+
+    await act(async () => {
+      await result.current.recreateIndices();
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(i18n.t('toast.recreateReindexRunning'), { id: LOADING_TOAST_ID });
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(statusCalls()).toBe(0);
+    expect(result.current.loading).toBe(false);
   });
 
   it('reports a failed rebuild from the final status as an error toast', async () => {

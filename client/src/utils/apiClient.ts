@@ -34,12 +34,19 @@ export interface ApiRequestOptions {
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly elasticsearchDown: boolean;
+  /**
+   * Machine-readable reason from the answer body (`code`), for the failures the
+   * caller has to tell apart: a 409 says whether the lock is held by the job
+   * the caller asked for, or by the other index maintenance job.
+   */
+  readonly code: string | undefined;
 
-  constructor(message: string, status: number, elasticsearchDown: boolean) {
+  constructor(message: string, options: { status: number; elasticsearchDown: boolean; code?: string | undefined }) {
     super(message);
     this.name = 'ApiRequestError';
-    this.status = status;
-    this.elasticsearchDown = elasticsearchDown;
+    this.status = options.status;
+    this.elasticsearchDown = options.elasticsearchDown;
+    this.code = options.code;
   }
 }
 
@@ -73,22 +80,22 @@ function requestInit(
 async function failureError(response: Response, options: ApiRequestOptions): Promise<ApiRequestError> {
   if (options.failureMessage !== undefined) {
     const failure = await readApiFailure(response);
-    return new ApiRequestError(
-      options.failureMessage(failure, response.status),
-      response.status,
-      failure.elasticsearchDown,
-    );
+    return new ApiRequestError(options.failureMessage(failure, response.status), {
+      status: response.status,
+      elasticsearchDown: failure.elasticsearchDown,
+      code: failure.code,
+    });
   }
   if (options.message !== undefined) {
     const message = typeof options.message === 'function' ? options.message(response.status) : options.message;
-    return new ApiRequestError(message, response.status, false);
+    return new ApiRequestError(message, { status: response.status, elasticsearchDown: false });
   }
   const failure = await readApiFailure(response);
-  return new ApiRequestError(
-    failure.message ?? i18n.t(GENERIC_FAILURE_KEY),
-    response.status,
-    failure.elasticsearchDown,
-  );
+  return new ApiRequestError(failure.message ?? i18n.t(GENERIC_FAILURE_KEY), {
+    status: response.status,
+    elasticsearchDown: failure.elasticsearchDown,
+    code: failure.code,
+  });
 }
 
 /** GET `path` and read the answer with `schema` */

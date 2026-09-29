@@ -1,5 +1,5 @@
 import type { RecreateIndicesStatus } from '@videodeck/shared/api';
-import { RecreateIndicesStatusSchema } from '@videodeck/shared/schemas';
+import { REINDEX_RUNNING_CODE, RecreateIndicesStatusSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import i18n from '../i18n';
@@ -33,6 +33,12 @@ async function startRecreate(signal: AbortSignal, loadingToastId: string): Promi
   } catch (err) {
     if (!(err instanceof ApiRequestError) || err.status !== 409) {
       throw err;
+    }
+    if (err.code === REINDEX_RUNNING_CODE) {
+      // The reindex holds the lock, so nothing was started and the rebuild
+      // status below still describes the last rebuild: reporting it as this
+      // click's outcome would be a success that never ran.
+      throw new Error(i18n.t('toast.recreateReindexRunning'), { cause: err });
     }
     // A rebuild is already running; the poll below follows it to the end
     toast.loading(i18n.t('toast.recreateAlreadyRunning'), { id: loadingToastId });
