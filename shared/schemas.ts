@@ -126,14 +126,21 @@ export const VideoListItemSchema = z.object({
 });
 
 /**
- * Channel metadata for the UI: the distinct names behind the search filter,
- * and the channel each configured folder belongs to. The console's "search in
- * this channel" link needs the name, because the search filters by
- * `channelName`, not by folder path.
+ * Channel metadata for the UI: the names behind the search filter, the
+ * category of each one's folder, and the channel each configured folder
+ * belongs to. The console's "search in this channel" link needs the name,
+ * because the search filters by `channelName`, not by folder path.
+ *
+ * `channels` carries only the names a channel folder holds: a folder of
+ * single downloads (`kind: "collection"`) gathers channels from all over
+ * YouTube, so its one-off names would drown the filter. `channelCategories`
+ * omits a channel whose folder declares no category; the client lists those
+ * without a header.
  */
 export const ChannelsResponseSchema = z.object({
   channels: z.array(z.string()),
   folders: z.record(z.string(), z.string()),
+  channelCategories: z.record(z.string(), z.string()),
 });
 
 /** One subtitle file actually on disk, with its language from the file name */

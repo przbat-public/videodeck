@@ -84,4 +84,32 @@ describe('Select', () => {
 
     expect(screen.getAllByRole('option')).toHaveLength(3);
   });
+
+  it('renders one named section per group and reports a pick from inside one', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <Select
+        value=""
+        onChange={onChange}
+        aria-label="Kanał"
+        items={[{ value: '', label: 'Wszystkie kanały' }]}
+        groups={[
+          { label: 'fpv', items: [{ value: 'Alpha', label: 'Alpha' }] },
+          { label: 'psychology', items: [{ value: 'Beta', label: 'Beta' }] },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox', { name: 'Kanał' }));
+
+    // The header names the section, so a screen reader announces which
+    // category the options under it belong to
+    expect(await screen.findByRole('group', { name: 'fpv' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'psychology' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('option', { name: 'Beta' }));
+
+    expect(onChange).toHaveBeenCalledWith('Beta');
+  });
 });

@@ -1450,6 +1450,23 @@
   user-select: none;
 }
 
+/* Section header inside the dropdown: the category the options under it
+   belong to. Muted and upper case so it reads as a label rather than an
+   option, and it is the section's accessible name. */
+.ui-select-group-label {
+  padding: 0.5rem 0.75rem 0.25rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+}
+
+.ui-select-group-label:not(:first-child) {
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.6rem;
+}
+
 /* Radix moves focus to the hovered option (Select items and menu items
    alike), so the global :focus-visible ring (index.css) would paint over
    a plain hover, and the portal's overflow clips the offset outline into

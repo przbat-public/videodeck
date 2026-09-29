@@ -59,13 +59,13 @@ export {
   warnOnLegacyMappings,
 } from './elasticsearch/indexLifecycle';
 
-export type { ChannelNames, SearchOptions } from './elasticsearch/search';
+export type { ChannelsByFolder, SearchOptions } from './elasticsearch/search';
 export {
   getAllVideos,
   getVideoByBaseName,
   getVideoByFilePath,
   getVideoByVideoId,
-  listChannelNames,
+  listChannelsByFolder,
   SEARCH_DEFAULT_LIMIT,
   SEARCH_FIELDS,
   SEARCH_MAX_LIMIT,

@@ -1,12 +1,16 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { Client } from '@elastic/elasticsearch';
 import type { VideoListItem } from '@videodeck/shared/api';
-import { ELASTICSEARCH_URL } from '../config';
+import { ELASTICSEARCH_URL, invalidateVideosFolderCache } from '../config';
 import {
   bulkIndexDocuments,
   createIndexVersion,
   deleteAllVideosFromFolder,
   deleteIndex,
   getIndexVersions,
+  listChannelsByFolder,
   promoteIndexVersion,
   searchVideos,
   searchVideosWithTotal,
@@ -177,6 +181,38 @@ describeIntegration('Elasticsearch integration', () => {
 
     expect(await searchVideos('dokument', 'date-desc', [SCRATCH_FOLDER])).toHaveLength(0);
     expect(await getIndexVersions(SCRATCH_FOLDER)).toContain(indexName);
+  });
+
+  it('lists the channel of each folder through the field the mapping declares', async () => {
+    // The service reads the configured folders, so the test points the
+    // configuration at a real directory of its own and reads the answer back
+    // from the cluster. `folderPath` is mapped as a keyword, and a cluster
+    // answers the `folderPath.keyword` the service used to ask for with no
+    // buckets at all, so the folder map came back empty and said nothing.
+    const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'es-channels-'));
+    const previous = process.env.VIDEOS_FOLDER_PATH;
+    process.env.VIDEOS_FOLDER_PATH = folder;
+    invalidateVideosFolderCache();
+    try {
+      const indexName = await createIndexVersion(folder);
+      await bulkIndexDocuments(
+        indexName,
+        documentsOf([{ ...video('20240101_alfa', 'Film kanału Alfa'), folderPath: folder, channelName: 'Kanał Alfa' }]),
+        false,
+      );
+      await promoteIndexVersion(folder, indexName);
+
+      expect(await listChannelsByFolder()).toEqual({ [folder]: ['Kanał Alfa'] });
+    } finally {
+      await deleteIndex(folder);
+      await fs.rm(folder, { recursive: true, force: true });
+      if (previous === undefined) {
+        delete process.env.VIDEOS_FOLDER_PATH;
+      } else {
+        process.env.VIDEOS_FOLDER_PATH = previous;
+      }
+      invalidateVideosFolderCache();
+    }
   });
 
   it('swaps the alias atomically and serves only the new index version', async () => {

@@ -29,6 +29,12 @@ import type { AddressInfo } from 'node:net';
  *   auto-creating the index ("refuses a bulk item whose index does not
  *   exist"). The service always creates its index before writing, so the
  *   strict answer catches a typo; a default cluster auto-creates instead.
+ * - a terms aggregation buckets only the fields the stored mapping declares,
+ *   subfields included, and answers an unmapped one with no buckets at all
+ *   ("buckets a terms aggregation only on a field the index mapping
+ *   declares"). That is what a cluster does with the `folderPath.keyword` the
+ *   service used to ask for, which is why the mistake stayed quiet. Query
+ *   matching stays lenient: it still folds a subfield away.
  *
  * Search still implements only the query shapes the service sends
  * (multi_match over SEARCH_FIELDS, bool filters, uploadDate/viewCount/
@@ -40,6 +46,8 @@ import type { AddressInfo } from 'node:net';
 interface DocumentEntry {
   id: string;
   source: Record<string, unknown>;
+  /** The mapping of the index the document lives in, for field resolution */
+  mapping: Record<string, unknown>;
 }
 
 interface IndexEntry {
@@ -121,10 +129,27 @@ function resultWindowError(target: string, requested: number): Record<string, un
 const INTEGER_MIN = -2_147_483_648;
 const INTEGER_MAX = 2_147_483_647;
 
+/** One property of an index mapping: its type, plus the subfields it declares */
+interface MappingProperty {
+  type?: string;
+  fields?: Record<string, { type?: string } | undefined>;
+}
+
+/** The slice of a terms aggregation definition the fake reads */
+interface TermsDefinition {
+  terms?: { field?: string; size?: number };
+  aggs?: Record<string, unknown>;
+}
+
+/** The `properties` of the mapping stored with an index, empty when it has none */
+function mappingProperties(mapping: Record<string, unknown>): Record<string, MappingProperty> {
+  const stored = mapping.mappings as { properties?: Record<string, MappingProperty> } | undefined;
+  return stored?.properties ?? {};
+}
+
 /** Fields the index maps as `integer`, read from the mapping stored with it */
 function integerFieldsOf(entry: IndexEntry): string[] {
-  const stored = entry.mappings.mappings as { properties?: Record<string, { type?: string }> } | undefined;
-  return Object.entries(stored?.properties ?? {})
+  return Object.entries(mappingProperties(entry.mappings))
     .filter(([, spec]) => spec?.type === 'integer')
     .map(([field]) => field);
 }
@@ -706,7 +731,7 @@ export class FakeElasticsearch {
         items.push({ index: { _index: op.index?._index, _id: id, status: 400, error: failure } });
         continue;
       }
-      entry.documents.set(id, { id, source: doc });
+      entry.documents.set(id, { id, source: doc, mapping: entry.mappings });
       items.push({ index: { _id: id, status: 201 } });
     }
     this.json(res, 200, { took: 0, errors, items });
@@ -728,7 +753,7 @@ export class FakeElasticsearch {
     }
     const docId = id ?? `doc-${entry.documents.size + 1}`;
     const source = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
-    entry.documents.set(docId, { id: docId, source });
+    entry.documents.set(docId, { id: docId, source, mapping: entry.mappings });
     this.json(res, 201, { _index: index, _id: docId, result: 'created', _shards: { successful: 1, failed: 0 } });
   }
 
@@ -804,34 +829,72 @@ export class FakeElasticsearch {
   private runAggregations(docs: DocumentEntry[], aggs: Record<string, unknown>): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     for (const [name, definition] of Object.entries(aggs)) {
-      const terms = (definition ?? {}) as {
-        terms?: { field?: string; size?: number };
-        aggs?: Record<string, unknown>;
+      const terms = (definition ?? {}) as TermsDefinition;
+      result[name] = {
+        doc_count_error_upper_bound: 0,
+        sum_other_doc_count: 0,
+        buckets: this.termsBuckets(docs, terms),
       };
-      const field = this.fieldKey(terms.terms?.field ?? '');
-      const byValue = new Map<string, DocumentEntry[]>();
-      for (const doc of docs) {
-        const value = doc.source[field];
-        if (typeof value === 'string' && value.length > 0) {
-          const bucket = byValue.get(value);
-          if (bucket === undefined) {
-            byValue.set(value, [doc]);
-          } else {
-            bucket.push(doc);
-          }
-        }
-      }
-      const buckets = [...byValue.entries()]
-        .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
-        .slice(0, terms.terms?.size ?? 10)
-        .map(([key, bucketDocs]) => ({
-          key,
-          doc_count: bucketDocs.length,
-          ...(terms.aggs === undefined ? {} : this.runAggregations(bucketDocs, terms.aggs)),
-        }));
-      result[name] = { doc_count_error_upper_bound: 0, sum_other_doc_count: 0, buckets };
     }
     return result;
+  }
+
+  /** The buckets of one terms aggregation: most frequent value first */
+  private termsBuckets(docs: DocumentEntry[], terms: TermsDefinition): Array<Record<string, unknown>> {
+    return [...this.bucketByField(docs, terms.terms?.field ?? '').entries()]
+      .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+      .slice(0, terms.terms?.size ?? 10)
+      .map(([key, bucketDocs]) => ({
+        key,
+        doc_count: bucketDocs.length,
+        ...(terms.aggs === undefined ? {} : this.runAggregations(bucketDocs, terms.aggs)),
+      }));
+  }
+
+  /**
+   * The documents grouped by the value one field holds. A field the index does
+   * not map groups nothing, which is what the cluster does with it.
+   */
+  private bucketByField(docs: DocumentEntry[], requested: string): Map<string, DocumentEntry[]> {
+    const byValue = new Map<string, DocumentEntry[]>();
+    for (const doc of docs) {
+      const field = this.aggregationField(doc, requested);
+      const value = field === undefined ? undefined : doc.source[field];
+      if (typeof value !== 'string' || value.length === 0) {
+        continue;
+      }
+      const bucket = byValue.get(value);
+      if (bucket === undefined) {
+        byValue.set(value, [doc]);
+      } else {
+        bucket.push(doc);
+      }
+    }
+    return byValue;
+  }
+
+  /**
+   * The document field an aggregation reads, or undefined when the index does
+   * not map the requested name.
+   *
+   * A cluster buckets a mapped field, and answers an unmapped one with no
+   * buckets rather than an error. `folderPath.keyword` is the case that hid a
+   * broken folder map for months: the field does not exist, so the buckets
+   * were empty and nothing complained.
+   */
+  private aggregationField(doc: DocumentEntry, requested: string): string | undefined {
+    const [base, subfield] = requested.split('^')[0]?.split('.') ?? [];
+    if (base === undefined) {
+      return undefined;
+    }
+    const property = mappingProperties(doc.mapping)[base];
+    if (property === undefined) {
+      return undefined;
+    }
+    if (subfield === undefined) {
+      return base;
+    }
+    return property.fields?.[subfield] === undefined ? undefined : base;
   }
 
   private matches(doc: DocumentEntry, query: Record<string, unknown>): boolean {

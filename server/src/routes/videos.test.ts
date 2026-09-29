@@ -20,10 +20,10 @@ import {
   getVideoByFilePath,
   getVideoByVideoId,
   isRecreateIndicesRunning,
-  listChannelNames,
+  listChannelsByFolder,
   recreateAllIndices,
 } from '../services/elasticsearchService';
-import { getFolderPathsForCategory, listCategories } from '../services/folderConfig';
+import { getFolderPathsForCategory, listCategories, listChannelFolders } from '../services/folderConfig';
 import { generateSummary, SummaryUnavailableError } from '../services/summaryService';
 import { getReindexStatus, getVideos, isReindexRunning, refreshVideosCache } from '../services/videoScanner';
 import type { VideoInfoJson } from '../types';
@@ -64,7 +64,8 @@ const mockedGetRecreateIndicesStatus = getRecreateIndicesStatus as jest.MockedFu
 const mockedGetVideoByBaseName = getVideoByBaseName as jest.MockedFunction<typeof getVideoByBaseName>;
 const mockedGetVideoByVideoId = getVideoByVideoId as jest.MockedFunction<typeof getVideoByVideoId>;
 const mockedGetVideoByFilePath = getVideoByFilePath as jest.MockedFunction<typeof getVideoByFilePath>;
-const mockedListChannelNames = listChannelNames as jest.MockedFunction<typeof listChannelNames>;
+const mockedListChannelsByFolder = listChannelsByFolder as jest.MockedFunction<typeof listChannelsByFolder>;
+const mockedListChannelFolders = listChannelFolders as jest.MockedFunction<typeof listChannelFolders>;
 const mockedLoadCommentTree = loadCommentTree as jest.MockedFunction<typeof loadCommentTree>;
 const mockedGetFolderPathsForCategory = getFolderPathsForCategory as jest.MockedFunction<
   typeof getFolderPathsForCategory
@@ -156,19 +157,67 @@ describe('videos router', () => {
       });
     });
 
-    it('lists distinct channel names for the filter UI', async () => {
-      mockedListChannelNames.mockResolvedValue({
-        channels: ['Alpha', 'Beta'],
-        folders: { '/videos/a': 'Alpha' },
+    it('reports the category of every channel a channel folder holds', async () => {
+      mockedListChannelsByFolder.mockResolvedValue({
+        '/videos/fpv': ['Alpha', 'Alpha (old)'],
+        '/videos/psychology': ['Beta'],
       });
+      mockedListChannelFolders.mockResolvedValue([
+        { folderPath: '/videos/fpv', category: 'fpv' },
+        { folderPath: '/videos/psychology', category: 'psychology' },
+      ]);
 
       const response = await request(app).get('/api/videos/channels');
 
       expect(response.status).toBe(200);
       expect(ChannelsResponseSchema.parse(response.body)).toEqual({
-        channels: ['Alpha', 'Beta'],
-        folders: { '/videos/a': 'Alpha' },
+        channels: ['Alpha', 'Alpha (old)', 'Beta'],
+        // A renamed channel keeps both names, the most frequent one first for
+        // the console's search link
+        folders: { '/videos/fpv': 'Alpha', '/videos/psychology': 'Beta' },
+        channelCategories: { Alpha: 'fpv', 'Alpha (old)': 'fpv', Beta: 'psychology' },
       });
+    });
+
+    it('drops names that no channel folder carries', async () => {
+      // A folder of single downloads gathers channels from all over YouTube.
+      // Its names belong to no folder the filter can offer, so they stay out
+      // of `channels` while the console still gets the folder's top name.
+      mockedListChannelsByFolder.mockResolvedValue({
+        '/videos/fpv': ['Alpha'],
+        '/videos/pojedyncze': ['Somebody Else'],
+      });
+      mockedListChannelFolders.mockResolvedValue([{ folderPath: '/videos/fpv', category: 'fpv' }]);
+
+      const response = await request(app).get('/api/videos/channels');
+
+      expect(ChannelsResponseSchema.parse(response.body)).toEqual({
+        channels: ['Alpha'],
+        folders: { '/videos/fpv': 'Alpha', '/videos/pojedyncze': 'Somebody Else' },
+        channelCategories: { Alpha: 'fpv' },
+      });
+    });
+
+    it('keeps a channel folder that declares no category', async () => {
+      mockedListChannelsByFolder.mockResolvedValue({ '/videos/other': ['Gamma'] });
+      mockedListChannelFolders.mockResolvedValue([{ folderPath: '/videos/other' }]);
+
+      const response = await request(app).get('/api/videos/channels');
+
+      expect(ChannelsResponseSchema.parse(response.body)).toEqual({
+        channels: ['Gamma'],
+        folders: { '/videos/other': 'Gamma' },
+        channelCategories: {},
+      });
+    });
+
+    it('reports failures as 500', async () => {
+      mockedListChannelsByFolder.mockRejectedValue(new Error('cluster gone'));
+
+      const response = await request(app).get('/api/videos/channels');
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
     });
 
     it('should use default sort when sort parameter is not provided', async () => {

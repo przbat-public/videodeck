@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
-import { SearchResponseSchema } from '@videodeck/shared/schemas';
+import type { ChannelsResponse } from '@videodeck/shared/api';
+import { ChannelsResponseSchema, SearchResponseSchema } from '@videodeck/shared/schemas';
 
 /** One video for the mocked search responses */
 export interface E2eVideo {
@@ -134,9 +135,21 @@ export async function mockApi(page: Page, handlers: MockApiHandlers = {}): Promi
   await context.route('**/api/videos/categories', (route) =>
     route.fulfill(json({ categories: handlers.categories ?? ['fpv', 'lego'] })),
   );
-  await context.route('**/api/videos/channels', (route) =>
-    route.fulfill(json(handlers.channels ?? { channels: ['Kanał E2E'], folders: { '/videos/e2e': 'Kanał E2E' } })),
-  );
+  await context.route('**/api/videos/channels', async (route) => {
+    const body =
+      handlers.channels ??
+      ({
+        channels: ['Kanał E2E'],
+        folders: { '/videos/e2e': 'Kanał E2E' },
+        channelCategories: { 'Kanał E2E': 'fpv' },
+      } satisfies ChannelsResponse);
+    // Same contract check as the search fixture above, for the same reason
+    const parsed = ChannelsResponseSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new Error(`e2e channels fixture does not match the contract: ${parsed.error.message}`);
+    }
+    await route.fulfill(json(parsed.data));
+  });
   await context.route('**/api/videos/**/details', async (route) => {
     const body = handlers.details ?? {
       details: {

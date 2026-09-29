@@ -12,21 +12,24 @@ describe('useChannelNames', () => {
     fetchMock.mockReset();
   });
 
-  it('loads the channel names and the folder map once on mount', async () => {
+  it('loads the channel names, their categories and the folder map once on mount', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({
         channels: ['fpv channel', 'history channel'],
         folders: { '/videos/fpv': 'fpv channel' },
+        channelCategories: { 'fpv channel': 'fpv' },
       }),
     );
 
     const { result } = renderHook(() => useChannelNames());
 
     expect(result.current.channels).toEqual([]);
+    expect(result.current.channelCategories).toEqual({});
     expect(result.current.folders).toEqual({});
     await waitFor(() => {
       expect(result.current.channels).toEqual(['fpv channel', 'history channel']);
     });
+    expect(result.current.channelCategories).toEqual({ 'fpv channel': 'fpv' });
     expect(result.current.folders).toEqual({ '/videos/fpv': 'fpv channel' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith('/api/videos/channels', {
@@ -43,6 +46,7 @@ describe('useChannelNames', () => {
       expect(fetchMock).toHaveBeenCalled();
     });
     expect(result.current.channels).toEqual([]);
+    expect(result.current.channelCategories).toEqual({});
     expect(result.current.folders).toEqual({});
   });
 
@@ -56,7 +60,7 @@ describe('useChannelNames', () => {
 
     const { result, unmount } = renderHook(() => useChannelNames());
     unmount();
-    resolveFetch(jsonResponse({ channels: ['fpv channel'], folders: {} }));
+    resolveFetch(jsonResponse({ channels: ['fpv channel'], folders: {}, channelCategories: {} }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
@@ -65,7 +69,7 @@ describe('useChannelNames', () => {
   });
 
   it('re-reads when the library revision moves', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ channels: ['fpv channel'], folders: {} }));
+    fetchMock.mockResolvedValue(jsonResponse({ channels: ['fpv channel'], folders: {}, channelCategories: {} }));
     renderHook(() => useChannelNames());
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
@@ -80,7 +84,7 @@ describe('useChannelNames', () => {
     // The channels come from the folders attached right now, so a read before
     // the first revision would answer a library that is already stale
     resetLibraryState();
-    fetchMock.mockResolvedValue(jsonResponse({ channels: ['fpv channel'], folders: {} }));
+    fetchMock.mockResolvedValue(jsonResponse({ channels: ['fpv channel'], folders: {}, channelCategories: {} }));
 
     const { result } = renderHook(() => useChannelNames());
 

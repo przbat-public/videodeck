@@ -6,12 +6,20 @@ export interface SelectOption {
   label: string;
 }
 
+export interface SelectGroup {
+  /** Header of the section, which also names it for a screen reader */
+  label: string;
+  items: SelectOption[];
+}
+
 interface SelectProps {
   value: string;
   /** Reports the newly chosen option value ('' for the "none" option) */
   onChange: (value: string) => void;
   /** Options in order; `value: ''` renders as the "no selection" choice */
   items: SelectOption[];
+  /** Sections rendered under `items`, each under its own header */
+  groups?: SelectGroup[];
   disabled?: boolean;
   id?: string;
   /** Accessible name of the combobox */
@@ -35,6 +43,7 @@ export function Select({
   value,
   onChange,
   items,
+  groups = [],
   disabled = false,
   id,
   'aria-label': ariaLabel,
@@ -44,6 +53,18 @@ export function Select({
   const triggerClasses = ['ui-select-native', disabled ? 'ui-select--disabled' : '', className]
     .filter(Boolean)
     .join(' ');
+
+  /** One option, inside whatever section holds it (a group carries the header) */
+  const renderOption = (item: SelectOption): JSX.Element => (
+    <SelectPrimitive.Item
+      key={item.value}
+      value={item.value === '' ? EMPTY_VALUE : item.value}
+      className="ui-select-item"
+    >
+      <SelectPrimitive.ItemText>{item.label}</SelectPrimitive.ItemText>
+      <SelectPrimitive.ItemIndicator className="ui-select-item-indicator">✓</SelectPrimitive.ItemIndicator>
+    </SelectPrimitive.Item>
+  );
 
   return (
     <SelectPrimitive.Root
@@ -69,15 +90,12 @@ export function Select({
       <SelectPrimitive.Portal>
         <SelectPrimitive.Content className="ui-select-content" position="popper" sideOffset={4}>
           <SelectPrimitive.Viewport className="ui-select-viewport">
-            {items.map((item) => (
-              <SelectPrimitive.Item
-                key={item.value}
-                value={item.value === '' ? EMPTY_VALUE : item.value}
-                className="ui-select-item"
-              >
-                <SelectPrimitive.ItemText>{item.label}</SelectPrimitive.ItemText>
-                <SelectPrimitive.ItemIndicator className="ui-select-item-indicator">✓</SelectPrimitive.ItemIndicator>
-              </SelectPrimitive.Item>
+            {items.map(renderOption)}
+            {groups.map((group) => (
+              <SelectPrimitive.Group key={group.label}>
+                <SelectPrimitive.Label className="ui-select-group-label">{group.label}</SelectPrimitive.Label>
+                {group.items.map(renderOption)}
+              </SelectPrimitive.Group>
             ))}
           </SelectPrimitive.Viewport>
         </SelectPrimitive.Content>

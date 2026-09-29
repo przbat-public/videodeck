@@ -4,8 +4,10 @@ import { apiGet } from '../utils/apiClient';
 import { useLibraryReadKey } from './useLibrary';
 
 interface UseChannelNamesResult {
-  /** Distinct channel names from Elasticsearch, for the channel filter */
+  /** Channel names of the configured channel folders, for the channel filter */
   channels: string[];
+  /** Category of each channel's folder; a channel missing here declares none */
+  channelCategories: Record<string, string>;
   /** Folder path to channel name, for the console's "search in this channel" */
   folders: Record<string, string>;
 }
@@ -17,6 +19,7 @@ interface UseChannelNamesResult {
  */
 export function useChannelNames(): UseChannelNamesResult {
   const [channels, setChannels] = useState<string[]>([]);
+  const [channelCategories, setChannelCategories] = useState<Record<string, string>>({});
   const [folders, setFolders] = useState<Record<string, string>>({});
   // Channels come from the folders that are attached right now, so a library
   // move is what this list has to follow.
@@ -34,11 +37,12 @@ export function useChannelNames(): UseChannelNamesResult {
     })
       .then((parsed) => {
         setChannels(parsed.channels);
+        setChannelCategories(parsed.channelCategories);
         setFolders(parsed.folders);
       })
       .catch(() => undefined);
     return () => controller.abort();
   }, [readKey]);
 
-  return { channels, folders };
+  return { channels, channelCategories, folders };
 }

@@ -46,10 +46,19 @@ function renderBar(
   state: Partial<SearchState> = {},
   categories: string[] = CATEGORIES,
   channels: string[] = [],
+  channelCategories: Record<string, string> = {},
 ): { onChange: Mock<(next: SearchState) => void>; update: (patch: Partial<SearchState>) => void } {
   const onChange = vi.fn<(next: SearchState) => void>();
   let current: SearchState = { ...DEFAULT_SEARCH_STATE, ...state };
-  const element = () => <SearchBar {...current} categories={categories} channels={channels} onChange={onChange} />;
+  const element = () => (
+    <SearchBar
+      {...current}
+      categories={categories}
+      channels={channels}
+      channelCategories={channelCategories}
+      onChange={onChange}
+    />
+  );
   const { rerender } = render(element());
   return {
     onChange,
@@ -424,6 +433,29 @@ describe('SearchBar', () => {
       pick(screen.getByRole('combobox', { name: 'Kanał' }), 'Wszystkie kanały');
 
       expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SEARCH_STATE, channel: '' });
+    });
+
+    it('groups the channel options by category, without a header for the rest', () => {
+      renderBar({}, CATEGORIES, ['Alpha', 'Beta', 'Zulu'], { Alpha: 'fpv', Zulu: 'fpv' });
+
+      openSelect(screen.getByRole('combobox', { name: 'Kanał' }));
+
+      expect(screen.getByRole('group', { name: 'fpv' })).toHaveTextContent('Alpha');
+      expect(screen.getByRole('group', { name: 'fpv' })).toHaveTextContent('Zulu');
+      // A channel whose folder declares no category stays reachable
+      expect(screen.getByRole('group', { name: 'Bez kategorii' })).toHaveTextContent('Beta');
+      expect(optionLabels()).toEqual(['Wszystkie kanały', 'Alpha', 'Zulu', 'Beta']);
+    });
+
+    it('keeps a channel that only the URL names, among the uncategorized ones', () => {
+      renderBar({ channel: 'Kanał z linku' }, CATEGORIES, ['Alpha'], { Alpha: 'fpv' });
+
+      // The filter keeps showing the value the results were narrowed to
+      expect(screen.getByRole('combobox', { name: 'Kanał' })).toHaveTextContent('Kanał z linku');
+
+      openSelect(screen.getByRole('combobox', { name: 'Kanał' }));
+
+      expect(screen.getByRole('group', { name: 'Bez kategorii' })).toHaveTextContent('Kanał z linku');
     });
 
     it('renders no date filter inputs', () => {

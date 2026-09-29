@@ -23,7 +23,7 @@ import {
   indexCacheLogThrottle,
   indexVideo,
   listCachedFolders,
-  listChannelNames,
+  listChannelsByFolder,
   noteElasticsearchUnavailable,
   promoteIndexVersion,
   recreateAllIndices,
@@ -1130,13 +1130,12 @@ describe('elasticsearchService', () => {
       expect(mockClient.search.mock.calls[1][0].highlight).toBeUndefined();
     });
 
-    it('lists distinct channel names sorted, with the channel of every folder', async () => {
+    it('lists every channel name each folder carries, most frequent first', async () => {
       mockClient.search.mockResolvedValue({
         aggregations: {
-          channels: { buckets: [{ key: 'Beta' }, { key: 'Alpha' }] },
           folders: {
             buckets: [
-              { key: '/videos/b', channel: { buckets: [{ key: 'Beta' }] } },
+              { key: '/videos/b', channel: { buckets: [{ key: 'Beta' }, { key: 'Beta (old)' }] } },
               { key: '/videos/a', channel: { buckets: [{ key: 'Alpha' }] } },
               { key: '/videos/unlabelled', channel: { buckets: [] } },
             ],
@@ -1144,31 +1143,32 @@ describe('elasticsearchService', () => {
         },
       });
 
-      expect(await listChannelNames()).toEqual({
-        channels: ['Alpha', 'Beta'],
+      expect(await listChannelsByFolder()).toEqual({
         // A folder whose videos carry no channel name is left out, so the
         // console can hide the search link instead of pointing nowhere
-        folders: { '/videos/a': 'Alpha', '/videos/b': 'Beta' },
+        '/videos/a': ['Alpha'],
+        '/videos/b': ['Beta', 'Beta (old)'],
       });
 
-      // The folder map comes from one query: a sub-aggregation over the terms
-      // bucket, so the search page and the console cannot drift apart
+      // One query answers for every folder, and it asks for the field the
+      // mapping declares: folderPath is a keyword, folderPath.keyword is
+      // nothing at all, and the missing field is why the map used to be empty
       const request = mockClient.search.mock.calls[0][0];
-      expect(request.aggs.folders).toEqual({
-        terms: { field: 'folderPath.keyword', size: 500 },
-        aggs: { channel: { terms: { field: 'channelName.keyword', size: 1 } } },
+      expect(request.aggs).toEqual({
+        folders: {
+          terms: { field: 'folderPath', size: 500 },
+          aggs: { channel: { terms: { field: 'channelName.keyword', size: 10 } } },
+        },
       });
     });
 
-    it('lists channel names while a configured folder has no index yet', async () => {
+    it('answers with no folders while a configured one has no index yet', async () => {
       // A freshly attached drive adds folders that nobody has indexed. Search
       // already tolerates their missing aliases; the channel filter must too,
       // otherwise the whole endpoint answers 500 until the drive is indexed.
-      mockClient.search.mockResolvedValue({
-        aggregations: { channels: { buckets: [{ key: 'Alpha' }] }, folders: { buckets: [] } },
-      });
+      mockClient.search.mockResolvedValue({ aggregations: { folders: { buckets: [] } } });
 
-      await listChannelNames();
+      expect(await listChannelsByFolder()).toEqual({});
 
       const request = mockClient.search.mock.calls[0][0];
       expect(request.index).toEqual([ALIAS_A, ALIAS_B]);

@@ -1,15 +1,15 @@
 import request from 'supertest';
 import { createApp, elasticsearchUnavailableThrottle } from './app';
-import { listChannelNames } from './services/elasticsearchService';
+import { listChannelsByFolder } from './services/elasticsearchService';
 
 // Only the channel aggregation is replaced; everything else stays real, so the
 // handler under test sees the same app the server runs.
 jest.mock('./services/elasticsearchService', () => ({
   ...jest.requireActual('./services/elasticsearchService'),
-  listChannelNames: jest.fn(),
+  listChannelsByFolder: jest.fn(),
 }));
 
-const mockedListChannelNames = listChannelNames as jest.MockedFunction<typeof listChannelNames>;
+const mockedListChannelsByFolder = listChannelsByFolder as jest.MockedFunction<typeof listChannelsByFolder>;
 
 const connectionError = (): Error =>
   Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9200'), { name: 'ConnectionError', code: 'ECONNREFUSED' });
@@ -40,7 +40,7 @@ describe('errorHandler with an unreachable Elasticsearch', () => {
   });
 
   it('answers 503 with the machine-readable code', async () => {
-    mockedListChannelNames.mockRejectedValue(connectionError());
+    mockedListChannelsByFolder.mockRejectedValue(connectionError());
 
     const response = await request(createApp()).get('/api/videos/channels');
 
@@ -52,7 +52,7 @@ describe('errorHandler with an unreachable Elasticsearch', () => {
   });
 
   it('logs one compact line per window instead of a stack per request', async () => {
-    mockedListChannelNames.mockRejectedValue(connectionError());
+    mockedListChannelsByFolder.mockRejectedValue(connectionError());
     const app = createApp();
 
     await request(app).get('/api/videos/channels');
@@ -69,7 +69,7 @@ describe('errorHandler with an unreachable Elasticsearch', () => {
   });
 
   it('logs again after the window passes', async () => {
-    mockedListChannelNames.mockRejectedValue(connectionError());
+    mockedListChannelsByFolder.mockRejectedValue(connectionError());
     const app = createApp();
     const now = jest.spyOn(Date, 'now');
 
@@ -84,7 +84,7 @@ describe('errorHandler with an unreachable Elasticsearch', () => {
   });
 
   it('keeps the full stack and the 500 for a real bug', async () => {
-    mockedListChannelNames.mockRejectedValue(new TypeError('x is not a function'));
+    mockedListChannelsByFolder.mockRejectedValue(new TypeError('x is not a function'));
 
     const response = await request(createApp()).get('/api/videos/channels');
 
@@ -96,7 +96,7 @@ describe('errorHandler with an unreachable Elasticsearch', () => {
   });
 
   it('keeps the stack for an Elasticsearch error that is not a connection failure', async () => {
-    mockedListChannelNames.mockRejectedValue(
+    mockedListChannelsByFolder.mockRejectedValue(
       Object.assign(new Error('mapper_parsing_exception'), { name: 'ResponseError', meta: { statusCode: 400 } }),
     );
 
