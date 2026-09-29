@@ -646,6 +646,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reached the disk, which over external drives meant two full passes for the
   same answer
 
+### Added
+
+- **The channel filter offers one section per folder category**: the picker
+  lists only the names a configured channel folder holds, and reports the
+  category behind each one, so a folder of single downloads stops burying the
+  real channels under hundreds of one-off names. A name whose folder declares
+  no category is listed under "Bez kategorii"
+
+### Fixed
+
+- **The console's search link works again**: the aggregation behind
+  `GET /api/videos/channels` asked Elasticsearch for `folderPath.keyword`, a
+  subfield the index mapping never declares. An unmapped field yields no
+  buckets, and a cluster does not complain, so the map came back empty and the
+  link was never rendered. The query reads `folderPath` now, and the fake
+  Elasticsearch resolves subfields from the stored mapping, so the integration
+  suites catch this class of mistake
+
 ## [1.0.0] - 2026-09-14
 
 First public release.
