@@ -132,17 +132,16 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
     await within(section).findByText('Fake playlist video 1');
 
     // 3. Download everything from the row menu while the queue is paused:
-    //    both rows sit in the queued state and the header counts them. (The
-    //    enqueue toast is incidental feedback — react-hot-toast renders
-    //    unreliably in jsdom, so the journeys assert the rows and the header
-    //    instead.) The row's "Kolejka" column follows without a page reload.
+    //    both rows sit in the queued state. (The enqueue toast is incidental
+    //    feedback — react-hot-toast renders unreliably in jsdom, so the
+    //    journeys assert the rows and the console row instead.) The row's
+    //    "Kolejka" column follows without a page reload.
     await runRowAction(page.user, folderPath, 'Pobierz wszystkie');
     // The menu action talks to the API; the section's own queue poll is what
     // paints the rows, so this waits out one poll interval
     expect(await within(section).findAllByText('Pobieranie: w kolejce', undefined, { timeout: 15_000 })).toHaveLength(
       2,
     );
-    await within(section).findByText(/kolejka: 0 w toku, 2 czeka/, undefined, { timeout: 15_000 });
     await within(row).findByText('2 czeka', undefined, { timeout: 15_000 });
 
     // 4. The external world agrees: the persisted queue state records the

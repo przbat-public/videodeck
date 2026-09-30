@@ -97,7 +97,7 @@ describe('FolderSection', () => {
 
     // Single downloads have no playlist behind them: the section goes
     // straight to the videos the folder holds
-    expect(await screen.findByText(/Liczba filmów: 1/)).toBeInTheDocument();
+    expect(await screen.findByText('Pierwszy film')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith('/api/folder/list?folderPath=%2Fvideos%2Fyoutube');
     expect(screen.queryByRole('button', { name: /playlist/i })).toBeNull();
   });

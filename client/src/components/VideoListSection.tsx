@@ -8,10 +8,8 @@ import { List, type RowComponentProps, useDynamicRowHeight, useListRef } from 'r
 import { useDownloadQueue } from '../hooks/useDownloadQueue';
 import { apiGet } from '../utils/apiClient';
 import { logError } from '../utils/logError';
-import { selectDownloadable, selectDownloaded, selectStale } from '../utils/videoSelection';
 import { ErrorMessage } from './ui/ErrorMessage';
 import { VideoItem } from './VideoItem';
-import { VideoListHeader } from './VideoListHeader';
 
 /**
  * Starting estimate for a row. The real height depends on the title and on
@@ -134,8 +132,6 @@ export function VideoListSection({
   // members directly instead of the whole (freshly created) queue object
   const {
     jobs,
-    activeCount,
-    hasActive,
     error: queueError,
     refresh,
     enqueue,
@@ -265,25 +261,10 @@ export function VideoListSection({
     }
   }, [runningJobVideoId, rows, listRef]);
 
-  // What the header counts. The rules live in utils/videoSelection so the
-  // console's row actions cannot drift from them.
-  const downloadable = useMemo(() => selectDownloadable(videos, downloadStatuses), [videos, downloadStatuses]);
-  const downloaded = useMemo(() => selectDownloaded(videos, downloadStatuses), [videos, downloadStatuses]);
-  const stale = useMemo(
-    () => selectStale(videos, downloadStatuses, lastUpdatedDates),
-    [videos, downloadStatuses, lastUpdatedDates],
-  );
-
   // Don't render anything if list doesn't exist
   if (listExists !== true) {
     return null;
   }
-
-  const notDownloadedCount = downloadable.length;
-  const downloadedCount = downloaded.length;
-  const notUpdatedCount = stale.length;
-  const runningCount = jobs.filter((job) => job.status === 'running').length;
-  const queuedCount = activeCount - runningCount;
 
   return (
     <div className="videos-list-section">
@@ -293,15 +274,6 @@ export function VideoListSection({
         <p>{t('queue.loadingVideos')}</p>
       ) : videos.length > 0 ? (
         <div className="videos-list">
-          <VideoListHeader
-            videosCount={videos.length}
-            notDownloadedCount={notDownloadedCount}
-            downloadedCount={downloadedCount}
-            notUpdatedCount={notUpdatedCount}
-            runningCount={runningCount}
-            queuedCount={queuedCount}
-            hasActive={hasActive}
-          />
           <div className="videos-list-items">
             <List
               listRef={listRef}

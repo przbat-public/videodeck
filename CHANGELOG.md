@@ -703,13 +703,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Aktualizuj playlistę" once it is there) leads the row's ⋯ menu above a
   divider, ahead of the bulk actions. The playlist block that used to sit under
   the row is gone with its status text and its own buttons
-- **A channel's bulk actions have one home**: the four buttons above every open
-  list ("Pobierz wszystkie", "Aktualizuj stare", "Aktualizuj wszystkie",
-  "Anuluj wszystko") repeated what the ⋯ menu already offered for the same
-  channel, so the header keeps what a menu cannot say (the counts, the stale
-  tally, one line of queue summary) and the per-video buttons stay on the rows.
-  Work queued from that menu lands in the open list too, instead of waiting on a
-  poll an idle list had switched off
+- **An open channel is down to its rows**: the four bulk buttons and the tally
+  line above the videos duplicated the ⋯ menu and the console row's own columns,
+  so both sections are gone. Each video keeps its Pobierz or Aktualizuj control
 - A playlist fetch drops the cached `/api/status` body and the cached folder
   counts. The console reads both to decide whether a row can open and what it
   holds, and the server kept each for five seconds, so a row whose playlist the

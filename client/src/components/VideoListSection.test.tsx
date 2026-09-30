@@ -99,10 +99,10 @@ function renderSection(listExists = true) {
   );
 }
 
-/** The section loads its own list: a loaded one is just its rendered count */
+/** The section loads its own list: a loaded one is its first row on screen */
 async function renderLoaded() {
   renderSection();
-  await screen.findByText(/Liczba filmów: 4/);
+  await screen.findByText(/Fresh/);
 }
 
 describe('isOlderThanMonth', () => {
@@ -150,21 +150,24 @@ describe('VideoListSection', () => {
 
     // "Show videos" on the console is the same action as "load the list": the
     // rows arrive with the section instead of behind a button of their own.
-    expect(await screen.findByText(/Liczba filmów: 4/)).toBeInTheDocument();
+    expect(await screen.findByText(/Fresh/)).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(4);
     expect(fetchMock).toHaveBeenCalledWith(LIST_URL);
   });
 
-  it('loads videos on demand and summarises statuses', async () => {
+  it('gives every row the action its own state calls for', async () => {
     installFetch({});
     await renderLoaded();
 
-    expect(screen.getByText(/1 nie pobrany/)).toBeInTheDocument();
-    expect(screen.getByText(/1 nie zaktualizowany od ponad miesiąca/)).toBeInTheDocument();
-    // The bulk actions live in the console row's menu now, so the section
-    // carries the counts and the per-video buttons and nothing else
+    // v1 and v2 are on disk, so they offer an update; v3 and v4 do not, so
+    // they offer a download (v4 has no url, which disables its button)
+    expect(screen.getAllByRole('button', { name: 'Aktualizuj' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Pobierz' })).toHaveLength(2);
+    // Nothing bulk lives in here any more, and neither does a counts header:
+    // the console row above already says both
     expect(screen.queryByRole('button', { name: 'Pobierz wszystkie' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Aktualizuj wszystkie' })).toBeNull();
-    expect(screen.getAllByRole('button', { name: 'Pobierz' })).toHaveLength(2); // v3 + v4 (disabled)
+    expect(screen.queryByText(/Liczba filmów/)).toBeNull();
   });
 
   it('reports a list that did not come back', async () => {
@@ -215,7 +218,7 @@ describe('VideoListSection', () => {
         <VideoListSection folderPath={FOLDER} listExists={true} />
       </MemoryRouter>,
     );
-    await screen.findByText(/Liczba filmów: 4/);
+    await screen.findByText(/Fresh/);
 
     view.rerender(
       <MemoryRouter>
@@ -227,7 +230,7 @@ describe('VideoListSection', () => {
     // folder is what the section reads next
     expect(await screen.findByText(/Drugi kanał/)).toBeInTheDocument();
     expect(screen.queryByText(/Fresh/)).toBeNull();
-    expect(screen.getByText(/Liczba filmów: 1/)).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
   });
 
   it('re-reads its jobs when the page reports a queue change it did not make', async () => {
@@ -240,7 +243,7 @@ describe('VideoListSection', () => {
         <VideoListSection folderPath={FOLDER} listExists={true} queueRevision={0} />
       </MemoryRouter>,
     );
-    await screen.findByText(/Liczba filmów: 4/);
+    await screen.findByText(/Fresh/);
 
     // The console's row menu queued a job for this folder. The section's own
     // poll stopped when it last saw an idle queue, so the revision above is
@@ -333,7 +336,6 @@ describe('VideoListSection', () => {
     });
     await renderLoaded();
 
-    expect(screen.getByText(/kolejka: 1 w toku, 0 czeka/)).toBeInTheDocument();
     expect(screen.getByText('Pobieranie: 10%')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Anuluj' })).toBeInTheDocument();
 
@@ -346,7 +348,7 @@ describe('VideoListSection', () => {
     };
 
     await waitFor(() => expect(screen.getByText('Pobrano')).toBeInTheDocument(), { timeout: 4000 });
-    expect(screen.queryByText(/kolejka:/)).toBeNull();
+    expect(screen.queryByText('Pobieranie: 10%')).toBeNull();
     // v3 is now downloaded: its row offers an update instead of a download
     // and links to the detail page
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Pobierz' })).toHaveLength(1));
@@ -372,8 +374,8 @@ describe('VideoListSection', () => {
     queueState = [];
 
     await waitFor(() => expect(errorLog).toHaveBeenCalled(), { timeout: 4000 });
-    expect(screen.getByText(/Liczba filmów: 4/)).toBeInTheDocument();
     expect(screen.getByText(/Fresh/)).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(4);
   });
 
   it('cancels one job from its own row', async () => {
