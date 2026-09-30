@@ -21,6 +21,11 @@ interface FolderSectionProps {
   onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
   /** A job was queued or cancelled in the video list; the console re-reads the queue */
   onQueueChanged?: () => void;
+  /**
+   * Bumped when a row action queued or cancelled work for this folder. The
+   * video list's own poll is idle by then, so this is what makes it re-read.
+   */
+  queueRevision?: number;
 }
 
 /**
@@ -41,6 +46,7 @@ export function FolderSection({
   onEditingFinished,
   onConfigUpdate,
   onQueueChanged,
+  queueRevision = 0,
 }: FolderSectionProps) {
   const isCollection = initialConfig?.kind === 'collection';
 
@@ -65,6 +71,7 @@ export function FolderSection({
       <VideoListSection
         folderPath={folderPath}
         listExists={isCollection || initialListExists === true}
+        queueRevision={queueRevision}
         onQueueChanged={handleQueueChanged}
       />
     </>

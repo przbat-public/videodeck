@@ -23,12 +23,6 @@ import { VideoListHeader } from './VideoListHeader';
 const DEFAULT_ROW_HEIGHT = 58;
 
 /**
- * How long a bulk confirmation stays armed. One click arms it, the next one
- * within the window runs the action; after that the button asks again.
- */
-export const ARMED_BULK_WINDOW_MS = 5000;
-
-/**
  * react-window re-renders and re-measures every row when `rowProps` changes
  * identity, so the empty object has to be shared, not rebuilt per render.
  */
@@ -37,6 +31,13 @@ const ROW_PROPS = {};
 interface VideoListSectionProps {
   folderPath: string;
   listExists: boolean;
+  /**
+   * Bumped by the page when something outside this section queued or
+   * cancelled work for the folder (the console row's bulk actions). The poll
+   * below runs only while the section sees active jobs, so an idle section
+   * needs to be told that its folder's queue moved.
+   */
+  queueRevision?: number;
   /** A job was queued or cancelled here; the console re-reads the whole queue */
   onQueueChanged?: () => void;
 }
@@ -50,6 +51,7 @@ interface VideoListSectionProps {
 export function VideoListSection({
   folderPath,
   listExists,
+  queueRevision = 0,
   onQueueChanged,
 }: VideoListSectionProps): JSX.Element | null {
   const [videos, setVideos] = useState<ChannelVideo[]>([]);
@@ -135,7 +137,7 @@ export function VideoListSection({
     activeCount,
     hasActive,
     error: queueError,
-    cancelAll,
+    refresh,
     enqueue,
     cancel,
     jobsByVideoId,
@@ -145,6 +147,17 @@ export function VideoListSection({
     onQueueDrained: handleQueueDrained,
     onQueueChanged: handleQueueChanged,
   });
+
+  // A row action in the console queued work for this folder: read the jobs the
+  // section did not create. The ref keeps the mount fetch from running twice.
+  const seenQueueRevisionRef = useRef(queueRevision);
+  useEffect(() => {
+    if (queueRevision === seenQueueRevisionRef.current) {
+      return;
+    }
+    seenQueueRevisionRef.current = queueRevision;
+    void refresh();
+  }, [queueRevision, refresh]);
 
   // Reset per-folder state when the folder or the existence of list.json
   // changes. Adjusted during render (React docs pattern) instead of in an
@@ -252,44 +265,14 @@ export function VideoListSection({
     }
   }, [runningJobVideoId, rows, listRef]);
 
-  // The three selections the bulk buttons work on. The rules live in
-  // utils/videoSelection so the console's row actions cannot drift from them.
+  // What the header counts. The rules live in utils/videoSelection so the
+  // console's row actions cannot drift from them.
   const downloadable = useMemo(() => selectDownloadable(videos, downloadStatuses), [videos, downloadStatuses]);
   const downloaded = useMemo(() => selectDownloaded(videos, downloadStatuses), [videos, downloadStatuses]);
   const stale = useMemo(
     () => selectStale(videos, downloadStatuses, lastUpdatedDates),
     [videos, downloadStatuses, lastUpdatedDates],
   );
-
-  // Bulk actions on big channels arm a confirmation first: one misclick used
-  // to enqueue hundreds of downloads.
-  const BULK_CONFIRM_THRESHOLD = 50;
-  const [armedBulk, setArmedBulk] = useState<null | 'download' | 'update' | 'update-old'>(null);
-  const armedTimerRef = useRef<number | null>(null);
-  useEffect(() => {
-    return () => {
-      if (armedTimerRef.current !== null) {
-        window.clearTimeout(armedTimerRef.current);
-      }
-    };
-  }, []);
-
-  const requestBulk = (action: 'download' | 'update' | 'update-old') => {
-    const items = action === 'download' ? downloadable : action === 'update' ? downloaded : stale;
-    if (items.length === 0) {
-      return;
-    }
-    if (items.length >= BULK_CONFIRM_THRESHOLD && armedBulk !== action) {
-      setArmedBulk(action);
-      if (armedTimerRef.current !== null) {
-        window.clearTimeout(armedTimerRef.current);
-      }
-      armedTimerRef.current = window.setTimeout(() => setArmedBulk(null), ARMED_BULK_WINDOW_MS);
-      return;
-    }
-    setArmedBulk(null);
-    enqueueVideos(items, action === 'download' ? 'download' : 'update');
-  };
 
   // Don't render anything if list doesn't exist
   if (listExists !== true) {
@@ -318,11 +301,6 @@ export function VideoListSection({
             runningCount={runningCount}
             queuedCount={queuedCount}
             hasActive={hasActive}
-            armedBulk={armedBulk}
-            onDownloadAll={() => requestBulk('download')}
-            onUpdateOld={() => requestBulk('update-old')}
-            onUpdateAll={() => requestBulk('update')}
-            onCancelAll={() => void cancelAll().catch(() => undefined)}
           />
           <div className="videos-list-items">
             <List

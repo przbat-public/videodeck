@@ -613,4 +613,54 @@ describe('StatusPage', () => {
 
     expect(await within(rowA).findByText('1 czeka', undefined, { timeout: 3000 })).toBeInTheDocument();
   });
+
+  it('shows the jobs a row action queued in the section it left open', async () => {
+    // The bulk actions moved to the row menu, which queues through the page
+    // and not through the video list's own hook. That hook stops polling once
+    // its queue is idle, so the page has to tell the section to re-read.
+    const user = userEvent.setup();
+    const queuedJob = {
+      id: 'job-1',
+      folderPath: '/videos/a',
+      videoId: 'v1',
+      videoUrl: 'https://yt/v1',
+      type: 'download',
+      status: 'queued',
+      log: [],
+      logLineCount: 0,
+      createdAt: '2026-09-22T07:00:00.000Z',
+    };
+    let queued = false;
+    installFetch({
+      queue: () => json({ jobs: queued ? [queuedJob] : [], total: queued ? 1 : 0, paused: false }),
+      queueSummary: () =>
+        json({
+          paused: false,
+          counts: { queued: queued ? 1 : 0, running: 0, done: 0, error: 0, cancelled: 0 },
+          folders: { '/videos/a': { running: 0, queued: queued ? 1 : 0, failed: 0 } },
+          running: [],
+        }),
+      enqueue: () => {
+        queued = true;
+        return json({ jobs: [queuedJob], skipped: [] });
+      },
+      list: () =>
+        json({
+          videos: [{ id: 'v1', title: 'Film 1', url: 'https://yt/v1' }],
+          downloadStatuses: {},
+          lastUpdatedDates: {},
+        }),
+    });
+    renderPage();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr') as HTMLElement;
+    await user.click(within(rowA).getByRole('button', { name: 'Pokaż filmy' }));
+    await screen.findByText('Film 1');
+
+    await user.click(within(rowA).getByRole('button', { name: 'Więcej akcji' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Pobierz wszystkie' }));
+
+    // The row's own column and the video list below it agree again
+    expect(await screen.findByText('Pobieranie: w kolejce')).toBeInTheDocument();
+    expect(await within(rowA).findByText('1 czeka', undefined, { timeout: 3000 })).toBeInTheDocument();
+  });
 });

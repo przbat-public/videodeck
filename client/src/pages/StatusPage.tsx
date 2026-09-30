@@ -54,13 +54,22 @@ export default function StatusPage(): JSX.Element {
     }
   }, [queueByFolder, refreshFolderSummaries]);
   const { folders: channelsByFolder } = useChannelNames();
+  // What the row actions changed, per folder, as a counter the open section
+  // watches. The video list polls its own folder queue only while it sees
+  // active jobs, so an idle section has to be told when work arrives from
+  // outside it (a bulk action in the row's menu).
+  const [queueRevisions, setQueueRevisions] = useState<Record<string, number>>({});
+  const bumpQueueRevision = useCallback((folderPath: string): void => {
+    setQueueRevisions((previous) => ({ ...previous, [folderPath]: (previous[folderPath] ?? 0) + 1 }));
+  }, []);
   const { pending, run } = useChannelActions({
     // A queue change can already have moved a video to "downloaded", and a
     // playlist fetch rewrites list.json: both refresh what the primary action
     // and the counts column read.
-    onQueueChanged: () => {
+    onQueueChanged: (folderPath) => {
       void refreshQueue();
       reloadSummaries();
+      bumpQueueRevision(folderPath);
     },
     onListChanged: () => {
       reload();
@@ -181,6 +190,7 @@ export default function StatusPage(): JSX.Element {
                     editingConfig={editingFolder === row.folderPath}
                     onEditingFinished={closeConfigEditor}
                     onConfigUpdate={updateFolderConfig}
+                    queueRevision={queueRevisions[row.folderPath] ?? 0}
                     onQueueChanged={refreshQueue}
                   />
                 )}

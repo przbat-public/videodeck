@@ -25,18 +25,37 @@ export async function channelRow(folderPath: string): Promise<HTMLElement> {
 }
 
 /**
+ * Run one of the channel's bulk actions from its row menu. The video list
+ * carries per-video buttons only, so this is the way a journey queues work for
+ * a whole channel. The menu opens on pointerdown, which is why this needs the
+ * real userEvent.
+ */
+export async function runRowAction(user: RenderedApp['user'], folderPath: string, name: string): Promise<void> {
+  const row = await channelRow(folderPath);
+  await user.click(within(row).getByRole('button', { name: 'Więcej akcji' }));
+  const entry = await screen.findByRole('menuitem', { name });
+  // A disabled entry swallows the click without a word, and the journey that
+  // clicked it would then fail somewhere else entirely. Radix marks one with
+  // data-disabled rather than the disabled property.
+  if (entry.getAttribute('data-disabled') !== null) {
+    throw new Error(`the row menu entry "${name}" is disabled for ${folderPath}`);
+  }
+  await user.click(entry);
+  // The menu closes on select; waiting for that keeps the next click off a
+  // still-mounted overlay
+  await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+}
+
+/**
  * Fetch or update the channel's playlist from its row menu. The entry reads
  * "Pobierz playlistę" while list.json is missing and "Aktualizuj playlistę"
- * once it is there, so the driver matches the word the two share. The menu
- * opens on pointerdown, which is why this one needs the real userEvent.
+ * once it is there, so the driver matches the word the two share.
  */
 export async function fetchPlaylist(user: RenderedApp['user'], folderPath: string): Promise<void> {
   const row = await channelRow(folderPath);
   await user.click(within(row).getByRole('button', { name: 'Więcej akcji' }));
   const entry = await screen.findByRole('menuitem', { name: /playlistę/ });
   await user.click(entry);
-  // The menu closes on select; waiting for that keeps the next click off a
-  // still-mounted overlay
   await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
 }
 

@@ -925,20 +925,6 @@
   font-weight: 500;
 }
 
-.videos-list-buttons {
-  display: flex;
-  align-items: flex-start;
-  /* The row spans the header, so on a 360px screen the four buttons wrap
-     onto further lines with every label intact and inside the viewport. */
-  flex-wrap: wrap;
-  min-width: 0;
-  gap: 0.5rem;
-}
-
-.videos-list-buttons button {
-  white-space: nowrap;
-}
-
 .videos-list-items {
   list-style: none;
   padding: 0;

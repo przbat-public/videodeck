@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { QueueJob } from '@videodeck/shared/api';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,7 +6,7 @@ import i18n from '../i18n';
 import type { FetchMock, MockResponse } from '../test/fetchMock';
 import { toast } from '../test/toastMock';
 import { isOlderThanMonth } from '../utils/videoDates';
-import { ARMED_BULK_WINDOW_MS, VideoListSection } from './VideoListSection';
+import { VideoListSection } from './VideoListSection';
 
 const FOLDER = '/videos/channel-a';
 const QUEUE_URL = `/api/folder/queue?folderPath=${encodeURIComponent(FOLDER)}`;
@@ -160,9 +160,10 @@ describe('VideoListSection', () => {
 
     expect(screen.getByText(/1 nie pobrany/)).toBeInTheDocument();
     expect(screen.getByText(/1 nie zaktualizowany od ponad miesiąca/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Pobierz wszystkie' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Aktualizuj stare' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Aktualizuj wszystkie' })).toBeInTheDocument();
+    // The bulk actions live in the console row's menu now, so the section
+    // carries the counts and the per-video buttons and nothing else
+    expect(screen.queryByRole('button', { name: 'Pobierz wszystkie' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Aktualizuj wszystkie' })).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Pobierz' })).toHaveLength(2); // v3 + v4 (disabled)
   });
 
@@ -229,6 +230,31 @@ describe('VideoListSection', () => {
     expect(screen.getByText(/Liczba filmów: 1/)).toBeInTheDocument();
   });
 
+  it('re-reads its jobs when the page reports a queue change it did not make', async () => {
+    let queueState: QueueJob[] = [];
+    installFetch({
+      queue: () => ({ jobs: queueState, total: queueState.length, paused: false }),
+    });
+    const view = render(
+      <MemoryRouter>
+        <VideoListSection folderPath={FOLDER} listExists={true} queueRevision={0} />
+      </MemoryRouter>,
+    );
+    await screen.findByText(/Liczba filmów: 4/);
+
+    // The console's row menu queued a job for this folder. The section's own
+    // poll stopped when it last saw an idle queue, so the revision above is
+    // the only thing that can tell it to look again.
+    queueState = [makeJob({ status: 'queued' })];
+    view.rerender(
+      <MemoryRouter>
+        <VideoListSection folderPath={FOLDER} listExists={true} queueRevision={1} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Pobieranie: w kolejce')).toBeInTheDocument();
+  });
+
   it('exposes the windowed rows as list items', async () => {
     installFetch({});
     await renderLoaded();
@@ -242,13 +268,21 @@ describe('VideoListSection', () => {
     expect(items[0]).toHaveAttribute('aria-setsize', '4');
   });
 
-  it('"Pobierz wszystkie" enqueues only videos that are not downloaded and have a url', async () => {
+  it('enqueues the download of one video from its own button', async () => {
     const fetchMock = installFetch({
       enqueue: () => ({ jobs: [makeJob({ status: 'queued' })], skipped: [] }),
     });
     await renderLoaded();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pobierz wszystkie' }));
+    // The video list owns one action per row now; the bulk ones moved to the
+    // console row's menu, which works on the whole channel
+    const enabledDownload = screen
+      .getAllByRole('button', { name: 'Pobierz' })
+      .find((button) => !(button as HTMLButtonElement).disabled);
+    if (!enabledDownload) {
+      throw new Error('Expected an enabled download button');
+    }
+    fireEvent.click(enabledDownload);
 
     await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
     expect(postCalls(fetchMock)[0]).toEqual({
@@ -259,119 +293,14 @@ describe('VideoListSection', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Dodano 1 film do pobrania'));
   });
 
-  it('"Aktualizuj" enqueues update jobs for downloaded videos older than a month', async () => {
-    const fetchMock = installFetch({
-      enqueue: () => ({
-        jobs: [makeJob({ videoId: 'v2', type: 'update', status: 'queued' })],
-        skipped: [],
-      }),
-    });
-    await renderLoaded();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj stare' }));
-
-    await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
-    expect(postCalls(fetchMock)[0]).toEqual({
-      folderPath: FOLDER,
-      type: 'update',
-      videos: [{ videoId: 'v2' }],
-    });
-  });
-
-  it('"Aktualizuj wszystkie" enqueues update jobs for every downloaded video', async () => {
-    const fetchMock = installFetch({
-      enqueue: () => ({
-        jobs: [makeJob({ videoId: 'v1', type: 'update', status: 'queued' })],
-        skipped: [],
-      }),
-    });
-    await renderLoaded();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj wszystkie' }));
-
-    await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
-    expect(postCalls(fetchMock)[0]).toEqual({
-      folderPath: FOLDER,
-      type: 'update',
-      videos: [{ videoId: 'v1' }, { videoId: 'v2' }],
-    });
-  });
-
-  it('requires a confirming click before bulk actions on a large channel', async () => {
-    const many = Array.from({ length: 60 }, (_, i) => ({
-      id: `v${i}`,
-      title: `Video ${i}`,
-      url: `https://www.youtube.com/watch?v=v${i}`,
-    }));
-    const statuses = Object.fromEntries(many.map((v) => [v.id, true]));
-    const fetchMock = installFetch({
-      list: () => ({ videos: many, downloadStatuses: statuses, lastUpdatedDates: {} }),
-      enqueue: () => ({
-        jobs: [makeJob({ status: 'queued' })],
-        skipped: [],
-      }),
-    });
-    renderSection();
-    await screen.findByText(/Liczba filmów: 60/);
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj wszystkie' }));
-
-    expect(await screen.findByRole('button', { name: 'Na pewno? (60 filmów)' })).toBeInTheDocument();
-    expect(postCalls(fetchMock)).toHaveLength(0);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Na pewno? (60 filmów)' }));
-
-    await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
-    expect(postCalls(fetchMock)[0]?.videos).toHaveLength(60);
-  });
-
-  it('asks again for a large bulk download once the confirmation window passes', async () => {
-    const many = Array.from({ length: 60 }, (_, i) => ({
-      id: `v${i}`,
-      title: `Video ${i}`,
-      url: `https://www.youtube.com/watch?v=v${i}`,
-    }));
-    const fetchMock = installFetch({
-      list: () => ({ videos: many, downloadStatuses: {}, lastUpdatedDates: {} }),
-    });
-    renderSection();
-    await screen.findByText(/Liczba filmów: 60/);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Pobierz wszystkie' }));
-    expect(await screen.findByRole('button', { name: 'Na pewno? (60 filmów)' })).toBeInTheDocument();
-
-    // The window passes with no second click: the button goes back to its
-    // plain label instead of keeping a stale arm over sixty downloads
-    act(() => {
-      vi.advanceTimersByTime(ARMED_BULK_WINDOW_MS);
-    });
-
-    expect(screen.getByRole('button', { name: 'Pobierz wszystkie' })).toBeInTheDocument();
-    expect(postCalls(fetchMock)).toHaveLength(0);
-  });
-
-  it('a single item button enqueues just that video', async () => {
-    const fetchMock = installFetch({});
-    await renderLoaded();
-
-    const enabledDownload = screen
-      .getAllByRole('button', { name: 'Pobierz' })
-      .find((button) => !(button as HTMLButtonElement).disabled);
-    if (!enabledDownload) {
-      throw new Error('Expected an enabled download button');
-    }
-    fireEvent.click(enabledDownload);
-
-    await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
-    expect(postCalls(fetchMock)[0].videos).toEqual([{ videoId: 'v3' }]);
-  });
-
   it('reports skipped videos from the server', async () => {
     installFetch({
-      enqueue: () => ({ jobs: [], skipped: [{ videoId: 'v2', reason: 'not downloaded' }] }),
+      enqueue: () => ({ jobs: [], skipped: [{ videoId: 'v1', reason: 'not downloaded' }] }),
     });
     await renderLoaded();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj stare' }));
+    // v1 is on disk, so its own button is the update one
+    fireEvent.click(screen.getAllByRole('button', { name: 'Aktualizuj' })[0] as HTMLButtonElement);
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Pominięto 1: not downloaded'));
   });
@@ -384,7 +313,13 @@ describe('VideoListSection', () => {
     await renderLoaded();
     fetchMock.mockImplementationOnce(async () => json({ error: 'Folder path is not in the allowed list' }, 403));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pobierz wszystkie' }));
+    const enabledDownload = screen
+      .getAllByRole('button', { name: 'Pobierz' })
+      .find((button) => !(button as HTMLButtonElement).disabled);
+    if (!enabledDownload) {
+      throw new Error('Expected an enabled download button');
+    }
+    fireEvent.click(enabledDownload);
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Folder path is not in the allowed list'));
   });
@@ -400,7 +335,7 @@ describe('VideoListSection', () => {
 
     expect(screen.getByText(/kolejka: 1 w toku, 0 czeka/)).toBeInTheDocument();
     expect(screen.getByText('Pobieranie: 10%')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Anuluj wszystko' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Anuluj' })).toBeInTheDocument();
 
     // job finishes on the server
     queueState = [makeJob({ status: 'done', finishedAt: '2024-06-15T11:30:00.000Z' })];
@@ -412,8 +347,9 @@ describe('VideoListSection', () => {
 
     await waitFor(() => expect(screen.getByText('Pobrano')).toBeInTheDocument(), { timeout: 4000 });
     expect(screen.queryByText(/kolejka:/)).toBeNull();
-    // v3 is now downloaded: "Pobierz wszystkie" disappears and the item links to the detail page
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Pobierz wszystkie' })).toBeNull());
+    // v3 is now downloaded: its row offers an update instead of a download
+    // and links to the detail page
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Pobierz' })).toHaveLength(1));
     expect(screen.getByRole('link', { name: /Missing/ })).toHaveAttribute('href', '/video/v3');
 
     // the list was re-fetched after the queue drained
@@ -440,15 +376,17 @@ describe('VideoListSection', () => {
     expect(screen.getByText(/Fresh/)).toBeInTheDocument();
   });
 
-  it('"Anuluj wszystko" cancels the folder queue', async () => {
+  it('cancels one job from its own row', async () => {
     const fetchMock = installFetch({
       queue: () => ({ jobs: [makeJob({ status: 'queued' })], total: 1, paused: false }),
     });
     await renderLoaded();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Anuluj wszystko' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Anuluj' }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(QUEUE_URL, { method: 'DELETE' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(`/api/folder/queue/${encodeURIComponent('job-1')}`, { method: 'DELETE' }),
+    );
   });
 
   it('keeps the row it failed to cancel on screen', async () => {
