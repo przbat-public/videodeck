@@ -833,7 +833,9 @@
 
 .channel-expanded-row > td {
   padding: 0.75rem 0.75rem 1rem;
-  background: var(--color-bg-soft);
+  /* The videos sit on this cell directly, so the cell is the surface they
+     need: a card inside it would frame nothing but itself. */
+  background: var(--color-surface);
 }
 
 /* Phones: the table becomes one card per channel, labels in front of values */
@@ -893,27 +895,14 @@
   }
 }
 
-/* Videos List Section: the expanded row already frames it, so half a rhythm
-   is all the air it needs above; no divider of its own. */
-.videos-list-section {
-  margin-top: 0.5rem;
-}
-
-
+/* The expanded row already frames the videos, so half a rhythm is all the air
+   the list needs above it, and no divider of its own. The element is the
+   scroll viewport react-window paints into. */
 .videos-list {
-  background: var(--color-surface);
-  padding: 1rem;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-}
-
-.videos-list-items {
   list-style: none;
+  margin: 0.5rem 0 0;
   padding: 0;
-  margin: 0;
-  /* react-window 2 fills its parent — the fixed viewport lives here */
   height: 400px;
-  max-height: 400px;
   overflow-y: auto;
 }
 

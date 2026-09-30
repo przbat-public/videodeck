@@ -267,28 +267,28 @@ export function VideoListSection({
   }
 
   return (
-    <div className="videos-list-section">
+    <>
       {videosError && <ErrorMessage compact>{t('app.error', { message: videosError })}</ErrorMessage>}
       {queueError && <ErrorMessage compact>{t('queue.queueError', { message: queueError })}</ErrorMessage>}
       {isLoadingVideos ? (
         <p>{t('queue.loadingVideos')}</p>
       ) : videos.length > 0 ? (
-        <div className="videos-list">
-          <div className="videos-list-items">
-            <List
-              listRef={listRef}
-              rowCount={rows.length}
-              rowHeight={rowHeight}
-              rowKey={(index) => rows[index]?.id ?? `index-${index}`}
-              rowProps={ROW_PROPS}
-              overscanCount={8}
-              rowComponent={renderRow}
-            />
-          </div>
-        </div>
+        // The expanded cell is the surface these rows sit on, so the list is
+        // the scroll viewport and nothing else: react-window paints its items
+        // straight into it, one element below the cell
+        <List
+          className="videos-list"
+          listRef={listRef}
+          rowCount={rows.length}
+          rowHeight={rowHeight}
+          rowKey={(index) => rows[index]?.id ?? `index-${index}`}
+          rowProps={ROW_PROPS}
+          overscanCount={8}
+          rowComponent={renderRow}
+        />
       ) : hasLoadedVideos ? (
         <p>{t('queue.emptyList')}</p>
       ) : null}
-    </div>
+    </>
   );
 }

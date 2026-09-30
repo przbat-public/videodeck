@@ -273,6 +273,11 @@ describe('StatusPage', () => {
     // One click opens the row and loads its videos: the toggle promises the
     // list, so no second button stands between the two
     expect(await screen.findByText('Film 1')).toBeInTheDocument();
+    // The videos hang off the expanded cell itself: the list is its first
+    // child, with no section wrapper or card in between
+    const cell = (rowA as HTMLElement).nextElementSibling?.querySelector('td');
+    expect(cell?.firstElementChild).toHaveAttribute('role', 'list');
+    expect(within(cell as HTMLElement).getAllByRole('listitem')).toHaveLength(1);
     // No edit button of its own any more: the row menu owns that entry point
     expect(screen.queryByRole('button', { name: 'Utwórz config.json' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edytuj konfigurację' })).toBeNull();

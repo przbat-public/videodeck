@@ -398,19 +398,25 @@ test.describe('reported layout defects', () => {
     expect(box.height).toBeGreaterThanOrEqual(44);
   });
 
-  test('the video list sits half a rhythm under the row, with no divider', async ({ page }) => {
+  test('the videos sit on the row surface, half a rhythm under it, with no card', async ({ page }) => {
     // The section opened with a 1.5rem margin, 1.5rem padding and a border
     // line above it: three rhythms of air inside a row that already sits in
-    // the table. A 0.5rem margin is all that separates it from the row now.
-    // The container keeps that rhythm whether or not the config form is open
-    // above it.
+    // the table. A 0.5rem margin is all that separates it from the row now,
+    // and the cell itself is the surface: an inner card framed nothing.
     await page.setViewportSize({ width: 1280, height: 720 });
     await folderListPage(page);
-    const spacing = await page.locator('.videos-list-section').evaluate((el) => {
+    const spacing = await page.locator('.videos-list').evaluate((el) => {
       const style = getComputedStyle(el);
       return { marginTop: style.marginTop, paddingTop: style.paddingTop, borderTopWidth: style.borderTopWidth };
     });
     expect(spacing).toEqual({ marginTop: '8px', paddingTop: '0px', borderTopWidth: '0px' });
+
+    const cell = await page.locator('.channel-expanded-row > td').evaluate((el) => ({
+      background: getComputedStyle(el).backgroundColor,
+      listIsDirectChild: el.firstElementChild?.getAttribute('role') === 'list',
+    }));
+    expect(cell.background).toBe('rgb(255, 255, 255)');
+    expect(cell.listIsDirectChild).toBe(true);
   });
 });
 

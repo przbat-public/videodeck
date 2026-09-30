@@ -84,7 +84,7 @@ describe('FolderSection', () => {
     const { container } = renderSection({ initialListExists: false });
 
     expect(screen.queryByText('Pierwszy film')).toBeNull();
-    expect(container.querySelector('.videos-list-section')).toBeNull();
+    expect(container.querySelector('.videos-list')).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

@@ -705,7 +705,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the row is gone with its status text and its own buttons
 - **An open channel is down to its rows**: the four bulk buttons and the tally
   line above the videos duplicated the ⋯ menu and the console row's own columns,
-  so both sections are gone. Each video keeps its Pobierz or Aktualizuj control
+  so both sections are gone, and the videos now sit on the expanded cell itself.
+  That cell is the surface they read on, no inner card frames them, and each
+  video keeps its Pobierz or Aktualizuj control
 - A playlist fetch drops the cached `/api/status` body and the cached folder
   counts. The console reads both to decide whether a row can open and what it
   holds, and the server kept each for five seconds, so a row whose playlist the
