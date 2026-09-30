@@ -301,6 +301,31 @@ describe('FolderConfigEditor', () => {
     expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('720p');
   });
 
+  it('adopts a config the console replaces while the form is open', async () => {
+    const user = userEvent.setup();
+    const onConfigUpdate = vi.fn();
+    const view = render(
+      <EditorHarness
+        config={{ channelUrl: 'https://yt/@a', maxHeight: 720 }}
+        knownCategories={[]}
+        onConfigUpdate={onConfigUpdate}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+    // The row above re-read the status, so the open form gets a fresh config
+    // object under it; what the form shows is the config it was handed
+    view.rerender(
+      <EditorHarness
+        config={{ channelUrl: 'https://yt/@a', maxHeight: 2160 }}
+        knownCategories={[]}
+        onConfigUpdate={onConfigUpdate}
+      />,
+    );
+
+    expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('2160p');
+  });
+
   it('saves the yt-dlp feature toggles (impersonate, SponsorBlock, fragments)', async () => {
     const user = userEvent.setup();
     fetchMock.mockImplementation(async (_url, init) => ({

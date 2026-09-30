@@ -66,25 +66,9 @@
     "clearFinished": "Wyczyść zakończone",
     "clearFinishedWithCount": "Wyczyść zakończone ({{count}})",
     "clearTitle": "Usuń zakończone, błędne i anulowane zadania z listy",
-    "inProgress": "kolejka: {{running}} w toku, {{queued}} czeka",
-    "confirmMany": "Na pewno? ({{count}} filmów)",
-    "downloadAll": "Pobierz wszystkie",
-    "updateOld": "Aktualizuj stare",
-    "updateAll": "Aktualizuj wszystkie",
-    "cancelAll": "Anuluj wszystko",
     "progressLabel": "Postęp pobierania: {{title}}",
     "queueError": "Błąd kolejki: {{message}}",
     "loadingVideos": "Ładowanie listy filmów ...",
-    "videoListCount": "Liczba filmów: {{count}}",
-    "notDownloaded_one": "({{count}} nie pobrany)",
-    "notDownloaded_few": "({{count}} nie pobrane)",
-    "notDownloaded_many": "({{count}} nie pobranych)",
-    "notDownloaded_other": "({{count}} nie pobranych)",
-    "notUpdated_one": "({{count}} nie zaktualizowany od ponad miesiąca)",
-    "notUpdated_few": "({{count}} nie zaktualizowane od ponad miesiąca)",
-    "notUpdated_many": "({{count}} nie zaktualizowanych od ponad miesiąca)",
-    "notUpdated_other": "({{count}} nie zaktualizowanych od ponad miesiąca)",
-    "allDownloaded": "(wszystkie pobrane)",
     "emptyList": "Brak filmów w pliku list.json",
     "verbDownload": "Pobieranie",
     "verbUpdate": "Aktualizacja",
@@ -175,16 +159,6 @@
     "extraArgs": "Dodatkowe argumenty yt-dlp:",
     "extraArgsPlaceholder": "np. --no-playlist --match-filter \"duration < 7200\"",
     "extraArgsAllowed": "dozwolone: --no-playlist, --no-warnings, --no-write-*, --sleep-* (także --min/--max-sleep-interval), --limit-rate, --match-filter, --retries"
-  },
-  "playlist": {
-    "checking": "Sprawdzanie statusu pliku list.json...",
-    "exists": "Plik list.json już istnieje. Kliknij przycisk poniżej, aby zaktualizować listę filmów.",
-    "missing": "Plik list.json nie istnieje. Kliknij przycisk poniżej, aby utworzyć listę filmów z kanału.",
-    "update": "Aktualizuj playlistę",
-    "download": "Pobierz playlistę",
-    "downloading": "Pobieranie...",
-    "loadVideos": "Pobierz listę filmów",
-    "noChannelUrl": "Brak skonfigurowanego adresu kanału YouTube"
   },
   "reindex": {
     "start": "Odśwież indeks",
@@ -361,14 +335,16 @@
       "nothingToDo": "Nie ma tu nic do zrobienia",
       "listFailed": "Nie udało się wczytać listy filmów kanału",
       "cancelled": "Anulowano zadania kanału",
-      "playlistQueued": "Pobieram playlistę kanału"
+      "playlistQueued": "Pobieram playlistę kanału",
+      "updatePlaylist": "Aktualizuj playlistę"
     },
     "collection": "kolekcja",
     "expand": "Pokaż filmy",
     "collapse": "Ukryj filmy",
     "searchInChannel": "Szukaj w tym kanale",
     "empty": "Żaden kanał nie pasuje do filtra",
-    "countsError": "Nie udało się policzyć filmów: {{message}}"
+    "countsError": "Nie udało się policzyć filmów: {{message}}",
+    "expandHintNoList": "Najpierw pobierz playlistę kanału"
   },
   "library": {
     "detected_one": "Wykryto {{count}} nowy kanał na dysku",

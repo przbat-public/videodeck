@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { QueueJob } from '@videodeck/shared/api';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -90,27 +90,19 @@ const postCalls = (fetchMock: FetchMock) =>
     .filter(([url, init]) => url === '/api/folder/queue' && (init as RequestInit)?.method === 'POST')
     .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
 
-/** The section must expose loadVideos through its ref; a missing handle is a test bug */
-const loadVideosViaRef = (ref: { current: null | { loadVideos: () => Promise<void> } }): Promise<void> => {
-  const handle = ref.current;
-  if (!handle) {
-    throw new Error('VideoListSection did not expose loadVideos');
-  }
-  return handle.loadVideos();
-};
-
-async function renderLoaded() {
-  const ref = { current: null as null | { loadVideos: () => Promise<void> } };
+/** Render the section for a channel whose list.json is already there */
+function renderSection(listExists = true) {
   render(
     <MemoryRouter>
-      <VideoListSection ref={ref} folderPath={FOLDER} listExists={true} />
+      <VideoListSection folderPath={FOLDER} listExists={listExists} />
     </MemoryRouter>,
   );
-  await act(async () => {
-    await loadVideosViaRef(ref);
-  });
-  await screen.findByText(/Liczba filmów: 4/);
-  return ref;
+}
+
+/** The section loads its own list: a loaded one is its first row on screen */
+async function renderLoaded() {
+  renderSection();
+  await screen.findByText(/Fresh/);
 }
 
 describe('isOlderThanMonth', () => {
@@ -125,11 +117,14 @@ describe('isOlderThanMonth', () => {
   });
 });
 
+/** The silenced reporter: a failed read is logged, and the test asserts that */
+let errorLog: ReturnType<typeof vi.spyOn>;
+
 describe('VideoListSection', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true, now });
     vi.clearAllMocks();
-    vi.spyOn(console, 'error').mockImplementation(() => {
+    errorLog = vi.spyOn(console, 'error').mockImplementation(() => {
       /* silence the expected error logs */
     });
   });
@@ -149,51 +144,118 @@ describe('VideoListSection', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('loads videos on demand and summarises statuses', async () => {
+  it('loads the channel list as soon as it opens, with no second click', async () => {
+    const fetchMock = installFetch({});
+    renderSection();
+
+    // "Show videos" on the console is the same action as "load the list": the
+    // rows arrive with the section instead of behind a button of their own.
+    expect(await screen.findByText(/Fresh/)).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(4);
+    expect(fetchMock).toHaveBeenCalledWith(LIST_URL);
+  });
+
+  it('gives every row the action its own state calls for', async () => {
     installFetch({});
     await renderLoaded();
 
-    expect(screen.getByText(/1 nie pobrany/)).toBeInTheDocument();
-    expect(screen.getByText(/1 nie zaktualizowany od ponad miesiąca/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Pobierz wszystkie' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Aktualizuj stare' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Aktualizuj wszystkie' })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Pobierz' })).toHaveLength(2); // v3 + v4 (disabled)
+    // v1 and v2 are on disk, so they offer an update; v3 and v4 do not, so
+    // they offer a download (v4 has no url, which disables its button)
+    expect(screen.getAllByRole('button', { name: 'Aktualizuj' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Pobierz' })).toHaveLength(2);
+    // Nothing bulk lives in here any more, and neither does a counts header:
+    // the console row above already says both
+    expect(screen.queryByRole('button', { name: 'Pobierz wszystkie' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Aktualizuj wszystkie' })).toBeNull();
+    expect(screen.queryByText(/Liczba filmów/)).toBeNull();
   });
 
-  it('reports a reload that did not come back', async () => {
+  it('reports a list that did not come back', async () => {
     const base = installFetch({});
     globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) =>
       url.startsWith('/api/folder/list') ? json({}, 500) : base(url, init),
     ) as unknown as typeof fetch;
-    const ref = { current: null as null | { loadVideos: () => Promise<void> } };
-    render(
-      <MemoryRouter>
-        <VideoListSection ref={ref} folderPath={FOLDER} listExists={true} />
-      </MemoryRouter>,
-    );
-
-    await act(async () => {
-      await loadVideosViaRef(ref);
-    });
+    renderSection();
 
     expect(await screen.findByText(i18n.t('app.error', { message: i18n.t('errors.loadVideos') }))).toBeInTheDocument();
   });
 
-  it('does nothing when the folder has no list.json', async () => {
+  it('reports a failure that is not an Error at all', async () => {
+    const base = installFetch({});
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/folder/list')) {
+        // A rejected fetch can carry anything: the section must not assume
+        // an Error and lose the message it has
+        return Promise.reject('boom');
+      }
+      return base(url, init);
+    }) as unknown as typeof fetch;
+    renderSection();
+
+    expect(await screen.findByText(i18n.t('app.error', { message: i18n.t('errors.occurred') }))).toBeInTheDocument();
+  });
+
+  it('asks for nothing while the folder has no list.json', () => {
     const fetchMock = installFetch({});
-    const ref = { current: null as null | { loadVideos: () => Promise<void> } };
-    render(
+    renderSection(false);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('drops the rows of the channel it left when the console opens another one', async () => {
+    const base = installFetch({});
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) =>
+      url.includes('channel-b')
+        ? json({
+            videos: [{ id: 'b1', title: 'Drugi kanał', url: 'https://yt/b1' }],
+            downloadStatuses: {},
+            lastUpdatedDates: {},
+          })
+        : base(url, init),
+    ) as unknown as typeof fetch;
+    const view = render(
       <MemoryRouter>
-        <VideoListSection ref={ref} folderPath={FOLDER} listExists={false} />
+        <VideoListSection folderPath={FOLDER} listExists={true} />
+      </MemoryRouter>,
+    );
+    await screen.findByText(/Fresh/);
+
+    view.rerender(
+      <MemoryRouter>
+        <VideoListSection folderPath="/videos/channel-b" listExists={true} />
       </MemoryRouter>,
     );
 
-    await act(async () => {
-      await loadVideosViaRef(ref);
-    });
+    // The rows of the previous channel are gone with its state, and the new
+    // folder is what the section reads next
+    expect(await screen.findByText(/Drugi kanał/)).toBeInTheDocument();
+    expect(screen.queryByText(/Fresh/)).toBeNull();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
 
-    expect(fetchMock).not.toHaveBeenCalled();
+  it('re-reads its jobs when the page reports a queue change it did not make', async () => {
+    let queueState: QueueJob[] = [];
+    installFetch({
+      queue: () => ({ jobs: queueState, total: queueState.length, paused: false }),
+    });
+    const view = render(
+      <MemoryRouter>
+        <VideoListSection folderPath={FOLDER} listExists={true} queueRevision={0} />
+      </MemoryRouter>,
+    );
+    await screen.findByText(/Fresh/);
+
+    // The console's row menu queued a job for this folder. The section's own
+    // poll stopped when it last saw an idle queue, so the revision above is
+    // the only thing that can tell it to look again.
+    queueState = [makeJob({ status: 'queued' })];
+    view.rerender(
+      <MemoryRouter>
+        <VideoListSection folderPath={FOLDER} listExists={true} queueRevision={1} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Pobieranie: w kolejce')).toBeInTheDocument();
   });
 
   it('exposes the windowed rows as list items', async () => {
@@ -209,13 +271,21 @@ describe('VideoListSection', () => {
     expect(items[0]).toHaveAttribute('aria-setsize', '4');
   });
 
-  it('"Pobierz wszystkie" enqueues only videos that are not downloaded and have a url', async () => {
+  it('enqueues the download of one video from its own button', async () => {
     const fetchMock = installFetch({
       enqueue: () => ({ jobs: [makeJob({ status: 'queued' })], skipped: [] }),
     });
     await renderLoaded();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pobierz wszystkie' }));
+    // The video list owns one action per row now; the bulk ones moved to the
+    // console row's menu, which works on the whole channel
+    const enabledDownload = screen
+      .getAllByRole('button', { name: 'Pobierz' })
+      .find((button) => !(button as HTMLButtonElement).disabled);
+    if (!enabledDownload) {
+      throw new Error('Expected an enabled download button');
+    }
+    fireEvent.click(enabledDownload);
 
     await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
     expect(postCalls(fetchMock)[0]).toEqual({
@@ -226,103 +296,14 @@ describe('VideoListSection', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Dodano 1 film do pobrania'));
   });
 
-  it('"Aktualizuj" enqueues update jobs for downloaded videos older than a month', async () => {
-    const fetchMock = installFetch({
-      enqueue: () => ({
-        jobs: [makeJob({ videoId: 'v2', type: 'update', status: 'queued' })],
-        skipped: [],
-      }),
-    });
-    await renderLoaded();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj stare' }));
-
-    await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
-    expect(postCalls(fetchMock)[0]).toEqual({
-      folderPath: FOLDER,
-      type: 'update',
-      videos: [{ videoId: 'v2' }],
-    });
-  });
-
-  it('"Aktualizuj wszystkie" enqueues update jobs for every downloaded video', async () => {
-    const fetchMock = installFetch({
-      enqueue: () => ({
-        jobs: [makeJob({ videoId: 'v1', type: 'update', status: 'queued' })],
-        skipped: [],
-      }),
-    });
-    await renderLoaded();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj wszystkie' }));
-
-    await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
-    expect(postCalls(fetchMock)[0]).toEqual({
-      folderPath: FOLDER,
-      type: 'update',
-      videos: [{ videoId: 'v1' }, { videoId: 'v2' }],
-    });
-  });
-
-  it('requires a confirming click before bulk actions on a large channel', async () => {
-    const many = Array.from({ length: 60 }, (_, i) => ({
-      id: `v${i}`,
-      title: `Video ${i}`,
-      url: `https://www.youtube.com/watch?v=v${i}`,
-    }));
-    const statuses = Object.fromEntries(many.map((v) => [v.id, true]));
-    const fetchMock = installFetch({
-      list: () => ({ videos: many, downloadStatuses: statuses, lastUpdatedDates: {} }),
-      enqueue: () => ({
-        jobs: [makeJob({ status: 'queued' })],
-        skipped: [],
-      }),
-    });
-    const ref = { current: null as null | { loadVideos: () => Promise<void> } };
-    render(
-      <MemoryRouter>
-        <VideoListSection ref={ref} folderPath={FOLDER} listExists={true} />
-      </MemoryRouter>,
-    );
-    await act(async () => {
-      await loadVideosViaRef(ref);
-    });
-    await screen.findByText(/Liczba filmów: 60/);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj wszystkie' }));
-
-    expect(await screen.findByRole('button', { name: 'Na pewno? (60 filmów)' })).toBeInTheDocument();
-    expect(postCalls(fetchMock)).toHaveLength(0);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Na pewno? (60 filmów)' }));
-
-    await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
-    expect(postCalls(fetchMock)[0]?.videos).toHaveLength(60);
-  });
-
-  it('a single item button enqueues just that video', async () => {
-    const fetchMock = installFetch({});
-    await renderLoaded();
-
-    const enabledDownload = screen
-      .getAllByRole('button', { name: 'Pobierz' })
-      .find((button) => !(button as HTMLButtonElement).disabled);
-    if (!enabledDownload) {
-      throw new Error('Expected an enabled download button');
-    }
-    fireEvent.click(enabledDownload);
-
-    await waitFor(() => expect(postCalls(fetchMock)).toHaveLength(1));
-    expect(postCalls(fetchMock)[0].videos).toEqual([{ videoId: 'v3' }]);
-  });
-
   it('reports skipped videos from the server', async () => {
     installFetch({
-      enqueue: () => ({ jobs: [], skipped: [{ videoId: 'v2', reason: 'not downloaded' }] }),
+      enqueue: () => ({ jobs: [], skipped: [{ videoId: 'v1', reason: 'not downloaded' }] }),
     });
     await renderLoaded();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aktualizuj stare' }));
+    // v1 is on disk, so its own button is the update one
+    fireEvent.click(screen.getAllByRole('button', { name: 'Aktualizuj' })[0] as HTMLButtonElement);
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Pominięto 1: not downloaded'));
   });
@@ -335,7 +316,13 @@ describe('VideoListSection', () => {
     await renderLoaded();
     fetchMock.mockImplementationOnce(async () => json({ error: 'Folder path is not in the allowed list' }, 403));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pobierz wszystkie' }));
+    const enabledDownload = screen
+      .getAllByRole('button', { name: 'Pobierz' })
+      .find((button) => !(button as HTMLButtonElement).disabled);
+    if (!enabledDownload) {
+      throw new Error('Expected an enabled download button');
+    }
+    fireEvent.click(enabledDownload);
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Folder path is not in the allowed list'));
   });
@@ -349,9 +336,8 @@ describe('VideoListSection', () => {
     });
     await renderLoaded();
 
-    expect(screen.getByText(/kolejka: 1 w toku, 0 czeka/)).toBeInTheDocument();
     expect(screen.getByText('Pobieranie: 10%')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Anuluj wszystko' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Anuluj' })).toBeInTheDocument();
 
     // job finishes on the server
     queueState = [makeJob({ status: 'done', finishedAt: '2024-06-15T11:30:00.000Z' })];
@@ -362,9 +348,10 @@ describe('VideoListSection', () => {
     };
 
     await waitFor(() => expect(screen.getByText('Pobrano')).toBeInTheDocument(), { timeout: 4000 });
-    expect(screen.queryByText(/kolejka:/)).toBeNull();
-    // v3 is now downloaded: "Pobierz wszystkie" disappears and the item links to the detail page
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Pobierz wszystkie' })).toBeNull());
+    expect(screen.queryByText('Pobieranie: 10%')).toBeNull();
+    // v3 is now downloaded: its row offers an update instead of a download
+    // and links to the detail page
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Pobierz' })).toHaveLength(1));
     expect(screen.getByRole('link', { name: /Missing/ })).toHaveAttribute('href', '/video/v3');
 
     // the list was re-fetched after the queue drained
@@ -372,14 +359,55 @@ describe('VideoListSection', () => {
     await waitFor(() => expect(listCalls.length).toBeGreaterThanOrEqual(2));
   });
 
-  it('"Anuluj wszystko" cancels the folder queue', async () => {
+  it('keeps the rows when the list read after a drained queue fails', async () => {
+    let queueState: QueueJob[] = [makeJob({ status: 'running' })];
+    const base = installFetch({
+      queue: () => ({ jobs: queueState, total: queueState.length, paused: false }),
+    });
+    await renderLoaded();
+
+    // The queue drains while the list endpoint is down: the re-sync is the
+    // section's own bookkeeping, so its failure leaves the rows untouched
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) =>
+      url.startsWith('/api/folder/list') ? json({}, 500) : base(url, init),
+    ) as unknown as typeof fetch;
+    queueState = [];
+
+    await waitFor(() => expect(errorLog).toHaveBeenCalled(), { timeout: 4000 });
+    expect(screen.getByText(/Fresh/)).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(4);
+  });
+
+  it('cancels one job from its own row', async () => {
     const fetchMock = installFetch({
       queue: () => ({ jobs: [makeJob({ status: 'queued' })], total: 1, paused: false }),
     });
     await renderLoaded();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Anuluj wszystko' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Anuluj' }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(QUEUE_URL, { method: 'DELETE' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(`/api/folder/queue/${encodeURIComponent('job-1')}`, { method: 'DELETE' }),
+    );
+  });
+
+  it('keeps the row it failed to cancel on screen', async () => {
+    const base = installFetch({
+      queue: () => ({ jobs: [makeJob({ status: 'running', progress: 10 })], total: 1, paused: false }),
+    });
+    globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        throw new Error('network down');
+      }
+      return base(url, init);
+    }) as unknown as typeof fetch;
+    await renderLoaded();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Anuluj' }));
+
+    // A cancel that never reached the server must not empty the row: the
+    // failure is logged and the job keeps its state
+    await waitFor(() => expect(errorLog).toHaveBeenCalled());
+    expect(screen.getByText('Pobieranie: 10%')).toBeInTheDocument();
   });
 });

@@ -630,30 +630,6 @@
   margin-top: 1rem;
 }
 
-/* Playlist Download Section */
-.playlist-info {
-  background: var(--color-surface);
-  padding: 1rem;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-}
-
-.playlist-info p {
-  margin: 0 0 1rem 0;
-  color: var(--color-text-muted);
-  font-size: 0.95rem;
-}
-
-.playlist-buttons {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-
-
-
-
 /* Channel console: sticky queue bar, toolbar and the channel table */
 .channel-queue-bar {
   position: sticky;
@@ -857,7 +833,9 @@
 
 .channel-expanded-row > td {
   padding: 0.75rem 0.75rem 1rem;
-  background: var(--color-bg-soft);
+  /* The videos sit on this cell directly, so the cell is the surface they
+     need: a card inside it would frame nothing but itself. */
+  background: var(--color-surface);
 }
 
 /* Phones: the table becomes one card per channel, labels in front of values */
@@ -917,59 +895,14 @@
   }
 }
 
-/* Videos List Section: the expanded row already frames it, so half a rhythm
-   is all the air it needs above; no divider of its own. */
-.videos-list-section {
-  margin-top: 0.5rem;
-}
-
-
+/* The expanded row already frames the videos, so half a rhythm is all the air
+   the list needs above it, and no divider of its own. The element is the
+   scroll viewport react-window paints into. */
 .videos-list {
-  background: var(--color-surface);
-  padding: 1rem;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-}
-
-.videos-list-header {
-  display: flex;
-  /* The counts sit on top and the bulk buttons always start under them. The
-     buttons used to slide next to the counts on a wide row, so the header
-     changed shape with the viewport and the length of the counts. */
-  flex-direction: column;
-  margin-bottom: 1rem;
-  gap: 0.5rem;
-}
-
-.videos-count {
-  margin: 0;
-  min-width: 0;
-  color: var(--color-text-muted);
-  font-size: 0.95rem;
-  font-weight: 500;
-}
-
-.videos-list-buttons {
-  display: flex;
-  align-items: flex-start;
-  /* The row spans the header, so on a 360px screen the four buttons wrap
-     onto further lines with every label intact and inside the viewport. */
-  flex-wrap: wrap;
-  min-width: 0;
-  gap: 0.5rem;
-}
-
-.videos-list-buttons button {
-  white-space: nowrap;
-}
-
-.videos-list-items {
   list-style: none;
+  margin: 0.5rem 0 0;
   padding: 0;
-  margin: 0;
-  /* react-window 2 fills its parent — the fixed viewport lives here */
   height: 400px;
-  max-height: 400px;
   overflow-y: auto;
 }
 
@@ -1130,13 +1063,6 @@
 
 .job-status--cancelled {
   color: var(--color-text-muted);
-}
-
-/* Runs on in the counts line; nowrap keeps "running, waiting" in one piece
-   when the line does break. */
-.queue-summary {
-  white-space: nowrap;
-  color: var(--color-info);
 }
 
 .video-item--active {

@@ -195,15 +195,24 @@ test.describe('channel console', () => {
     expect(overflow).toBeLessThanOrEqual(0);
 
     // Touch contract: the expand toggle, the menu trigger and the entries
-    // inside the menu all reach 44px
-    const expand = await page.getByRole('button', { name: 'Pokaż filmy' }).first().boundingBox();
-    const menu = await page.getByRole('button', { name: 'Więcej akcji' }).first().boundingBox();
+    // inside the menu all reach 44px. kanal-02 has a list.json, so its toggle
+    // is the live one to measure.
+    const row = page.locator('.channel-row', { hasText: 'kanal-02' });
+    const expand = await row.getByRole('button', { name: 'Pokaż filmy' }).boundingBox();
+    const menu = await row.getByRole('button', { name: 'Więcej akcji' }).boundingBox();
     expect(expand?.height ?? 0).toBeGreaterThanOrEqual(43.5);
     expect(menu?.height ?? 0).toBeGreaterThanOrEqual(43.5);
 
-    // kanal-01 has no list.json yet, so its menu offers the playlist; the
-    // bulk entries are checked on the next row
-    await page.locator('.channel-row', { hasText: 'kanal-02' }).getByRole('button', { name: 'Więcej akcji' }).click();
+    // kanal-01 has no list.json yet, so it cannot show videos and its menu
+    // offers the playlist instead
+    const withoutList = page.locator('.channel-row', { hasText: 'kanal-01' });
+    await expect(withoutList.getByRole('button', { name: 'Pokaż filmy' })).toBeDisabled();
+    await withoutList.getByRole('button', { name: 'Więcej akcji' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Pobierz playlistę' })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // The bulk entries are checked on the row that has a list to work from
+    await row.getByRole('button', { name: 'Więcej akcji' }).click();
     const entry = await page.getByRole('menuitem', { name: 'Pobierz wszystkie' }).boundingBox();
     expect(entry?.height ?? 0).toBeGreaterThanOrEqual(43.5);
   });

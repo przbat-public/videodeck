@@ -1,5 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockResponse } from '../test/fetchMock';
@@ -16,9 +15,18 @@ const json = (body: unknown, status = 200): MockResponse => ({
 
 const downloadDefaults = { maxHeight: 2160, subLangs: ['en'], writeComments: true };
 
-describe('FolderSection', () => {
-  it('renders the sections without a header or a card of its own', () => {
-    render(
+const listResponse = {
+  videos: [{ id: 'v1', title: 'Pierwszy film', url: 'https://yt/v1' }],
+  downloadStatuses: {},
+  lastUpdatedDates: {},
+};
+
+/** The folder queue poll the video list runs next to its own fetch */
+const queueResponse = { jobs: [], total: 0, paused: false };
+
+const renderSection = (props: Partial<Parameters<typeof FolderSection>[0]> = {}) =>
+  render(
+    <MemoryRouter>
       <FolderSection
         folderPath="/videos/a"
         initialConfig={{ channelUrl: 'https://www.youtube.com/@a' }}
@@ -27,8 +35,26 @@ describe('FolderSection', () => {
         editingConfig={false}
         onEditingFinished={vi.fn()}
         onConfigUpdate={vi.fn()}
-      />,
+        {...props}
+      />
+    </MemoryRouter>,
+  );
+
+describe('FolderSection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (url: string) =>
+      url.startsWith('/api/folder/list?') ? json(listResponse) : json(queueResponse),
     );
+  });
+
+  it('renders the sections without a header or a card of its own', async () => {
+    renderSection();
+
+    // Let the section's own list load first: an unawaited fetch resolves
+    // after the test ends and React reports it outside act
+    await screen.findByText('Pierwszy film');
 
     // The channel row above already names the channel and shows the index
     // warning, so a second heading in here would only repeat it
@@ -36,107 +62,43 @@ describe('FolderSection', () => {
     expect(screen.queryByText('/videos/a')).toBeNull();
   });
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    fetchMock.mockReset();
+  it('loads the channel videos as soon as the section opens', async () => {
+    renderSection();
+
+    // The row's own toggle is the whole gesture: no playlist button and no
+    // "load the list" button stands between the channel and its videos
+    expect(await screen.findByText('Pierwszy film')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith('/api/folder/list?folderPath=%2Fvideos%2Fa');
   });
 
-  it('checks list.json existence when the status did not report it', async () => {
-    fetchMock.mockResolvedValue(json({ exists: true }));
-    render(
-      <FolderSection
-        folderPath="/videos/a"
-        initialConfig={{ channelUrl: 'https://www.youtube.com/@a' }}
-        downloadDefaults={downloadDefaults}
-        initialListExists={null}
-        editingConfig={false}
-        onEditingFinished={vi.fn()}
-        onConfigUpdate={vi.fn()}
-      />,
-    );
+  it('has no playlist actions of its own', async () => {
+    renderSection();
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/folder/list-exists?folderPath=%2Fvideos%2Fa'));
-  });
-
-  it('tells the parent when a playlist fetch rewrote list.json', async () => {
-    const user = userEvent.setup();
-    const onListChanged = vi.fn();
-    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (init?.method === 'POST') {
-        return json({ success: true, message: 'ok', listPath: '/videos/a/list.json', videoCount: 2 });
-      }
-      if (url.startsWith('/api/folder/list-exists')) {
-        return json({ exists: true });
-      }
-      return json({ paused: false, jobs: [] });
-    });
-    render(
-      <FolderSection
-        folderPath="/videos/a"
-        initialConfig={{ channelUrl: 'https://www.youtube.com/@a' }}
-        downloadDefaults={downloadDefaults}
-        initialListExists={true}
-        editingConfig={false}
-        onEditingFinished={vi.fn()}
-        onConfigUpdate={vi.fn()}
-        onListChanged={onListChanged}
-      />,
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Aktualizuj playlistę' }));
-
-    await waitFor(() => expect(onListChanged).toHaveBeenCalledTimes(1));
-    // The section still refreshes its own list.json flag as before
-    expect(fetchMock).toHaveBeenCalledWith('/api/folder/list-exists?folderPath=%2Fvideos%2Fa');
-  });
-
-  it('lists a collection right away, with no playlist block and no list.json check', async () => {
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.startsWith('/api/folder/list?')) {
-        return json({
-          videos: [{ id: 'Dube38fpLtc', title: 'Home built SMD Reflow Oven', url: 'https://yt/watch?v=Dube38fpLtc' }],
-          downloadStatuses: { Dube38fpLtc: true },
-          lastUpdatedDates: { Dube38fpLtc: '2026-09-01T00:00:00.000Z' },
-        });
-      }
-      return json({ paused: false, jobs: [] });
-    });
-    render(
-      <MemoryRouter>
-        <FolderSection
-          folderPath="/videos/youtube"
-          initialConfig={{ kind: 'collection' }}
-          downloadDefaults={downloadDefaults}
-          initialListExists={false}
-          editingConfig={false}
-          onEditingFinished={vi.fn()}
-          onConfigUpdate={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
-
-    // Single downloads have no playlist behind them: the section goes
-    // straight to the videos the folder holds
-    expect(await screen.findByText(/Liczba filmów: 1/)).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith('/api/folder/list?folderPath=%2Fvideos%2Fyoutube');
-    expect(screen.queryByRole('button', { name: /playlist/i })).toBeNull();
+    await screen.findByText('Pierwszy film');
+    // Fetching and updating the playlist lives in the row's ⋯ menu now
+    expect(screen.queryByRole('button', { name: /playlistę/ })).toBeNull();
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/api/folder/list-exists'));
   });
 
-  it('survives a failed existence check (best effort)', async () => {
-    fetchMock.mockRejectedValue(new Error('network down'));
-    render(
-      <FolderSection
-        folderPath="/videos/b"
-        initialConfig={{ channelUrl: 'https://www.youtube.com/@b' }}
-        downloadDefaults={downloadDefaults}
-        initialListExists={null}
-        editingConfig={false}
-        onEditingFinished={vi.fn()}
-        onConfigUpdate={vi.fn()}
-      />,
-    );
+  it('shows no videos for a channel whose list.json is not there', () => {
+    const { container } = renderSection({ initialListExists: false });
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(screen.queryByText('Pierwszy film')).toBeNull();
+    expect(container.querySelector('.videos-list')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('lists a collection right away, with no playlist step in front of it', async () => {
+    renderSection({
+      folderPath: '/videos/youtube',
+      initialConfig: { kind: 'collection' },
+      initialListExists: false,
+    });
+
+    // Single downloads have no playlist behind them: the section goes
+    // straight to the videos the folder holds
+    expect(await screen.findByText('Pierwszy film')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith('/api/folder/list?folderPath=%2Fvideos%2Fyoutube');
+    expect(screen.queryByRole('button', { name: /playlist/i })).toBeNull();
   });
 });

@@ -6,7 +6,7 @@ import { folderConfig, videoFiles } from '@videodeck/test-infra/deepServerTestEn
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { toast } from '../../test/toastMock';
 import { findCardByTitle, queryCardByTitle } from './drivers/searchDrivers';
-import { folderSection } from './drivers/statusDrivers';
+import { folderSection, runRowAction } from './drivers/statusDrivers';
 import type { RenderedApp } from './render-app';
 import { refreshCacheAndWait, renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
@@ -75,10 +75,9 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
 
     const page = await renderApp('/download');
     const section = await folderSection(folderPath);
-    await page.user.click(within(section).getByRole('button', { name: 'Pobierz listę filmów' }));
     await within(section).findByText('Tylko dla członków');
 
-    await page.user.click(within(section).getByRole('button', { name: 'Pobierz wszystkie' }));
+    await runRowAction(page.user, folderPath, 'Pobierz wszystkie');
 
     // The fake yt-dlp fails each id immediately with the live error text;
     // the queue maps it to a machine-readable code and the row translates

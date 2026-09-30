@@ -37,6 +37,8 @@ type FetchHandlers = {
   folderSummary?: (folderPath: string) => MockResponse;
   list?: () => MockResponse;
   enqueue?: () => MockResponse;
+  /** POST /api/folder/download-playlist — the playlist fetch the row menu starts */
+  downloadPlaylist?: () => MockResponse;
 };
 
 /** Query-string routes the exact-path table cannot name */
@@ -68,7 +70,7 @@ function installFetch(handlers: FetchHandlers = {}): FetchMock {
   // answers a GET (the queue) and a POST (an enqueue).
   const methodRoutes: Record<string, () => MockResponse> = {
     'POST /api/folder/queue': () => handlers.enqueue?.() ?? json({ jobs: [], skipped: [] }),
-    'POST /api/folder/download-playlist': () => json({ output: 'ok' }),
+    'POST /api/folder/download-playlist': () => handlers.downloadPlaylist?.() ?? json({ output: 'ok' }),
     'DELETE /api/folder/queue/finished': () => json({ cleared: 2 }),
   };
   // The mock keeps the pause state like the real server, so the queue bar
@@ -254,18 +256,47 @@ describe('StatusPage', () => {
 
   it('opens the full folder section under the row the URL expands', async () => {
     const user = userEvent.setup();
+    installFetch({
+      list: () =>
+        json({
+          videos: [{ id: 'v1', title: 'Film 1', url: 'https://yt/v1' }],
+          downloadStatuses: {},
+          lastUpdatedDates: {},
+        }),
+    });
     renderPage();
-    const rowB = (await screen.findByText('/videos/b')).closest('tr');
-    expect(rowB).not.toBeNull();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr');
+    expect(rowA).not.toBeNull();
 
-    await user.click(within(rowB as HTMLElement).getByRole('button', { name: 'Pokaż filmy' }));
+    await user.click(within(rowA as HTMLElement).getByRole('button', { name: 'Pokaż filmy' }));
 
-    expect(await screen.findByText('Plik config.json nie istnieje w tym folderze.')).toBeInTheDocument();
+    // One click opens the row and loads its videos: the toggle promises the
+    // list, so no second button stands between the two
+    expect(await screen.findByText('Film 1')).toBeInTheDocument();
+    // The videos hang off the expanded cell itself: the list is its first
+    // child, with no section wrapper or card in between
+    const cell = (rowA as HTMLElement).nextElementSibling?.querySelector('td');
+    expect(cell?.firstElementChild).toHaveAttribute('role', 'list');
+    expect(within(cell as HTMLElement).getAllByRole('listitem')).toHaveLength(1);
     // No edit button of its own any more: the row menu owns that entry point
     expect(screen.queryByRole('button', { name: 'Utwórz config.json' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edytuj konfigurację' })).toBeNull();
     // ... and the row above already shows the path, so the section has no header
-    expect(screen.queryByRole('heading', { name: '/videos/b' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: '/videos/a' })).toBeNull();
+  });
+
+  it('reaches the config form of a channel whose list.json is missing', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const rowB = (await screen.findByText('/videos/b')).closest('tr') as HTMLElement;
+
+    // Without list.json the row has no videos to show, and its toggle says so
+    expect(within(rowB).getByRole('button', { name: 'Pokaż filmy' })).toBeDisabled();
+
+    await user.click(within(rowB).getByRole('button', { name: 'Więcej akcji' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Edytuj config.json' }));
+
+    expect(await screen.findByText('Plik config.json nie istnieje w tym folderze.')).toBeInTheDocument();
   });
 
   it('opens the config form from the row menu', async () => {
@@ -297,9 +328,9 @@ describe('StatusPage', () => {
     expect(channelUrl).not.toBeInTheDocument();
   });
 
-  it('checks list.json for a folder the status did not report', async () => {
+  it('keeps a folder the status did not report closed until its list.json is known', async () => {
     const user = userEvent.setup();
-    const fetchMock = installFetch({
+    installFetch({
       status: () =>
         json({
           ...statusResponse,
@@ -311,12 +342,14 @@ describe('StatusPage', () => {
         }),
     });
     renderPage();
-    const rowA = (await screen.findByText('/videos/a')).closest('tr');
-    expect(rowA).not.toBeNull();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr') as HTMLElement;
 
-    await user.click(within(rowA as HTMLElement).getByRole('button', { name: 'Pokaż filmy' }));
+    // An unreported list is not a list: the row stays shut, and the menu leads
+    // with the fetch that would fill it in
+    expect(within(rowA).getByRole('button', { name: 'Pokaż filmy' })).toBeDisabled();
+    await user.click(within(rowA).getByRole('button', { name: 'Więcej akcji' }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/folder/list-exists?folderPath=%2Fvideos%2Fa'));
+    expect(await screen.findByRole('menuitem', { name: 'Pobierz playlistę' })).toBeEnabled();
   });
 
   it('says so when the per-channel counts cannot be read', async () => {
@@ -486,27 +519,40 @@ describe('StatusPage', () => {
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/folder/summaries')).toHaveLength(1);
   });
 
-  it('fetches a playlist from a row with no list and reloads the status', async () => {
+  it('fetches a playlist from a row with no list, then opens the row it unlocked', async () => {
     const user = userEvent.setup();
-    let statusCalls = 0;
+    let hasList = false;
     const fetchMock = installFetch({
-      status: () => {
-        statusCalls += 1;
-        return json({
+      status: () =>
+        json({
           ...statusResponse,
           // Both folders are configured; only /videos/a already has a list
           folderConfigs: {
             '/videos/a': { channelUrl: 'https://yt/@a' },
             '/videos/b': { channelUrl: 'https://yt/@b' },
           },
-        });
+          listExists: hasList ? { '/videos/a': true, '/videos/b': true } : statusResponse.listExists,
+        }),
+      summaries: () =>
+        json({
+          summaries: hasList ? { '/videos/b': { videos: 2, downloaded: 0, notDownloaded: 2, stale: 0 } } : {},
+        }),
+      downloadPlaylist: () => {
+        hasList = true;
+        return json({ success: true, message: 'ok', listPath: '/videos/b/list.json', videoCount: 2 });
       },
+      list: () =>
+        json({
+          videos: [{ id: 'v1', title: 'Film 1', url: 'https://yt/v1' }],
+          downloadStatuses: {},
+          lastUpdatedDates: {},
+        }),
     });
     renderPage();
-    const rowB = (await screen.findByText('/videos/b')).closest('tr');
-    expect(rowB).not.toBeNull();
+    const rowB = (await screen.findByText('/videos/b')).closest('tr') as HTMLElement;
+    expect(within(rowB).getByRole('button', { name: 'Pokaż filmy' })).toBeDisabled();
 
-    await user.click(within(rowB as HTMLElement).getByRole('button', { name: 'Więcej akcji' }));
+    await user.click(within(rowB).getByRole('button', { name: 'Więcej akcji' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Pobierz playlistę' }));
 
     await waitFor(() =>
@@ -515,38 +561,15 @@ describe('StatusPage', () => {
         expect.objectContaining({ method: 'POST' }),
       ),
     );
-    await waitFor(() => expect(statusCalls).toBeGreaterThan(1));
-  });
+    // The row it fetched for learns the new count from the same read
+    expect(await within(rowB).findByText('2 filmów')).toBeInTheDocument();
 
-  it('refreshes the counts of the expanded channel after its playlist is fetched from the section', async () => {
-    // The row menu already re-read the counts after a playlist fetch; the
-    // same button inside the expanded section left the "Filmy" column stale.
-    const user = userEvent.setup();
-    let statusCalls = 0;
-    const refreshed: string[] = [];
-    installFetch({
-      status: () => {
-        statusCalls += 1;
-        return json(statusResponse);
-      },
-      summaries: () => json({ summaries: { '/videos/a': { videos: 3, downloaded: 0, notDownloaded: 3, stale: 0 } } }),
-      folderSummary: (folderPath) => {
-        refreshed.push(folderPath);
-        return json({ summaries: { [folderPath]: { videos: 5, downloaded: 0, notDownloaded: 5, stale: 0 } } });
-      },
-    });
-    renderPage();
-    const rowA = (await screen.findByText('/videos/a')).closest('tr') as HTMLElement;
-    expect(await within(rowA).findByText('3 filmów')).toBeInTheDocument();
-    statusCalls = 0;
+    // The list.json that arrived is what the toggle was waiting for
+    const toggle = within(rowB).getByRole('button', { name: 'Pokaż filmy' });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    await user.click(toggle);
 
-    await user.click(within(rowA).getByRole('button', { name: 'Pokaż filmy' }));
-    await user.click(await screen.findByRole('button', { name: 'Aktualizuj playlistę' }));
-
-    expect(await within(rowA).findByText('5 filmów')).toBeInTheDocument();
-    // That channel alone was re-read, and the status too (list.json may be new)
-    expect(refreshed).toEqual(['/videos/a']);
-    expect(statusCalls).toBeGreaterThan(0);
+    expect(await screen.findByText('Film 1')).toBeInTheDocument();
   });
 
   it('re-reads the queue after a download is queued from the expanded section', async () => {
@@ -590,10 +613,59 @@ describe('StatusPage', () => {
     const rowA = (await screen.findByText('/videos/a')).closest('tr') as HTMLElement;
 
     await user.click(within(rowA).getByRole('button', { name: 'Pokaż filmy' }));
-    await user.click(await screen.findByRole('button', { name: 'Pobierz listę filmów' }));
     await screen.findByText('Film 1');
     await user.click(screen.getByRole('button', { name: 'Pobierz' }));
 
+    expect(await within(rowA).findByText('1 czeka', undefined, { timeout: 3000 })).toBeInTheDocument();
+  });
+
+  it('shows the jobs a row action queued in the section it left open', async () => {
+    // The bulk actions moved to the row menu, which queues through the page
+    // and not through the video list's own hook. That hook stops polling once
+    // its queue is idle, so the page has to tell the section to re-read.
+    const user = userEvent.setup();
+    const queuedJob = {
+      id: 'job-1',
+      folderPath: '/videos/a',
+      videoId: 'v1',
+      videoUrl: 'https://yt/v1',
+      type: 'download',
+      status: 'queued',
+      log: [],
+      logLineCount: 0,
+      createdAt: '2026-09-22T07:00:00.000Z',
+    };
+    let queued = false;
+    installFetch({
+      queue: () => json({ jobs: queued ? [queuedJob] : [], total: queued ? 1 : 0, paused: false }),
+      queueSummary: () =>
+        json({
+          paused: false,
+          counts: { queued: queued ? 1 : 0, running: 0, done: 0, error: 0, cancelled: 0 },
+          folders: { '/videos/a': { running: 0, queued: queued ? 1 : 0, failed: 0 } },
+          running: [],
+        }),
+      enqueue: () => {
+        queued = true;
+        return json({ jobs: [queuedJob], skipped: [] });
+      },
+      list: () =>
+        json({
+          videos: [{ id: 'v1', title: 'Film 1', url: 'https://yt/v1' }],
+          downloadStatuses: {},
+          lastUpdatedDates: {},
+        }),
+    });
+    renderPage();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr') as HTMLElement;
+    await user.click(within(rowA).getByRole('button', { name: 'Pokaż filmy' }));
+    await screen.findByText('Film 1');
+
+    await user.click(within(rowA).getByRole('button', { name: 'Więcej akcji' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Pobierz wszystkie' }));
+
+    // The row's own column and the video list below it agree again
+    expect(await screen.findByText('Pobieranie: w kolejce')).toBeInTheDocument();
     expect(await within(rowA).findByText('1 czeka', undefined, { timeout: 3000 })).toBeInTheDocument();
   });
 });

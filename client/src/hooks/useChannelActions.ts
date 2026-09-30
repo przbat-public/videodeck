@@ -10,10 +10,13 @@ import { selectDownloadable, selectDownloaded, selectStale } from '../utils/vide
 export type ChannelAction = 'download' | 'update' | 'update-stale' | 'cancel' | 'playlist';
 
 export interface UseChannelActionsOptions {
-  /** Called after an action changed the queue, so the console can re-read it */
-  onQueueChanged?: () => void | Promise<void>;
-  /** Called after a playlist fetch changed the channel's `list.json` */
-  onListChanged?: () => void | Promise<void>;
+  /**
+   * Called with the folder after an action changed the queue, so the console
+   * can re-read it and pass the change down to the section it has open
+   */
+  onQueueChanged?: (folderPath: string) => void | Promise<void>;
+  /** Called with the folder after a playlist fetch changed its `list.json` */
+  onListChanged?: (folderPath: string) => void | Promise<void>;
 }
 
 export interface UseChannelActionsResult {
@@ -91,7 +94,7 @@ export function useChannelActions(options: UseChannelActionsOptions = {}): UseCh
       if (firstSkipped) {
         toast.error(i18n.t('toast.skipped', { count: result.skipped.length, reason: firstSkipped.reason }));
       }
-      await onQueueChanged?.();
+      await onQueueChanged?.(folderPath);
     },
     [onQueueChanged],
   );
@@ -102,7 +105,7 @@ export function useChannelActions(options: UseChannelActionsOptions = {}): UseCh
         failureMessage: (failure) => failure.message ?? i18n.t('toast.enqueueFailed'),
       });
       toast.success(i18n.t('channelConsole.actions.cancelled'));
-      await onQueueChanged?.();
+      await onQueueChanged?.(folderPath);
     },
     [onQueueChanged],
   );
@@ -119,7 +122,7 @@ export function useChannelActions(options: UseChannelActionsOptions = {}): UseCh
         },
       );
       toast.success(i18n.t('channelConsole.actions.playlistQueued'));
-      await onListChanged?.();
+      await onListChanged?.(folderPath);
     },
     [onListChanged],
   );

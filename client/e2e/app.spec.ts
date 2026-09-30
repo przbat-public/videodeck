@@ -273,7 +273,13 @@ test.describe('video details', () => {
 
 test.describe('status page', () => {
   test('shows the channels and their configuration', async ({ page }) => {
-    await mockApi(page);
+    await mockApi(page, {
+      list: {
+        videos: [{ id: 'e2e-v1', title: 'Film E2E', url: 'https://yt/v1' }],
+        downloadStatuses: {},
+        lastUpdatedDates: {},
+      },
+    });
 
     await page.goto('/download');
 
@@ -284,14 +290,15 @@ test.describe('status page', () => {
       await expect(page.getByRole('columnheader', { name: column })).toBeVisible();
     }
 
-    // The folder's own section (config form, playlist, list) opens under the
-    // row; the config form is reached from the row menu, not a button in here
+    // The folder's own section (config form, video list) opens under the row,
+    // and the list arrives with it; the config form and the playlist are
+    // reached from the row menu, not from buttons in here
     await expandChannel(page);
-    // The row above offers the same playlist action, so the section's own
-    // button is addressed inside the expanded row
     const expanded = page.locator('.channel-expanded-row');
-    await expect(expanded.getByRole('button', { name: 'Pobierz playlistę' })).toBeVisible();
+    await expect(expanded.getByText('Film E2E')).toBeVisible();
     await page.locator('.channel-row').first().getByRole('button', { name: 'Więcej akcji' }).click();
+    // The channel's list.json is there, so the playlist entry leads the menu
+    await expect(page.getByRole('menuitem', { name: 'Aktualizuj playlistę' })).toBeEnabled();
     await page.getByRole('menuitem', { name: 'Edytuj config.json' }).click();
     await expect(page.getByLabel('Adres kanału YouTube:')).toBeVisible();
     // The download page is reachable through the gear menu; the brand link
@@ -361,7 +368,7 @@ test.describe('status page', () => {
 
     await page.goto('/download');
     await expandChannel(page);
-    await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
+    // The rows load with the row itself: no second click between the two
     await expect(page.getByText('Film E2E')).toBeVisible();
 
     const bar = page.getByRole('progressbar');

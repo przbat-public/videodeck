@@ -1,17 +1,15 @@
 import type { ChannelVideo, JobType, QueueJob } from '@videodeck/shared/api';
 import { FolderListResponseSchema } from '@videodeck/shared/schemas';
-import type { JSX, Ref } from 'react';
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import type { JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 import { List, type RowComponentProps, useDynamicRowHeight, useListRef } from 'react-window';
 import { useDownloadQueue } from '../hooks/useDownloadQueue';
 import { apiGet } from '../utils/apiClient';
 import { logError } from '../utils/logError';
-import { selectDownloadable, selectDownloaded, selectStale } from '../utils/videoSelection';
 import { ErrorMessage } from './ui/ErrorMessage';
 import { VideoItem } from './VideoItem';
-import { VideoListHeader } from './VideoListHeader';
 
 /**
  * Starting estimate for a row. The real height depends on the title and on
@@ -31,23 +29,29 @@ const ROW_PROPS = {};
 interface VideoListSectionProps {
   folderPath: string;
   listExists: boolean;
+  /**
+   * Bumped by the page when something outside this section queued or
+   * cancelled work for the folder (the console row's bulk actions). The poll
+   * below runs only while the section sees active jobs, so an idle section
+   * needs to be told that its folder's queue moved.
+   */
+  queueRevision?: number;
   /** A job was queued or cancelled here; the console re-reads the whole queue */
   onQueueChanged?: () => void;
 }
 
-export interface VideoListSectionHandle {
-  loadVideos: () => Promise<void>;
-}
-
 /**
- * React 19 passes `ref` as a regular prop — no forwardRef wrapper needed.
+ * A channel's videos with their download state, loaded as soon as the section
+ * opens: the console's "show videos" toggle is the whole gesture, and the list
+ * it promises is already there when the rows render. A folder without a
+ * `list.json` has nothing to show and renders nothing at all.
  */
 export function VideoListSection({
   folderPath,
   listExists,
+  queueRevision = 0,
   onQueueChanged,
-  ref,
-}: VideoListSectionProps & { ref?: Ref<VideoListSectionHandle> }): JSX.Element | null {
+}: VideoListSectionProps): JSX.Element | null {
   const [videos, setVideos] = useState<ChannelVideo[]>([]);
   const [downloadStatuses, setDownloadStatuses] = useState<Record<string, boolean>>({});
   const [lastUpdatedDates, setLastUpdatedDates] = useState<Record<string, string>>({});
@@ -77,11 +81,9 @@ export function VideoListSection({
     setHasLoadedVideos(true);
   }, [folderPath, t]);
 
-  // Visible reload (spinner), used by the parent and on demand
+  // Visible reload (spinner): the section runs it on open, and the drained
+  // queue runs it again to pick up the exact dates the server wrote
   const loadVideos = useCallback(async () => {
-    if (!listExists) {
-      return;
-    }
     try {
       setIsLoadingVideos(true);
       setVideosError(null);
@@ -93,7 +95,19 @@ export function VideoListSection({
     } finally {
       setIsLoadingVideos(false);
     }
-  }, [fetchList, listExists, t]);
+  }, [fetchList, t]);
+
+  // The console's "show videos" toggle opens this section, which is the same
+  // decision as loading the list: the rows arrive on their own instead of
+  // behind a second button. Re-runs when the folder changes (loadVideos
+  // depends on it) and when a playlist fetch turns a missing list into a real
+  // one under an already open row.
+  useEffect(() => {
+    if (listExists) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mount fetch, the update lands after the await (see the rule note in eslint.config.mjs)
+      void loadVideos();
+    }
+  }, [listExists, loadVideos]);
 
   // When a job finishes, reflect it locally right away; the queue-drained
   // callback re-syncs exact dates from the server.
@@ -118,10 +132,8 @@ export function VideoListSection({
   // members directly instead of the whole (freshly created) queue object
   const {
     jobs,
-    activeCount,
-    hasActive,
     error: queueError,
-    cancelAll,
+    refresh,
     enqueue,
     cancel,
     jobsByVideoId,
@@ -131,6 +143,17 @@ export function VideoListSection({
     onQueueDrained: handleQueueDrained,
     onQueueChanged: handleQueueChanged,
   });
+
+  // A row action in the console queued work for this folder: read the jobs the
+  // section did not create. The ref keeps the mount fetch from running twice.
+  const seenQueueRevisionRef = useRef(queueRevision);
+  useEffect(() => {
+    if (queueRevision === seenQueueRevisionRef.current) {
+      return;
+    }
+    seenQueueRevisionRef.current = queueRevision;
+    void refresh();
+  }, [queueRevision, refresh]);
 
   // Reset per-folder state when the folder or the existence of list.json
   // changes. Adjusted during render (React docs pattern) instead of in an
@@ -145,8 +168,6 @@ export function VideoListSection({
     setVideosError(null);
     setHasLoadedVideos(false);
   }
-
-  useImperativeHandle(ref, () => ({ loadVideos }), [loadVideos]);
 
   const enqueueVideos = useCallback(
     async (items: ChannelVideo[], type: JobType) => {
@@ -240,93 +261,34 @@ export function VideoListSection({
     }
   }, [runningJobVideoId, rows, listRef]);
 
-  // The three selections the bulk buttons work on. The rules live in
-  // utils/videoSelection so the console's row actions cannot drift from them.
-  const downloadable = useMemo(() => selectDownloadable(videos, downloadStatuses), [videos, downloadStatuses]);
-  const downloaded = useMemo(() => selectDownloaded(videos, downloadStatuses), [videos, downloadStatuses]);
-  const stale = useMemo(
-    () => selectStale(videos, downloadStatuses, lastUpdatedDates),
-    [videos, downloadStatuses, lastUpdatedDates],
-  );
-
-  // Bulk actions on big channels arm a confirmation first: one misclick used
-  // to enqueue hundreds of downloads.
-  const BULK_CONFIRM_THRESHOLD = 50;
-  const [armedBulk, setArmedBulk] = useState<null | 'download' | 'update' | 'update-old'>(null);
-  const armedTimerRef = useRef<number | null>(null);
-  useEffect(() => {
-    return () => {
-      if (armedTimerRef.current !== null) {
-        window.clearTimeout(armedTimerRef.current);
-      }
-    };
-  }, []);
-
-  const requestBulk = (action: 'download' | 'update' | 'update-old') => {
-    const items = action === 'download' ? downloadable : action === 'update' ? downloaded : stale;
-    if (items.length === 0) {
-      return;
-    }
-    if (items.length >= BULK_CONFIRM_THRESHOLD && armedBulk !== action) {
-      setArmedBulk(action);
-      if (armedTimerRef.current !== null) {
-        window.clearTimeout(armedTimerRef.current);
-      }
-      armedTimerRef.current = window.setTimeout(() => setArmedBulk(null), 5000);
-      return;
-    }
-    setArmedBulk(null);
-    enqueueVideos(items, action === 'download' ? 'download' : 'update');
-  };
-
   // Don't render anything if list doesn't exist
   if (listExists !== true) {
     return null;
   }
 
-  const notDownloadedCount = downloadable.length;
-  const downloadedCount = downloaded.length;
-  const notUpdatedCount = stale.length;
-  const runningCount = jobs.filter((job) => job.status === 'running').length;
-  const queuedCount = activeCount - runningCount;
-
   return (
-    <div className="videos-list-section">
+    <>
       {videosError && <ErrorMessage compact>{t('app.error', { message: videosError })}</ErrorMessage>}
       {queueError && <ErrorMessage compact>{t('queue.queueError', { message: queueError })}</ErrorMessage>}
       {isLoadingVideos ? (
         <p>{t('queue.loadingVideos')}</p>
       ) : videos.length > 0 ? (
-        <div className="videos-list">
-          <VideoListHeader
-            videosCount={videos.length}
-            notDownloadedCount={notDownloadedCount}
-            downloadedCount={downloadedCount}
-            notUpdatedCount={notUpdatedCount}
-            runningCount={runningCount}
-            queuedCount={queuedCount}
-            hasActive={hasActive}
-            armedBulk={armedBulk}
-            onDownloadAll={() => requestBulk('download')}
-            onUpdateOld={() => requestBulk('update-old')}
-            onUpdateAll={() => requestBulk('update')}
-            onCancelAll={() => void cancelAll().catch(() => undefined)}
-          />
-          <div className="videos-list-items">
-            <List
-              listRef={listRef}
-              rowCount={rows.length}
-              rowHeight={rowHeight}
-              rowKey={(index) => rows[index]?.id ?? `index-${index}`}
-              rowProps={ROW_PROPS}
-              overscanCount={8}
-              rowComponent={renderRow}
-            />
-          </div>
-        </div>
+        // The expanded cell is the surface these rows sit on, so the list is
+        // the scroll viewport and nothing else: react-window paints its items
+        // straight into it, one element below the cell
+        <List
+          className="videos-list"
+          listRef={listRef}
+          rowCount={rows.length}
+          rowHeight={rowHeight}
+          rowKey={(index) => rows[index]?.id ?? `index-${index}`}
+          rowProps={ROW_PROPS}
+          overscanCount={8}
+          rowComponent={renderRow}
+        />
       ) : hasLoadedVideos ? (
         <p>{t('queue.emptyList')}</p>
       ) : null}
-    </div>
+    </>
   );
 }

@@ -111,7 +111,6 @@ async function folderListPage(page: Page): Promise<void> {
   );
   await page.goto('/download');
   await expandChannel(page);
-  await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
   await page.getByText('Pobrany dawno temu').waitFor();
 }
 
@@ -399,50 +398,25 @@ test.describe('reported layout defects', () => {
     expect(box.height).toBeGreaterThanOrEqual(44);
   });
 
-  test('the folder list header stacks the bulk buttons under the counts and keeps the queue summary inline', async ({
-    page,
-  }) => {
-    // The header put the buttons next to the counts whenever the row was wide
-    // enough, and the queue summary sat on its own line under the counts.
-    // Wanted the other way round: the counts and the queue summary share one
-    // line, the buttons always start under them.
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await folderListPage(page);
-    const section = page.locator('.channel-expanded-row');
-    const layout = await section.locator('.videos-list-header').evaluate((header) => {
-      const count = header.querySelector('.videos-count');
-      const summary = header.querySelector('.queue-summary');
-      const buttons = header.querySelector('.videos-list-buttons');
-      const firstText = count?.firstChild;
-      if (!count || !summary || !buttons || !(firstText instanceof Text)) {
-        return null;
-      }
-      const range = document.createRange();
-      range.selectNodeContents(firstText);
-      const firstLine = range.getBoundingClientRect();
-      return {
-        summaryTop: summary.getBoundingClientRect().top,
-        firstLineTop: firstLine.top,
-        countBottom: count.getBoundingClientRect().bottom,
-        buttonsTop: buttons.getBoundingClientRect().top,
-      };
-    });
-    expect(layout).not.toBeNull();
-    expect(layout?.buttonsTop ?? 0).toBeGreaterThanOrEqual(layout?.countBottom ?? Number.POSITIVE_INFINITY);
-    expect(Math.abs((layout?.summaryTop ?? 0) - (layout?.firstLineTop ?? 0))).toBeLessThan(1);
-  });
-
-  test('the video list sits half a rhythm under the playlist actions, with no divider', async ({ page }) => {
+  test('the videos sit on the row surface, half a rhythm under it, with no card', async ({ page }) => {
     // The section opened with a 1.5rem margin, 1.5rem padding and a border
     // line above it: three rhythms of air inside a row that already sits in
-    // the table. A 0.5rem margin is all that separates it now.
+    // the table. A 0.5rem margin is all that separates it from the row now,
+    // and the cell itself is the surface: an inner card framed nothing.
     await page.setViewportSize({ width: 1280, height: 720 });
     await folderListPage(page);
-    const spacing = await page.locator('.videos-list-section').evaluate((el) => {
+    const spacing = await page.locator('.videos-list').evaluate((el) => {
       const style = getComputedStyle(el);
       return { marginTop: style.marginTop, paddingTop: style.paddingTop, borderTopWidth: style.borderTopWidth };
     });
     expect(spacing).toEqual({ marginTop: '8px', paddingTop: '0px', borderTopWidth: '0px' });
+
+    const cell = await page.locator('.channel-expanded-row > td').evaluate((el) => ({
+      background: getComputedStyle(el).backgroundColor,
+      listIsDirectChild: el.firstElementChild?.getAttribute('role') === 'list',
+    }));
+    expect(cell.background).toBe('rgb(255, 255, 255)');
+    expect(cell.listIsDirectChild).toBe(true);
   });
 });
 
@@ -510,7 +484,6 @@ test.describe('long unbroken content', () => {
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto('/download');
     await expandChannel(page);
-    await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
     await page.getByText(unbroken.slice(0, 40)).waitFor();
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
@@ -578,7 +551,6 @@ test.describe('long unbroken content', () => {
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto('/download');
     await expandChannel(page);
-    await page.getByRole('button', { name: 'Pobierz listę filmów' }).click();
     await page.getByText(log[19] ?? '').waitFor();
 
     const rows = page.locator('.video-item');
@@ -588,20 +560,5 @@ test.describe('long unbroken content', () => {
     expect(second).not.toBeNull();
     const overlap = (second?.y ?? 0) - ((first?.y ?? 0) + (first?.height ?? 0));
     expect(overlap).toBeGreaterThanOrEqual(-1);
-  });
-
-  test('the folder list header wraps its four bulk buttons on a phone', async ({ page }) => {
-    // The header row had no flex-wrap, so the buttons next to the counts ran
-    // past the right edge of a 360px screen. The old guard missed it because
-    // it mocked an empty list, which renders no buttons at all.
-    await page.setViewportSize({ width: 360, height: 800 });
-    await folderListPage(page);
-    // The console row carries a "Pobierz wszystkie" of its own, so the header
-    // buttons are addressed inside the expanded row.
-    const section = page.locator('.channel-expanded-row');
-    for (const name of ['Pobierz wszystkie', 'Aktualizuj stare', 'Aktualizuj wszystkie', 'Anuluj wszystko']) {
-      await expect(section.getByRole('button', { name })).toBeVisible();
-    }
-    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
 });

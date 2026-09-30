@@ -3,7 +3,7 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { folderConfig } from '@videodeck/test-infra/deepServerTestEnv';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { channelRow, folderSection } from './drivers/statusDrivers';
+import { channelRow, fetchPlaylist, folderSection } from './drivers/statusDrivers';
 import type { RenderedApp } from './render-app';
 import { renderApp } from './render-app';
 import { startBackend, stopBackend } from './test-env';
@@ -72,11 +72,11 @@ describe('yt-dlp hardening journey — the console cannot reach a command', () =
 
   it('pulls the channel playlist from a folder with a planted yt-dlp.conf', async () => {
     const page = await renderApp('/download');
-    const section = await folderSection(folderPath);
 
-    await page.user.click(within(section).getByRole('button', { name: 'Pobierz playlistę' }));
-    await within(section).findByText(/Plik list\.json już istnieje/);
-    await page.user.click(within(section).getByRole('button', { name: 'Pobierz listę filmów' }));
+    // The row menu leads with the playlist fetch, and the list.json it writes
+    // is what lets the row open onto the videos it holds
+    await fetchPlaylist(page.user, folderPath);
+    const section = await folderSection(folderPath);
     await within(section).findByText('Fake playlist video 1');
 
     // The fake refuses to run when a config file would have been loaded, so

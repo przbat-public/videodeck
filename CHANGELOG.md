@@ -693,6 +693,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gear menu shows the folder counter, and the rebuild's toast says the indices
   it left are empty and need a refresh
 
+### Changed
+
+- **"Pokaż filmy" is one click to a loaded list**: the toggle on a channel row
+  means "show the videos" and nothing else now, so the list loads with the row
+  and the "Pobierz listę filmów" button is gone. A channel without `list.json`
+  has no videos to show, so its toggle is disabled and names the reason on
+  hover, and the fetch that creates the file ("Pobierz playlistę", or
+  "Aktualizuj playlistę" once it is there) leads the row's ⋯ menu above a
+  divider, ahead of the bulk actions. The playlist block that used to sit under
+  the row is gone with its status text and its own buttons
+- **An open channel is down to its rows**: the four bulk buttons and the tally
+  line above the videos duplicated the ⋯ menu and the console row's own columns,
+  so both sections are gone, and the videos now sit on the expanded cell itself.
+  That cell is the surface they read on, no inner card frames them, and each
+  video keeps its Pobierz or Aktualizuj control
+- A playlist fetch drops the cached `/api/status` body and the cached folder
+  counts. The console reads both to decide whether a row can open and what it
+  holds, and the server kept each for five seconds, so a row whose playlist the
+  reader had just fetched stayed shut and counted zero until the window lapsed
+
 ## [1.0.0] - 2026-09-14
 
 First public release.
