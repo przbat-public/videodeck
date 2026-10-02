@@ -1,6 +1,6 @@
 ---
 name: git-workflow-and-versioning
-description: Applies videodeck's branch → PR → squash-merge discipline: atomic commits, commit-as-savepoint, change sizing and English-only history. Use for every code change in this repo.
+description: "Applies videodeck's branch → PR → squash-merge discipline: atomic commits, commit-as-savepoint, change sizing and English-only history. Use for every code change in this repo."
 user-invocable: true
 ---
 

@@ -733,6 +733,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server coverage ratchet no longer counts `src/index.ts`, the process entry
   point no unit test can reach without spawning a server, which lifts the floors
   by roughly a point
+- Four repo skills were unreachable because their frontmatter descriptions
+  carried an unquoted colon. A YAML parser reads that as a nested mapping and
+  refuses the file, so the skill tool answered "unknown or no longer available"
+  for skills its own catalog listed, among them the security and migration
+  playbooks. The descriptions are quoted now, and a repo-invariant check rejects
+  the shape so it cannot come back
 
 ## [1.0.0] - 2026-09-14
 

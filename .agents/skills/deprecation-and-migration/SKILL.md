@@ -1,6 +1,6 @@
 ---
 name: deprecation-and-migration
-description: Treats videodeck code as a liability: planned deprecation, migration patterns and zombie code removal for old APIs, config keys and dependency major bumps. Use when removing systems or sunsetting behavior.
+description: "Treats videodeck code as a liability: planned deprecation, migration patterns and zombie code removal for old APIs, config keys and dependency major bumps. Use when removing systems or sunsetting behavior."
 user-invocable: true
 ---
 

@@ -6,6 +6,7 @@ name: Nightly order randomisation
 #
 # Local equivalents (seeds as used here):
 #   cd server && pnpm run test --sequence.shuffle.tests --sequence.seed=9137
+#   cd server && pnpm run test --sequence.shuffle.tests          # the fresh seed
 #   cd client && pnpm run test:run --sequence.shuffle.tests --sequence.seed=9137
 #   cd client && pnpm run test:integration --sequence.shuffle.tests --sequence.seed=9137
 #
@@ -14,6 +15,12 @@ name: Nightly order randomisation
 # 679 tests, client unit and client integration 25 tests, each with the seed
 # below. A red run is therefore a real order dependency that arrived with a
 # change, not a baseline to ignore, and it is paid down before the next one.
+#
+# The server also gets a job with no pinned seed. A fixed seed exercises exactly
+# one order forever, and the port to Vitest showed how much that leaves on the
+# table: the pinned order was green while a different one found two tests that
+# depended on their neighbours. Vitest prints the seed it drew ("Running tests
+# with seed ..."), so a fresh-seed failure is still reproducible from the log.
 
 on:
   schedule:
@@ -50,6 +57,24 @@ jobs:
       - name: Server unit tests in a random order
         working-directory: server
         run: pnpm run test --sequence.shuffle.tests --sequence.seed=9137
+
+  server-random-order-fresh-seed:
+    name: Server unit tests (random order, fresh seed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The token is not needed after the clone; leaving it in .git/config
+          # would let a later build step push with it.
+          persist-credentials: false
+      - uses: ./.github/actions/pnpm-setup
+      # No seed here on purpose: vitest draws one, prints it in the run
+      # ("Running tests with seed ..."), and the next night draws another. The
+      # job above stays for the failure it can reproduce with one command.
+      - name: Server unit tests in a fresh random order
+        working-directory: server
+        run: pnpm run test --sequence.shuffle.tests
 
   client-random-order:
     name: Client unit tests (random order)
