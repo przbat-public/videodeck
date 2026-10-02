@@ -1,6 +1,6 @@
 ---
 name: incremental-implementation
-description: Builds videodeck changes as thin vertical slices: implement, test, verify, commit, then the next slice. Use for any change touching more than one file or package.
+description: "Builds videodeck changes as thin vertical slices: implement, test, verify, commit, then the next slice. Use for any change touching more than one file or package."
 user-invocable: true
 ---
 
