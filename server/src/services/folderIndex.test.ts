@@ -37,13 +37,13 @@ describe('folderIndex', () => {
 
   beforeEach(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'folder-index-'));
-    jest.spyOn(console, 'error').mockImplementation(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {
       /* silence expected error logs */
     });
   });
 
   afterEach(async () => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
     await fs.rm(dir, { recursive: true, force: true });
   });
 
@@ -199,7 +199,7 @@ describe('folderIndex', () => {
       // The index is a file on the video folder, which is a network share as
       // often as it is a local disk, and a stem with a separator reaches
       // yt-dlp's -o template. Every entry is checked where it is read.
-      const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {
         /* the drop is the assertion */
       });
       const entryFor = (baseName: string) => ({

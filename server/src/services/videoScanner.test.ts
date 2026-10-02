@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises';
+import type { Mock, Mocked } from 'vitest';
 import * as config from '../config';
 import { at } from '../test-utils';
 import type { VideoDocument } from './elasticsearchService';
@@ -17,24 +18,27 @@ import {
   refreshVideosCache,
 } from './videoScanner';
 
-jest.mock('node:fs/promises');
-jest.mock('../config');
-jest.mock('./elasticsearchService', () => {
-  const actual = jest.requireActual('./elasticsearchService');
-  return {
-    ...jest.createMockFromModule<typeof import('./elasticsearchService')>('./elasticsearchService'),
-    // pure helpers keep their real implementation
-    toDocument: actual.toDocument,
-    fromDocument: actual.fromDocument,
-    estimateDocumentBytes: actual.estimateDocumentBytes,
-  };
+vi.mock('node:fs/promises');
+vi.mock('../config');
+// Vitest has no createMockFromModule: the bare mock replaces every export of
+// the service with a spy, and the real document helpers are put back below.
+vi.mock('./elasticsearchService');
+
+/**
+ * The real module behind the automock. `vi.importActual` returns a promise, so
+ * the capture moves into a hook and the three pure helpers keep their real
+ * implementation through the spy that the automock installed in their place.
+ */
+let realEs: typeof import('./elasticsearchService');
+beforeAll(async () => {
+  realEs = await vi.importActual<typeof import('./elasticsearchService')>('./elasticsearchService');
 });
 
-const mockedFs = fs as jest.Mocked<typeof fs>;
+const mockedFs = fs as Mocked<typeof fs>;
 /** The scanner only uses the `readdir(path) → string[]` overload */
-const readdirMock = mockedFs.readdir as unknown as jest.Mock<Promise<string[]>, [string]>;
-const mockedConfig = config as jest.Mocked<typeof config>;
-const mockedEs = elasticsearchService as jest.Mocked<typeof elasticsearchService>;
+const readdirMock = mockedFs.readdir as unknown as Mock<(path: string) => Promise<string[]>>;
+const mockedConfig = config as Mocked<typeof config>;
+const mockedEs = elasticsearchService as Mocked<typeof elasticsearchService>;
 
 const FOLDER = '/test/videos';
 const NEW_INDEX = 'videos_abc_20250101000000000';
@@ -52,14 +56,18 @@ function mockFolder(files: string[], infoJson: Record<string, unknown> = { title
 
 describe('videoScanner', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, 'log').mockImplementation(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {
       /* silence expected info logs */
     });
-    jest.spyOn(console, 'error').mockImplementation(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {
       /* silence expected error logs */
     });
 
+    // pure helpers keep their real implementation
+    mockedEs.toDocument.mockImplementation(realEs.toDocument);
+    mockedEs.fromDocument.mockImplementation(realEs.fromDocument);
+    mockedEs.estimateDocumentBytes.mockImplementation(realEs.estimateDocumentBytes);
     mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
     mockedEs.checkElasticsearchConnection.mockResolvedValue(true);
     mockedEs.createIndexVersion.mockResolvedValue(NEW_INDEX);
@@ -73,7 +81,7 @@ describe('videoScanner', () => {
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe('getVideos', () => {
@@ -296,7 +304,9 @@ describe('videoScanner', () => {
     });
 
     it('parses a real yt-dlp info.json fixture', async () => {
-      const realFs = jest.requireActual('fs/promises') as typeof import('fs/promises');
+      const realFs = (await vi.importActual<typeof import('fs/promises')>(
+        'fs/promises',
+      )) as typeof import('fs/promises');
       const info = await realFs.readFile(`${__dirname}/../test/fixtures/ytdlp-info.json`, 'utf-8');
       mockedFs.readFile.mockResolvedValue(info);
 

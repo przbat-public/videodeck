@@ -1,23 +1,24 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import type { MockInstance } from 'vitest';
 import { removePartialDownloads, writeTextAtomic } from './fsUtils';
 
 describe('removePartialDownloads', () => {
   let dir: string;
-  let consoleWarnSpy: jest.SpyInstance;
+  let consoleWarnSpy: MockInstance;
 
   const write = (name: string) => fs.writeFile(path.join(dir, name), 'x');
 
   beforeEach(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'partials-'));
-    consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {
       /* silence expected warnings */
     });
   });
 
   afterEach(async () => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
     await fs.rm(dir, { recursive: true, force: true });
   });
 
@@ -62,7 +63,7 @@ describe('removePartialDownloads', () => {
 
   it('keeps going when a single unlink fails', async () => {
     await write('other.ytdl');
-    const unlink = jest.spyOn(fs, 'unlink').mockRejectedValueOnce(new Error('busy'));
+    const unlink = vi.spyOn(fs, 'unlink').mockRejectedValueOnce(new Error('busy'));
     await write('video.mp4.part');
 
     await removePartialDownloads(dir, ['video.mp4', 'other.mp4']);

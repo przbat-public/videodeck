@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { QueueJob } from '@videodeck/shared/api';
+import type { Mock, MockedFunction, MockInstance } from 'vitest';
 import { at } from '../test-utils';
 import { removePartialDownloads, writeTextAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
@@ -19,32 +20,39 @@ import { refreshIndex } from './folderIndex';
 import { indexVideosFromDisk } from './videoScanner';
 import { buildFormatSelector, buildYtDlpArgs, escapeOutputTemplate, PROGRESS_TEMPLATE } from './ytdlp';
 
-jest.mock('./folderIndex', () => ({
-  ...jest.requireActual('./folderIndex'),
-  refreshIndex: jest.fn(),
+vi.mock('./folderIndex', async () => ({
+  ...(await vi.importActual<typeof import('./folderIndex')>('./folderIndex')),
+  refreshIndex: vi.fn(),
 }));
-jest.mock('./videoScanner', () => ({
-  indexVideosFromDisk: jest.fn(),
+vi.mock('./videoScanner', () => ({
+  indexVideosFromDisk: vi.fn(),
 }));
-jest.mock('../utils/fsUtils', () => ({
-  ...jest.requireActual('../utils/fsUtils'),
-  removePartialDownloads: jest.fn(),
-  writeTextAtomic: jest.fn(),
+vi.mock('../utils/fsUtils', async () => ({
+  ...(await vi.importActual<typeof import('../utils/fsUtils')>('../utils/fsUtils')),
+  removePartialDownloads: vi.fn(),
+  writeTextAtomic: vi.fn(),
 }));
 
-const realWriteTextAtomic = jest.requireActual<typeof import('../utils/fsUtils')>('../utils/fsUtils').writeTextAtomic;
-const realRemovePartialDownloads =
-  jest.requireActual<typeof import('../utils/fsUtils')>('../utils/fsUtils').removePartialDownloads;
+/**
+ * The real writers behind the two spies above. `vi.importActual` returns a
+ * promise, so the capture of the unmocked module moves into a hook: the tests that want the real sweep and the real
+ * atomic write put them back with `mockImplementation`, and the rest keep a
+ * spy that does nothing.
+ */
+let realFsUtils: typeof import('../utils/fsUtils');
+beforeAll(async () => {
+  realFsUtils = await vi.importActual<typeof import('../utils/fsUtils')>('../utils/fsUtils');
+});
 
-const mockedRefreshIndex = refreshIndex as jest.MockedFunction<typeof refreshIndex>;
-const mockedIndexVideosFromDisk = indexVideosFromDisk as jest.MockedFunction<typeof indexVideosFromDisk>;
-const mockedRemovePartialDownloads = removePartialDownloads as jest.MockedFunction<typeof removePartialDownloads>;
-const mockedWriteTextAtomic = writeTextAtomic as jest.MockedFunction<typeof writeTextAtomic>;
+const mockedRefreshIndex = refreshIndex as MockedFunction<typeof refreshIndex>;
+const mockedIndexVideosFromDisk = indexVideosFromDisk as MockedFunction<typeof indexVideosFromDisk>;
+const mockedRemovePartialDownloads = removePartialDownloads as MockedFunction<typeof removePartialDownloads>;
+const mockedWriteTextAtomic = writeTextAtomic as MockedFunction<typeof writeTextAtomic>;
 
 class FakeProcess extends EventEmitter implements SpawnedProcess {
   stdout = new EventEmitter();
   stderr = new EventEmitter();
-  kill = jest.fn((signal?: NodeJS.Signals) => {
+  kill = vi.fn((signal?: NodeJS.Signals) => {
     // simulate the OS closing the process shortly after SIGTERM
     setImmediate(() => this.emit('close', signal === 'SIGTERM' ? null : 0));
     return true;
@@ -68,7 +76,7 @@ interface SpawnCall {
 
 function createFakeSpawn() {
   const calls: SpawnCall[] = [];
-  const spawnFn = jest.fn((command: string, args: string[], options: { cwd: string }) => {
+  const spawnFn = vi.fn((command: string, args: string[], options: { cwd: string }) => {
     const process = new FakeProcess();
     calls.push({ command, args, cwd: options.cwd, process });
     return process;
@@ -113,14 +121,14 @@ describe('indexChangedVideos', () => {
   const job: QueueJob = { ...jobWithoutStart, startedAt: '2025-01-01T10:05:00.000Z' };
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, 'log').mockImplementation(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {
       /* silence the job-progress info logs */
     });
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('refreshes the folder index from the job start and indexes the changed videos in Elasticsearch', async () => {
@@ -148,7 +156,7 @@ describe('indexChangedVideos', () => {
   });
 
   it('retries changed-video indexing in the background when the batch did not land', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     try {
       mockedRefreshIndex.mockResolvedValue({
         index: {
@@ -166,22 +174,22 @@ describe('indexChangedVideos', () => {
       await expect(indexChangedVideos(job)).resolves.toBeUndefined();
 
       mockedIndexVideosFromDisk.mockResolvedValue(1);
-      await jest.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(30_000);
 
       expect(mockedIndexVideosFromDisk).toHaveBeenCalledTimes(2);
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
       clearIndexRetries();
     }
   });
 
   it('logs a warning instead of letting a rejected index retry escape', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const unhandled: unknown[] = [];
     const onUnhandled = (reason: unknown) => unhandled.push(reason);
     process.on('unhandledRejection', onUnhandled);
     try {
-      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
         /* the retry warning is the assertion */
       });
       mockedRefreshIndex.mockResolvedValue({
@@ -200,7 +208,7 @@ describe('indexChangedVideos', () => {
       // swallows its own failures), and a bare `void promise.then(…)` would
       // turn that into an unhandled rejection.
       mockedIndexVideosFromDisk.mockRejectedValue(new Error('Elasticsearch is down'));
-      await jest.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(30_000);
 
       expect(warn).toHaveBeenCalledWith(
         expect.stringContaining('Retry indexing 1 videos in /videos/channel-a failed: Elasticsearch is down'),
@@ -208,13 +216,13 @@ describe('indexChangedVideos', () => {
       expect(unhandled).toEqual([]);
     } finally {
       process.off('unhandledRejection', onUnhandled);
-      jest.useRealTimers();
+      vi.useRealTimers();
       clearIndexRetries();
     }
   });
 
   it('does not schedule a retry when every changed video was indexed', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     try {
       mockedRefreshIndex.mockResolvedValue({
         index: {
@@ -228,11 +236,11 @@ describe('indexChangedVideos', () => {
       mockedIndexVideosFromDisk.mockResolvedValue(1);
 
       await indexChangedVideos(job);
-      await jest.advanceTimersByTimeAsync(600_000);
+      await vi.advanceTimersByTimeAsync(600_000);
 
       expect(mockedIndexVideosFromDisk).toHaveBeenCalledTimes(1);
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
       clearIndexRetries();
     }
   });
@@ -405,20 +413,20 @@ describe('buildYtDlpArgs', () => {
 
 describe('DownloadQueue', () => {
   let spawn: ReturnType<typeof createFakeSpawn>;
-  let afterJob: jest.Mock<Promise<void>, [QueueJob]>;
+  let afterJob: Mock<(job: QueueJob) => Promise<void>>;
   let queue: DownloadQueue;
-  let consoleErrorSpy: jest.SpyInstance;
+  let consoleErrorSpy: MockInstance;
 
   /** n-th spawned yt-dlp process (fails the test when there is none) */
   const spawned = (index = 0): SpawnCall => at(spawn.calls, index);
 
   beforeEach(() => {
-    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {
       /* silence expected error logs */
     });
     mockedRemovePartialDownloads.mockClear();
     spawn = createFakeSpawn();
-    afterJob = jest.fn().mockResolvedValue(undefined);
+    afterJob = vi.fn().mockResolvedValue(undefined);
     queue = new DownloadQueue({
       maxConcurrent: 2,
       maxConcurrentUpdates: 3,
@@ -435,7 +443,7 @@ describe('DownloadQueue', () => {
   const statuses = () => queue.list().map((job) => [job.videoId, job.status]);
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('starts a job immediately with yt-dlp in the folder as cwd', () => {
@@ -859,18 +867,18 @@ describe('DownloadQueue', () => {
 
     /** Let the fake clock deliver every due timer, immediate and microtask */
     const settle = async (): Promise<void> => {
-      await jest.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(0);
     };
 
     /** Run the whole jittered backoff out, then let the retry start */
     const waitOutBackoff = async (): Promise<void> => {
-      await jest.advanceTimersByTimeAsync(RETRY_BACKOFF_CEILING_MS);
+      await vi.advanceTimersByTimeAsync(RETRY_BACKOFF_CEILING_MS);
       await settle();
     };
 
     let retryQueue: DownloadQueue;
     beforeEach(() => {
-      jest.useFakeTimers();
+      vi.useFakeTimers();
       retryQueue = new DownloadQueue({
         maxConcurrent: 1,
         maxAttempts: 3,
@@ -882,8 +890,8 @@ describe('DownloadQueue', () => {
 
     afterEach(() => {
       // A backoff a test left pending must not fire into the next one.
-      jest.clearAllTimers();
-      jest.useRealTimers();
+      vi.clearAllTimers();
+      vi.useRealTimers();
     });
 
     it('retries a failed run and succeeds on the second attempt', async () => {
@@ -1043,7 +1051,7 @@ describe('DownloadQueue', () => {
     const enqueued = queue.enqueue([request('a'), request('b')]);
     const child = spawned(0).process;
     // SIGTERM was sent, but the process is still merging: it has not closed yet
-    child.kill = jest.fn(() => true);
+    child.kill = vi.fn(() => true);
 
     expect(queue.cancel(at(enqueued, 0).id)).toBe(true);
 
@@ -1059,7 +1067,7 @@ describe('DownloadQueue', () => {
 
   it('sweeps only the partial files of the cancelled job, not the next job ones', async () => {
     const folderPath = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-cancel-'));
-    mockedRemovePartialDownloads.mockImplementation(realRemovePartialDownloads);
+    mockedRemovePartialDownloads.mockImplementation(realFsUtils.removePartialDownloads);
     try {
       const enqueued = queue.enqueue([request('a', { folderPath }), request('b', { folderPath })]);
       // yt-dlp announces the file it is writing before it starts writing
@@ -1082,7 +1090,7 @@ describe('DownloadQueue', () => {
 
   it('sweeps the partial files of a destination line split across two chunks', async () => {
     const folderPath = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-cancel-split-'));
-    mockedRemovePartialDownloads.mockImplementation(realRemovePartialDownloads);
+    mockedRemovePartialDownloads.mockImplementation(realFsUtils.removePartialDownloads);
     try {
       const enqueued = queue.enqueue([request('a', { folderPath }), request('b', { folderPath })]);
       const child = spawned(0).process;
@@ -1110,7 +1118,7 @@ describe('DownloadQueue', () => {
     const IDLE_TIMEOUT_MS = 1000;
     const WATCHDOG_CHECK_MS = IDLE_TIMEOUT_MS / 4;
 
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     try {
       const watchdogQueue = new DownloadQueue({
         maxConcurrent: 1,
@@ -1126,26 +1134,26 @@ describe('DownloadQueue', () => {
       // the process group. The window is advanced on the fake clock, so the
       // assertion lands on the kill the watchdog made, not on a poll that
       // happened to see it.
-      await jest.advanceTimersByTimeAsync(IDLE_TIMEOUT_MS + WATCHDOG_CHECK_MS);
+      await vi.advanceTimersByTimeAsync(IDLE_TIMEOUT_MS + WATCHDOG_CHECK_MS);
       expect(spawned().process.kill.mock.calls.some(([signal]) => signal === 'SIGTERM')).toBe(true);
 
       // The SIGTERM closes the process with a null code and the queue retries
       // the job like any transient failure, after the jittered backoff.
-      await jest.advanceTimersByTimeAsync(100);
-      await jest.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(0);
 
       expect(watchdogQueue.get(job.id)?.status).toBe('running');
       expect(spawn.calls.length).toBe(2);
       // The hung attempt must not have run the success hook
       expect(afterJob).not.toHaveBeenCalled();
     } finally {
-      jest.clearAllTimers();
-      jest.useRealTimers();
+      vi.clearAllTimers();
+      vi.useRealTimers();
     }
   });
 
   it('does not kill a healthy job when the watchdog timeouts are not positive', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     try {
       // This test's fake process closes the moment it is killed. The usual
       // deferred close would leave a zero-delay watchdog interval firing
@@ -1153,7 +1161,7 @@ describe('DownloadQueue', () => {
       // instead of failing the assertion below.
       const closeOnKill = (command: string, args: string[], options: { cwd: string }): FakeProcess => {
         const child = spawn.spawnFn(command, args, options);
-        child.kill = jest.fn((signal?: NodeJS.Signals) => {
+        child.kill = vi.fn((signal?: NodeJS.Signals) => {
           child.emit('close', signal === 'SIGTERM' ? null : 0);
           return true;
         });
@@ -1172,7 +1180,7 @@ describe('DownloadQueue', () => {
       // first tick and `Date.now() - lastOutputAt > 0` is already true, so a
       // process that is alive and simply quiet gets SIGTERMed right away.
       // The advance lands on the first tick and on every check after it.
-      await jest.advanceTimersByTimeAsync(999);
+      await vi.advanceTimersByTimeAsync(999);
 
       expect(spawned().process.kill).not.toHaveBeenCalled();
       expect(clampedQueue.get(job.id)?.status).toBe('running');
@@ -1180,8 +1188,8 @@ describe('DownloadQueue', () => {
       // the retry that kill would trigger outlives the test.
       clampedQueue.clear();
     } finally {
-      jest.clearAllTimers();
-      jest.useRealTimers();
+      vi.clearAllTimers();
+      vi.useRealTimers();
     }
   });
 
@@ -1315,8 +1323,8 @@ describe('queue state persistence', () => {
   beforeEach(async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-state-'));
     stateFile = path.join(dir, 'state.json');
-    jest.clearAllMocks();
-    mockedWriteTextAtomic.mockImplementation(realWriteTextAtomic);
+    vi.clearAllMocks();
+    mockedWriteTextAtomic.mockImplementation(realFsUtils.writeTextAtomic);
   });
 
   afterEach(async () => {
@@ -1327,7 +1335,7 @@ describe('queue state persistence', () => {
     await fs.rm(path.dirname(stateFile), { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
-  const silentAfterJob = (): jest.Mock<Promise<void>, [QueueJob]> => jest.fn().mockResolvedValue(undefined);
+  const silentAfterJob = (): Mock<(job: QueueJob) => Promise<void>> => vi.fn().mockResolvedValue(undefined);
 
   /** Persisted writes are fire-and-forget — poll until the state satisfies the predicate. */
   const waitForState = async (predicate: (state: { paused?: boolean; jobs?: QueueJob[] }) => boolean) => {
@@ -1644,7 +1652,7 @@ describe('queue state persistence', () => {
     // the stem ends up in yt-dlp's -o template. An update job without a usable
     // stem cannot be performed at all, so it is dropped rather than repaired;
     // a download job ignores the field and keeps working.
-    jest.spyOn(logger, 'warn').mockImplementation(() => {
+    vi.spyOn(logger, 'warn').mockImplementation(() => {
       /* the drop is the assertion */
     });
     await fs.writeFile(

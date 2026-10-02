@@ -32,7 +32,7 @@ describe('startServing', () => {
   });
 
   it('keeps the boot alive when a task fails, and names the task that did', async () => {
-    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {
       /* the warning is the assertion */
     });
     const order: string[] = [];

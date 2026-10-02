@@ -144,7 +144,7 @@ prowadzona po angielsku.
 
 ```bash
 pnpm run dev          # serwer :3001 + klient :3000
-pnpm run test         # testy jednostkowe: serwer (jest), klient i rozszerzenie (vitest)
+pnpm run test         # testy jednostkowe: serwer, klient i rozszerzenie (vitest)
 pnpm run test:e2e     # Playwright z zamokowanym API (raz: cd client && pnpm exec playwright install chromium)
 ```
 

@@ -478,7 +478,7 @@ describe('deep server integration (real app, fake external world)', () => {
     // Loaded lazily: the queue module reads QUEUE_STATE_FILE when it loads, and
     // the deep env sets that variable right before the app module loads.
     const { downloadQueue, restoreQueueState } =
-      jest.requireActual<typeof import('../services/downloadQueue')>('../services/downloadQueue');
+      await vi.importActual<typeof import('../services/downloadQueue')>('../services/downloadQueue');
     // The download above drains the queue asynchronously, and its snapshot is
     // written behind a coalescing window. Let that write land first, or an
     // older `paused: false` snapshot overwrites this one and restore reads it.

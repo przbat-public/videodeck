@@ -4,7 +4,7 @@
     "module": "NodeNext",
     "rootDir": "..",
     "outDir": "./dist",
-    "types": ["node", "jest"],
+    "types": ["node", "vitest/globals"],
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "sourceMap": true,

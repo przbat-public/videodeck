@@ -248,7 +248,7 @@ jobs:
           ELASTICSEARCH_URL: http://localhost:9200
         run: |
           PATH="$GITHUB_WORKSPACE/scripts/fake-bin:$PATH" \
-            npx jest src/services/ytdlp.integration.test.ts src/services/elasticsearch.integration.test.ts
+            pnpm exec vitest run src/services/ytdlp.integration.test.ts src/services/elasticsearch.integration.test.ts
 
   build:
     name: Build

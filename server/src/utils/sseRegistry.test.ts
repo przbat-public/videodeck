@@ -2,7 +2,7 @@ import type { Response } from 'express';
 import { activeSseStreamCount, closeAllSseStreams, registerSseStream } from './sseRegistry';
 
 describe('sseRegistry', () => {
-  const fakeResponse = (): Response => ({ end: jest.fn() }) as unknown as Response;
+  const fakeResponse = (): Response => ({ end: vi.fn() }) as unknown as Response;
 
   it('tracks a stream until it unregisters', () => {
     const unregister = registerSseStream(fakeResponse());

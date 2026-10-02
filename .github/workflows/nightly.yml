@@ -5,7 +5,7 @@ name: Nightly order randomisation
 # fixed seed so a failure here is reproducible with the same command locally.
 #
 # Local equivalents (seeds as used here):
-#   cd server && pnpm exec jest --randomize --seed=9137 --showSeed
+#   cd server && pnpm run test --sequence.shuffle.tests --sequence.seed=9137
 #   cd client && pnpm run test:run --sequence.shuffle.tests --sequence.seed=9137
 #   cd client && pnpm run test:integration --sequence.shuffle.tests --sequence.seed=9137
 #
@@ -45,11 +45,11 @@ jobs:
           # would let a later build step push with it.
           persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
-      # jest 30.5.2: --randomize shuffles the tests inside each file and
-      # --seed pins the order (--showSeed prints it in the summary).
+      # vitest 5.0.2: sequence.shuffle.tests shuffles the tests inside each file
+      # and sequence.seed pins the order, the same contract jest --randomize had.
       - name: Server unit tests in a random order
         working-directory: server
-        run: pnpm exec jest --randomize --seed=9137
+        run: pnpm run test --sequence.shuffle.tests --sequence.seed=9137
 
   client-random-order:
     name: Client unit tests (random order)

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import type { MockedFunction, MockInstance } from 'vitest';
 import { getVideosFolderPaths } from '../config';
 import { at } from '../test-utils';
 import {
@@ -18,9 +19,9 @@ import {
 } from './folderConfig';
 import { reconcileLibrary, resetLibraryState } from './libraryState';
 
-jest.mock('../config');
+vi.mock('../config');
 
-const mockedGetVideosFolderPaths = getVideosFolderPaths as jest.MockedFunction<typeof getVideosFolderPaths>;
+const mockedGetVideosFolderPaths = getVideosFolderPaths as MockedFunction<typeof getVideosFolderPaths>;
 
 describe('folderConfig', () => {
   describe('validateFolderConfig', () => {
@@ -366,17 +367,17 @@ describe('folderConfig', () => {
 
   describe('readFolderConfig / loadDownloadOptions', () => {
     let dir: string;
-    let consoleErrorSpy: jest.SpyInstance;
+    let consoleErrorSpy: MockInstance;
 
     beforeEach(async () => {
       dir = await fs.mkdtemp(path.join(os.tmpdir(), 'folder-config-'));
-      consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {
+      consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {
         /* silence expected error logs */
       });
     });
 
     afterEach(async () => {
-      jest.restoreAllMocks();
+      vi.restoreAllMocks();
       await fs.rm(dir, { recursive: true, force: true });
     });
 
@@ -448,7 +449,7 @@ describe('folderConfig', () => {
       });
 
       afterEach(async () => {
-        jest.restoreAllMocks();
+        vi.restoreAllMocks();
         if (originalFolderPath === undefined) {
           delete process.env.VIDEOS_FOLDER_PATH;
         } else {
@@ -486,7 +487,7 @@ describe('folderConfig', () => {
       });
 
       it('reads every config once per TTL window, in parallel', async () => {
-        const readFile = jest.spyOn(fs, 'readFile');
+        const readFile = vi.spyOn(fs, 'readFile');
 
         await listCategories();
         await getFolderPathsForCategory('fpv');
@@ -508,7 +509,7 @@ describe('folderConfig', () => {
 
         await writeConfig(at(folders, 3), { category: 'robotics' });
         const later = Date.now() + CATEGORY_CACHE_TTL_MS + 1;
-        jest.spyOn(Date, 'now').mockReturnValue(later);
+        vi.spyOn(Date, 'now').mockReturnValue(later);
         expect(await getFolderPathsForCategory('robotics')).toEqual([at(folders, 3)]);
       });
 

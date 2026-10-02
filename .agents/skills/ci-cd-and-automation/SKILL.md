@@ -22,7 +22,7 @@ the supply-chain and security jobs.
 | Format check | biome format has nothing to fix |
 | Lint | biome check, hardcoded-Polish scan, tsconfig strictness pin |
 | Typecheck | strict TS in server, client and extension (integration config included) |
-| Unit tests (server) | jest, deep server integration included |
+| Unit tests (server) | vitest, deep server integration included |
 | Unit tests (client) | vitest, the full client unit suite |
 | Unit tests (chrome-extension) | vitest |
 | Client integration | real `<App />` against the real backend in-process |

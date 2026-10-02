@@ -56,9 +56,9 @@ describe('download-video SSE stream cleanup on client disconnect', () => {
     expect((paused.body as QueuePauseResponse).paused).toBe(true);
 
     // Only setInterval/clearInterval are faked: the socket I/O and the test's
-    // own timeouts stay real, while jest counts the heartbeat timer for us.
-    jest.useFakeTimers({
-      doNotFake: [
+    // own timeouts stay real, while vitest counts the heartbeat timer for us.
+    vi.useFakeTimers({
+      toNotFake: [
         'setTimeout',
         'clearTimeout',
         'setImmediate',
@@ -75,7 +75,7 @@ describe('download-video SSE stream cleanup on client disconnect', () => {
       ],
     });
     try {
-      const idleTimers = jest.getTimerCount();
+      const idleTimers = vi.getTimerCount();
       const idleJobListeners = downloadQueue.listenerCount('job');
       const idleProgressListeners = downloadQueue.listenerCount('progress');
 
@@ -105,7 +105,7 @@ describe('download-video SSE stream cleanup on client disconnect', () => {
       expect(activeSseStreamCount()).toBe(1);
       await waitForOpenStreams(1);
       // The heartbeat is the only interval the stream adds
-      expect(jest.getTimerCount()).toBe(idleTimers + 1);
+      expect(vi.getTimerCount()).toBe(idleTimers + 1);
 
       // The tab closes: tear the socket down without reading the stream out
       stream.destroy();
@@ -115,7 +115,7 @@ describe('download-video SSE stream cleanup on client disconnect', () => {
       expect(downloadQueue.listenerCount('job')).toBe(idleJobListeners);
       expect(downloadQueue.listenerCount('progress')).toBe(idleProgressListeners);
       expect(activeSseStreamCount()).toBe(0);
-      expect(jest.getTimerCount()).toBe(idleTimers);
+      expect(vi.getTimerCount()).toBe(idleTimers);
 
       // The stream is gone but the job is not: cancelling it keeps the queue
       // clean for whatever runs next in this process.
@@ -123,7 +123,7 @@ describe('download-video SSE stream cleanup on client disconnect', () => {
       const cancelled = await env.agent.delete(`/api/folder/queue/${job.id}`).expect(200);
       expect((cancelled.body as CancelJobResponse).job?.status).toBe('cancelled');
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
       await env.agent.post('/api/folder/queue/resume?paused=0').expect(200);
     }
   }, 30_000);

@@ -11,7 +11,7 @@ change is proven, or to plan the test strategy for a feature. Pair with
 
 | Layer | Proves | Command |
 | --- | --- | --- |
-| Unit (jest/vitest) | pure logic, components | `cd server && pnpm run test`, `cd client && pnpm run test:run` |
+| Unit (vitest) | pure logic, components | `cd server && pnpm run test`, `cd client && pnpm run test:run` |
 | Server integration | routes against fake ES, mock OpenAI, fake yt-dlp | part of the server suite |
 | Client integration | real `<App />` against the real backend in-process | `pnpm run test:integration` |
 | E2E | the thin browser layer, mocked API | `cd client && pnpm run test:e2e` |

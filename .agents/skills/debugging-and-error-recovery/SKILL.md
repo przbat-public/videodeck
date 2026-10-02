@@ -70,7 +70,7 @@ one-liner before pushing.
 ## Error-specific patterns
 
 - **Test failure.** Read the diff between expected and actual before
-  touching code. Flaky timing failures in the jest and jsdom layers get
+  touching code. Flaky timing failures in the node and jsdom layers get
   deterministic fixes (fake timers, awaited promises), never retries or
   sleeps. The real-browser layer is the one exception, and it is a narrow
   one: `client/playwright.config.ts` keeps `retries: 2` on CI so a browser

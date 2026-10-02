@@ -81,9 +81,9 @@ files automatically.
 Dependabot deliberately ignores semver-major bumps of two packages
 (`.github/dependabot.yml`). Upgrade each one by hand, when the time comes:
 
-- **`typescript` (semver-major)**: a TS major breaks the test toolchain first
-  (ts-jest peer range, vitest plugins). Upgrade TS + ts-jest + eslint
-  toolchain in one PR.
+- **`typescript` (semver-major)**: a TS major breaks the type-aware lint
+  toolchain first (`typescript-eslint` peer range). Upgrade TS +
+  `typescript-eslint` + eslint toolchain in one PR.
 - **`@types/node` (semver-major)**: the runtime is pinned to **Node 24**
   (`.nvmrc`, the `engines` fields, the CI setup action and the Docker
   images); type majors must follow a Node upgrade, not lead it. Bump

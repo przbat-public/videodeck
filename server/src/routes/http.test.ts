@@ -1,17 +1,16 @@
 import type { HealthResponse } from '@videodeck/shared/api';
 import express from 'express';
 import request from 'supertest';
+import type { MockedFunction } from 'vitest';
 import { createApp } from '../app';
 import { checkElasticsearchConnection } from '../services/elasticsearchService';
 import { createAuthMiddleware, isAllowedCorsOrigin } from './http';
 
-jest.mock('../services/elasticsearchService', () => ({
-  checkElasticsearchConnection: jest.fn(),
+vi.mock('../services/elasticsearchService', () => ({
+  checkElasticsearchConnection: vi.fn(),
 }));
 
-const mockedCheckElasticsearch = checkElasticsearchConnection as jest.MockedFunction<
-  typeof checkElasticsearchConnection
->;
+const mockedCheckElasticsearch = checkElasticsearchConnection as MockedFunction<typeof checkElasticsearchConnection>;
 
 // config.ts validates VIDEOS_FOLDER_PATH at import time
 process.env.VIDEOS_FOLDER_PATH = '/test/videos';
@@ -117,26 +116,26 @@ describe('createAuthMiddleware', () => {
 describe('createApp auth wiring', () => {
   /** Minimal DownloadQueue stand-in so /api routes answer without Elasticsearch */
   const fakeQueue = () => ({
-    enqueue: jest.fn(),
-    list: jest.fn(() => []),
-    summary: jest.fn(() => ({
+    enqueue: vi.fn(),
+    list: vi.fn(() => []),
+    summary: vi.fn(() => ({
       counts: { queued: 0, running: 0, done: 0, error: 0, cancelled: 0 },
       folders: {},
       running: [],
     })),
-    get: jest.fn(),
-    cancel: jest.fn(),
-    cancelAll: jest.fn(() => 0),
-    whenPersisted: jest.fn(() => Promise.resolve()),
-    setPaused: jest.fn(),
-    isPaused: jest.fn(() => false),
-    clearFinished: jest.fn(() => 0),
-    on: jest.fn(),
-    off: jest.fn(),
+    get: vi.fn(),
+    cancel: vi.fn(),
+    cancelAll: vi.fn(() => 0),
+    whenPersisted: vi.fn(() => Promise.resolve()),
+    setPaused: vi.fn(),
+    isPaused: vi.fn(() => false),
+    clearFinished: vi.fn(() => 0),
+    on: vi.fn(),
+    off: vi.fn(),
   });
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     mockedCheckElasticsearch.mockResolvedValue(true);
   });
 
@@ -266,7 +265,7 @@ describe('createApp auth wiring', () => {
   });
 
   it('keeps query values out of the request log', async () => {
-    const log = jest.spyOn(console, 'log').mockImplementation(() => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {
       /* captured by the assertions below */
     });
     const app = createApp({ downloadQueue: fakeQueue() });

@@ -1,4 +1,5 @@
 import type { VideoListItem } from '@videodeck/shared/api';
+import type { Mock } from 'vitest';
 import { metricsRegistry } from '../metricsRegistry';
 import { at } from '../test-utils';
 import {
@@ -37,26 +38,33 @@ import {
 
 const mockClient = {
   indices: {
-    create: jest.fn(),
-    get: jest.fn(),
-    exists: jest.fn(),
-    existsAlias: jest.fn(),
-    getAlias: jest.fn(),
-    updateAliases: jest.fn(),
-    delete: jest.fn(),
-    refresh: jest.fn(),
+    create: vi.fn(),
+    get: vi.fn(),
+    exists: vi.fn(),
+    existsAlias: vi.fn(),
+    getAlias: vi.fn(),
+    updateAliases: vi.fn(),
+    delete: vi.fn(),
+    refresh: vi.fn(),
   },
-  bulk: jest.fn(),
-  index: jest.fn(),
-  search: jest.fn(),
-  count: jest.fn(),
-  ping: jest.fn(),
-  deleteByQuery: jest.fn(),
-  close: jest.fn().mockResolvedValue(undefined),
+  bulk: vi.fn(),
+  index: vi.fn(),
+  search: vi.fn(),
+  count: vi.fn(),
+  ping: vi.fn(),
+  deleteByQuery: vi.fn(),
+  close: vi.fn().mockResolvedValue(undefined),
 };
 
-jest.mock('@elastic/elasticsearch', () => ({
-  Client: jest.fn(() => mockClient),
+vi.mock('@elastic/elasticsearch', () => ({
+  // Production code calls `new Client(...)`, and an arrow function is not
+  // constructible: the implementation has to be a function expression. The
+  // reference stays lazy, so the factory does not read `mockClient` while the
+  // module graph is still initialising.
+  // biome-ignore lint/complexity/useArrowFunction: this mock stands in for a class, and an arrow function is not constructible.
+  Client: vi.fn(function () {
+    return mockClient;
+  }),
 }));
 
 const FOLDER_A = '/videos/a';
@@ -65,7 +73,7 @@ const FOLDER_B = '/videos/b';
 /** Mutable so individual tests can simulate "no folders configured" */
 const mockFolders = { current: ['/videos/a', '/videos/b'] };
 
-jest.mock('../config', () => ({
+vi.mock('../config', () => ({
   ELASTICSEARCH_URL: 'http://localhost:9200',
   getVideosFolderPaths: () => mockFolders.current,
 }));
@@ -116,11 +124,11 @@ function physicalIndices(...indices: string[]) {
 
 describe('elasticsearchService', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, 'log').mockImplementation(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {
       /* silence expected info logs */
     });
-    jest.spyOn(console, 'error').mockImplementation(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {
       /* silence expected error logs */
     });
     mockFolders.current = ['/videos/a', '/videos/b'];
@@ -144,7 +152,7 @@ describe('elasticsearchService', () => {
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe('names', () => {
@@ -203,7 +211,7 @@ describe('elasticsearchService', () => {
 
       expect(name.startsWith(`${ALIAS_A}_`)).toBe(true);
       expect(mockClient.indices.create).toHaveBeenCalledTimes(1);
-      const request = mockClient.indices.create.mock.calls[0][0];
+      const request = at(mockClient.indices.create.mock.calls, 0)[0];
       expect(request.index).toBe(name);
       expect(request.mappings.properties.commentsText).toEqual({
         type: 'text',
@@ -279,7 +287,7 @@ describe('elasticsearchService', () => {
     });
 
     it('treats a failed alias check as uncached instead of throwing', async () => {
-      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
         /* silence the expected warning */
       });
       mockClient.indices.existsAlias.mockRejectedValueOnce(new Error('alias lookup exploded'));
@@ -294,7 +302,7 @@ describe('elasticsearchService', () => {
     });
 
     it('reports an unreachable cluster once instead of warning per folder', async () => {
-      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
         /* silence the expected warning */
       });
       const connectionError = (): Error =>
@@ -330,7 +338,7 @@ describe('elasticsearchService', () => {
     });
 
     it('lets reads through again once the window has passed', async () => {
-      const now = jest.spyOn(Date, 'now');
+      const now = vi.spyOn(Date, 'now');
       now.mockReturnValue(1_000);
       noteElasticsearchUnavailable();
       now.mockReturnValue(10_000);
@@ -372,7 +380,7 @@ describe('elasticsearchService', () => {
     it('still refuses a read when the failure is not stale', async () => {
       // Same shape without the healthy probe in between: no grace applies, so
       // the fail-fast behaviour the window exists for is untouched.
-      const now = jest.spyOn(Date, 'now');
+      const now = vi.spyOn(Date, 'now');
       now.mockReturnValue(50_000);
       clearElasticsearchOutage();
       noteElasticsearchUnavailable();
@@ -399,7 +407,7 @@ describe('elasticsearchService', () => {
 
   describe('checkElasticsearchConnection', () => {
     it('replaces the long-lived client once a failed request is followed by a healthy probe', async () => {
-      const { Client } = jest.requireMock('@elastic/elasticsearch') as { Client: jest.Mock };
+      const { Client } = (await vi.importMock('@elastic/elasticsearch')) as { Client: Mock };
       Client.mockClear();
       mockClient.ping.mockResolvedValue({});
       await checkElasticsearchConnection();
@@ -424,7 +432,7 @@ describe('elasticsearchService', () => {
     });
 
     it('arms the reset when the probe itself fails', async () => {
-      const { Client } = jest.requireMock('@elastic/elasticsearch') as { Client: jest.Mock };
+      const { Client } = (await vi.importMock('@elastic/elasticsearch')) as { Client: Mock };
       Client.mockClear();
       mockClient.ping.mockResolvedValue({});
       await checkElasticsearchConnection();
@@ -586,7 +594,7 @@ describe('elasticsearchService', () => {
       await createIndex(FOLDER_A);
 
       expect(mockClient.indices.create).toHaveBeenCalledTimes(1);
-      const created = mockClient.indices.create.mock.calls[0][0].index;
+      const created = at(mockClient.indices.create.mock.calls, 0)[0].index;
       expect(mockClient.indices.updateAliases).toHaveBeenCalledWith({
         actions: [{ add: { index: created, alias: ALIAS_A } }],
       });
@@ -841,12 +849,12 @@ describe('elasticsearchService', () => {
         document: expect.objectContaining({ commentsText: 'hi' }),
         refresh: true,
       });
-      expect(mockClient.index.mock.calls[0][0].document).not.toHaveProperty('comments');
+      expect(at(mockClient.index.mock.calls, 0)[0].document).not.toHaveProperty('comments');
     });
 
     it('falls back to baseName as id', async () => {
       await indexVideo(videoWithoutId());
-      expect(mockClient.index.mock.calls[0][0].id).toBe('20240101_Video');
+      expect(at(mockClient.index.mock.calls, 0)[0].id).toBe('20240101_Video');
     });
   });
 
@@ -860,7 +868,7 @@ describe('elasticsearchService', () => {
       await bulkIndexVideos(videos, { index: 'videos_target', refresh: false });
 
       expect(mockClient.bulk).toHaveBeenCalledTimes(1);
-      const { operations } = mockClient.bulk.mock.calls[0][0];
+      const { operations } = at(mockClient.bulk.mock.calls, 0)[0];
       expect(operations).toHaveLength(4);
       expect(operations[0]).toEqual({ index: { _index: 'videos_target', _id: 'a' } });
       expect(operations[1]).toMatchObject({ videoId: 'a', commentsText: 'c1' });
@@ -929,7 +937,7 @@ describe('elasticsearchService', () => {
         false,
       );
 
-      const { operations } = mockClient.bulk.mock.calls[0][0];
+      const { operations } = at(mockClient.bulk.mock.calls, 0)[0];
       expect(operations[0]).toEqual({ index: { _index: 'videos_target', _id: 'a' } });
       expect(operations[2]).toEqual({ index: { _index: 'videos_target', _id: 'nb' } });
       expect(mockClient.indices.refresh).not.toHaveBeenCalled();
@@ -967,7 +975,7 @@ describe('elasticsearchService', () => {
 
       const results = await searchVideos('robot arm', 'views-desc');
 
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.index).toEqual([ALIAS_A, ALIAS_B]);
       expect(request.ignore_unavailable).toBe(true);
       expect(request.query).toEqual({
@@ -1004,13 +1012,13 @@ describe('elasticsearchService', () => {
 
       expect(result.total).toBe(3);
       expect(result.videos).toHaveLength(3);
-      expect(mockClient.search.mock.calls[0][0].track_total_hits).toBe(true);
+      expect(at(mockClient.search.mock.calls, 0)[0].track_total_hits).toBe(true);
     });
 
     it('uses match_all for blank queries and sorts by date by default', async () => {
       await searchVideos('   ');
 
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.query).toEqual({ match_all: {} });
       expect(request.sort).toEqual([{ uploadDate: { order: 'desc', missing: '_last' } }]);
     });
@@ -1025,7 +1033,7 @@ describe('elasticsearchService', () => {
     it('omits the sort for relevance, letting Elasticsearch order by score', async () => {
       await searchVideos('q', 'relevance');
 
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.sort).toEqual([]);
     });
 
@@ -1037,7 +1045,7 @@ describe('elasticsearchService', () => {
     it('narrows the search to the given folders', async () => {
       await searchVideos('q', 'date-desc', [FOLDER_B]);
 
-      expect(mockClient.search.mock.calls[0][0].index).toEqual([ALIAS_B]);
+      expect(at(mockClient.search.mock.calls, 0)[0].index).toEqual([ALIAS_B]);
     });
 
     it('returns nothing without querying when no folder qualifies', async () => {
@@ -1049,7 +1057,7 @@ describe('elasticsearchService', () => {
     it('passes offset and limit through to Elasticsearch', async () => {
       await searchVideos('q', 'date-desc', undefined, { offset: 200, limit: 25 });
 
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.from).toBe(200);
       expect(request.size).toBe(25);
     });
@@ -1059,7 +1067,7 @@ describe('elasticsearchService', () => {
       // with from + size above it is rejected, so the page is cut at the end.
       await searchVideos('q', 'date-desc', undefined, { offset: 9990, limit: 20 });
 
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.from).toBe(9990);
       expect(request.size).toBe(10);
     });
@@ -1067,7 +1075,7 @@ describe('elasticsearchService', () => {
     it('leaves a page that ends exactly at the result window untouched', async () => {
       await searchVideos('q', 'date-desc', undefined, { offset: 9900, limit: 100 });
 
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.from).toBe(9900);
       expect(request.size).toBe(100);
     });
@@ -1079,7 +1087,7 @@ describe('elasticsearchService', () => {
 
       // Asking for hits there would 400; a size-0 query at the start keeps the
       // total honest and returns no page to repeat.
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.from).toBe(0);
       expect(request.size).toBe(0);
       expect(result.videos).toEqual([]);
@@ -1091,7 +1099,7 @@ describe('elasticsearchService', () => {
         channel: 'Jordan B Peterson',
       });
 
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.query).toEqual({
         bool: {
           must: [expect.objectContaining({ multi_match: expect.objectContaining({ query: 'q' }) })],
@@ -1103,7 +1111,7 @@ describe('elasticsearchService', () => {
     it('applies filters to blank queries too', async () => {
       await searchVideos(undefined, 'date-desc', undefined, { channel: 'X' });
 
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.query).toEqual({
         bool: { must: [{ match_all: {} }], filter: [{ term: { 'channelName.keyword': 'X' } }] },
       });
@@ -1137,13 +1145,13 @@ describe('elasticsearchService', () => {
 
     it('requests highlight fragments only for real queries', async () => {
       await searchVideos('robot');
-      const first = mockClient.search.mock.calls[0][0];
+      const first = at(mockClient.search.mock.calls, 0)[0];
       expect(first.highlight).toBeDefined();
       expect(first.highlight?.pre_tags).toEqual(['\u0001']);
       expect(first.highlight?.post_tags).toEqual(['\u0002']);
 
       await searchVideos('   ');
-      expect(mockClient.search.mock.calls[1][0].highlight).toBeUndefined();
+      expect(at(mockClient.search.mock.calls, 1)[0].highlight).toBeUndefined();
     });
 
     it('lists every channel name each folder carries, most frequent first', async () => {
@@ -1169,7 +1177,7 @@ describe('elasticsearchService', () => {
       // One query answers for every folder, and it asks for the field the
       // mapping declares: folderPath is a keyword, folderPath.keyword is
       // nothing at all, and the missing field is why the map used to be empty
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.aggs).toEqual({
         folders: {
           terms: { field: 'folderPath', size: 500 },
@@ -1186,7 +1194,7 @@ describe('elasticsearchService', () => {
 
       expect(await listChannelsByFolder()).toEqual({});
 
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.index).toEqual([ALIAS_A, ALIAS_B]);
       expect(request.ignore_unavailable).toBe(true);
     });
@@ -1194,7 +1202,7 @@ describe('elasticsearchService', () => {
     it('clamps out-of-range paging values', async () => {
       await searchVideos('q', 'date-desc', undefined, { offset: -10, limit: 9999 });
 
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.from).toBe(0);
       expect(request.size).toBe(500);
     });
@@ -1207,7 +1215,7 @@ describe('elasticsearchService', () => {
 
     it('getVideoByVideoId uses an ids query and returns null when missing', async () => {
       expect(await getVideoByVideoId('abc')).toBeNull();
-      const request = mockClient.search.mock.calls[0][0];
+      const request = at(mockClient.search.mock.calls, 0)[0];
       expect(request.query).toEqual({ ids: { values: ['abc'] } });
       expect(request.size).toBe(1);
       expect(request.index).toEqual([ALIAS_A, ALIAS_B]);
@@ -1222,7 +1230,7 @@ describe('elasticsearchService', () => {
 
       expect(found?.baseName).toBe('20240101_Video');
       expect(found?.comments).toBeUndefined();
-      expect(mockClient.search.mock.calls[0][0].query).toEqual({
+      expect(at(mockClient.search.mock.calls, 0)[0].query).toEqual({
         term: { baseName: '20240101_Video' },
       });
     });
@@ -1230,7 +1238,7 @@ describe('elasticsearchService', () => {
     it('getVideoByFilePath matches video or thumbnail file names', async () => {
       await getVideoByFilePath('a.mp4');
 
-      expect(mockClient.search.mock.calls[0][0].query).toEqual({
+      expect(at(mockClient.search.mock.calls, 0)[0].query).toEqual({
         bool: {
           should: [{ term: { videoPath: 'a.mp4' } }, { term: { thumbnailPath: 'a.mp4' } }],
           minimum_should_match: 1,

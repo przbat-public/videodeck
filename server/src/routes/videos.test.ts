@@ -14,6 +14,7 @@ import {
 } from '@videodeck/shared/schemas';
 import express from 'express';
 import request from 'supertest';
+import type { Mocked, MockedFunction, MockInstance } from 'vitest';
 import { createApp } from '../app';
 import { loadCommentTree } from '../services/commentStore';
 import {
@@ -33,47 +34,45 @@ import { buildCommentTree } from '../utils/commentTreeUtils';
 import { getVideoFilePath } from '../utils/videoPathUtils';
 import { resetIndexMaintenanceState } from './videos/indexMaintenance';
 
-jest.mock('../services/videoScanner');
+vi.mock('../services/videoScanner');
 // Only the file-path join is mocked; normalizeFolderPath must stay real
 // (the router compares folder paths against the allowed list with it)
-jest.mock('../utils/videoPathUtils', () => ({
-  ...jest.requireActual('../utils/videoPathUtils'),
-  getVideoFilePath: jest.fn(),
+vi.mock('../utils/videoPathUtils', async () => ({
+  ...(await vi.importActual<typeof import('../utils/videoPathUtils')>('../utils/videoPathUtils')),
+  getVideoFilePath: vi.fn(),
 }));
-jest.mock('../utils/commentTreeUtils');
-jest.mock('node:fs/promises');
-jest.mock('../services/elasticsearchService');
-jest.mock('../services/folderConfig');
-jest.mock('../services/summaryService');
-jest.mock('../services/commentStore', () => ({
-  loadCommentTree: jest.fn(),
+vi.mock('../utils/commentTreeUtils');
+vi.mock('node:fs/promises');
+vi.mock('../services/elasticsearchService');
+vi.mock('../services/folderConfig');
+vi.mock('../services/summaryService');
+vi.mock('../services/commentStore', () => ({
+  loadCommentTree: vi.fn(),
 }));
-jest.mock('../config', () => ({
-  ...jest.requireActual('../config'),
+vi.mock('../config', async () => ({
+  ...(await vi.importActual<typeof import('../config')>('../config')),
   getVideosFolderPaths: () => ['/test/videos', '/test/other'],
 }));
 
-const mockedGetVideos = getVideos as jest.MockedFunction<typeof getVideos>;
-const mockedGetVideoFilePath = getVideoFilePath as jest.MockedFunction<typeof getVideoFilePath>;
-const mockedBuildCommentTree = buildCommentTree as jest.MockedFunction<typeof buildCommentTree>;
-const mockedFs = fs as jest.Mocked<typeof fs>;
-const mockedRefreshVideosCache = refreshVideosCache as jest.MockedFunction<typeof refreshVideosCache>;
-const mockedGetReindexStatus = getReindexStatus as jest.MockedFunction<typeof getReindexStatus>;
-const mockedIsReindexRunning = isReindexRunning as jest.MockedFunction<typeof isReindexRunning>;
-const mockedRecreateAllIndices = recreateAllIndices as jest.MockedFunction<typeof recreateAllIndices>;
-const mockedIsRecreateIndicesRunning = isRecreateIndicesRunning as jest.MockedFunction<typeof isRecreateIndicesRunning>;
-const mockedGetRecreateIndicesStatus = getRecreateIndicesStatus as jest.MockedFunction<typeof getRecreateIndicesStatus>;
-const mockedGetVideoByBaseName = getVideoByBaseName as jest.MockedFunction<typeof getVideoByBaseName>;
-const mockedGetVideoByVideoId = getVideoByVideoId as jest.MockedFunction<typeof getVideoByVideoId>;
-const mockedGetVideoByFilePath = getVideoByFilePath as jest.MockedFunction<typeof getVideoByFilePath>;
-const mockedListChannelsByFolder = listChannelsByFolder as jest.MockedFunction<typeof listChannelsByFolder>;
-const mockedListChannelFolders = listChannelFolders as jest.MockedFunction<typeof listChannelFolders>;
-const mockedLoadCommentTree = loadCommentTree as jest.MockedFunction<typeof loadCommentTree>;
-const mockedGetFolderPathsForCategory = getFolderPathsForCategory as jest.MockedFunction<
-  typeof getFolderPathsForCategory
->;
-const mockedListCategories = listCategories as jest.MockedFunction<typeof listCategories>;
-const mockedGenerateSummary = generateSummary as jest.MockedFunction<typeof generateSummary>;
+const mockedGetVideos = getVideos as MockedFunction<typeof getVideos>;
+const mockedGetVideoFilePath = getVideoFilePath as MockedFunction<typeof getVideoFilePath>;
+const mockedBuildCommentTree = buildCommentTree as MockedFunction<typeof buildCommentTree>;
+const mockedFs = fs as Mocked<typeof fs>;
+const mockedRefreshVideosCache = refreshVideosCache as MockedFunction<typeof refreshVideosCache>;
+const mockedGetReindexStatus = getReindexStatus as MockedFunction<typeof getReindexStatus>;
+const mockedIsReindexRunning = isReindexRunning as MockedFunction<typeof isReindexRunning>;
+const mockedRecreateAllIndices = recreateAllIndices as MockedFunction<typeof recreateAllIndices>;
+const mockedIsRecreateIndicesRunning = isRecreateIndicesRunning as MockedFunction<typeof isRecreateIndicesRunning>;
+const mockedGetRecreateIndicesStatus = getRecreateIndicesStatus as MockedFunction<typeof getRecreateIndicesStatus>;
+const mockedGetVideoByBaseName = getVideoByBaseName as MockedFunction<typeof getVideoByBaseName>;
+const mockedGetVideoByVideoId = getVideoByVideoId as MockedFunction<typeof getVideoByVideoId>;
+const mockedGetVideoByFilePath = getVideoByFilePath as MockedFunction<typeof getVideoByFilePath>;
+const mockedListChannelsByFolder = listChannelsByFolder as MockedFunction<typeof listChannelsByFolder>;
+const mockedListChannelFolders = listChannelFolders as MockedFunction<typeof listChannelFolders>;
+const mockedLoadCommentTree = loadCommentTree as MockedFunction<typeof loadCommentTree>;
+const mockedGetFolderPathsForCategory = getFolderPathsForCategory as MockedFunction<typeof getFolderPathsForCategory>;
+const mockedListCategories = listCategories as MockedFunction<typeof listCategories>;
+const mockedGenerateSummary = generateSummary as MockedFunction<typeof generateSummary>;
 
 /**
  * One loop turn. The refresh routes hand their work to a background promise,
@@ -85,15 +84,15 @@ const flushAsync = (): Promise<void> => new Promise((resolve) => setImmediate(re
 
 describe('videos router', () => {
   let app: express.Application;
-  let consoleErrorSpy: jest.SpyInstance;
+  let consoleErrorSpy: MockInstance;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     // Silence console output during tests (the spy is asserted against later)
-    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {
       /* silence expected error logs */
     });
-    jest.spyOn(console, 'log').mockImplementation(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => {
       /* silence expected info logs */
     });
     // Defaults for the real fs mocks: access/realpath succeed
@@ -112,7 +111,7 @@ describe('videos router', () => {
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe('GET /api/videos/search', () => {
@@ -568,7 +567,7 @@ describe('videos router', () => {
 
     it('refuses the second index maintenance job until the first one finishes', async () => {
       // This test starts a real recreation at the end, so it has to give the
-      // mock a promise to settle: a bare jest.fn() returns undefined, and
+      // mock a promise to settle: a bare vi.fn() returns undefined, and
       // `.finally` on it throws before the flag it guards can be cleared.
       mockedRecreateAllIndices.mockResolvedValue(undefined);
       let finishRefresh: (() => void) | undefined;
@@ -622,13 +621,13 @@ describe('videos router', () => {
       comments: [],
     };
 
-    let sendFileSpy: jest.SpyInstance;
+    let sendFileSpy: MockInstance;
 
     beforeEach(() => {
       // Mock res.sendFile to prevent actual file sending
       // We need to do this after app creation but before request
       // The route calls sendFile(path) only, so the options/callback overload is not needed
-      sendFileSpy = jest.spyOn(express.response, 'sendFile').mockImplementation(function (
+      sendFileSpy = vi.spyOn(express.response, 'sendFile').mockImplementation(function (
         this: express.Response,
         filePath: string,
       ) {
@@ -879,7 +878,7 @@ describe('videos router', () => {
     };
 
     beforeEach(() => {
-      jest.clearAllMocks();
+      vi.clearAllMocks();
       mockedGetVideoByVideoId.mockResolvedValue(null);
       mockedGetVideoByBaseName.mockResolvedValue(null);
     });
@@ -1002,7 +1001,7 @@ describe('videos router', () => {
     };
 
     beforeEach(() => {
-      jest.clearAllMocks();
+      vi.clearAllMocks();
       // Reset mocks to return null by default
       mockedGetVideoByVideoId.mockResolvedValue(null);
       mockedGetVideoByBaseName.mockResolvedValue(null);

@@ -1,15 +1,16 @@
 import request from 'supertest';
+import type { MockedFunction, MockInstance } from 'vitest';
 import { createApp, elasticsearchUnavailableThrottle } from './app';
 import { listChannelsByFolder } from './services/elasticsearchService';
 
 // Only the channel aggregation is replaced; everything else stays real, so the
 // handler under test sees the same app the server runs.
-jest.mock('./services/elasticsearchService', () => ({
-  ...jest.requireActual('./services/elasticsearchService'),
-  listChannelsByFolder: jest.fn(),
+vi.mock('./services/elasticsearchService', async () => ({
+  ...(await vi.importActual<typeof import('./services/elasticsearchService')>('./services/elasticsearchService')),
+  listChannelsByFolder: vi.fn(),
 }));
 
-const mockedListChannelsByFolder = listChannelsByFolder as jest.MockedFunction<typeof listChannelsByFolder>;
+const mockedListChannelsByFolder = listChannelsByFolder as MockedFunction<typeof listChannelsByFolder>;
 
 const connectionError = (): Error =>
   Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9200'), { name: 'ConnectionError', code: 'ECONNREFUSED' });
@@ -21,22 +22,22 @@ process.env.VIDEOS_FOLDER_PATH = '/test/videos';
  * request. It answers 503 with a code now, and one compact line per window.
  */
 describe('errorHandler with an unreachable Elasticsearch', () => {
-  let warn: jest.SpyInstance;
-  let error: jest.SpyInstance;
+  let warn: MockInstance;
+  let error: MockInstance;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     elasticsearchUnavailableThrottle.reset();
-    warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {
       /* captured by the assertions */
     });
-    error = jest.spyOn(console, 'error').mockImplementation(() => {
+    error = vi.spyOn(console, 'error').mockImplementation(() => {
       /* captured by the assertions */
     });
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('answers 503 with the machine-readable code', async () => {
@@ -71,7 +72,7 @@ describe('errorHandler with an unreachable Elasticsearch', () => {
   it('logs again after the window passes', async () => {
     mockedListChannelsByFolder.mockRejectedValue(connectionError());
     const app = createApp();
-    const now = jest.spyOn(Date, 'now');
+    const now = vi.spyOn(Date, 'now');
 
     now.mockReturnValue(1_000);
     await request(app).get('/api/videos/channels');

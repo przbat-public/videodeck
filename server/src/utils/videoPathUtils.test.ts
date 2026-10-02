@@ -5,7 +5,7 @@ describe('normalizeFolderPath', () => {
   const realHomedir = os.homedir();
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('passes plain absolute paths through', () => {
@@ -19,7 +19,7 @@ describe('normalizeFolderPath', () => {
   });
 
   it('expands a leading ~ and ~/', () => {
-    const homedir = jest.spyOn(os, 'homedir').mockReturnValue('/home/tester');
+    const homedir = vi.spyOn(os, 'homedir').mockReturnValue('/home/tester');
     expect(normalizeFolderPath('~/Downloads/youtube')).toBe('/home/tester/Downloads/youtube');
     expect(normalizeFolderPath('~')).toBe('/home/tester');
     expect(normalizeFolderPath('/Users/x')).toBe('/Users/x'); // untouched

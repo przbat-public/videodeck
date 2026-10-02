@@ -712,6 +712,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   counts. The console reads both to decide whether a row can open and what it
   holds, and the server kept each for five seconds, so a row whose playlist the
   reader had just fetched stayed shut and counted zero until the window lapsed
+- **The server suite runs on Vitest**: the last Jest package left the tree, so
+  all three workspaces share one runner, one mocking API and one coverage
+  provider. The port is mostly mechanical (318 `jest.*` call sites became `vi.*`
+  across 21 files), with four real differences: `vi.importActual` returns a
+  promise where `jest.requireActual` was synchronous, a mock that stands in for a
+  class needs a constructible function (Biome offers to rewrite those back into
+  arrows, so the sites carry a per-line ignore with the reason), a bare
+  `vi.mock` automocks a module where `createMockFromModule` used to, and Vitest
+  fakes a shorter list of globals by default, which is what `toNotFake` now names
+  in two suites. `@videodeck/test-infra` loses the runtime probe it needed to
+  serve both runners, and the coverage ratchet moved onto the v8 provider: 92.26
+  statements, 85.57 branches, 93.91 functions and 92.38 lines, against the
+  istanbul figures it replaces (92.43, 84.33, 94.04, 92.49) over a set that still
+  counted two test-only helpers
 
 ## [1.0.0] - 2026-09-14
 
