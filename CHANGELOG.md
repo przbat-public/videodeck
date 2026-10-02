@@ -726,6 +726,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   statements, 85.57 branches, 93.91 functions and 92.38 lines, against the
   istanbul figures it replaces (92.43, 84.33, 94.04, 92.49) over a set that still
   counted two test-only helpers
+- Three bits of housekeeping around that move. The client's `pnpm run test` runs
+  the suite once and exits, like the other two packages, and `pnpm run test:watch`
+  keeps the watcher (`test:run` stays as an alias for CI). The Docker build
+  context stops carrying the pnpm store, about a gigabyte on this setup. The
+  server coverage ratchet no longer counts `src/index.ts`, the process entry
+  point no unit test can reach without spawning a server, which lifts the floors
+  by roughly a point
 
 ## [1.0.0] - 2026-09-14
 

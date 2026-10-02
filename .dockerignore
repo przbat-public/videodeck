@@ -1,5 +1,8 @@
 node_modules
 **/node_modules
+# pnpm keeps its content-addressable store here on this setup (about a gigabyte);
+# it is a cache, never an input to the image
+.pnpm-store
 **/dist
 **/coverage
 **/test-results

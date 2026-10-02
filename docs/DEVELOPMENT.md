@@ -75,8 +75,8 @@ cd server && pnpm run test:coverage  # With coverage report
 **Frontend only:**
 
 ```bash
-cd client && pnpm test  # Watch mode
-cd client && pnpm run test:run  # One-off run
+cd client && pnpm test  # One-off run (test:run is an alias kept for CI)
+cd client && pnpm run test:watch  # Watch mode
 cd client && pnpm run test:ui  # Graphical interface
 cd client && pnpm run test:coverage  # With coverage report
 ```
