@@ -19,7 +19,7 @@ import {
 /**
  * Put an environment variable back the way this file found it.
  *
- * process.env outlives a test FILE inside a jest worker, so a suite that
+ * process.env outlives a test FILE inside a vitest worker, so a suite that
  * borrows a value has to restore it, not just delete it: the deletion would
  * follow every later file in the same worker. The deep server integration is
  * one of those neighbours — it boots a server whose /api refuses to answer
@@ -55,7 +55,7 @@ describe('getVideosFolderPaths', () => {
 
   it('expands a leading ~/ against the home directory', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'video-home-'));
-    const homedir = jest.spyOn(os, 'homedir').mockReturnValue(home);
+    const homedir = vi.spyOn(os, 'homedir').mockReturnValue(home);
     process.env.VIDEOS_FOLDER_PATH = '~/videos';
 
     expect(getVideosFolderPaths()).toEqual([path.join(home, 'videos')]);
@@ -117,7 +117,7 @@ describe('getVideosFolderPaths', () => {
     });
 
     it('returns an empty list with a warning when nothing matches', () => {
-      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
         /* silence the expected folder-miss warning */
       });
       fs.rmSync(channelA, { recursive: true });

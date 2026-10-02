@@ -170,8 +170,8 @@ describe('libraryState', () => {
     for (const cleanup of cleanups.splice(0)) {
       cleanup();
     }
-    jest.useRealTimers();
-    jest.restoreAllMocks();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     restoreEnv('VIDEOS_FOLDER_PATH', originalFolderPath);
     restoreEnv('LOG_LEVEL', originalLogLevel);
     fs.rmSync(base, { recursive: true, force: true });
@@ -194,7 +194,7 @@ describe('libraryState', () => {
   });
 
   it('bumps the revision once and notifies subscribers when a folder appears under a watched root', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const channelA = makeChannelFolder(base, 'kanal-a');
     process.env.VIDEOS_FOLDER_PATH = `${base}/*`;
     const fake = fakeWatch();
@@ -205,7 +205,7 @@ describe('libraryState', () => {
     const channelB = makeChannelFolder(base, 'kanal-b'); // the drive arrives
     const changed = changes.next();
     fake.emit();
-    await jest.advanceTimersByTimeAsync(LIBRARY_WATCH_DEBOUNCE_MS);
+    await vi.advanceTimersByTimeAsync(LIBRARY_WATCH_DEBOUNCE_MS);
     await changed;
 
     expect(getLibrarySnapshot().folders).toEqual([channelA, channelB]);
@@ -218,26 +218,26 @@ describe('libraryState', () => {
   it('collapses a burst of events inside the debounce window into one reconcile', async () => {
     // setImmediate stays real so the test can give an (incorrect) immediate
     // scan every chance to reach the disk before the window has closed.
-    jest.useFakeTimers({ doNotFake: ['setImmediate'] });
+    vi.useFakeTimers({ toNotFake: ['setImmediate'] });
     const channelA = makeChannelFolder(base, 'kanal-a');
     process.env.VIDEOS_FOLDER_PATH = `${base}/*`;
     const fake = fakeWatch();
     startLibraryWatch(fake.deps);
     const changes = libraryChangeLog();
-    const readdir = jest.spyOn(fsPromises, 'readdir');
+    const readdir = vi.spyOn(fsPromises, 'readdir');
     const scansOfTheRoot = (): number => readdir.mock.calls.filter(([dir]) => dir === base).length;
 
     const channelB = makeChannelFolder(base, 'kanal-b');
     const changed = changes.next();
     fake.emit();
-    await jest.advanceTimersByTimeAsync(LIBRARY_WATCH_DEBOUNCE_MS - 1);
+    await vi.advanceTimersByTimeAsync(LIBRARY_WATCH_DEBOUNCE_MS - 1);
     await settleUntil(() => scansOfTheRoot() > 0);
     // The event only opened the window: the disk has not been read yet
     expect(scansOfTheRoot()).toBe(0);
 
     const channelC = makeChannelFolder(base, 'kanal-c'); // the burst continues
     fake.emit();
-    await jest.advanceTimersByTimeAsync(LIBRARY_WATCH_DEBOUNCE_MS);
+    await vi.advanceTimersByTimeAsync(LIBRARY_WATCH_DEBOUNCE_MS);
     await changed;
 
     // One scan for the whole burst, and it saw everything the burst brought
@@ -249,12 +249,12 @@ describe('libraryState', () => {
   it('scans again when a change lands while a reconcile is already running', async () => {
     // setImmediate stays real so the test can give a trailing scan the loop
     // turns it needs to reach the disk.
-    jest.useFakeTimers({ doNotFake: ['setImmediate'] });
+    vi.useFakeTimers({ toNotFake: ['setImmediate'] });
     const channelA = makeChannelFolder(base, 'kanal-a');
     process.env.VIDEOS_FOLDER_PATH = `${base}/*`;
     startLibraryWatch(fakeWatch().deps);
     getLibrarySnapshot();
-    const readdir = jest.spyOn(fsPromises, 'readdir');
+    const readdir = vi.spyOn(fsPromises, 'readdir');
     const scansOfTheRoot = (): number => readdir.mock.calls.filter(([dir]) => dir === base).length;
 
     // The folder lands between the running scan's read and its publish, so the
@@ -275,7 +275,7 @@ describe('libraryState', () => {
   });
 
   it('reconciles inside the backstop window when the watcher stays silent', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const channelA = makeChannelFolder(base, 'kanal-a');
     process.env.VIDEOS_FOLDER_PATH = `${base}/*`;
     const fake = fakeWatch();
@@ -284,7 +284,7 @@ describe('libraryState', () => {
 
     const channelB = makeChannelFolder(base, 'kanal-b'); // no event ever arrives for it
     const changed = changes.next();
-    await jest.advanceTimersByTimeAsync(LIBRARY_WATCH_BACKSTOP_MS);
+    await vi.advanceTimersByTimeAsync(LIBRARY_WATCH_BACKSTOP_MS);
     await changed;
 
     expect(fake.watched).toEqual([base]);
@@ -307,7 +307,7 @@ describe('libraryState', () => {
   });
 
   it('keeps a folder whose drive went away as unavailable', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const channelA = makeChannelFolder(base, 'kanal-a');
     const channelB = makeChannelFolder(base, 'kanal-b');
     process.env.VIDEOS_FOLDER_PATH = `${base}/*`;
@@ -319,7 +319,7 @@ describe('libraryState', () => {
     fs.rmSync(channelB, { recursive: true }); // the drive with kanal-b leaves
     const changed = changes.next();
     fake.emit();
-    await jest.advanceTimersByTimeAsync(LIBRARY_WATCH_DEBOUNCE_MS);
+    await vi.advanceTimersByTimeAsync(LIBRARY_WATCH_DEBOUNCE_MS);
     await changed;
 
     const snapshot = getLibrarySnapshot();
@@ -331,7 +331,7 @@ describe('libraryState', () => {
     makeChannelFolder(base, 'kanal-b');
     const returned = changes.next();
     fake.emit();
-    await jest.advanceTimersByTimeAsync(LIBRARY_WATCH_DEBOUNCE_MS);
+    await vi.advanceTimersByTimeAsync(LIBRARY_WATCH_DEBOUNCE_MS);
     await returned;
     expect(getLibrarySnapshot().folders).toEqual([channelA, channelB]);
     expect(getLibrarySnapshot().unavailable).toEqual([]);
@@ -351,9 +351,9 @@ describe('libraryState', () => {
   });
 
   it('counts a watch error and keeps the backstop reconcile running', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     process.env.LOG_LEVEL = 'warn';
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
       /* the counted watcher line is the assertion */
     });
     const channelA = makeChannelFolder(base, 'kanal-a');
@@ -372,7 +372,7 @@ describe('libraryState', () => {
 
     const channelC = makeChannelFolder(base, 'kanal-c');
     const changed = changes.next();
-    await jest.advanceTimersByTimeAsync(LIBRARY_WATCH_BACKSTOP_MS);
+    await vi.advanceTimersByTimeAsync(LIBRARY_WATCH_BACKSTOP_MS);
     await changed;
 
     expect(getLibrarySnapshot().folders).toEqual([channelA, path.join(otherDrive, 'kanal-b'), channelC].sort());
@@ -400,7 +400,7 @@ describe('libraryState', () => {
   });
 
   it('re-arms the watcher on the new roots when the environment changes', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const otherBase = path.join(base, 'other');
     makeChannelFolder(base, 'kanal-a');
     makeChannelFolder(otherBase, 'kanal-b');
@@ -412,7 +412,7 @@ describe('libraryState', () => {
 
     process.env.VIDEOS_FOLDER_PATH = `${otherBase}/*`;
     const changed = changes.next();
-    await jest.advanceTimersByTimeAsync(LIBRARY_WATCH_BACKSTOP_MS);
+    await vi.advanceTimersByTimeAsync(LIBRARY_WATCH_BACKSTOP_MS);
     await changed;
 
     expect(getLibrarySnapshot().roots).toEqual([`${otherBase}/*`]);

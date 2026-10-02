@@ -3,7 +3,7 @@
  * directly (the eslint override for this file disables `no-console`). Every
  * other module logs through it, so all output carries a timestamp and level.
  *
- * Methods call `console.*` lazily at call time, so `jest.spyOn(console, …)`
+ * Methods call `console.*` lazily at call time, so `vi.spyOn(console, …)`
  * in tests keeps working. The level is read from `LOG_LEVEL` on every call
  * (`info` by default, then `warn`, `error`, `silent`).
  */

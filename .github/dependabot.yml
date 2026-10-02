@@ -21,8 +21,9 @@ updates:
       dev-deps:
         dependency-type: development
     ignore:
-      # TypeScript majors break the test toolchain (ts-jest, vitest plugins)
-      # until they are upgraded together; let that be a manual change.
+      # TypeScript majors break the type-aware lint toolchain
+      # (typescript-eslint peer range) until the two move together; let that
+      # be a manual change.
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
       # The runtime is pinned to Node 24 (.nvmrc); type majors must follow a

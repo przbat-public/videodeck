@@ -21,8 +21,8 @@ import { MockOpenai } from './mockOpenai';
  * the module-level env reads (config.ts) see the test values.
  */
 
-// test-infra/src → repo root. __dirname is defined under jest (CJS) and is
-// shimmed by vite-node alike, so one form serves both runners.
+// test-infra/src → repo root. vite-node shims __dirname for the ESM transform,
+// so the server suite and the client integration suite resolve it alike.
 const REPO_ROOT = path.resolve(__dirname, '../..');
 export const FAKE_YTDLP = path.join(REPO_ROOT, 'scripts/fake-bin/yt-dlp');
 
@@ -38,38 +38,15 @@ type FolderRoutesModule = typeof import('../../server/src/routes/folder.js');
 type IndexMaintenanceModule = typeof import('../../server/src/routes/videos/indexMaintenance.js');
 type LibraryStateModule = typeof import('../../server/src/services/libraryState.js');
 
-// Local declaration so both typechecking programs are happy: the server
-// program sees the real @types/jest shape, the client program gets a stub.
-declare const jest: { requireActual: <T>(path: string) => T } | undefined;
+const loadAppModule = async (): Promise<AppModule> => import('../../server/src/app.js');
 
-async function loadAppModule(): Promise<AppModule> {
-  // typeof probe: jest is undefined under vite-node — a bare reference would throw.
-  if (typeof jest !== 'undefined') {
-    return jest.requireActual<AppModule>('../../server/src/app');
-  }
-  return import('../../server/src/app.js');
-}
+const loadFolderRoutesModule = async (): Promise<FolderRoutesModule> => import('../../server/src/routes/folder.js');
 
-async function loadFolderRoutesModule(): Promise<FolderRoutesModule> {
-  if (typeof jest !== 'undefined') {
-    return jest.requireActual<FolderRoutesModule>('../../server/src/routes/folder');
-  }
-  return import('../../server/src/routes/folder.js');
-}
+const loadIndexMaintenanceModule = async (): Promise<IndexMaintenanceModule> =>
+  import('../../server/src/routes/videos/indexMaintenance.js');
 
-async function loadIndexMaintenanceModule(): Promise<IndexMaintenanceModule> {
-  if (typeof jest !== 'undefined') {
-    return jest.requireActual<IndexMaintenanceModule>('../../server/src/routes/videos/indexMaintenance');
-  }
-  return import('../../server/src/routes/videos/indexMaintenance.js');
-}
-
-async function loadLibraryStateModule(): Promise<LibraryStateModule> {
-  if (typeof jest !== 'undefined') {
-    return jest.requireActual<LibraryStateModule>('../../server/src/services/libraryState');
-  }
-  return import('../../server/src/services/libraryState.js');
-}
+const loadLibraryStateModule = async (): Promise<LibraryStateModule> =>
+  import('../../server/src/services/libraryState.js');
 
 export interface DeepServerTestEnv {
   /** supertest agent bound to the real app */
@@ -157,8 +134,6 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
   process.env.FAKE_YTDLP_PROGRESS_DELAY_MS = '600';
 
   // Import after the environment is set (config.ts pins env values at load).
-  // jest (CJS) cannot run a native dynamic import without ESM flags, while
-  // vite-node cannot require() — probe the runtime and use its loader.
   const { createApp } = await loadAppModule();
   const app = createApp();
   // The real watcher runs for the whole environment, so a suite can create a

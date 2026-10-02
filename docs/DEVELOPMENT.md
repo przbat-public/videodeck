@@ -54,7 +54,7 @@ pnpm run format:check
 ```
 ## Tests
 
-The project uses **Jest** for the backend and **Vitest** for the frontend and the Chrome extension.
+The project uses **Vitest** for the backend, the frontend and the Chrome extension.
 
 ### Running tests
 
@@ -139,8 +139,9 @@ cd client && pnpm run test:coverage
 
 Coverage reports are generated in the `coverage/` folder.
 
-The backend and frontend have coverage thresholds configured (`coverageThreshold` in
-`server/jest.config.js`, `test.coverage.thresholds` in `client/vite.config.ts`).
+The backend and frontend have coverage thresholds configured
+(`test.coverage.thresholds` in `server/vitest.config.mts` and
+`client/vite.config.ts`).
 The thresholds sit just below the current level. They are meant to catch
 regressions, not to be a goal in themselves. When coverage grows, it is worth
 raising them. The Chrome extension has unit tests without thresholds. It is
@@ -165,7 +166,7 @@ small, pure logic in `chrome-extension/src/lib/`.
 ### Code quality
 
 - **TypeScript** - strong typing across the project (details below)
-- **Unit tests** - high test coverage (Jest + Vitest)
+- **Unit tests** - high test coverage (Vitest)
 - **Linting** - Biome (strict rules) + ESLint (type-aware) to check code quality
 - **Formatting** - Biome for consistent formatting
 - **Validation** - checking API parameters and file paths

@@ -21,6 +21,7 @@ import {
 import { extractYoutubeVideoId } from '@videodeck/shared/youtube';
 import type express from 'express';
 import request from 'supertest';
+import type { Mock, Mocked, MockedFunction } from 'vitest';
 import { createApp as createRealApp } from '../app';
 import { getVideosFolderPaths } from '../config';
 import { readCollection } from '../services/collection';
@@ -39,24 +40,24 @@ import { at } from '../test-utils';
 import { activeSseStreamCount } from '../utils/sseRegistry';
 import { invalidateStatusCache, invalidateSummaryCache } from './folder';
 
-jest.mock('node:fs/promises');
-jest.mock('node:child_process');
-jest.mock('../config', () => {
-  const actual = jest.requireActual('../config');
-  return { ...actual, getVideosFolderPaths: jest.fn() };
+vi.mock('node:fs/promises');
+vi.mock('node:child_process');
+vi.mock('../config', async () => {
+  const actual = await vi.importActual<typeof import('../config')>('../config');
+  return { ...actual, getVideosFolderPaths: vi.fn() };
 });
-jest.mock('../services/folderIndex');
-jest.mock('../services/collection');
-jest.mock('../services/elasticsearchService', () => ({
-  listCachedFolders: jest.fn(),
+vi.mock('../services/folderIndex');
+vi.mock('../services/collection');
+vi.mock('../services/elasticsearchService', () => ({
+  listCachedFolders: vi.fn(),
 }));
-jest.mock('../services/folderConfig', () => {
-  const actual = jest.requireActual('../services/folderConfig');
+vi.mock('../services/folderConfig', async () => {
+  const actual = await vi.importActual<typeof import('../services/folderConfig')>('../services/folderConfig');
   return {
     ...actual,
-    readFolderConfig: jest.fn(),
-    loadDownloadOptions: jest.fn(),
-    invalidateCategoryCache: jest.fn(),
+    readFolderConfig: vi.fn(),
+    loadDownloadOptions: vi.fn(),
+    invalidateCategoryCache: vi.fn(),
   };
 });
 
@@ -64,7 +65,7 @@ jest.mock('../services/folderConfig', () => {
 interface FakeSpawnedProcess extends EventEmitter {
   stdout: EventEmitter;
   stderr: EventEmitter;
-  kill: jest.Mock<boolean, [signal?: NodeJS.Signals]>;
+  kill: Mock<(signal?: NodeJS.Signals) => boolean>;
 }
 
 interface SpawnCall {
@@ -73,21 +74,28 @@ interface SpawnCall {
   process: FakeSpawnedProcess;
 }
 
+/**
+ * Every spawn the fake below records, in order. A `vi.mock` factory runs in a
+ * scope hoisted above this file's imports, so it cannot read a variable
+ * declared here: `vi.hoisted` lifts the declaration to the same place and the
+ * factory fills this very array.
+ */
+const spawnCalls = vi.hoisted((): SpawnCall[] => []);
+
 // Real queue with a fake spawn so that route <-> queue integration is exercised.
-jest.mock('../services/downloadQueue', () => {
-  const actual = jest.requireActual<typeof import('../services/downloadQueue')>('../services/downloadQueue');
-  const { EventEmitter: EE } = jest.requireActual<typeof import('events')>('events');
-  const calls: SpawnCall[] = [];
+vi.mock('../services/downloadQueue', async () => {
+  const actual = await vi.importActual<typeof import('../services/downloadQueue')>('../services/downloadQueue');
+  const { EventEmitter: EE } = await vi.importActual<typeof import('events')>('events');
   const spawnFn = (_cmd: string, args: string[], options: { cwd: string }): SpawnedProcess => {
     const proc: FakeSpawnedProcess = Object.assign(new EE(), {
       stdout: new EE(),
       stderr: new EE(),
-      kill: jest.fn(() => {
+      kill: vi.fn(() => {
         setImmediate(() => proc.emit('close', null));
         return true;
       }),
     });
-    calls.push({ args, cwd: options.cwd, process: proc });
+    spawnCalls.push({ args, cwd: options.cwd, process: proc });
     return proc;
   };
   return {
@@ -102,31 +110,28 @@ jest.mock('../services/downloadQueue', () => {
         /* tests inject no post-job hook here */
       },
     }),
-    __spawnCalls: calls,
   };
 });
 
-const { __spawnCalls: spawnCalls } = jest.requireMock<{ __spawnCalls: SpawnCall[] }>('../services/downloadQueue');
-
-const mockedFs = fs as jest.Mocked<typeof fs>;
-const mockedSpawn = spawn as jest.MockedFunction<typeof spawn>;
-const mockedGetVideosFolderPaths = getVideosFolderPaths as jest.MockedFunction<typeof getVideosFolderPaths>;
-const mockedFindEntry = findEntryByVideoId as jest.MockedFunction<typeof findEntryByVideoId>;
-const mockedLoadIndex = loadIndex as jest.MockedFunction<typeof loadIndex>;
-const mockedGetDownloadStatuses = getDownloadStatuses as jest.MockedFunction<typeof getDownloadStatuses>;
-const mockedRebuildIndex = rebuildIndex as jest.MockedFunction<typeof rebuildIndex>;
-const mockedReadFolderConfig = readFolderConfig as jest.MockedFunction<typeof readFolderConfig>;
-const mockedLoadDownloadOptions = loadDownloadOptions as jest.MockedFunction<typeof loadDownloadOptions>;
-const mockedListCachedFolders = listCachedFolders as jest.MockedFunction<typeof listCachedFolders>;
-const mockedReadCollection = readCollection as jest.MockedFunction<typeof readCollection>;
+const mockedFs = fs as Mocked<typeof fs>;
+const mockedSpawn = spawn as MockedFunction<typeof spawn>;
+const mockedGetVideosFolderPaths = getVideosFolderPaths as MockedFunction<typeof getVideosFolderPaths>;
+const mockedFindEntry = findEntryByVideoId as MockedFunction<typeof findEntryByVideoId>;
+const mockedLoadIndex = loadIndex as MockedFunction<typeof loadIndex>;
+const mockedGetDownloadStatuses = getDownloadStatuses as MockedFunction<typeof getDownloadStatuses>;
+const mockedRebuildIndex = rebuildIndex as MockedFunction<typeof rebuildIndex>;
+const mockedReadFolderConfig = readFolderConfig as MockedFunction<typeof readFolderConfig>;
+const mockedLoadDownloadOptions = loadDownloadOptions as MockedFunction<typeof loadDownloadOptions>;
+const mockedListCachedFolders = listCachedFolders as MockedFunction<typeof listCachedFolders>;
+const mockedReadCollection = readCollection as MockedFunction<typeof readCollection>;
 
 const FOLDER = '/videos/channel-a';
 const OTHER_FOLDER = '/videos/channel-b';
 
 /**
  * The env value this file inherits. The library snapshot reads the process env
- * and jest shares one process per worker, so the folder tests restore it when
- * the file is done instead of leaving the next file an empty library.
+ * and vitest reuses a worker process across files, so the folder tests restore
+ * it when the file is done instead of leaving the next file an empty library.
  */
 const inheritedVideosFolderPath = process.env.VIDEOS_FOLDER_PATH;
 
@@ -135,9 +140,9 @@ const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 /** File handle handed out by the fs.open mock (writeJsonAtomic) */
 const mockFileHandle = {
-  writeFile: jest.fn<Promise<void>, [string, BufferEncoding]>(),
-  sync: jest.fn<Promise<void>, []>(),
-  close: jest.fn<Promise<void>, []>(),
+  writeFile: vi.fn<(path: string, encoding: BufferEncoding) => Promise<void>>(),
+  sync: vi.fn<() => Promise<void>>(),
+  close: vi.fn<() => Promise<void>>(),
 };
 
 /** The real app wiring (host guard, CORS, auth, routers, error handling) */
@@ -177,8 +182,8 @@ describe('folder router', () => {
   let app: express.Application;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, 'error').mockImplementation(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'error').mockImplementation(() => {
       /* silence expected error logs */
     });
     // The library snapshot is module-level and reads the process env on every
@@ -212,7 +217,7 @@ describe('folder router', () => {
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   afterAll(() => {
@@ -479,7 +484,7 @@ describe('folder router', () => {
     });
 
     it('accepts a folder path written with ~/', async () => {
-      jest.spyOn(os, 'homedir').mockReturnValue('/videos');
+      vi.spyOn(os, 'homedir').mockReturnValue('/videos');
 
       const response = await request(app).get('/api/folder/list-exists').query({ folderPath: '~/channel-a' });
 
@@ -515,7 +520,9 @@ describe('folder router', () => {
     });
 
     it('maps a real yt-dlp list.json fixture', async () => {
-      const realFs = jest.requireActual('fs/promises') as typeof import('fs/promises');
+      const realFs = (await vi.importActual<typeof import('fs/promises')>(
+        'fs/promises',
+      )) as typeof import('fs/promises');
       const fixture = await realFs.readFile(`${__dirname}/../test/fixtures/ytdlp-list.json`, 'utf-8');
       mockedFs.readFile.mockResolvedValue(fixture);
       mockedGetDownloadStatuses.mockResolvedValue({
@@ -1344,7 +1351,7 @@ describe('folder router', () => {
     });
 
     it('writes an SSE heartbeat comment every 15 s while the job is quiet', async () => {
-      jest.useFakeTimers();
+      vi.useFakeTimers();
       try {
         let streamData = '';
         let notifyData: (() => void) | undefined;
@@ -1380,10 +1387,10 @@ describe('folder router', () => {
           new Promise<void>((resolve) => {
             notifyData = resolve;
           });
-        jest.advanceTimersByTime(15_000);
+        vi.advanceTimersByTime(15_000);
         await nextData();
         expect(streamData).toContain(': ping\n\n');
-        jest.advanceTimersByTime(15_000);
+        vi.advanceTimersByTime(15_000);
         await nextData();
         expect(streamData.match(/: ping/g)).toHaveLength(2);
 
@@ -1397,7 +1404,7 @@ describe('folder router', () => {
           message: 'Download completed successfully',
         });
       } finally {
-        jest.useRealTimers();
+        vi.useRealTimers();
       }
     });
   });
@@ -1405,8 +1412,8 @@ describe('folder router', () => {
 
 describe('createApp (full app with body limit)', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.spyOn(console, 'error').mockImplementation(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'error').mockImplementation(() => {
       /* silence expected error logs */
     });
     mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
@@ -1417,7 +1424,7 @@ describe('createApp (full app with body limit)', () => {
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('accepts a bulk enqueue for a channel with thousands of videos', async () => {

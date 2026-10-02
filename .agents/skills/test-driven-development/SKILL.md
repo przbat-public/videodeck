@@ -27,7 +27,7 @@ Skip it only for pure config, docs or static content changes.
 
 | Layer | Command | Focused run |
 | --- | --- | --- |
-| Server (jest) | `cd server && pnpm run test` | `cd server && pnpm run test -t "pattern"` |
+| Server (vitest) | `cd server && pnpm run test` | `cd server && pnpm run test -t "pattern"` |
 | Client (vitest) | `cd client && pnpm run test:run` | `cd client && pnpm run test:run -t "pattern"` |
 | Extension (vitest) | `cd chrome-extension && pnpm run test` | `cd chrome-extension && pnpm run test:run -t "pattern"` |
 | Client integration | `pnpm run test:integration` | `pnpm run test:integration -t "pattern"` |
@@ -106,12 +106,12 @@ Supporting rules:
   wrong. Import the constant from the code under test when it exports one.
 - A fake never encodes a timing assumption about its consumer. The fake
   answers when asked, it does not sleep "long enough" for the app to notice.
-- `jest.useFakeTimers()` (or `vi.useFakeTimers()`) plus an explicit advance is
-  the default for debounce, backoff and watchdog tests. Watch out for the two
-  traps: interactions driven by `userEvent` deadlock under fake timers (use
-  `fireEvent`, or fake only the window), and a genuine zero-delay interval
-  spins the fake clock instead of failing, so keep the timers the code arms
-  strictly positive when a test advances past them.
+- `vi.useFakeTimers()` plus an explicit advance is the default for debounce,
+  backoff and watchdog tests. Watch out for the two traps: interactions driven
+  by `userEvent` deadlock under fake timers (use `fireEvent`, or fake only the
+  window), and a genuine zero-delay interval spins the fake clock instead of
+  failing, so keep the timers the code arms strictly positive when a test
+  advances past them.
 
 ## Fakes and mocks
 
@@ -131,12 +131,13 @@ Every fake carries three things:
 - its own tests over its own surface, one per modelled behaviour
   (`server/src/test/fakeElasticsearch.test.ts`);
 - a real-dependency twin in CI for the behaviour the fake approximates
-  (`RUN_ES_INTEGRATION=1 jest src/services/elasticsearch.integration.test.ts`
-  against a real cluster), so a fake that drifts cannot stay green forever.
+  (`RUN_ES_INTEGRATION=1 pnpm exec vitest run
+  src/services/elasticsearch.integration.test.ts` against a real cluster), so
+  a fake that drifts cannot stay green forever.
 
 ## Which layer to pick
 
-- Pure logic with no I/O: a unit test (jest or vitest), milliseconds.
+- Pure logic with no I/O: a unit test (vitest), milliseconds.
 - A boundary crossed (API route, file system, queue state): server
   integration via supertest with fakes, or the in-process client
   integration when UI and backend must meet.

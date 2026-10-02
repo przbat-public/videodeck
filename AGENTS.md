@@ -8,7 +8,7 @@ Monorepo with **pnpm workspaces** (`pnpm-workspace.yaml`), like vita-tracker:
 
 | dir                 | what                                                             | test runner                       |
 | ------------------- | ---------------------------------------------------------------- | --------------------------------- |
-| `server/`           | Express 5 + Elasticsearch + yt-dlp queue + AI summaries          | jest + deep integration           |
+| `server/`           | Express 5 + Elasticsearch + yt-dlp queue + AI summaries          | vitest + deep integration         |
 | `client/`           | React 19 + Vite UI, i18n pl/en                                   | vitest + integration + Playwright |
 | `chrome-extension/` | MV3 extension (esbuild)                                          | vitest                            |
 | `shared/`           | zod API contract + helpers (the `@videodeck/shared` package)     |                                  |
@@ -213,13 +213,13 @@ Playwright stays the thin mocked-API browser layer (`client/e2e/`).
   `getComputedStyle` where truly needed.
 - **Major-version holds**: Dependabot ignores semver-major bumps of the type
   and compiler toolchain, naming `typescript` and `@types/node` today. Both
-  waits are deliberate: a TypeScript major breaks the test toolchain until
-  ts-jest and the vitest plugins move with it, and an `@types/node` major has
-  to follow a Node runtime bump (`.nvmrc`), not lead it. Do those upgrades by
-  hand, together, as one change.
-- **jest + the shared test infra**: `@videodeck/test-infra/*` and
+  waits are deliberate: a TypeScript major breaks the type-aware lint
+  toolchain until `typescript-eslint` moves with it, and an `@types/node` major
+  has to follow a Node runtime bump (`.nvmrc`), not lead it. Do those upgrades
+  by hand, together, as one change.
+- **vitest + the shared test infra**: `@videodeck/test-infra/*` and
   `@videodeck/shared/*` resolve through the pnpm workspace symlinks and each
-  package's `exports` (no tsconfig paths, jest mapper or vite aliases — the
+  package's `exports` (no tsconfig paths or vite aliases; the
   dependency-cruiser config follows those symlinks). The env helper imports
   the server app only AFTER setting the environment. Keep that ordering.
 

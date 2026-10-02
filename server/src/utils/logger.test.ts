@@ -15,13 +15,13 @@ describe('formatLogLine', () => {
 
 describe('logger', () => {
   it('routes every level to the matching console method', () => {
-    const log = jest.spyOn(console, 'log').mockImplementation(() => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {
       /* captured by the assertions below */
     });
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
       /* captured by the assertions below */
     });
-    const error = jest.spyOn(console, 'error').mockImplementation(() => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {
       /* captured by the assertions below */
     });
 
@@ -40,13 +40,13 @@ describe('logger', () => {
   });
 
   it('respects LOG_LEVEL', () => {
-    const log = jest.spyOn(console, 'log').mockImplementation(() => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {
       /* captured by the assertions below */
     });
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
       /* captured by the assertions below */
     });
-    const error = jest.spyOn(console, 'error').mockImplementation(() => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {
       /* captured by the assertions below */
     });
     try {

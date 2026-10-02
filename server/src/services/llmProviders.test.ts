@@ -11,7 +11,7 @@ import {
 
 /**
  * Put an environment variable back the way this file found it: process.env
- * outlives a test file inside a jest worker, and the deep server integration
+ * outlives a test file inside a vitest worker, and the deep server integration
  * runs as a neighbour (see config.test.ts).
  */
 function restoreEnv(name: string, original: string | undefined): void {

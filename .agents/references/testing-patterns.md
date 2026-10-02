@@ -91,13 +91,13 @@ The same rule kills `expect(await screen.queryByText('x')).toBeDefined()`,
 which passes for `null`. `scripts/check-test-hygiene.mjs` (part of
 `pnpm run lint`) fails both shapes before they land.
 
-## Server patterns (jest + supertest)
+## Server patterns (vitest + supertest)
 
 - Boot the app with `deepServerTestEnv` from `@videodeck/test-infra` so the
   fake Elasticsearch, mock OpenAI and fake yt-dlp serve real responses.
 - Assert status, body shape (parsed with zod schemas from
   `shared/schemas.ts`) and side effects (files written, queue state).
-- Time control with `jest.useFakeTimers()`; no `setTimeout` waits.
+- Time control with `vi.useFakeTimers()`; no `setTimeout` waits.
 
 ## Client patterns (vitest + React Testing Library)
 
@@ -133,7 +133,7 @@ behavior that hides:
 
 ```ts
 // Mocks the index writer: this test is about the retry count, not the write.
-jest.mock('./videoScanner', () => ({ indexVideosFromDisk: jest.fn() }));
+vi.mock('./videoScanner', () => ({ indexVideosFromDisk: vi.fn() }));
 ```
 
 ## Integration and e2e

@@ -1,6 +1,8 @@
 import * as fs from 'node:fs/promises';
 import OpenAI from 'openai';
+import type { Mocked, MockedClass } from 'vitest';
 import { metricsRegistry } from '../metrics';
+import { at } from '../test-utils';
 import { logger } from '../utils/logger';
 import {
   activeGenerationCount,
@@ -14,11 +16,11 @@ import {
   truncateTextToTokenLimit,
 } from './summaryService';
 
-jest.mock('node:fs/promises');
-jest.mock('openai');
+vi.mock('node:fs/promises');
+vi.mock('openai');
 
-const mockedFs = fs as jest.Mocked<typeof fs>;
-const MockedOpenAI = OpenAI as jest.MockedClass<typeof OpenAI>;
+const mockedFs = fs as Mocked<typeof fs>;
+const MockedOpenAI = OpenAI as MockedClass<typeof OpenAI>;
 
 const INPUT = {
   folderPath: '/test/videos',
@@ -41,14 +43,14 @@ And another one`;
 const mockOpenAIInstance = {
   chat: {
     completions: {
-      create: jest.fn(),
+      create: vi.fn(),
     },
   },
 };
 
 /**
  * Provider variables this suite owns. process.env outlives a test file inside
- * a jest worker, and the deep server integration is a neighbour, so every case
+ * a vitest worker, and the deep server integration is a neighbour, so every case
  * starts from a clean slate and the originals go back in afterAll.
  */
 const PROVIDER_ENV_VARS = [
@@ -87,9 +89,9 @@ function mockCompletion(summary: string, finishReason = 'stop') {
 
 /** The file handle handed out by the fs.open mock (writeTextAtomic) */
 const mockFileHandle = {
-  writeFile: jest.fn<Promise<void>, [string, BufferEncoding]>(),
-  sync: jest.fn<Promise<void>, []>(),
-  close: jest.fn<Promise<void>, []>(),
+  writeFile: vi.fn<(content: string, encoding: BufferEncoding) => Promise<void>>(),
+  sync: vi.fn<() => Promise<void>>(),
+  close: vi.fn<() => Promise<void>>(),
 };
 
 describe('extractTextFromVttSubtitles', () => {
@@ -136,7 +138,7 @@ Hello<c> there</c> friend`;
   });
 
   it('handles a real yt-dlp VTT with header lines and inline timing tags', async () => {
-    const realFs = jest.requireActual('fs/promises') as typeof import('fs/promises');
+    const realFs = (await vi.importActual<typeof import('fs/promises')>('fs/promises')) as typeof import('fs/promises');
     const vtt = await realFs.readFile(`${__dirname}/../test/fixtures/ytdlp-real.vtt`, 'utf-8');
 
     const text = extractTextFromVttSubtitles(vtt);
@@ -198,12 +200,19 @@ describe('generateSummary', () => {
   beforeEach(() => {
     // resetAllMocks (not clear): leftover mockResolvedValueOnce queues from
     // a previous test used to leak into the next one.
-    jest.resetAllMocks();
+    vi.resetAllMocks();
     resetInFlightSummaries();
     resetSummarySemaphore();
     clearProviderEnv();
     process.env.OPENAI_API_KEY = 'test-api-key';
-    MockedOpenAI.mockImplementation(() => mockOpenAIInstance as unknown as OpenAI);
+    // Production code calls `new OpenAI(...)`, and an arrow function is not
+    // constructible: the implementation has to be a function expression. The
+    // reference stays lazy, so the factory does not read `mockOpenAIInstance`
+    // while the module graph is still initialising.
+    // biome-ignore lint/complexity/useArrowFunction: this mock stands in for a class, and an arrow function is not constructible.
+    MockedOpenAI.mockImplementation(function () {
+      return mockOpenAIInstance as unknown as OpenAI;
+    });
     // resolveContainedPath: identity realpath keeps the containment check green
     mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
     // Atomic text writes go through the mocked handle
@@ -296,7 +305,7 @@ This is a test subtitle`;
 
     await generateSummary(INPUT);
 
-    const createCall = mockOpenAIInstance.chat.completions.create.mock.calls[0];
+    const createCall = at(mockOpenAIInstance.chat.completions.create.mock.calls, 0);
     const userContent = createCall[0].messages[1].content as string;
     expect(userContent).toContain('This is a test subtitle');
     expect(userContent).toContain('<subtitles>');
@@ -308,7 +317,7 @@ This is a test subtitle`;
   });
 
   it('moves to the next model after honoring Retry-After on a 429', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     try {
       mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
       mockedFs.readFile.mockResolvedValueOnce(VTT as never);
@@ -321,21 +330,21 @@ This is a test subtitle`;
         .mockResolvedValueOnce(mockCompletion('Summary'));
 
       const pending = generateSummary(INPUT);
-      await jest.advanceTimersByTimeAsync(1500);
+      await vi.advanceTimersByTimeAsync(1500);
       const result = await pending;
 
       expect(result.summary).toBe('Summary');
       expect(mockOpenAIInstance.chat.completions.create).toHaveBeenCalledTimes(2);
       // The first call used gpt-4o, the fallback gpt-4o-mini
-      expect(mockOpenAIInstance.chat.completions.create.mock.calls[0][0].model).toBe('gpt-4o');
-      expect(mockOpenAIInstance.chat.completions.create.mock.calls[1][0].model).toBe('gpt-4o-mini');
+      expect(at(mockOpenAIInstance.chat.completions.create.mock.calls, 0)[0].model).toBe('gpt-4o');
+      expect(at(mockOpenAIInstance.chat.completions.create.mock.calls, 1)[0].model).toBe('gpt-4o-mini');
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
     }
   });
 
   it('fails fast once every model is rate limited', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     try {
       mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
       mockedFs.readFile.mockResolvedValueOnce(VTT as never);
@@ -345,12 +354,12 @@ This is a test subtitle`;
 
       const pending = generateSummary(INPUT);
       const expectation = expect(pending).rejects.toThrow('Rate limit exceeded for all models');
-      await jest.advanceTimersByTimeAsync(2500);
+      await vi.advanceTimersByTimeAsync(2500);
       await expectation;
       expect(mockOpenAIInstance.chat.completions.create).toHaveBeenCalledTimes(2);
       expect(mockFileHandle.writeFile).not.toHaveBeenCalled();
     } finally {
-      jest.useRealTimers();
+      vi.useRealTimers();
     }
   });
 
@@ -534,7 +543,7 @@ This is a test subtitle`;
       maxRetries: 0,
       dangerouslyAllowBrowser: false,
     });
-    const body = mockOpenAIInstance.chat.completions.create.mock.calls[0][0];
+    const body = at(mockOpenAIInstance.chat.completions.create.mock.calls, 0)[0];
     expect(body.model).toBe('deepseek-flash');
     // Thinking mode ignores temperature and bills reasoning a summary does not need
     expect(body.thinking).toEqual({ type: 'disabled' });
@@ -552,7 +561,7 @@ This is a test subtitle`;
 
     await generateSummary(INPUT);
 
-    const body = mockOpenAIInstance.chat.completions.create.mock.calls[0][0];
+    const body = at(mockOpenAIInstance.chat.completions.create.mock.calls, 0)[0];
     expect(body.model).toBe('deepseek-v4-pro');
     expect(body.thinking).toEqual({ type: 'enabled' });
     expect(body.reasoning_effort).toBe('max');
@@ -573,7 +582,7 @@ This is a test subtitle`;
     await generateSummary(INPUT);
 
     expect(MockedOpenAI).toHaveBeenCalledWith(expect.objectContaining({ baseURL: 'http://127.0.0.1:9999/v1' }));
-    expect(mockOpenAIInstance.chat.completions.create.mock.calls[0][0].model).toBe('deepseek-v4-pro');
+    expect(at(mockOpenAIInstance.chat.completions.create.mock.calls, 0)[0].model).toBe('deepseek-v4-pro');
   });
 
   it('keeps OpenAI when SUMMARY_PROVIDER pins it, even though a DeepSeek key is present', async () => {
@@ -586,11 +595,11 @@ This is a test subtitle`;
     await generateSummary(INPUT);
 
     expect(MockedOpenAI).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'test-api-key' }));
-    expect(mockOpenAIInstance.chat.completions.create.mock.calls[0][0].model).toBe('gpt-4o');
+    expect(at(mockOpenAIInstance.chat.completions.create.mock.calls, 0)[0].model).toBe('gpt-4o');
   });
 
   it('logs the billed tokens, approximate cost and records cost metrics per provider', async () => {
-    const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {
       /* silence the expected billing log */
     });
     mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
@@ -617,7 +626,7 @@ This is a test subtitle`;
   });
 
   it('prices a DeepSeek summary with the DeepSeek rate, not the OpenAI one', async () => {
-    const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {
       /* silence the expected billing log */
     });
     delete process.env.OPENAI_API_KEY;

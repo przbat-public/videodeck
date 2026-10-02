@@ -12,9 +12,9 @@ const flushAsync = (): Promise<void> => new Promise((resolve) => setImmediate(re
 
 describe('shutdown', () => {
   it('cancels the jobs, closes the server and exits 0', () => {
-    const cancelJobs = jest.fn();
-    const exit = jest.fn();
-    const close = jest.fn((callback?: () => void) => callback?.());
+    const cancelJobs = vi.fn();
+    const exit = vi.fn();
+    const close = vi.fn((callback?: () => void) => callback?.());
 
     shutdown({ server: { close }, cancelJobs, exit, forceExitMs: 1000 });
 
@@ -24,62 +24,62 @@ describe('shutdown', () => {
   });
 
   it('forces an exit when the server does not close in time', () => {
-    jest.useFakeTimers();
-    const exit = jest.fn();
+    vi.useFakeTimers();
+    const exit = vi.fn();
 
     shutdown({
-      server: { close: jest.fn() },
-      cancelJobs: jest.fn(),
+      server: { close: vi.fn() },
+      cancelJobs: vi.fn(),
       exit,
       forceExitMs: 5000,
     });
 
     expect(exit).not.toHaveBeenCalled();
-    jest.advanceTimersByTime(5000);
+    vi.advanceTimersByTime(5000);
     expect(exit).toHaveBeenCalledWith(1);
 
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('exits 1 when closing the server throws', () => {
-    const exit = jest.fn();
-    const close = jest.fn(() => {
+    const exit = vi.fn();
+    const close = vi.fn(() => {
       throw new Error('close failed');
     });
 
-    shutdown({ server: { close }, cancelJobs: jest.fn(), exit });
+    shutdown({ server: { close }, cancelJobs: vi.fn(), exit });
 
     expect(exit).toHaveBeenCalledWith(1);
   });
 
   it('ends open SSE streams before closing the server', () => {
-    const closeSseStreams = jest.fn();
-    const exit = jest.fn();
-    const close = jest.fn((callback?: () => void) => callback?.());
+    const closeSseStreams = vi.fn();
+    const exit = vi.fn();
+    const close = vi.fn((callback?: () => void) => callback?.());
 
-    shutdown({ server: { close }, cancelJobs: jest.fn(), exit, closeSseStreams });
+    shutdown({ server: { close }, cancelJobs: vi.fn(), exit, closeSseStreams });
 
     expect(closeSseStreams).toHaveBeenCalled();
     expect(exit).toHaveBeenCalledWith(0);
   });
 
   it('stops the library watcher before closing the server', () => {
-    const stopLibraryWatch = jest.fn();
-    const exit = jest.fn();
-    const close = jest.fn((callback?: () => void) => callback?.());
+    const stopLibraryWatch = vi.fn();
+    const exit = vi.fn();
+    const close = vi.fn((callback?: () => void) => callback?.());
 
-    shutdown({ server: { close }, cancelJobs: jest.fn(), exit, stopLibraryWatch });
+    shutdown({ server: { close }, cancelJobs: vi.fn(), exit, stopLibraryWatch });
 
     expect(stopLibraryWatch).toHaveBeenCalled();
     expect(exit).toHaveBeenCalledWith(0);
   });
 
   it('waits for the download queue to drain before closing the server', async () => {
-    const cancelJobs = jest.fn();
-    const exit = jest.fn();
-    const close = jest.fn((callback?: () => void) => callback?.());
+    const cancelJobs = vi.fn();
+    const exit = vi.fn();
+    const close = vi.fn((callback?: () => void) => callback?.());
     let releaseIdle: (() => void) | undefined;
-    const awaitIdle = jest.fn(
+    const awaitIdle = vi.fn(
       () =>
         new Promise<void>((resolve) => {
           releaseIdle = resolve;
@@ -103,14 +103,14 @@ describe('shutdown', () => {
     // that exits first loses the jobs it was supposed to keep. The close waits
     // for that promise, so an exit callback can never race the write.
     let releaseCancel: (() => void) | undefined;
-    const cancelJobs = jest.fn(
+    const cancelJobs = vi.fn(
       () =>
         new Promise<void>((resolve) => {
           releaseCancel = resolve;
         }),
     );
-    const exit = jest.fn();
-    const close = jest.fn((callback?: () => void) => callback?.());
+    const exit = vi.fn();
+    const close = vi.fn((callback?: () => void) => callback?.());
 
     shutdown({ server: { close }, cancelJobs, exit, forceExitMs: 1000 });
 
@@ -126,8 +126,8 @@ describe('shutdown', () => {
   });
 
   it('closes the server even when the cancellation fails', async () => {
-    const exit = jest.fn();
-    const close = jest.fn((callback?: () => void) => callback?.());
+    const exit = vi.fn();
+    const close = vi.fn((callback?: () => void) => callback?.());
 
     shutdown({
       server: { close },
@@ -166,7 +166,7 @@ describe('shutdown with a real queue', () => {
       ]);
 
       let contentAtExit: string | null = null;
-      const exit = jest.fn((code: number) => {
+      const exit = vi.fn((code: number) => {
         if (code === 0) {
           contentAtExit = readFileSync(stateFile, 'utf-8');
         }
@@ -197,9 +197,9 @@ describe('shutdown with a real queue', () => {
 describe('installShutdownHandlers', () => {
   it('registers and unregisters the signal handlers', () => {
     const options = {
-      server: { close: jest.fn((callback?: () => void) => callback?.()) },
-      cancelJobs: jest.fn(),
-      exit: jest.fn(),
+      server: { close: vi.fn((callback?: () => void) => callback?.()) },
+      cancelJobs: vi.fn(),
+      exit: vi.fn(),
     };
     const remove = installShutdownHandlers(options, ['SIGTERM']);
 

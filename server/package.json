@@ -8,13 +8,12 @@
     "start": "tsx src/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start:prod": "node dist/server/src/index.js",
-    "test": "jest",
-    "test:vitest": "vitest run",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test:integration": "RUN_ES_INTEGRATION=1 jest src/services/elasticsearch.integration.test.ts",
-    "test:ytdlp-integration": "RUN_YTDLP_INTEGRATION=1 jest src/services/ytdlp.integration.test.ts"
+    "test:integration": "RUN_ES_INTEGRATION=1 vitest run src/services/elasticsearch.integration.test.ts",
+    "test:ytdlp-integration": "RUN_YTDLP_INTEGRATION=1 vitest run src/services/ytdlp.integration.test.ts"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^9.5.1",
@@ -31,15 +30,12 @@
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",
-    "@types/jest": "^30.0.0",
     "@types/node": "^24.13.6",
     "@types/supertest": "^7.2.1",
     "@videodeck/test-infra": "workspace:*",
     "@vitest/coverage-v8": "^5.0.2",
     "fast-check": "^4.10.2",
-    "jest": "^30.5.2",
     "supertest": "^7.3.0",
-    "ts-jest": "^29.4.14",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2"

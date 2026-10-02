@@ -21,7 +21,7 @@ describe('loadCommentTree', () => {
 
   it('returns the parsed tree and reuses it while the file is unchanged', async () => {
     await writeInfo([{ id: 'c1', text: 'root', like_count: 3, replies: [] }]);
-    const readFile = jest.spyOn(fs, 'readFile');
+    const readFile = vi.spyOn(fs, 'readFile');
 
     const first = await loadCommentTree(dir, '20231201_Video');
     const second = await loadCommentTree(dir, '20231201_Video');
