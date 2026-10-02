@@ -5,6 +5,7 @@ import * as fs from 'node:fs/promises';
 import type { IncomingMessage } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { UPDATE_STALE_AFTER_MS } from '@videodeck/shared/dates';
 import {
   ClearFinishedResponseSchema,
   downloadVideoEventSchema,
@@ -593,6 +594,16 @@ describe('folder router', () => {
     const listOf = (ids: string[]): string =>
       JSON.stringify(ids.map((id) => ({ id, title: `Video ${id}`, url: `https://yt/watch?v=${id}` })));
 
+    /**
+     * The staleness rule is "older than UPDATE_STALE_AFTER_MS" (shared/dates.ts),
+     * so a hardcoded "recent" date turns stale 30 days after it is written and
+     * reddens this suite with no code change. These two dates are derived from
+     * the rule instead: one lands in the middle of the window, the other far
+     * outside it.
+     */
+    const FRESH_UPDATE = new Date(Date.now() - UPDATE_STALE_AFTER_MS / 2).toISOString();
+    const ANCIENT_UPDATE = '2020-01-01T00:00:00.000Z';
+
     beforeEach(() => {
       invalidateSummaryCache();
       mockedFs.readFile.mockImplementation((filePath) => {
@@ -611,8 +622,8 @@ describe('folder router', () => {
             ? {
                 downloadStatuses: { v1: true, v2: true },
                 lastUpdatedDates: {
-                  v1: '2026-09-01T00:00:00.000Z',
-                  v2: '2020-01-01T00:00:00.000Z',
+                  v1: FRESH_UPDATE,
+                  v2: ANCIENT_UPDATE,
                 },
               }
             : { downloadStatuses: {}, lastUpdatedDates: {} },
@@ -631,7 +642,7 @@ describe('folder router', () => {
             downloaded: 2,
             notDownloaded: 1,
             stale: 1,
-            newestUpdate: '2026-09-01T00:00:00.000Z',
+            newestUpdate: FRESH_UPDATE,
           },
           [OTHER_FOLDER]: { videos: 1, downloaded: 0, notDownloaded: 1, stale: 0 },
         },
@@ -682,7 +693,7 @@ describe('folder router', () => {
       mockedGetDownloadStatuses.mockImplementation((folderPath) =>
         Promise.resolve(
           folderPath === OTHER_FOLDER
-            ? { downloadStatuses: { w1: true }, lastUpdatedDates: { w1: '2026-09-20T00:00:00.000Z' } }
+            ? { downloadStatuses: { w1: true }, lastUpdatedDates: { w1: FRESH_UPDATE } }
             : { downloadStatuses: {}, lastUpdatedDates: {} },
         ),
       );
@@ -690,7 +701,7 @@ describe('folder router', () => {
       const one = await request(app).get('/api/folder/summaries').query({ folderPath: OTHER_FOLDER });
       const all = await request(app).get('/api/folder/summaries');
 
-      const fresh = { videos: 1, downloaded: 1, notDownloaded: 0, stale: 0, newestUpdate: '2026-09-20T00:00:00.000Z' };
+      const fresh = { videos: 1, downloaded: 1, notDownloaded: 0, stale: 0, newestUpdate: FRESH_UPDATE };
       expect(one.body.summaries[OTHER_FOLDER]).toEqual(fresh);
       expect(all.body.summaries[OTHER_FOLDER]).toEqual(fresh);
       expect(all.body.summaries[FOLDER].videos).toBe(3);
@@ -706,7 +717,7 @@ describe('folder router', () => {
           { id: 'c2', title: 'Two', url: 'https://www.youtube.com/watch?v=c2' },
         ],
         downloadStatuses: { c1: true, c2: true },
-        lastUpdatedDates: { c1: '2026-09-20T00:00:00.000Z', c2: '2020-01-01T00:00:00.000Z' },
+        lastUpdatedDates: { c1: FRESH_UPDATE, c2: ANCIENT_UPDATE },
       });
 
       const response = await request(app).get('/api/folder/summaries');
@@ -716,7 +727,7 @@ describe('folder router', () => {
         downloaded: 2,
         notDownloaded: 0,
         stale: 1,
-        newestUpdate: '2026-09-20T00:00:00.000Z',
+        newestUpdate: FRESH_UPDATE,
       });
       expect(response.body.summaries[FOLDER].videos).toBe(3);
       expect(mockedReadCollection).toHaveBeenCalledTimes(1);
