@@ -20,11 +20,12 @@ export default defineConfig({
       reporter: ['text', 'lcov', 'html'],
       reportsDirectory: './coverage',
       // An explicit include, because a file no test imports is missing from
-      // the report otherwise and the real number hides. The excludes mirror
-      // the Jest config's collectCoverageFrom, plus the two test-only helpers
-      // that are not app code (the client ratchet excludes its src/test/ the
-      // same way). src/index.ts stays counted: it is the entry point and the
-      // ratchet has always seen its zero.
+      // the report otherwise and the real number hides. Test files and the two
+      // test-only helpers are not app code, and neither is src/index.ts: it is
+      // the process entry point (listen, signal wiring, shutdown) that no unit
+      // test can run without spawning a server, so counting its zero only
+      // diluted the ratchet. The client excludes its own entry (src/index.tsx)
+      // for the same reason.
       include: ['src/**/*.ts'],
       exclude: [
         'src/**/*.d.ts',
@@ -33,19 +34,22 @@ export default defineConfig({
         'src/**/__tests__/**',
         'src/test-env.ts',
         'src/test-utils.ts',
+        'src/index.ts',
       ],
       // Set just under the current numbers: a ratchet against regressions, not
-      // a target. Raise them as coverage grows. Measured when these floors were
-      // committed, on the v8 provider: 92.26 statements, 85.57 branches, 93.91
-      // functions, 92.38 lines. The Jest ratchet this replaces measured 92.43,
-      // 84.33, 94.04 and 92.49 with istanbul over a set that still counted the
-      // two test-only helpers, so branches rose and the rest moved by less than
-      // two tenths of a point.
+      // a target. Raise them as coverage grows. Measured on the v8 provider over
+      // six full runs: 93.27 statements, 86.06 branches, 95.16 functions and
+      // 93.41 lines, identical five times, with one run reading 85.94 branches.
+      // That single dip is why the branch floor keeps more room than the others:
+      // a gate that flakes is worse than a gate that is a third of a point
+      // loose. The same run counted src/index.ts before it left the set and read
+      // 92.26, 85.57, 93.91 and 92.38, so the ratchet spends the difference on
+      // code a test can reach.
       thresholds: {
-        statements: 92.15,
-        branches: 85.45,
-        functions: 93.8,
-        lines: 92.28,
+        statements: 93.1,
+        branches: 85.7,
+        functions: 95,
+        lines: 93.25,
       },
     },
   },
