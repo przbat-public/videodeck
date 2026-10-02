@@ -29,6 +29,11 @@ module.exports = {
     },
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
+  // The port to Vitest is in flight (docs/plans/server-vitest-migration.md):
+  // vitest.config.ts owns the converted files and this list keeps them out of
+  // the Jest run, so no file is claimed by both runners. The port's second
+  // commit deletes this config instead of extending the list.
+  testPathIgnorePatterns: ['/node_modules/', 'src/services/downloadQueue\\.test\\.ts$'],
   // @videodeck/shared and @videodeck/test-infra resolve through their
   // package exports (pnpm workspace symlinks).
   testTimeout: 10000,

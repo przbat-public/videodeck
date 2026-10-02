@@ -406,6 +406,9 @@ importers:
       '@videodeck/test-infra':
         specifier: workspace:*
         version: link:../test-infra
+      '@vitest/coverage-v8':
+        specifier: ^5.0.2
+        version: 5.0.2(vitest@5.0.2)
       fast-check:
         specifier: ^4.10.2
         version: 4.10.2
@@ -424,6 +427,9 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+      vitest:
+        specifier: ^5.0.2
+        version: 5.0.2(@opentelemetry/api@1.9.1)(@types/node@24.13.6)(@vitest/coverage-v8@5.0.2)(@vitest/ui@5.0.2)(jsdom@30.0.1(@noble/hashes@1.8.0))(vite@8.3.1(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
   shared:
     dependencies:
