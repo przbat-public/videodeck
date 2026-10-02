@@ -8,12 +8,15 @@ describe('MockOpenai controls', () => {
   let mock: MockOpenai;
   let baseUrl: string;
 
-  beforeAll(async () => {
+  // One fake per test. setContent and failWithStatus are the surface this file
+  // pins, and an instance shared through beforeAll let one test's override
+  // answer another test's request as soon as the order changed.
+  beforeEach(async () => {
     mock = new MockOpenai();
     baseUrl = await mock.start();
   });
 
-  afterAll(async () => {
+  afterEach(async () => {
     await mock.stop();
   });
 
