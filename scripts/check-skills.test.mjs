@@ -60,6 +60,33 @@ const parseFrontmatter = (content) => {
   return fields;
 };
 
+/**
+ * Frontmatter values that a YAML parser rejects as plain scalars. A colon
+ * followed by a space inside an unquoted value turns the line into a nested
+ * mapping, and the skill loader then refuses the whole file: the skill is in
+ * the catalog but `get` returns nothing, so an agent that follows AGENTS.md
+ * gets "unknown or no longer available" and works around it. The permissive
+ * parser below cannot see that, so the shape is checked separately.
+ *
+ * @param {string} content
+ * @returns {string[]} the offending lines
+ */
+const unquotedColonValues = (content) => {
+  if (!content.startsWith('---\n')) return [];
+  const end = content.indexOf('\n---', 4);
+  if (end === -1) return [];
+  return content
+    .slice(4, end)
+    .split('\n')
+    .filter((line) => {
+      const match = /^[a-z-]+:\s+(.+)$/.exec(line);
+      if (match === null || match[1] === undefined) return false;
+      const value = match[1].trim();
+      if (value.startsWith('"') || value.startsWith("'")) return false;
+      return value.includes(': ');
+    });
+};
+
 test('every skill carries frontmatter with a matching name and a description', () => {
   const skillRoot = path.join(AGENTS, 'skills');
   assert.ok(existsSync(skillRoot), '.agents/skills/ must exist');
@@ -74,6 +101,21 @@ test('every skill carries frontmatter with a matching name and a description', (
     assert.ok(
       typeof frontmatter.description === 'string' && frontmatter.description.length > 0,
       `missing description in ${rel}/SKILL.md`,
+    );
+  }
+});
+
+test('no skill frontmatter value carries an unquoted colon', () => {
+  const skillRoot = path.join(AGENTS, 'skills');
+  for (const dir of subdirs(skillRoot)) {
+    const file = path.join(dir, 'SKILL.md');
+    if (!existsSync(file)) continue;
+    const offenders = unquotedColonValues(readFileSync(file, 'utf-8'));
+    assert.deepEqual(
+      offenders,
+      [],
+      `${path.relative(ROOT, file)} has an unquoted ": " in its frontmatter, which a YAML parser reads as a nested ` +
+        'mapping; the skill loader then refuses the file. Quote the value or drop the colon',
     );
   }
 });
