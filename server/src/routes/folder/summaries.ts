@@ -5,6 +5,7 @@ import { readCollection } from '../../services/collection';
 import { readFolderConfig } from '../../services/folderConfig';
 import { getDownloadStatuses } from '../../services/folderIndex';
 import { summarizeFolder } from '../../services/folderSummary';
+import { readUnavailable, unavailableIds } from '../../services/unavailableVideos';
 import { logger } from '../../utils/logger';
 import { runPool } from '../../utils/runPool';
 import { createSingleFlight } from '../../utils/singleFlight';
@@ -61,19 +62,22 @@ async function summarizeOne(folderPath: string): Promise<FolderSummary> {
   try {
     // Read in parallel: nearly every folder is a channel, and the config read
     // must not add a disk round trip to each of them
-    const [config, list, statuses] = await Promise.all([
+    const [config, list, statuses, record] = await Promise.all([
       readFolderConfig(folderPath),
       readListJson(folderPath),
       getDownloadStatuses(folderPath),
+      readUnavailable(folderPath),
     ]);
     if (config?.kind === 'collection') {
       const collection = await readCollection(folderPath);
-      return summarizeFolder(collection.videos, collection);
+      // A collection holds what is on disk, so its rows carry no availability
+      // and nothing in it can be unavailable.
+      return summarizeFolder(collection.videos, collection, new Set());
     }
-    return summarizeFolder(list, statuses);
+    return summarizeFolder(list, statuses, unavailableIds(list ?? [], record));
   } catch (error) {
     logger.error(`Cannot summarize ${folderPath}:`, error);
-    return { videos: 0, downloaded: 0, notDownloaded: 0, stale: 0 };
+    return { videos: 0, downloaded: 0, notDownloaded: 0, unavailable: 0, stale: 0 };
   }
 }
 

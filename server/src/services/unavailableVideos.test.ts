@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import type { UnavailableRecord } from './unavailableVideos';
 import {
   availabilitySkipReason,
   clearUnavailable,
@@ -8,6 +9,7 @@ import {
   recordUnavailable,
   UNAVAILABLE_FILE,
   UNAVAILABLE_TTL_MS,
+  unavailableIds,
   unavailableSkipReason,
 } from './unavailableVideos';
 
@@ -93,6 +95,39 @@ describe('unavailableVideos', () => {
         now: NOW,
       });
       expect(reason).toBeNull();
+    });
+  });
+
+  describe('unavailableIds', () => {
+    /** A catalog row as the summaries route hands it over */
+    const catalog = (id: string, availability?: string) => ({ id, availability });
+
+    it('marks the videos the catalog calls members-only', () => {
+      const ids = unavailableIds([catalog(MEMBERS_ONLY, 'subscriber_only')], { version: 1, entries: {} }, NOW);
+      expect([...ids]).toEqual([MEMBERS_ONLY]);
+    });
+
+    it('marks a video with a recorded failure still inside the TTL', () => {
+      const record: UnavailableRecord = {
+        version: 1,
+        entries: { [PREMIUM_ONLY]: { code: 'removed', at: new Date(NOW - 1000).toISOString() } },
+      };
+      const ids = unavailableIds([catalog(PREMIUM_ONLY)], record, NOW);
+      expect([...ids]).toEqual([PREMIUM_ONLY]);
+    });
+
+    it('leaves out a recorded failure the TTL has passed', () => {
+      const record: UnavailableRecord = {
+        version: 1,
+        entries: { [PREMIUM_ONLY]: { code: 'removed', at: new Date(NOW - UNAVAILABLE_TTL_MS).toISOString() } },
+      };
+      const ids = unavailableIds([catalog(PREMIUM_ONLY)], record, NOW);
+      expect([...ids]).toEqual([]);
+    });
+
+    it('leaves a public video with nothing recorded alone', () => {
+      const ids = unavailableIds([catalog(MEMBERS_ONLY, 'public')], { version: 1, entries: {} }, NOW);
+      expect([...ids]).toEqual([]);
     });
   });
 

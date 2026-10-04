@@ -86,7 +86,7 @@ export function isRememberedFailure(code: string): code is RememberedFailureCode
 }
 
 /** Whether an entry is recent enough to suppress a new attempt */
-export function isEntryFresh(entry: UnavailableEntry, now: number): boolean {
+export function isEntryFresh(entry: { at: string }, now: number): boolean {
   const at = Date.parse(entry.at);
   if (Number.isNaN(at)) {
     return false;
@@ -127,6 +127,36 @@ export function unavailableSkipReason(input: SkipDecisionInput): SkipReason | nu
 /** An empty record: what a folder without one, or with a broken one, answers */
 function emptyRecord(): UnavailableRecord {
   return { version: UNAVAILABLE_VERSION, entries: {} };
+}
+
+/** The catalog fields the availability check reads */
+export interface AvailabilityRow {
+  id: string;
+  availability?: string | undefined;
+}
+
+/**
+ * The ids of `videos` that cannot arrive: the ones the catalog marks as
+ * members-only or Premium-only, plus the ones with a failure still inside the
+ * TTL. One pass over the playlist and the record the caller already read.
+ */
+export function unavailableIds(
+  videos: readonly AvailabilityRow[],
+  record: UnavailableRecord,
+  now: number = Date.now(),
+): Set<string> {
+  const ids = new Set<string>();
+  for (const video of videos) {
+    const reason = unavailableSkipReason({
+      availability: video.availability,
+      recorded: record.entries[video.id],
+      now,
+    });
+    if (reason !== null) {
+      ids.add(video.id);
+    }
+  }
+  return ids;
 }
 
 function messageOf(error: unknown): string {
