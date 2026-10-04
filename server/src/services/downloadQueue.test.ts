@@ -18,6 +18,7 @@ import {
   restoreQueueState,
 } from './downloadQueue';
 import { refreshIndex } from './folderIndex';
+import { readUnavailable, recordUnavailable } from './unavailableVideos';
 import { indexVideosFromDisk } from './videoScanner';
 import { buildFormatSelector, buildYtDlpArgs, escapeOutputTemplate, PROGRESS_TEMPLATE } from './ytdlp';
 
@@ -928,6 +929,76 @@ describe('DownloadQueue', () => {
       error: 'members-only',
     });
     expect(afterJob).not.toHaveBeenCalled();
+  });
+
+  describe('the folder record of permanent failures', () => {
+    /** A real id: the record only accepts keys shaped like YouTube video ids */
+    const RECORDED_ID = 'dQw4w9WgXcQ';
+
+    /** A folder that can hold the record file, removed whatever the test does */
+    async function withFolder(run: (dir: string) => Promise<void>): Promise<void> {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-record-'));
+      try {
+        await run(dir);
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    }
+
+    /** Poll the record until it reaches the state the test expects */
+    async function waitForRecord(dir: string, predicate: (ids: string[]) => boolean): Promise<void> {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        if (predicate(Object.keys((await readUnavailable(dir)).entries))) {
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error('the record never reached the expected state');
+    }
+
+    it('remembers a video-level failure so the next enqueue can skip the video', async () => {
+      await withFolder(async (dir) => {
+        queue.enqueue([request(RECORDED_ID, { folderPath: dir })]);
+
+        spawned().process.output(
+          'ERROR: [youtube] x: Join this channel to get access to members-only content like this video.\n',
+        );
+        spawned().process.exit(0);
+        await flush();
+
+        await waitForRecord(dir, (ids) => ids.includes(RECORDED_ID));
+        expect((await readUnavailable(dir)).entries[RECORDED_ID]?.code).toBe('members-only');
+      });
+    });
+
+    it('does not remember a failure that waiting can fix', async () => {
+      await withFolder(async (dir) => {
+        const job = at(queue.enqueue([request(RECORDED_ID, { folderPath: dir })]), 0);
+
+        spawned().process.output('ERROR: HTTP Error 429: Too Many Requests\n');
+        spawned().process.exit(1);
+        await flush();
+        await flush();
+
+        // The verdict is part of the same finish() the status comes from, so a
+        // terminal status means the record's fate is already decided.
+        expect(queue.get(job.id)?.status).toBe('error');
+        await expect(readUnavailable(dir)).resolves.toEqual({ version: 1, entries: {} });
+      });
+    });
+
+    it('forgets a recorded failure once the download succeeds', async () => {
+      await withFolder(async (dir) => {
+        await recordUnavailable(dir, [RECORDED_ID], 'members-only', Date.now());
+
+        queue.enqueue([request(RECORDED_ID, { folderPath: dir })]);
+        spawned().process.exit(0);
+        await flush();
+
+        await waitForRecord(dir, (ids) => !ids.includes(RECORDED_ID));
+        await expect(readUnavailable(dir)).resolves.toEqual({ version: 1, entries: {} });
+      });
+    });
   });
 
   describe('retries', () => {
