@@ -1076,6 +1076,84 @@ describe('folder router', () => {
       expect(at(spawnCalls, 0).args).toContain('--download-archive');
     });
 
+    it('skips a members-only video instead of queueing a job that cannot succeed', async () => {
+      const membersOnly = 'dQw4w9WgXcQ';
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === `${FOLDER}/list.json`) {
+          return Promise.resolve(
+            JSON.stringify([
+              {
+                id: membersOnly,
+                title: 'Members only',
+                url: `https://www.youtube.com/watch?v=${membersOnly}`,
+                availability: 'subscriber_only',
+              },
+              { id: 'aaaaaaaaaaa', title: 'Public', url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa' },
+            ]),
+          );
+        }
+        return Promise.reject(enoent());
+      });
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({
+          folderPath: FOLDER,
+          type: 'download',
+          videos: [{ videoId: membersOnly }, { videoId: 'aaaaaaaaaaa' }],
+        });
+
+      expect(response.status).toBe(202);
+      expect(response.body.skipped).toEqual([{ videoId: membersOnly, reason: 'members-only' }]);
+      expect(response.body.jobs).toHaveLength(1);
+      expect(response.body.jobs[0]).toMatchObject({ videoId: 'aaaaaaaaaaa', type: 'download' });
+      expect(spawnCalls).toHaveLength(1);
+    });
+
+    it('skips a Premium-only video', async () => {
+      const premiumOnly = '9bZkp7q19f0';
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === `${FOLDER}/list.json`) {
+          return Promise.resolve(
+            JSON.stringify([
+              {
+                id: premiumOnly,
+                title: 'Premium only',
+                url: `https://www.youtube.com/watch?v=${premiumOnly}`,
+                availability: 'premium_only',
+              },
+            ]),
+          );
+        }
+        return Promise.reject(enoent());
+      });
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: premiumOnly }] });
+
+      expect(response.status).toBe(202);
+      expect(response.body.jobs).toHaveLength(0);
+      expect(response.body.skipped).toEqual([{ videoId: premiumOnly, reason: 'premium-only' }]);
+      expect(spawnCalls).toHaveLength(0);
+    });
+
+    it('still enqueues when the catalog cannot be read', async () => {
+      // The availability check is an optimization for the console, never a
+      // gate: a folder whose list.json is unreadable downloads as before.
+      mockedFs.readFile.mockRejectedValue(Object.assign(new Error('EACCES'), { code: 'EACCES' }));
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: 'aaaaaaaaaaa' }] });
+
+      expect(response.status).toBe(202);
+      expect(response.body.jobs).toHaveLength(1);
+      expect(response.body.skipped).toEqual([]);
+    });
+
     it('refuses to enqueue into a folder whose drive is away', async () => {
       // A literal root stays in the allowlist while its volume is unmounted, so
       // without this check the request either answered a generic 500 (EACCES) or

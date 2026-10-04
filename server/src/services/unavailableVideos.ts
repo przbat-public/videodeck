@@ -5,6 +5,7 @@ import { isYoutubeVideoId } from '@videodeck/shared/youtube';
 import { writeJsonAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { errnoCode, isRecord, readString } from '../utils/objectUtils';
+import { readListJson } from './channelList';
 
 /**
  * Videos YouTube will not hand over, and the queue's memory of the ones that
@@ -133,6 +134,26 @@ function emptyRecord(): UnavailableRecord {
 export interface AvailabilityRow {
   id: string;
   availability?: string | undefined;
+}
+
+/** What a folder's catalog says about availability, by video id */
+export type AvailabilityById = ReadonlyMap<string, string | undefined>;
+
+/**
+ * The folder's `list.json` as an availability lookup.
+ *
+ * A catalog that cannot be read answers "nothing known" rather than an error:
+ * this check spares the queue jobs that cannot succeed, and a folder whose
+ * catalog is unreadable has to keep downloading exactly as it did before.
+ */
+export async function readAvailability(folderPath: string): Promise<AvailabilityById> {
+  try {
+    const list = await readListJson(folderPath);
+    return new Map((list ?? []).map((video) => [video.id, video.availability]));
+  } catch (error) {
+    logger.warn(`Cannot read list.json in ${folderPath} for the availability check: ${messageOf(error)}`);
+    return new Map();
+  }
 }
 
 /**
