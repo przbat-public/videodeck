@@ -72,11 +72,13 @@
     "emptyList": "Brak filmów w pliku list.json",
     "verbDownload": "Pobieranie",
     "verbUpdate": "Aktualizacja",
+    "verbRepair": "Naprawianie",
     "statusQueued": "{{verb}}: w kolejce",
     "statusRunning": "{{verb}}...",
     "statusRunningProgress": "{{verb}}: {{progress}}%",
     "statusUpdated": "Zaktualizowano",
     "statusDownloaded": "Pobrano",
+    "statusRepaired": "Naprawiono",
     "statusError": "Błąd",
     "statusCancelled": "Anulowano"
   },
@@ -135,6 +137,61 @@
     "resumeFrom": "Wznów od {{time}}",
     "startFromBeginning": "Od początku"
   },
+  "videoState": {
+    "filtersLabel": "Filtruj filmy",
+    "filter": {
+      "all": "Wszystkie ({{count}})",
+      "incomplete": "Do dokończenia ({{count}})",
+      "orphan": "Tylko na dysku ({{count}})",
+      "notDownloaded": "Niepobrane ({{count}})"
+    },
+    "badge": {
+      "video": "wideo",
+      "thumbnail": "miniatura",
+      "description": "opis",
+      "subs": "napisy: {{langs}}",
+      "comments": "komentarze",
+      "notDownloaded": "niepobrane",
+      "missing": "brakuje: {{items}}"
+    },
+    "missing": {
+      "thumbnail": "miniatura",
+      "description": "opis",
+      "comments": "komentarze",
+      "subtitle": "napisy ({{lang}})"
+    },
+    "orphanTitle": "Na dysku, poza list.json",
+    "orphanHint": "Kanał nie wymienia już tych filmów, więc zostają tutaj widoczne, zamiast znikać razem z list.json.",
+    "loadError": "Nie udało się wczytać stanu folderu",
+    "empty": "Żaden film nie pasuje do filtra",
+    "details": {
+      "show": "Stan plików",
+      "hide": "Ukryj stan plików",
+      "showLabel": "Stan plików: {{title}}",
+      "hideLabel": "Ukryj stan plików: {{title}}",
+      "loading": "Wczytywanie stanu plików...",
+      "error": "Nie udało się wczytać stanu plików filmu",
+      "regionLabel": "Stan plików: {{title}}",
+      "video": "Plik wideo",
+      "videoSize": "Rozmiar wideo",
+      "infoSize": "Rozmiar .info.json",
+      "thumbnail": "Miniatura",
+      "description": "Opis",
+      "subtitles": "Napisy",
+      "comments": "Komentarze",
+      "archive": "Archiwum",
+      "archiveOnDisk": "na dysku",
+      "archiveInArchive": "w archive.txt",
+      "archiveDrift": "archiwum i dysk się nie zgadzają",
+      "archiveAgree": "archiwum i dysk się zgadzają",
+      "missing": "Brakuje",
+      "nothingMissing": "Nic nie brakuje",
+      "unknown": "Ten folder nie ma tego filmu",
+      "repair": "Napraw ten film",
+      "repairing": "Dodaję do kolejki...",
+      "none": "brak"
+    }
+  },
   "config": {
     "save": "Zapisz",
     "saving": "Zapisywanie...",
@@ -189,11 +246,25 @@
     "progressIndexed": "{{count}} zindeksowanych",
     "elasticsearchDownTitle": "Elasticsearch nie odpowiada"
   },
+  "skipReason": {
+    "alreadyDownloaded": "już pobrane",
+    "notDownloaded": "niepobrane"
+  },
   "toast": {
     "addedToQueue_one": "Dodano {{count}} film do {{target}}",
     "addedToQueue_few": "Dodano {{count}} filmy do {{target}}",
     "addedToQueue_many": "Dodano {{count}} filmów do {{target}}",
     "addedToQueue_other": "Dodano {{count}} filmów do {{target}}",
+    "repairQueued_one": "Naprawa {{count}} filmu w kolejce",
+    "repairQueued_few": "Naprawa {{count}} filmów w kolejce",
+    "repairQueued_many": "Naprawa {{count}} filmów w kolejce",
+    "repairQueued_other": "Naprawa {{count}} filmów w kolejce",
+    "commentsQueued_one": "Odświeżanie komentarzy {{count}} filmu w kolejce",
+    "commentsQueued_few": "Odświeżanie komentarzy {{count}} filmów w kolejce",
+    "commentsQueued_many": "Odświeżanie komentarzy {{count}} filmów w kolejce",
+    "commentsQueued_other": "Odświeżanie komentarzy {{count}} filmów w kolejce",
+    "archiveReconciled": "archive.txt uzgodnione: dodano {{added}}, usunięto {{removed}}",
+    "archiveAligned": "archive.txt zgadza się z dyskiem ({{unchanged}} wpisów)",
     "downloadTarget": "pobrania",
     "updateTarget": "aktualizacji",
     "skipped": "Pominięto {{count}}: {{reason}}",
@@ -336,7 +407,10 @@
       "listFailed": "Nie udało się wczytać listy filmów kanału",
       "cancelled": "Anulowano zadania kanału",
       "playlistQueued": "Pobieram playlistę kanału",
-      "updatePlaylist": "Aktualizuj playlistę"
+      "updatePlaylist": "Aktualizuj playlistę",
+      "repairGaps": "Napraw braki",
+      "repairComments": "Odśwież komentarze",
+      "reconcile": "Uzgodnij archiwum"
     },
     "collection": "kolekcja",
     "expand": "Pokaż filmy",

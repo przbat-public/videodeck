@@ -411,12 +411,19 @@ test.describe('reported layout defects', () => {
     });
     expect(spacing).toEqual({ marginTop: '8px', paddingTop: '0px', borderTopWidth: '0px' });
 
-    const cell = await page.locator('.channel-expanded-row > td').evaluate((el) => ({
-      background: getComputedStyle(el).backgroundColor,
-      listIsDirectChild: el.firstElementChild?.getAttribute('role') === 'list',
-    }));
+    const cell = await page.locator('.channel-expanded-row > td').evaluate((el) => {
+      // The filter chips sit above the list, so "no card in between" means the
+      // list hangs off the cell itself rather than inside a wrapper of its own
+      const list = el.querySelector(':scope > .videos-list');
+      return {
+        background: getComputedStyle(el).backgroundColor,
+        listIsDirectChild: list !== null,
+        listBackground: list === null ? '' : getComputedStyle(list).backgroundColor,
+      };
+    });
     expect(cell.background).toBe('rgb(255, 255, 255)');
     expect(cell.listIsDirectChild).toBe(true);
+    expect(cell.listBackground).toBe('rgba(0, 0, 0, 0)');
   });
 });
 

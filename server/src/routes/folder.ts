@@ -6,6 +6,7 @@ import { getFolderList, listExists, rebuildFolderIndex } from './folder/list';
 import { downloadPlaylist } from './folder/playlist';
 import type { DownloadQueueLike } from './folder/queue';
 import { createQueueHandlers } from './folder/queue';
+import { createRepairHandler, getFolderState, getVideoState, reconcileFolderArchive } from './folder/state';
 import { getFolderSummaries } from './folder/summaries';
 
 /**
@@ -46,6 +47,10 @@ export function createFolderRouter(queue: DownloadQueueLike = downloadQueue): ex
 
   router.get('/status', getStatus);
   router.put('/folder/config', saveFolderConfig);
+  router.get('/folder/state', getFolderState);
+  router.get('/folder/video-state', getVideoState);
+  router.post('/folder/archive/reconcile', reconcileFolderArchive);
+  router.post('/folder/repair', createRepairHandler(queue));
   router.get('/folder/list-exists', listExists);
   router.get('/folder/list', getFolderList);
   router.get('/folder/summaries', getFolderSummaries);

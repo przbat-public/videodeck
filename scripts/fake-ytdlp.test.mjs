@@ -20,7 +20,47 @@ const run = (...args) => {
   return spawnSync(fakeYtDlp, args, { encoding: 'utf-8', cwd });
 };
 
+/**
+ * Run in `cwd` with extra environment variables: how a test opts into one of
+ * the fake's simulations (FAKE_YTDLP_RATE_LIMIT_SUB_LANG).
+ *
+ * @param {string} cwd
+ * @param {string[]} args
+ * @param {Record<string, string>} env
+ */
+const runWithEnv = (cwd, args, env) =>
+  spawnSync(fakeYtDlp, args, { encoding: 'utf-8', cwd, env: { ...process.env, ...env } });
+
 const WATCH_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+
+/**
+ * The arguments a `repair` job builds (server/src/services/ytdlp.ts,
+ * buildYtDlpArgs): the sidecar flags on an existing stem, `--skip-download`,
+ * and deliberately no `--download-archive` — the archive records videos, not
+ * the sidecars a repair went looking for.
+ *
+ * @param {string} stem
+ */
+const repairArgs = (stem) => [
+  '--ignore-config',
+  '-i',
+  '--no-playlist',
+  '--newline',
+  '--skip-download',
+  '-o',
+  `${stem}.%(ext)s`,
+  '--write-thumbnail',
+  '--write-description',
+  '--write-info-json',
+  '--write-subs',
+  '--write-auto-subs',
+  '--sub-lang',
+  'pl,en',
+  WATCH_URL,
+];
+
+/** The subtitle body every `.vtt` the fake writes carries */
+const SUBTITLE_BODY = 'WEBVTT\n\n00:00.000 --> 00:01.000\nDeep test subtitle line.\n';
 
 test('answers --version for the boot-time probe', () => {
   const result = run('--version');
@@ -160,6 +200,59 @@ test('prints the members-only error and exits 1 for a member video', () => {
   const result = run('--simulate', 'https://www.youtube.com/watch?v=member123');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /members/i);
+});
+
+test('reports a rate-limited subtitle language after the others are written', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    const stem = '20260101_Fake video dQw4w9WgXcQ';
+    writeFileSync(path.join(dir, `${stem}.mp4`), 'fake-mp4-bytes');
+
+    const result = runWithEnv(dir, repairArgs(stem), { FAKE_YTDLP_RATE_LIMIT_SUB_LANG: 'pl' });
+
+    assert.equal(result.status, 0, result.stderr);
+    // The language that answered is on disk and the throttled one is not, the
+    // way a repair that ran into YouTube's limit leaves the folder. The run
+    // itself still succeeds: the repair passes `-i`, and a subtitle the real
+    // binary cannot fetch is the warning below, not a failed job.
+    assert.equal(existsSync(path.join(dir, `${stem}.en.vtt`)), true);
+    assert.equal(existsSync(path.join(dir, `${stem}.pl.vtt`)), false);
+    // Wording mirrors the live binary, prefix included.
+    assert.match(
+      result.stderr,
+      /WARNING: Unable to download video subtitles for 'pl': HTTP Error 429: Too Many Requests/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a repair run writes the subtitles of the languages asked and leaves the video alone', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    const stem = '20260101_Fake video dQw4w9WgXcQ';
+    const videoPath = path.join(dir, `${stem}.mp4`);
+    // A sentinel, not the bytes a download writes: a rewrite would show up.
+    writeFileSync(videoPath, 'fake-mp4-bytes-of-a-video-already-there');
+    // The id is already in the archive, and a repair passes no
+    // --download-archive: the archive records videos, not the sidecars a repair
+    // went looking for, so it must not make the run skip the work it was queued
+    // for. The run must not append to it either — the app owns that file.
+    writeFileSync(path.join(dir, 'archive.txt'), 'youtube dQw4w9WgXcQ\n');
+
+    const result = run(...repairArgs(stem), dir);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, '');
+    assert.equal(readFileSync(path.join(dir, `${stem}.en.vtt`), 'utf-8'), SUBTITLE_BODY);
+    assert.equal(readFileSync(path.join(dir, `${stem}.pl.vtt`), 'utf-8'), SUBTITLE_BODY);
+    // --skip-download: the media file of the video being repaired is untouched
+    assert.equal(readFileSync(videoPath, 'utf-8'), 'fake-mp4-bytes-of-a-video-already-there');
+    assert.equal(readFileSync(path.join(dir, 'archive.txt'), 'utf-8'), 'youtube dQw4w9WgXcQ\n');
+    assert.equal(existsSync(path.join(dir, `${stem}.info.json`)), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('prefixes permanent failures with the youtube extractor id, like the live binary', () => {

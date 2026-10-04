@@ -9,7 +9,7 @@ import { z } from 'zod';
 /** POST /api/folder/queue */
 export const queueBodySchema = z.object({
   folderPath: z.string(),
-  type: z.enum(['download', 'update']),
+  type: z.enum(['download', 'update', 'repair']),
   videos: z
     .array(
       z.object({
@@ -17,6 +17,8 @@ export const queueBodySchema = z.object({
         videoUrl: z.string().optional(),
         url: z.string().optional(),
         title: z.string().optional(),
+        /** Repair jobs only: refresh the comment section as well */
+        comments: z.boolean().optional(),
       }),
     )
     .min(1, 'videos must be a non-empty array'),

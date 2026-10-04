@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { QueueJob } from '@videodeck/shared/api';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
 import type { ChannelVideoRow } from './VideoItem';
 import { VideoItem } from './VideoItem';
 
@@ -146,5 +147,74 @@ describe('VideoItem', () => {
     expect(screen.getByText('Pobrano')).toBeInTheDocument();
     expect(screen.queryByText('finished')).toBeNull();
     expect(screen.getByRole('button', { name: 'Aktualizuj' })).toBeInTheDocument();
+  });
+
+  it('renders what the video has on disk when the folder state is loaded', () => {
+    renderItem({
+      isDownloaded: true,
+      video: {
+        ...video,
+        downloadState: {
+          files: {
+            video: true,
+            thumbnail: true,
+            description: false,
+            subLangs: ['en', 'pl'],
+            comments: false,
+            videoBytes: 1048576,
+            infoBytes: 1024,
+          },
+          archive: { onDisk: true, inArchive: true, drift: false },
+          missing: ['description', 'comments'],
+        },
+      },
+    });
+
+    expect(screen.getByText(i18n.t('videoState.badge.video'))).toBeInTheDocument();
+    expect(screen.getByText(i18n.t('videoState.badge.subs', { langs: 'en, pl' }))).toBeInTheDocument();
+    // The gaps are one warning line, not a pill per missing file
+    expect(
+      screen.getByText(
+        i18n.t('videoState.badge.missing', {
+          items: `${i18n.t('videoState.missing.description')}, ${i18n.t('videoState.missing.comments')}`,
+        }),
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('offers the file state of the row and reports the toggle', async () => {
+    const user = userEvent.setup();
+    const onToggleDetails = vi.fn();
+    renderItem({ isDownloaded: true, onToggleDetails, detailsOpen: false });
+
+    const toggle = screen.getByRole('button', {
+      name: i18n.t('videoState.details.showLabel', { title: 'Test Video' }),
+    });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(toggle);
+
+    expect(onToggleDetails).toHaveBeenCalledWith(expect.objectContaining({ id: 'abc123' }));
+  });
+
+  it('marks an open file state and offers to close it', () => {
+    renderItem({ isDownloaded: true, onToggleDetails: vi.fn(), detailsOpen: true });
+
+    const toggle = screen.getByRole('button', {
+      name: i18n.t('videoState.details.hideLabel', { title: 'Test Video' }),
+    });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('describes a repair job with its own wording', () => {
+    renderItem({ isDownloaded: true, job: job({ type: 'repair', status: 'running', progress: 0 }) });
+
+    expect(screen.getByText(`${i18n.t('queue.verbRepair')}...`)).toBeInTheDocument();
+  });
+
+  it('says a finished repair was a repair, not a download', () => {
+    renderItem({ isDownloaded: true, job: job({ type: 'repair', status: 'done' }) });
+
+    expect(screen.getByText(i18n.t('queue.statusRepaired'))).toBeInTheDocument();
   });
 });

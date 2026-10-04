@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChannelAction } from '../hooks/useChannelActions';
+import i18n from '../i18n';
 import { DEFAULT_CHANNEL_CONSOLE_STATE } from '../utils/channelConsoleState';
 import type { ChannelRow } from '../utils/channelTable';
 import { ChannelTable } from './ChannelTable';
@@ -442,7 +443,8 @@ describe('ChannelTable', () => {
       'Aktualizuj wszystkie',
       'Pobierz wszystkie',
     ]);
-    expect(screen.getAllByRole('separator')).toHaveLength(2);
+    // playlist | updates + download | the folder repairs
+    expect(screen.getAllByRole('separator')).toHaveLength(3);
 
     await user.click(screen.getByRole('menuitem', { name: 'Aktualizuj playlistę' }));
     expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'playlist');
@@ -482,7 +484,17 @@ describe('ChannelTable', () => {
     // No playlist to fetch, nothing missing to download, and the top channel
     // of a mixed folder is not what the folder holds
     const labels = screen.getAllByRole('menuitem').map((item) => item.textContent?.trim());
-    expect(labels).toEqual(['Aktualizuj stare', 'Aktualizuj wszystkie', 'Anuluj zadania kanału', 'Edytuj config.json']);
+    // The folder repairs stay: a collection's downloads miss sidecars and its
+    // archive drifts like any other folder's
+    expect(labels).toEqual([
+      'Aktualizuj stare',
+      'Aktualizuj wszystkie',
+      'Napraw braki',
+      'Odśwież komentarze',
+      'Uzgodnij archiwum',
+      'Anuluj zadania kanału',
+      'Edytuj config.json',
+    ]);
     await user.click(screen.getByRole('menuitem', { name: 'Aktualizuj stare' }));
 
     expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/youtube' }), 'update-stale');
@@ -516,5 +528,57 @@ describe('ChannelTable', () => {
     expect(screen.getByRole('menuitem', { name: 'Aktualizuj stare' })).toHaveAttribute('data-disabled');
     expect(screen.getByRole('menuitem', { name: 'Pobierz wszystkie' })).toHaveAttribute('data-disabled');
     expect(screen.getByRole('menuitem', { name: 'Edytuj config.json' })).not.toHaveAttribute('data-disabled');
+  });
+
+  it('repairs the gaps of the channel from the row menu', async () => {
+    const user = userEvent.setup();
+    const { onAction } = renderTable([row({ summary: { videos: 40, downloaded: 20, notDownloaded: 20, stale: 0 } })]);
+
+    await openRowMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: i18n.t('channelConsole.actions.repairGaps') }));
+
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'repair');
+  });
+
+  it('refreshes the comments of the channel from the row menu', async () => {
+    const user = userEvent.setup();
+    const { onAction } = renderTable([row({ summary: { videos: 40, downloaded: 20, notDownloaded: 20, stale: 0 } })]);
+
+    await openRowMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: i18n.t('channelConsole.actions.repairComments') }));
+
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({ folderPath: '/videos/kanal-a' }),
+      'repair-comments',
+    );
+  });
+
+  it('reconciles the channel archive from the row menu', async () => {
+    const user = userEvent.setup();
+    const { onAction } = renderTable([row({ summary: { videos: 40, downloaded: 20, notDownloaded: 20, stale: 0 } })]);
+
+    await openRowMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: i18n.t('channelConsole.actions.reconcile') }));
+
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }), 'reconcile');
+  });
+
+  it('disables the repairs of a channel with nothing downloaded', async () => {
+    const user = userEvent.setup();
+    renderTable([row({ summary: { videos: 5, downloaded: 0, notDownloaded: 5, stale: 0 } })]);
+
+    await openRowMenu(user);
+
+    // Nothing is on disk, so there is nothing to repair; archive.txt still
+    // follows the folder, which the reconcile reads directly
+    expect(screen.getByRole('menuitem', { name: i18n.t('channelConsole.actions.repairGaps') })).toHaveAttribute(
+      'data-disabled',
+    );
+    expect(screen.getByRole('menuitem', { name: i18n.t('channelConsole.actions.repairComments') })).toHaveAttribute(
+      'data-disabled',
+    );
+    expect(screen.getByRole('menuitem', { name: i18n.t('channelConsole.actions.reconcile') })).not.toHaveAttribute(
+      'data-disabled',
+    );
   });
 });

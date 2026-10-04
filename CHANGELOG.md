@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-video state instead of a yes/no flag**: `GET /api/folder/state` and
+  `GET /api/folder/video-state` report what a download left on disk
+  (thumbnail, description, subtitle languages, comments) and name what each
+  video still misses. A video that never got its Polish subtitles stops
+  looking complete. Videos the channel no longer lists show up as orphans
+- **Sidecar repair**: `POST /api/folder/repair` queues `repair` jobs. They run
+  `yt-dlp --skip-download` with the folder's sidecar flags and no
+  `--download-archive`, so a missing subtitle is fetched without touching the
+  video file or pulling the comment section again
+- **Archive reconciliation**: `POST /api/folder/archive/reconcile` reports how
+  far `archive.txt` has drifted from the disk and repairs it (`add`, `remove`,
+  `rebuild`). It refuses to follow the disk while a folder holds no
+  `.info.json`. That is how an unmounted drive looks, and emptying the archive
+  then re-downloads a whole channel
+- **`incomplete` jobs tell the truth**: a download whose media never appeared
+  ends as `done` with `incomplete: true` and a log line naming what is missing.
+  `yt-dlp -i` otherwise reports success for a run that wrote only sidecars
 - **pnpm workspaces** (like vita-tracker): one `pnpm-lock.yaml`, corepack-pinned
   pnpm, a `@videodeck/shared` workspace package and a new **`test-infra`**
   package shared by the server and client test suites

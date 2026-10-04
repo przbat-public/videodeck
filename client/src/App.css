@@ -661,13 +661,15 @@
   font-size: 1rem;
 }
 
-.channel-filters {
+.channel-filters,
+.video-state-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
 }
 
-.channel-chip {
+.channel-chip,
+.video-state-chip {
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
@@ -677,7 +679,8 @@
   cursor: pointer;
 }
 
-.channel-chip[aria-pressed='true'] {
+.channel-chip[aria-pressed='true'],
+.video-state-chip[aria-pressed='true'] {
   background: var(--color-primary-soft);
   border-color: var(--color-primary);
   color: var(--color-primary-text);
@@ -760,14 +763,16 @@
   word-break: break-all;
 }
 
-.channel-badges {
+.channel-badges,
+.video-state-badges {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
   margin-top: 0.35rem;
 }
 
-.channel-badge {
+.channel-badge,
+.video-state-badge {
   font-size: 0.78rem;
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
@@ -779,13 +784,15 @@
   font-variant-numeric: tabular-nums;
 }
 
-.channel-badge--warn {
+.channel-badge--warn,
+.video-state-badge--warn {
   background: var(--color-warning-bg);
   color: var(--color-warning-text);
   border-color: var(--color-warning-border);
 }
 
-.channel-badge--info {
+.channel-badge--info,
+.video-state-badge--info {
   background: var(--color-info-bg);
   color: var(--color-info);
 }
@@ -885,11 +892,13 @@
      compact desktop rhythm grows here instead of shrinking. */
   .channel-search,
   .channel-chip,
+  .video-state-chip,
   .ui-menu-item {
     min-height: 44px;
   }
 
-  .channel-chip {
+  .channel-chip,
+  .video-state-chip {
     display: inline-flex;
     align-items: center;
   }
@@ -904,6 +913,78 @@
   padding: 0;
   height: 400px;
   overflow-y: auto;
+}
+
+/* The chips the console offers for the videos of one folder: the same chip as
+   the channel filters above, on the list they narrow */
+.video-state-filters {
+  margin: 0.5rem 0;
+  /* The fieldset groups the chips and carries their hidden legend; it is not a
+     box of its own, so its default border, padding and min-width go */
+  border: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+
+/* The video state under a row: a headed group inside the same scroll viewport,
+   so a video the channel dropped is not read as a download that vanished */
+.video-list-group {
+  padding: 0.6rem 0.75rem 0.4rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-soft);
+}
+
+.video-list-group-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.video-list-group-hint {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+/* One video's file state, opened under its row: it continues the row on the
+   soft surface instead of framing a card of its own */
+.video-state-panel {
+  padding: 0.5rem 0.75rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-soft);
+}
+
+.video-state-list {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0 0 0.5rem;
+}
+
+.video-state-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.video-state-row dt {
+  min-width: 8rem;
+  color: var(--color-text-muted);
+}
+
+.video-state-row dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.video-state-absent {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
 }
 
 

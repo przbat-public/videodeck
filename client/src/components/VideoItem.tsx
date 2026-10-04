@@ -5,7 +5,9 @@ import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { keyedByOccurrence } from '../utils/keyedByOccurrence';
+import { Button } from './ui/Button';
 import { Tooltip } from './ui/Tooltip';
+import { VideoStateBadges } from './VideoStateBadges';
 
 /** A list.json entry plus the local "last updated" date from the folder index */
 export interface ChannelVideoRow extends ChannelVideo {
@@ -47,6 +49,10 @@ export interface VideoItemProps {
   job?: QueueJob | undefined;
   onEnqueue: (video: ChannelVideoRow, type: JobType) => void;
   onCancel: (jobId: string) => void;
+  /** The row's file-state panel is open underneath it */
+  detailsOpen?: boolean;
+  /** Opens or closes that panel; a row without it shows no toggle */
+  onToggleDetails?: (video: ChannelVideoRow) => void;
 }
 
 /** Date of the last local update, formatted in the current UI language */
@@ -63,9 +69,23 @@ const formatLastUpdated = (dateString: string | undefined, locale: string): stri
   }).format(date);
 };
 
+/** The verb of a running job: a repair is neither a download nor an update */
+const VERB_KEYS = {
+  download: 'queue.verbDownload',
+  update: 'queue.verbUpdate',
+  repair: 'queue.verbRepair',
+} as const;
+
+/** What a finished job did, which differs per type */
+const DONE_KEYS = {
+  download: 'queue.statusDownloaded',
+  update: 'queue.statusUpdated',
+  repair: 'queue.statusRepaired',
+} as const;
+
 /** Human-readable job status shown next to the row */
 function describeJob(job: QueueJob, t: TFunction): string {
-  const verb = job.type === 'update' ? t('queue.verbUpdate') : t('queue.verbDownload');
+  const verb = t(VERB_KEYS[job.type]);
   switch (job.status) {
     case 'queued':
       return t('queue.statusQueued', { verb });
@@ -74,7 +94,7 @@ function describeJob(job: QueueJob, t: TFunction): string {
         ? t('queue.statusRunningProgress', { verb, progress: Math.round(job.progress) })
         : t('queue.statusRunning', { verb });
     case 'done':
-      return job.type === 'update' ? t('queue.statusUpdated') : t('queue.statusDownloaded');
+      return t(DONE_KEYS[job.type]);
     case 'error':
       return t('queue.statusError');
     case 'cancelled':
@@ -114,9 +134,11 @@ interface VideoItemActionsProps {
   job?: QueueJob | undefined;
   isActive: boolean;
   isDownloaded: boolean;
+  detailsOpen: boolean;
   actionType: JobType;
   onEnqueue: (video: ChannelVideoRow, type: JobType) => void;
   onCancel: (jobId: string) => void;
+  onToggleDetails?: ((video: ChannelVideoRow) => void) | undefined;
 }
 
 /** Job status badge plus the enqueue/cancel button */
@@ -125,15 +147,32 @@ function VideoItemActions({
   job,
   isActive,
   isDownloaded,
+  detailsOpen,
   actionType,
   onEnqueue,
   onCancel,
+  onToggleDetails,
 }: VideoItemActionsProps): JSX.Element {
   const { t } = useTranslation();
   const actionLabel = isDownloaded ? t('app.update') : t('app.download');
   const actionClassName = isDownloaded ? 'update-video-button' : 'download-video-button';
+  const title = video.title || t('video.noTitle');
   return (
     <div className="video-item-actions">
+      {onToggleDetails && (
+        // The visible label is the same on every row, so the accessible name
+        // carries the title: a screen reader hears which row it opens.
+        <Button
+          size="small"
+          onClick={() => onToggleDetails(video)}
+          aria-expanded={detailsOpen}
+          aria-label={
+            detailsOpen ? t('videoState.details.hideLabel', { title }) : t('videoState.details.showLabel', { title })
+          }
+        >
+          {detailsOpen ? t('videoState.details.hide') : t('videoState.details.show')}
+        </Button>
+      )}
       {job && (
         <Tooltip label={job.error}>
           <span className={`job-status job-status--${job.status}`} tabIndex={job.error ? 0 : undefined}>
@@ -163,7 +202,15 @@ function VideoItemActions({
   );
 }
 
-export function VideoItemInner({ video, isDownloaded, job, onEnqueue, onCancel }: VideoItemProps): JSX.Element {
+export function VideoItemInner({
+  video,
+  isDownloaded,
+  job,
+  onEnqueue,
+  onCancel,
+  detailsOpen = false,
+  onToggleDetails,
+}: VideoItemProps): JSX.Element {
   const { t, i18n } = useTranslation();
 
   const isActive = job?.status === 'queued' || job?.status === 'running';
@@ -191,11 +238,16 @@ export function VideoItemInner({ video, isDownloaded, job, onEnqueue, onCancel }
           job={job}
           isActive={isActive}
           isDownloaded={isDownloaded}
+          detailsOpen={detailsOpen}
           actionType={actionType}
           onEnqueue={onEnqueue}
           onCancel={onCancel}
+          onToggleDetails={onToggleDetails}
         />
       </div>
+      {/* What the folder state says is on disk for this video; nothing at all
+          while /api/folder/state has not answered yet */}
+      <VideoStateBadges state={video.downloadState} />
       {isRunning && (
         <div
           className="download-progress"

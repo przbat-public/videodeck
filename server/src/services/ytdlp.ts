@@ -61,17 +61,21 @@ export function buildFormatSelector(maxHeight: number): string {
 }
 
 /**
- * Metadata flags shared by downloads and updates. `extraArgs` (per-folder
- * config.json) are appended last, just before the URL; anything outside the
- * allowlist in `folderConfig.ts` is refused here, which is the last check
- * before spawn.
+ * Metadata flags shared by downloads, updates and repairs. `extraArgs`
+ * (per-folder config.json) are appended last, just before the URL; anything
+ * outside the allowlist in `folderConfig.ts` is refused here, which is the last
+ * check before spawn.
+ *
+ * `writeComments` is a parameter rather than a read of `options` because a
+ * repair of the sidecars alone must not pull the comment section again: it is
+ * the largest and slowest part of a yt-dlp run on a real channel.
  */
-function buildMetadataArgs(options: DownloadOptions): string[] {
+function buildMetadataArgs(options: DownloadOptions, writeComments = options.writeComments): string[] {
   const args = ['--write-thumbnail', '--write-description', '--write-info-json'];
   if (options.subLangs.length > 0) {
     args.push('--write-subs', '--write-auto-subs', '--sub-lang', options.subLangs.join(','));
   }
-  if (options.writeComments) {
+  if (writeComments) {
     args.push('--write-comments');
   }
   // Per-folder feature flags (config.json / the status-page editor):
@@ -108,6 +112,8 @@ export interface YtDlpJobSpec {
   videoUrl: string;
   baseName?: string | undefined;
   options?: DownloadOptions | undefined;
+  /** Repair jobs only: whether this run refreshes the comment section */
+  writeComments?: boolean | undefined;
 }
 
 export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
@@ -132,6 +138,26 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
       '-o',
       `${escapeOutputTemplate(job.baseName)}.%(ext)s`,
       ...buildMetadataArgs(options),
+      job.videoUrl,
+    ];
+  }
+  if (job.type === 'repair') {
+    if (!job.baseName) {
+      throw new Error('repair job requires baseName');
+    }
+    // No `--download-archive`: the file records videos, not the sidecars a
+    // repair went looking for, so consulting it here would skip the very work
+    // the job exists to do.
+    return [
+      '--ignore-config',
+      '-i',
+      '--no-playlist',
+      '--newline',
+      ...RUNTIME_ARGS,
+      '--skip-download',
+      '-o',
+      `${escapeOutputTemplate(job.baseName)}.%(ext)s`,
+      ...buildMetadataArgs(options, job.writeComments ?? false),
       job.videoUrl,
     ];
   }

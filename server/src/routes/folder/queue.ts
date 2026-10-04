@@ -6,6 +6,7 @@ import type {
   ClearFinishedResponse,
   DownloadOptions,
   EnqueueJobsResponse,
+  JobType,
   QueueJobResponse,
   QueueListResponse,
   QueuePauseResponse,
@@ -74,6 +75,7 @@ type QueueVideoInput = {
   videoUrl?: string | undefined;
   url?: string | undefined;
   title?: string | undefined;
+  comments?: boolean | undefined;
 };
 
 type QueueVideoOutcome = { request: EnqueueRequest } | { skipped: SkippedVideo };
@@ -83,32 +85,50 @@ type QueueVideoOutcome = { request: EnqueueRequest } | { skipped: SkippedVideo }
  * reason. SSRF guard: the URL only ever reaches yt-dlp as a canonical
  * YouTube watch URL — a URL that is not YouTube (or not even a URL) is
  * refused, never passed through raw (yt-dlp would fetch arbitrary targets).
+ *
+ * The app decides whether a download is still needed, from the folder index,
+ * rather than leaving that to `--download-archive`. The archive is a file
+ * another tool writes as well, and a video whose files were deleted stays in
+ * it, so "the archive lists it" and "the disk holds it" are different
+ * questions. Skipping here also means the skipped video reaches the console as
+ * a reason instead of vanishing into a yt-dlp run that downloaded nothing.
  */
+/** The video id of one queue entry, or the reason the entry cannot be used */
+function resolveVideoId(video: QueueVideoInput): { videoId: string } | { reason: string } {
+  const videoUrl = readString(video.videoUrl) ?? readString(video.url) ?? '';
+  const extractedId = videoUrl ? extractYoutubeVideoId(videoUrl) : null;
+  if (videoUrl && !extractedId) {
+    return { reason: 'videoUrl must be a YouTube video URL' };
+  }
+  const videoId = readString(video.videoId) ?? extractedId;
+  if (!videoId) {
+    return { reason: 'videoId or videoUrl is required' };
+  }
+  if (!isYoutubeVideoId(videoId)) {
+    return { reason: 'videoId is not a valid YouTube video id' };
+  }
+  return { videoId };
+}
+
 function toEnqueueRequest(
   video: QueueVideoInput,
-  type: 'download' | 'update',
+  type: JobType,
   folderPath: string,
   options: DownloadOptions,
   folderIndex: FolderIndex | null,
 ): QueueVideoOutcome {
-  const videoUrl = readString(video.videoUrl) ?? readString(video.url) ?? '';
-  const extractedId = videoUrl ? extractYoutubeVideoId(videoUrl) : null;
-  if (videoUrl && !extractedId) {
-    return { skipped: { videoId: '', reason: 'videoUrl must be a YouTube video URL' } };
+  const resolved = resolveVideoId(video);
+  if ('reason' in resolved) {
+    return { skipped: { videoId: readString(video.videoId) ?? '', reason: resolved.reason } };
   }
-  const videoId = readString(video.videoId) ?? extractedId;
-  if (!videoId) {
-    return { skipped: { videoId: '', reason: 'videoId or videoUrl is required' } };
-  }
-  if (!isYoutubeVideoId(videoId)) {
-    return { skipped: { videoId, reason: 'videoId is not a valid YouTube video id' } };
-  }
+  const { videoId } = resolved;
   // A watch URL carrying &list=&index= makes yt-dlp walk the whole playlist
   // from that point — always hand it a canonical single-video URL
   const url = toWatchUrl(videoId);
   const title = readString(video.title);
+  const entry = folderIndex?.entries[videoId];
+
   if (type === 'update') {
-    const entry = folderIndex?.entries[videoId];
     if (!entry) {
       return { skipped: { videoId, reason: 'not downloaded' } };
     }
@@ -123,6 +143,28 @@ function toEnqueueRequest(
         options,
       }),
     };
+  }
+
+  if (type === 'repair') {
+    if (!entry) {
+      return { skipped: { videoId, reason: 'not downloaded' } };
+    }
+    return {
+      request: stripUndefined<EnqueueRequest>({
+        folderPath,
+        videoId,
+        videoUrl: url,
+        title,
+        type,
+        baseName: entry.baseName,
+        options,
+        ...(video.comments === true ? { writeComments: true } : {}),
+      }),
+    };
+  }
+
+  if (entry) {
+    return { skipped: { videoId, reason: 'already downloaded' } };
   }
   return {
     request: stripUndefined<EnqueueRequest>({ folderPath, videoId, videoUrl: url, title, type, options }),
@@ -177,10 +219,12 @@ export function createQueueHandlers(queue: DownloadQueueLike) {
     await fs.mkdir(folderPath, { recursive: true });
     const options = await loadDownloadOptions(folderPath);
 
-    // Update jobs check every video against the folder index — loading it once
-    // here instead of per video turns O(n) file reads into one plus in-memory
-    // lookups (channels have thousands of videos).
-    const folderIndex = type === 'update' ? await loadIndex(folderPath) : null;
+    // Update and repair jobs check every video against the folder index —
+    // loading it once here instead of per video turns O(n) file reads into one
+    // plus in-memory lookups (channels have thousands of videos). A download
+    // reads it for the opposite reason: the app, not `--download-archive`,
+    // decides which videos are still missing.
+    const folderIndex = await loadIndex(folderPath);
 
     const requests: EnqueueRequest[] = [];
     const skipped: SkippedVideo[] = [];

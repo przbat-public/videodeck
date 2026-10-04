@@ -50,6 +50,13 @@ export interface EnqueueRequest {
   type: JobType;
   baseName?: string;
   options?: DownloadOptions;
+  /**
+   * Repair jobs only: whether this run refreshes the comment section. The
+   * sidecars a repair usually goes after are the cheap ones, and pulling the
+   * comments of a whole channel is what makes a metadata run slow and gets it
+   * rate-limited, so it is a per-request decision rather than a folder default.
+   */
+  writeComments?: boolean;
 }
 
 /** The part of `ChildProcess` the queue relies on (tests pass fakes) */
@@ -294,6 +301,7 @@ export class DownloadQueue extends EventEmitter {
         type: request.type,
         baseName: request.baseName,
         options: request.options,
+        writeComments: request.writeComments,
         status: 'queued',
         log: [],
         logLineCount: 0,
@@ -486,10 +494,6 @@ export class DownloadQueue extends EventEmitter {
     return undefined;
   }
 
-  private running(type: JobType): QueueJob[] {
-    return Array.from(this.jobs.values()).filter((job) => job.status === 'running' && job.type === type);
-  }
-
   /**
    * Downloads that still hold a yt-dlp process, whatever their status: a
    * cancelled job keeps its slot until the process really closes, because a
@@ -502,16 +506,27 @@ export class DownloadQueue extends EventEmitter {
   }
 
   /**
-   * Whether a queued job may start now. Downloads and updates are counted
-   * against separate limits; only downloads are exclusive within a folder,
-   * because only they append to the folder's archive.txt.
+   * Whether a queued job may start now. Downloads and metadata jobs are
+   * counted against separate limits; only downloads are exclusive within a
+   * folder, because only they append to the folder's archive.txt.
+   *
+   * A repair shares the update limit: both run `--skip-download`, both write
+   * under an existing stem, and neither ends up with two processes in one
+   * folder.
    */
   private canStart(job: QueueJob): boolean {
-    if (job.type === 'update') {
-      return this.running('update').length < this.maxConcurrentUpdates;
+    if (job.type === 'update' || job.type === 'repair') {
+      return this.runningMetadata().length < this.maxConcurrentUpdates;
     }
     const downloads = this.liveDownloads();
     return downloads.length < this.maxConcurrent && !downloads.some((running) => running.folderPath === job.folderPath);
+  }
+
+  /** Running metadata jobs: updates and repairs, which share one limit */
+  private runningMetadata(): QueueJob[] {
+    return Array.from(this.jobs.values()).filter(
+      (job) => (job.type === 'update' || job.type === 'repair') && job.status === 'running',
+    );
   }
 
   /** Start every queued job that may run, oldest first; a blocked job does not hold up the ones behind it */

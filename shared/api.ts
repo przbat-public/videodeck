@@ -15,6 +15,9 @@ import type { ApiError, FolderConfig, QueueJob, QueueSummaryResponse, ReindexSta
 
 export type {
   ApiError,
+  ArchiveDrift,
+  ArchiveMethod,
+  ArchiveReconcileResponse,
   CategoriesResponse,
   ChannelsResponse,
   ChannelVideo,
@@ -23,10 +26,12 @@ export type {
   CommentWithReplies,
   DownloadOptions,
   DownloadPlaylistResponse,
+  DownloadState,
   DownloadVideoEvent,
   EnqueueJobsResponse,
   FolderConfig,
   FolderListResponse,
+  FolderStateResponse,
   FolderSummariesResponse,
   FolderSummary,
   HealthResponse,
@@ -52,7 +57,9 @@ export type {
   VideoDetails,
   VideoDetailsResponse,
   VideoDownloadedResponse,
+  VideoFilesState,
   VideoListItem,
+  VideoStateResponse,
   VideoSummaryResponse,
 } from './schemas';
 
@@ -127,7 +134,12 @@ export interface EnqueueJobsRequest extends FolderPathRequest {
 // Download queue — /api/folder/queue
 // ---------------------------------------------------------------------------
 
-export type JobType = 'download' | 'update';
+/**
+ * What a queue job does. `download` fetches a video whole, `update` refreshes
+ * the metadata of one already on disk, and `repair` fetches only the sidecars a
+ * folder asked for and the video lacks, never the media itself.
+ */
+export type JobType = 'download' | 'update' | 'repair';
 export type JobStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled';
 
 /**

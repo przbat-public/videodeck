@@ -75,6 +75,8 @@ export interface MockApiHandlers {
   queueJob?: unknown;
   /** Body of GET /api/folder/summaries; defaults to no counts at all */
   summaries?: unknown;
+  /** Body of GET /api/folder/state: the per-video badges, orphans and counts */
+  state?: unknown;
 }
 
 /**
@@ -211,6 +213,20 @@ export async function mockApi(page: Page, handlers: MockApiHandlers = {}): Promi
           videos: [],
           downloadStatuses: {},
           lastUpdatedDates: {},
+        },
+      ),
+    ),
+  );
+  // The per-video state the badges, the filter chips and the orphan group read
+  await context.route('**/api/folder/state**', (route) =>
+    route.fulfill(
+      json(
+        handlers.state ?? {
+          folderPath: '/videos/e2e',
+          videos: [],
+          orphans: [],
+          drift: { missingFromArchive: [], missingFromDisk: [] },
+          counts: { videos: 0, downloaded: 0, incomplete: 0, notDownloaded: 0, orphans: 0 },
         },
       ),
     ),

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { QueueJob } from '@videodeck/shared/api';
+import type { DownloadOptions, JobType, QueueJob } from '@videodeck/shared/api';
 import { DownloadOptionsSchema } from '@videodeck/shared/schemas';
 import { toWatchUrl } from '@videodeck/shared/youtube';
 import { logger } from '../../utils/logger';
@@ -39,6 +39,7 @@ export function toPersistedJob(job: QueueJob): EnqueueRequest {
     type: job.type,
     baseName: job.baseName,
     options: job.options,
+    writeComments: job.writeComments,
   });
 }
 
@@ -116,27 +117,57 @@ export function toEnqueueRequest(job: unknown): EnqueueRequest | null {
     return null;
   }
   const { folderPath, videoId } = identity;
-  const options = record.options === undefined ? null : DownloadOptionsSchema.safeParse(record.options);
-  if (options && !options.success) {
-    logger.warn(`Queue state: dropping unreadable options of job ${videoId}`);
+  const type = readRestorableType(record.type);
+  const baseName = readRestorableStem(record.baseName, videoId, type);
+  if (baseName === false) {
+    return null;
   }
-  const type = record.type === 'update' ? 'update' : 'download';
-  const baseName = readPersistedBaseName(record.baseName);
-  if (baseName.kind === 'unusable') {
-    // An update job cannot run without a usable stem, while a download job
-    // ignores the field.
-    logger.warn(`Queue state: job ${videoId} carries a baseName that is not a single path segment`);
-    if (type === 'update') {
-      return null;
-    }
-  }
+  const options = readRestorableOptions(record.options, videoId);
   return {
     folderPath,
     videoId,
     videoUrl: toWatchUrl(videoId),
     ...(typeof record.title === 'string' ? { title: record.title } : {}),
     type,
-    ...(baseName.kind === 'safe' ? { baseName: baseName.value } : {}),
-    ...(options?.success ? { options: options.data } : {}),
+    ...(baseName === undefined ? {} : { baseName }),
+    ...(options === undefined ? {} : { options }),
+    ...(record.writeComments === true ? { writeComments: true } : {}),
   };
+}
+
+/** The job type a state file asked for; anything unknown reads as a download */
+function readRestorableType(value: unknown): JobType {
+  if (value === 'update' || value === 'repair') {
+    return value;
+  }
+  return 'download';
+}
+
+/**
+ * The stem a metadata job needs, or `false` when the job cannot run without
+ * one. A download ignores the field, so an unusable stem only drops its value
+ * there rather than the whole job.
+ */
+function readRestorableStem(value: unknown, videoId: string, type: JobType): string | undefined | false {
+  const baseName = readPersistedBaseName(value);
+  if (baseName.kind === 'safe') {
+    return baseName.value;
+  }
+  if (baseName.kind === 'unusable') {
+    logger.warn(`Queue state: job ${videoId} carries a baseName that is not a single path segment`);
+  }
+  return type === 'download' ? undefined : false;
+}
+
+/** Parsed options, or undefined when the file carries none we can trust */
+function readRestorableOptions(value: unknown, videoId: string): DownloadOptions | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const options = DownloadOptionsSchema.safeParse(value);
+  if (!options.success) {
+    logger.warn(`Queue state: dropping unreadable options of job ${videoId}`);
+    return undefined;
+  }
+  return options.data;
 }

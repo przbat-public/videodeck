@@ -70,11 +70,13 @@
     "emptyList": "No videos in list.json",
     "verbDownload": "Downloading",
     "verbUpdate": "Updating",
+    "verbRepair": "Repairing",
     "statusQueued": "{{verb}}: queued",
     "statusRunning": "{{verb}}...",
     "statusRunningProgress": "{{verb}}: {{progress}}%",
     "statusUpdated": "Updated",
     "statusDownloaded": "Downloaded",
+    "statusRepaired": "Repaired",
     "statusError": "Error",
     "statusCancelled": "Cancelled"
   },
@@ -118,6 +120,61 @@
     "play": "Play",
     "resumeFrom": "Resume from {{time}}",
     "startFromBeginning": "From the start"
+  },
+  "videoState": {
+    "filtersLabel": "Filter videos",
+    "filter": {
+      "all": "All ({{count}})",
+      "incomplete": "Needs completion ({{count}})",
+      "orphan": "On disk only ({{count}})",
+      "notDownloaded": "Not downloaded ({{count}})"
+    },
+    "badge": {
+      "video": "video",
+      "thumbnail": "thumbnail",
+      "description": "description",
+      "subs": "subs: {{langs}}",
+      "comments": "comments",
+      "notDownloaded": "not downloaded",
+      "missing": "missing: {{items}}"
+    },
+    "missing": {
+      "thumbnail": "thumbnail",
+      "description": "description",
+      "comments": "comments",
+      "subtitle": "subtitles ({{lang}})"
+    },
+    "orphanTitle": "On disk, no longer in list.json",
+    "orphanHint": "The channel does not list these videos any more, so they stay visible here instead of vanishing with list.json.",
+    "loadError": "Could not read the folder state",
+    "empty": "No video matches the filter",
+    "details": {
+      "show": "File state",
+      "hide": "Hide file state",
+      "showLabel": "File state of {{title}}",
+      "hideLabel": "Hide the file state of {{title}}",
+      "loading": "Reading the file state...",
+      "error": "Could not read the video's file state",
+      "regionLabel": "File state of {{title}}",
+      "video": "Video file",
+      "videoSize": "Video size",
+      "infoSize": ".info.json size",
+      "thumbnail": "Thumbnail",
+      "description": "Description",
+      "subtitles": "Subtitles",
+      "comments": "Comments",
+      "archive": "Archive",
+      "archiveOnDisk": "on disk",
+      "archiveInArchive": "in archive.txt",
+      "archiveDrift": "archive and disk disagree",
+      "archiveAgree": "archive and disk agree",
+      "missing": "Missing",
+      "nothingMissing": "Nothing missing",
+      "unknown": "This folder does not have the video",
+      "repair": "Repair this video",
+      "repairing": "Queueing the repair...",
+      "none": "none"
+    }
   },
   "config": {
     "save": "Save",
@@ -171,9 +228,19 @@
     "progressIndexed": "{{count}} indexed",
     "elasticsearchDownTitle": "Elasticsearch is not responding"
   },
+  "skipReason": {
+    "alreadyDownloaded": "already downloaded",
+    "notDownloaded": "not downloaded"
+  },
   "toast": {
     "addedToQueue_one": "Added {{count}} video to {{target}}",
     "addedToQueue_other": "Added {{count}} videos to {{target}}",
+    "repairQueued_one": "Queued the repair of {{count}} video",
+    "repairQueued_other": "Queued the repair of {{count}} videos",
+    "commentsQueued_one": "Queued the comment refresh of {{count}} video",
+    "commentsQueued_other": "Queued the comment refresh of {{count}} videos",
+    "archiveReconciled": "archive.txt reconciled: {{added}} added, {{removed}} removed",
+    "archiveAligned": "archive.txt already matches the disk ({{unchanged}} entries)",
     "downloadTarget": "downloads",
     "updateTarget": "updates",
     "skipped": "Skipped {{count}}: {{reason}}",
@@ -312,7 +379,10 @@
       "listFailed": "Could not read the channel's video list",
       "cancelled": "Cancelled the channel's jobs",
       "playlistQueued": "Fetching the channel's playlist",
-      "updatePlaylist": "Update playlist"
+      "updatePlaylist": "Update playlist",
+      "repairGaps": "Repair gaps",
+      "repairComments": "Refresh comments",
+      "reconcile": "Reconcile archive"
     },
     "collection": "collection",
     "expand": "Show videos",

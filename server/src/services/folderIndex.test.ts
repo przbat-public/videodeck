@@ -10,6 +10,7 @@ import {
   findEntryByVideoId,
   getDownloadStatuses,
   INDEX_FILE,
+  INDEX_VERSION,
   indexUntrackedVideos,
   loadIndex,
   readArchiveIds,
@@ -105,6 +106,37 @@ describe('folderIndex', () => {
       expect(entry(index.entries, 'id-reordered').title).toBe('Late title');
     });
 
+    it('records what the download actually left on disk', async () => {
+      // The per-video badges and the "needs completing" count read this: the
+      // boolean the console used to show could not tell a video without its
+      // Polish subtitles from a complete one.
+      await writeVideo(dir, '20240101_Full', 'id-full');
+      await fs.writeFile(path.join(dir, '20240101_Full.webp'), 'thumb', 'utf-8');
+      await fs.writeFile(path.join(dir, '20240101_Full.description'), 'text', 'utf-8');
+      await fs.writeFile(path.join(dir, '20240101_Full.en.vtt'), 'subs', 'utf-8');
+      await fs.writeFile(path.join(dir, '20240101_Full.pl.vtt'), 'subs', 'utf-8');
+      await writeVideo(dir, '20240102_Bare', 'id-bare', {
+        infoPrefix: JSON.stringify({ id: 'id-bare', title: 'No comments here' }),
+      });
+
+      const index = await rebuildIndex(dir);
+
+      expect(entry(index.entries, 'id-full')).toMatchObject({
+        subtitleLangs: ['en', 'pl'],
+        hasComments: true,
+        hasDescription: true,
+      });
+      expect(entry(index.entries, 'id-full').videoBytes).toBe(Buffer.byteLength('video-bytes'));
+      // A video with nothing but its media files answers "no" everywhere
+      // instead of leaving the keys out, so the client needs no fallbacks.
+      expect(entry(index.entries, 'id-bare')).toMatchObject({
+        subtitleLangs: [],
+        hasComments: false,
+        hasDescription: false,
+      });
+      expect(entry(index.entries, 'id-bare').videoBytes).toBe(Buffer.byteLength('video-bytes'));
+    });
+
     it('writes the index file and archive.txt reflecting disk state', async () => {
       await writeVideo(dir, '20240101_First', 'id-first');
       await fs.writeFile(path.join(dir, ARCHIVE_FILE), 'youtube stale-id\n', 'utf-8');
@@ -112,7 +144,7 @@ describe('folderIndex', () => {
       await rebuildIndex(dir);
 
       const saved = JSON.parse(await fs.readFile(path.join(dir, INDEX_FILE), 'utf-8'));
-      expect(saved.version).toBe(1);
+      expect(saved.version).toBe(2);
       expect(Object.keys(saved.entries)).toEqual(['id-first']);
 
       const archive = await fs.readFile(path.join(dir, ARCHIVE_FILE), 'utf-8');
@@ -195,6 +227,35 @@ describe('folderIndex', () => {
       expect(Object.keys(index.entries)).toEqual(['id-first']);
     });
 
+    it('rebuilds an index written before the per-file state existed', async () => {
+      // Version 1 entries carry no subtitle or comment information, so keeping
+      // them would report every video as incomplete until the next download.
+      await writeVideo(dir, '20240101_First', 'id-first');
+      await fs.writeFile(path.join(dir, '20240101_First.pl.vtt'), 'subs', 'utf-8');
+      await fs.writeFile(
+        path.join(dir, INDEX_FILE),
+        JSON.stringify({
+          version: 1,
+          builtAt: '2024-01-01T00:00:00.000Z',
+          entries: {
+            'id-first': {
+              baseName: '20240101_First',
+              videoFile: '20240101_First.mp4',
+              infoMtime: '2024-01-01T00:00:00.000Z',
+            },
+          },
+        }),
+        'utf-8',
+      );
+
+      const index = await loadIndex(dir);
+
+      expect(index.version).toBe(2);
+      expect(entry(index.entries, 'id-first').subtitleLangs).toEqual(['pl']);
+      const saved = JSON.parse(await fs.readFile(path.join(dir, INDEX_FILE), 'utf-8'));
+      expect(saved.version).toBe(2);
+    });
+
     it('drops an entry whose baseName could leave the folder', async () => {
       // The index is a file on the video folder, which is a network share as
       // often as it is a local disk, and a stem with a separator reaches
@@ -206,11 +267,15 @@ describe('folderIndex', () => {
         baseName,
         videoFile: `${baseName}.mp4`,
         infoMtime: '2024-01-01T00:00:00.000Z',
+        subtitleLangs: [],
+        hasComments: false,
+        hasDescription: false,
+        videoBytes: 0,
       });
       await fs.writeFile(
         path.join(dir, INDEX_FILE),
         JSON.stringify({
-          version: 1,
+          version: INDEX_VERSION,
           builtAt: '2024-01-01T00:00:00.000Z',
           entries: {
             'id-good': entryFor('20240101_Good'),

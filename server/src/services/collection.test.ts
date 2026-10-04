@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { indexEntry, indexFile } from '../test-utils';
 import { readCollection } from './collection';
 import { INDEX_FILE, rebuildIndex } from './folderIndex';
 
@@ -47,13 +48,15 @@ describe('readCollection', () => {
     expect(videos.map((video) => video.id)).toEqual(['tracked0001', 'terminal001']);
   });
 
-  it('makes a title from the file name for entries indexed before titles were recorded', async () => {
+  it('makes a title from the file name for an entry that records none', async () => {
     const baseName = '20130526_Home_built_SMD_Reflow_Oven';
     await writeVideo(dir, baseName, { id: 'Dube38fpLtc', title: 'ignored' });
+    // An entry without a title is what a folder indexed before titles were
+    // recorded used to carry, and what a hand-edited index can still hold.
     const legacyIndex = {
-      version: 1,
+      ...indexFile([]),
       builtAt: '2026-01-01T00:00:00.000Z',
-      entries: { Dube38fpLtc: { baseName, videoFile: `${baseName}.mp4`, infoMtime: '2026-01-01T00:00:00.000Z' } },
+      entries: { Dube38fpLtc: indexEntry({ baseName, videoFile: `${baseName}.mp4` }) },
     };
     await fs.writeFile(path.join(dir, INDEX_FILE), JSON.stringify(legacyIndex), 'utf-8');
 

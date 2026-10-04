@@ -253,7 +253,45 @@ export function videoFiles(
   };
 }
 
+/** The channel URL the deep environment's folders carry unless a seed says otherwise */
+const DEEP_CHANNEL_URL = 'https://www.youtube.com/@deepchannel';
+
+/** Folder config keys a seed may set; everything else keeps the shared default */
+export interface FolderConfigSeed {
+  /** Subtitle languages the folder asks yt-dlp to fetch */
+  subLangs?: string[];
+}
+
 /** A valid folder config.json for the deep environment */
-export function folderConfig(channelUrl = 'https://www.youtube.com/@deepchannel', category = 'tests'): string {
-  return JSON.stringify({ channelUrl, category });
+export function folderConfig(channelUrl = DEEP_CHANNEL_URL, category = 'tests', seed: FolderConfigSeed = {}): string {
+  return JSON.stringify({ channelUrl, category, ...seed });
+}
+
+/**
+ * One comment, shaped like the ones yt-dlp writes into an info.json. Only its
+ * presence matters: the folder index counts a non-empty `comments` array as the
+ * sidecar being there.
+ */
+const SEEDED_COMMENT = { id: 'Ugx-seeded-comment', author: 'Seeded viewer', text: 'Seeded comment.', like_count: 2 };
+
+/**
+ * A channel folder whose single video is on disk but incomplete: the media, the
+ * info.json and the thumbnail are there, the Polish subtitles are not, and the
+ * folder config asks for `pl` and `en`.
+ *
+ * That is the state a repair job exists to close, and the state a subtitle
+ * fetch that ran into YouTube's rate limit leaves behind: `en` landed, `pl` did
+ * not. Pair it with `FAKE_YTDLP_RATE_LIMIT_SUB_LANG=pl` on the environment to
+ * have a repair reproduce that partial result.
+ *
+ * The info.json carries a comment on purpose. A folder that wants comments and
+ * holds none reports a second, unrelated gap next to the subtitle, and a test
+ * asserting the repair would then be asserting two things at once.
+ */
+export function incompleteVideoFiles(videoId: string, title: string): Record<string, string> {
+  return {
+    'config.json': folderConfig(DEEP_CHANNEL_URL, 'tests', { subLangs: ['pl', 'en'] }),
+    'list.json': JSON.stringify([{ id: videoId, title, url: `https://www.youtube.com/watch?v=${videoId}` }]),
+    ...videoFiles(videoId, title, { comments: [SEEDED_COMMENT] }),
+  };
 }

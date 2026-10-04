@@ -156,6 +156,27 @@ function ChannelBulkItems({ row, busy, onAction }: Omit<ChannelRowMenuProps, 'on
         </MenuItem>
       )}
       <MenuSeparator />
+      {/* The folder repairs: what the downloads on disk are missing, and the
+          archive.txt they were recorded in. The counts only decide what looks
+          pointless; the state endpoint is the authority, so an unknown count
+          disables nothing and a channel with nothing downloaded disables both
+          repairs. */}
+      <MenuItem
+        disabled={busy || (countsKnown && (summary?.downloaded ?? 0) === 0)}
+        onSelect={() => onAction(row, 'repair')}
+      >
+        {t('channelConsole.actions.repairGaps')}
+      </MenuItem>
+      <MenuItem
+        disabled={busy || (countsKnown && (summary?.downloaded ?? 0) === 0)}
+        onSelect={() => onAction(row, 'repair-comments')}
+      >
+        {t('channelConsole.actions.repairComments')}
+      </MenuItem>
+      <MenuItem disabled={busy} onSelect={() => onAction(row, 'reconcile')}>
+        {t('channelConsole.actions.reconcile')}
+      </MenuItem>
+      <MenuSeparator />
     </>
   );
 }

@@ -1,8 +1,14 @@
-import type { JSX, ReactNode, Ref } from 'react';
+import type { ButtonHTMLAttributes, JSX, ReactNode, Ref } from 'react';
 
 type ButtonVariant = 'neutral' | 'primary' | 'success' | 'danger';
 
-interface ButtonProps {
+/**
+ * The four visual roles keep their own names; everything else a real button
+ * takes (`aria-expanded` on a disclosure trigger, `aria-label`, `id`, data
+ * attributes) passes straight through to the DOM element.
+ */
+interface ButtonProps
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'className' | 'disabled' | 'onClick' | 'children'> {
   onClick?: () => void;
   disabled?: boolean;
   type?: 'button' | 'submit';
@@ -29,6 +35,7 @@ export function Button({
   className = '',
   ref,
   children,
+  ...rest
 }: ButtonProps): JSX.Element {
   const classes = [
     'ui-button',
@@ -41,7 +48,7 @@ export function Button({
     .join(' ');
 
   return (
-    <button ref={ref} type={type} onClick={onClick} disabled={disabled} className={classes}>
+    <button ref={ref} type={type} onClick={onClick} disabled={disabled} className={classes} {...rest}>
       {children}
     </button>
   );

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { DownloadPlaylistResponse } from '@videodeck/shared/api';
 import { isYoutubeChannelUrl } from '@videodeck/shared/youtube';
+import { toCatalogEntry, trimPlaylistEntries } from '../../services/channelList';
 import { readFolderConfig } from '../../services/folderConfig';
 import { buildPlaylistArgs, runYtDlp } from '../../services/ytdlp';
 import { writeJsonAtomic } from '../../utils/fsUtils';
@@ -91,8 +92,13 @@ export const downloadPlaylist: RouteHandler<NoParams, DownloadPlaylistResponse> 
       }
     });
 
+  // The raw dump is kept trimmed: a flat-playlist entry carries about 40 keys
+  // of playlist bookkeeping and thumbnail URLs, and this app reads six of
+  // them. Writing the catalog shape keeps the file (and every later read of
+  // it) an order of magnitude smaller, and the diff of two fetches readable.
+  const catalog = trimPlaylistEntries(entries);
   const listPath = path.join(folderPath, 'list.json');
-  await writeJsonAtomic(folderPath, 'list.json', entries);
+  await writeJsonAtomic(folderPath, 'list.json', catalog.map(toCatalogEntry));
   // The file the console reads its row state and its counts from just changed,
   // and both answers are cached for seconds: without this the row it fetched
   // for keeps reporting "no list" and "0 videos" until the window lapses.
@@ -102,6 +108,6 @@ export const downloadPlaylist: RouteHandler<NoParams, DownloadPlaylistResponse> 
     success: true,
     message: 'Playlist downloaded successfully',
     listPath,
-    videoCount: entries.length,
+    videoCount: catalog.length,
   });
 };
