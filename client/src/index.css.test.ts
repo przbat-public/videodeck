@@ -38,6 +38,7 @@ const THEME_VARYING_TOKENS = [
   '--color-toast-bg',
   '--color-toast-text',
   '--color-focus-ring',
+  '--color-backdrop',
   '--shadow-card',
   '--shadow-popover',
 ];

@@ -566,21 +566,35 @@
 
 
 
+/* config.json in the sheet (the one missing-file line) and in the dialog the
+   row menu opens (the whole form). */
 .folder-config {
   margin-top: 1rem;
 }
 
-
 .config-empty {
   padding: 1rem;
-  background: var(--color-surface);
+  background: var(--color-bg-soft);
   border-radius: 6px;
   border: 1px dashed var(--color-border);
 }
 
 .config-empty p {
-  margin: 0 0 1rem 0;
+  margin: 0;
   color: var(--color-text-muted);
+}
+
+/* The folder the form writes to, under the dialog's title */
+.config-path {
+  margin-bottom: 1rem;
+  color: var(--color-text-muted);
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.config-empty + .config-edit {
+  margin-top: 1rem;
 }
 
 .config-field {
@@ -593,13 +607,6 @@
   margin-bottom: 0.5rem;
   color: var(--color-text);
   font-size: 0.95rem;
-}
-
-.config-edit {
-  background: var(--color-surface);
-  padding: 1rem;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
 }
 
 .config-input {
@@ -1541,7 +1548,7 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Reusable UI (ui/Button, ui/Loading, ui/ErrorMessage)
+   Reusable UI (ui/Button, ui/Loading, ui/ErrorMessage, ui/Modal)
 --------------------------------------------------------------------------- */
 
 .ui-button {
@@ -1636,6 +1643,38 @@
   padding: 0.45rem 0.7rem;
   margin-bottom: 0.5rem;
   font-size: 0.9rem;
+}
+
+/* Modal dialog (ui/Modal): a real <dialog> opened with showModal(), which the
+   browser paints in the top layer, above every page context. The panel only
+   has to look like the other floating surfaces and keep a tall form inside
+   the screen. */
+.ui-modal {
+  /* 44rem is where the config form's longest labels stop wrapping, which costs
+     36px of panel height below it, and the panel still reads as a dialog rather
+     than a page; on a phone the viewport decides instead. */
+  width: min(44rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 4rem);
+  /* The global `* { margin: 0 }` reset takes the `margin: auto` a modal dialog
+     relies on to centre itself, so it is spelled out here */
+  margin: auto;
+  padding: 1.5rem;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-popover);
+}
+
+.ui-modal::backdrop {
+  background: var(--color-backdrop);
+}
+
+.ui-modal-title {
+  margin-bottom: 0.25rem;
+  font-size: 1.2rem;
+  color: var(--color-text);
 }
 
 /* Top bar: the brand and the back link on the left, the gear menu on

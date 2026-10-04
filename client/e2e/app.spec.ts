@@ -290,9 +290,9 @@ test.describe('status page', () => {
       await expect(page.getByRole('columnheader', { name: column })).toBeVisible();
     }
 
-    // The folder's own section (config form, video list) opens under the row,
-    // and the list arrives with it; the config form and the playlist are
-    // reached from the row menu, not from buttons in here
+    // The folder's own section (the video list) opens under the row, and the
+    // list arrives with it; the config form and the playlist are reached from
+    // the row menu, not from buttons in here
     await expandChannel(page);
     const expanded = page.locator('.channel-expanded-row');
     await expect(expanded.getByText('Film E2E')).toBeVisible();
@@ -300,7 +300,12 @@ test.describe('status page', () => {
     // The channel's list.json is there, so the playlist entry leads the menu
     await expect(page.getByRole('menuitem', { name: 'Aktualizuj playlistę' })).toBeEnabled();
     await page.getByRole('menuitem', { name: 'Edytuj config.json' }).click();
-    await expect(page.getByLabel('Adres kanału YouTube:')).toBeVisible();
+    const dialog = page.getByRole('dialog', { name: 'Konfiguracja folderu' });
+    await expect(dialog.getByLabel('Adres kanału YouTube:')).toBeVisible();
+    // The video list is still where it was: the dialog never touched the row
+    await expect(expanded.getByText('Film E2E')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
     // The download page is reachable through the gear menu; the brand link
     // leads back to the list.
     await page.getByRole('button', { name: 'Menu aplikacji' }).click();

@@ -423,8 +423,12 @@ describe('ChannelTable', () => {
     await openRowMenu(user);
     await user.click(screen.getByRole('menuitem', { name: 'Edytuj config.json' }));
 
-    // The page expands the row and opens the form; the table only reports it
-    expect(onEditConfig).toHaveBeenCalledWith(expect.objectContaining({ folderPath: '/videos/kanal-a' }));
+    // The page opens the dialog and hands focus back to this very trigger when
+    // it closes. The table itself neither expands the row nor changes state
+    expect(onEditConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ folderPath: '/videos/kanal-a' }),
+      screen.getByRole('button', { name: 'Więcej akcji' }),
+    );
     expect(onChange).not.toHaveBeenCalled();
   });
 

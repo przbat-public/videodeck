@@ -5,6 +5,7 @@ import { MAIN_CONTENT_ID } from '../components/AppLayout';
 import { ChannelTable } from '../components/ChannelTable';
 import type { ChannelFilterCounts } from '../components/ChannelToolbar';
 import { ChannelToolbar } from '../components/ChannelToolbar';
+import { FolderConfigEditor } from '../components/FolderConfigEditor';
 import { FolderSection } from '../components/FolderSection';
 import { QueueControls } from '../components/QueueControls';
 import { Button } from '../components/ui/Button';
@@ -18,16 +19,22 @@ import { useFolderSummaries } from '../hooks/useFolderSummaries';
 import { usePageFocus } from '../hooks/usePageFocus';
 import { useStatus } from '../hooks/useStatus';
 import { useStickyOffset } from '../hooks/useStickyOffset';
-import type { ChannelConsoleState } from '../utils/channelConsoleState';
 import type { ChannelQueueCounts, ChannelRow } from '../utils/channelTable';
 import { buildChannelRows, filterChannels, foldersWithFinishedJobs, sortChannels } from '../utils/channelTable';
 import { collectCategories } from '../utils/folderConfigForm';
 
+/** The open config dialog: which folder it edits, and what takes focus back */
+interface EditingConfig {
+  folderPath: string;
+  returnFocus: HTMLButtonElement | null;
+}
+
 /**
  * The download page as a console: one row per channel with its counts and what
- * the queue is doing with it, and the full folder section (config, playlist,
- * video list) under the row the URL expands. The page keeps its height whether
- * the library holds five channels or sixty.
+ * the queue is doing with it, and the folder section (video list) under the row
+ * the URL expands. The page keeps its height whether the library holds five
+ * channels or sixty. Editing a config.json is a modal dialog of its own, so the
+ * row menu entry never moves the list under the reader.
  */
 export default function StatusPage(): JSX.Element {
   const { state, updateFolderConfig, reload } = useStatus();
@@ -80,9 +87,9 @@ export default function StatusPage(): JSX.Element {
   const mainRef = usePageFocus<HTMLElement>();
   const pageRef = useRef<HTMLDivElement>(null);
   const queueBarRef = useRef<HTMLDivElement>(null);
-  // The channel whose config form is open. The row menu opens it; collapsing
-  // the row, saving or cancelling closes it again.
-  const [editingFolder, setEditingFolder] = useState('');
+  // The config dialog the row menu opened, if any. Saving, cancelling or
+  // Escape closes it; the row it belongs to stays exactly as it was.
+  const [editingConfig, setEditingConfig] = useState<EditingConfig | null>(null);
 
   // The table header sticks below the queue bar, so the bar publishes its own
   // height: it wraps on narrower screens, and a hardcoded offset would leave
@@ -115,29 +122,16 @@ export default function StatusPage(): JSX.Element {
 
   const knownCategories = statusData ? collectCategories(statusData.folderConfigs) : [];
 
-  /** Every console state change goes through here, so a collapsed row also
-   *  closes the form it was showing. */
-  const changeConsoleState = useCallback(
-    (next: ChannelConsoleState): void => {
-      if (next.folder !== consoleState.folder) {
-        setEditingFolder('');
-      }
-      setConsoleState(next);
-    },
-    [consoleState.folder, setConsoleState],
-  );
-
   const closeConfigEditor = useCallback((): void => {
-    setEditingFolder('');
+    setEditingConfig(null);
   }, []);
 
-  const openConfigEditor = useCallback(
-    (row: ChannelRow): void => {
-      setConsoleState({ ...consoleState, folder: row.folderPath });
-      setEditingFolder(row.folderPath);
-    },
-    [consoleState, setConsoleState],
-  );
+  // No row to expand: the dialog stands on its own, which is the point of it
+  // (the entry used to open the video list as a side effect, and hiding that
+  // list again was the reader's problem).
+  const openConfigEditor = useCallback((row: ChannelRow, returnFocus: HTMLButtonElement | null): void => {
+    setEditingConfig({ folderPath: row.folderPath, returnFocus });
+  }, []);
 
   return (
     <main id={MAIN_CONTENT_ID} className="app-main" ref={mainRef} tabIndex={-1}>
@@ -171,11 +165,11 @@ export default function StatusPage(): JSX.Element {
               {/* No folder is on disk, but the library remembers some: the
                   drives are unplugged, which is not a config problem */}
               {statusData.videosFolderPath.length === 0 && <p>{t('status.drivesUnplugged')}</p>}
-              <ChannelToolbar state={consoleState} counts={counts} onChange={changeConsoleState} />
+              <ChannelToolbar state={consoleState} counts={counts} onChange={setConsoleState} />
               <ChannelTable
                 rows={visibleRows}
                 state={consoleState}
-                onChange={changeConsoleState}
+                onChange={setConsoleState}
                 countsLoading={summariesLoading}
                 pending={pending}
                 onAction={(row, action) => void run(row.folderPath, action)}
@@ -184,17 +178,26 @@ export default function StatusPage(): JSX.Element {
                   <FolderSection
                     folderPath={row.folderPath}
                     initialConfig={statusData.folderConfigs[row.folderPath] || null}
-                    downloadDefaults={statusData.downloadDefaults}
                     initialListExists={statusData.listExists[row.folderPath] ?? null}
-                    knownCategories={knownCategories}
-                    editingConfig={editingFolder === row.folderPath}
-                    onEditingFinished={closeConfigEditor}
-                    onConfigUpdate={updateFolderConfig}
                     queueRevision={queueRevisions[row.folderPath] ?? 0}
                     onQueueChanged={refreshQueue}
                   />
                 )}
               />
+              {/* The config dialog sits beside the table, not inside the
+                  expanded row: it opens without the row, and the row it names
+                  keeps rendering whatever list it was showing */}
+              {editingConfig !== null && (
+                <FolderConfigEditor
+                  folderPath={editingConfig.folderPath}
+                  initialConfig={statusData.folderConfigs[editingConfig.folderPath] ?? null}
+                  downloadDefaults={statusData.downloadDefaults}
+                  knownCategories={knownCategories}
+                  returnFocus={editingConfig.returnFocus}
+                  onClose={closeConfigEditor}
+                  onConfigUpdate={updateFolderConfig}
+                />
+              )}
             </>
           ))}
       </div>

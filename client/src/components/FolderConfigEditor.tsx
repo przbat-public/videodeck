@@ -8,6 +8,7 @@ import { buildConfig, FRAGMENT_CHOICES, MAX_HEIGHT_CHOICES, toFormState } from '
 import { Button } from './ui/Button';
 import { Checkbox } from './ui/Checkbox';
 import { ErrorMessage } from './ui/ErrorMessage';
+import { Modal } from './ui/Modal';
 import { Select } from './ui/Select';
 
 interface FolderConfigEditorProps {
@@ -18,23 +19,28 @@ interface FolderConfigEditorProps {
   /** Categories used by other folders, offered as input suggestions */
   knownCategories?: string[];
   /**
-   * Whether the form is open. The row menu on the download console owns this
-   * (there is no edit button of our own), so the caller decides when the
-   * editor appears.
+   * The form closed itself: saved or cancelled. The caller takes the dialog
+   * down, which is also what discards a cancelled edit.
    */
-  editing: boolean;
-  /** The form is closing: saved or cancelled */
-  onEditingFinished: () => void;
+  onClose: () => void;
+  /** Focus goes back here once the dialog is gone: the row's ⋯ trigger */
+  returnFocus?: HTMLElement | null;
   onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
 }
 
+/**
+ * One folder's config.json, in a modal dialog the console's row menu opens.
+ * Nothing below the ⋯ entry moves: the dialog closes on save or cancel, so
+ * editing a file no longer expands the channel's video list underneath it and
+ * leaves the reader hiding it again.
+ */
 export function FolderConfigEditor({
   folderPath,
   initialConfig,
   downloadDefaults,
   knownCategories = [],
-  editing,
-  onEditingFinished,
+  onClose,
+  returnFocus = null,
   onConfigUpdate,
 }: FolderConfigEditorProps) {
   const { t } = useTranslation();
@@ -69,9 +75,9 @@ export function FolderConfigEditor({
         { failureMessage: (failure) => failure.message ?? t('errors.saveConfig') },
       );
 
-      setConfig(result.config);
+      // The console keeps the answer; this dialog has done its job and closes.
       onConfigUpdate(folderPath, result.config);
-      onEditingFinished();
+      onClose();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : t('errors.occurred');
       setError(errorMessage);
@@ -80,11 +86,9 @@ export function FolderConfigEditor({
     }
   };
 
-  const handleCancel = () => {
-    setForm(toFormState(config, downloadDefaults));
-    onEditingFinished();
-    setError(null);
-  };
+  // Cancelling is closing: the form is rebuilt from the config on disk the
+  // next time the row menu opens it.
+  const handleCancel = () => onClose();
 
   // Folder paths contain slashes (and may contain spaces), which are not
   // valid HTML ids — slug them so label[htmlFor] ↔ input[id] keep matching.
@@ -93,15 +97,10 @@ export function FolderConfigEditor({
     return `${field}-${slug}`;
   };
 
-  // The row menu opens this form, so with a config in place and the form shut
-  // there is nothing left to render. A missing config.json still says so out
-  // loud: that is information, not an action.
-  if (!editing && config !== null) {
-    return null;
-  }
-
   return (
-    <div className="folder-config">
+    <Modal title={t('config.title')} onClose={handleCancel} returnFocus={returnFocus}>
+      <p className="config-path">{folderPath}</p>
+
       {error && <ErrorMessage compact>{t('app.error', { message: error })}</ErrorMessage>}
 
       {config === null && (
@@ -110,166 +109,164 @@ export function FolderConfigEditor({
         </div>
       )}
 
-      {editing && (
-        <div className="config-edit">
+      <div className="config-edit">
+        <div className="config-field">
+          <Checkbox
+            checked={form.collection}
+            onChange={(checked) => updateForm({ collection: checked })}
+            label={t('config.collection')}
+          />
+        </div>
+
+        {!form.collection && (
           <div className="config-field">
-            <Checkbox
-              checked={form.collection}
-              onChange={(checked) => updateForm({ collection: checked })}
-              label={t('config.collection')}
+            <label htmlFor={id('channelUrl')}>{t('config.channelUrl')}</label>
+            <input
+              id={id('channelUrl')}
+              type="text"
+              value={form.channelUrl}
+              onChange={(e) => updateForm({ channelUrl: e.target.value })}
+              placeholder={t('config.channelUrlPlaceholder')}
+              className="config-input"
             />
           </div>
+        )}
 
-          {!form.collection && (
-            <div className="config-field">
-              <label htmlFor={id('channelUrl')}>{t('config.channelUrl')}</label>
+        <div className="config-field">
+          <label htmlFor={id('category')}>{t('config.category')}</label>
+          <input
+            id={id('category')}
+            type="text"
+            list={id('categories')}
+            value={form.category}
+            onChange={(e) => updateForm({ category: e.target.value })}
+            placeholder={t('config.categoryPlaceholder')}
+            className="config-input"
+          />
+          <datalist id={id('categories')}>
+            {knownCategories.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        </div>
+
+        <div className="config-field">
+          <label htmlFor={id('maxHeight')}>{t('config.maxHeight')}</label>
+          <Select
+            id={id('maxHeight')}
+            value={form.maxHeight}
+            onChange={(value) => updateForm({ maxHeight: value })}
+            className="config-input"
+            items={[
+              {
+                value: '',
+                label: t('config.maxHeightDefault', { height: downloadDefaults.maxHeight }),
+              },
+              ...MAX_HEIGHT_CHOICES.map((height) => ({
+                value: String(height),
+                label: `${height}p`,
+              })),
+            ]}
+          />
+        </div>
+
+        <div className="config-field">
+          <Checkbox
+            checked={form.subtitlesEnabled}
+            onChange={(checked) => updateForm({ subtitlesEnabled: checked })}
+            label={t('config.subtitles')}
+          />
+          {form.subtitlesEnabled && (
+            <>
+              <label htmlFor={id('subLangs')}>{t('config.subtitleLangs')}</label>
               <input
-                id={id('channelUrl')}
+                id={id('subLangs')}
                 type="text"
-                value={form.channelUrl}
-                onChange={(e) => updateForm({ channelUrl: e.target.value })}
-                placeholder={t('config.channelUrlPlaceholder')}
+                value={form.subLangs}
+                onChange={(e) => updateForm({ subLangs: e.target.value })}
+                placeholder={t('config.subtitleLangsPlaceholder', {
+                  langs: downloadDefaults.subLangs.join(', ') || t('config.none'),
+                })}
                 className="config-input"
               />
-            </div>
+            </>
           )}
-
-          <div className="config-field">
-            <label htmlFor={id('category')}>{t('config.category')}</label>
-            <input
-              id={id('category')}
-              type="text"
-              list={id('categories')}
-              value={form.category}
-              onChange={(e) => updateForm({ category: e.target.value })}
-              placeholder={t('config.categoryPlaceholder')}
-              className="config-input"
-            />
-            <datalist id={id('categories')}>
-              {knownCategories.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-          </div>
-
-          <div className="config-field">
-            <label htmlFor={id('maxHeight')}>{t('config.maxHeight')}</label>
-            <Select
-              id={id('maxHeight')}
-              value={form.maxHeight}
-              onChange={(value) => updateForm({ maxHeight: value })}
-              className="config-input"
-              items={[
-                {
-                  value: '',
-                  label: t('config.maxHeightDefault', { height: downloadDefaults.maxHeight }),
-                },
-                ...MAX_HEIGHT_CHOICES.map((height) => ({
-                  value: String(height),
-                  label: `${height}p`,
-                })),
-              ]}
-            />
-          </div>
-
-          <div className="config-field">
-            <Checkbox
-              checked={form.subtitlesEnabled}
-              onChange={(checked) => updateForm({ subtitlesEnabled: checked })}
-              label={t('config.subtitles')}
-            />
-            {form.subtitlesEnabled && (
-              <>
-                <label htmlFor={id('subLangs')}>{t('config.subtitleLangs')}</label>
-                <input
-                  id={id('subLangs')}
-                  type="text"
-                  value={form.subLangs}
-                  onChange={(e) => updateForm({ subLangs: e.target.value })}
-                  placeholder={t('config.subtitleLangsPlaceholder', {
-                    langs: downloadDefaults.subLangs.join(', ') || t('config.none'),
-                  })}
-                  className="config-input"
-                />
-              </>
-            )}
-          </div>
-
-          <div className="config-field">
-            <Checkbox
-              checked={form.writeComments}
-              onChange={(checked) => updateForm({ writeComments: checked })}
-              label={t('config.comments')}
-            />
-          </div>
-
-          <div className="config-field">
-            <Checkbox
-              checked={form.impersonate}
-              onChange={(checked) => updateForm({ impersonate: checked })}
-              label={t('config.impersonate')}
-            />
-          </div>
-
-          <div className="config-field">
-            <Checkbox
-              checked={form.sponsorblockRemove}
-              onChange={(checked) => updateForm({ sponsorblockRemove: checked })}
-              label={t('config.sponsorblock')}
-            />
-          </div>
-
-          <div className="config-field">
-            <label htmlFor={id('concurrentFragments')}>{t('config.concurrentFragments')}</label>
-            <Select
-              id={id('concurrentFragments')}
-              value={form.concurrentFragments}
-              onChange={(value) => updateForm({ concurrentFragments: value })}
-              className="config-input"
-              items={[
-                {
-                  value: '',
-                  label: t('config.concurrentFragmentsDefault', {
-                    count: downloadDefaults.concurrentFragments ?? 1,
-                  }),
-                },
-                ...FRAGMENT_CHOICES.map((fragments) => ({
-                  value: String(fragments),
-                  label: String(fragments),
-                })),
-              ]}
-            />
-          </div>
-
-          <div className="config-field">
-            <label htmlFor={id('extraArgs')}>{t('config.extraArgs')}</label>
-            <input
-              id={id('extraArgs')}
-              type="text"
-              value={form.extraArgs}
-              onChange={(e) => updateForm({ extraArgs: e.target.value })}
-              placeholder={t('config.extraArgsPlaceholder')}
-              className="config-input"
-            />
-            <p className="config-hint">
-              {downloadDefaults.extraArgs && downloadDefaults.extraArgs.length > 0
-                ? t('config.subtitleLangsPlaceholder', {
-                    langs: downloadDefaults.extraArgs.join(' '),
-                  })
-                : t('config.extraArgsAllowed')}
-            </p>
-          </div>
-
-          <div className="config-actions">
-            <Button variant="success" onClick={() => void handleSave()} disabled={isSaving}>
-              {isSaving ? t('config.saving') : t('config.save')}
-            </Button>
-            <Button onClick={handleCancel} disabled={isSaving}>
-              {t('config.cancel')}
-            </Button>
-          </div>
         </div>
-      )}
-    </div>
+
+        <div className="config-field">
+          <Checkbox
+            checked={form.writeComments}
+            onChange={(checked) => updateForm({ writeComments: checked })}
+            label={t('config.comments')}
+          />
+        </div>
+
+        <div className="config-field">
+          <Checkbox
+            checked={form.impersonate}
+            onChange={(checked) => updateForm({ impersonate: checked })}
+            label={t('config.impersonate')}
+          />
+        </div>
+
+        <div className="config-field">
+          <Checkbox
+            checked={form.sponsorblockRemove}
+            onChange={(checked) => updateForm({ sponsorblockRemove: checked })}
+            label={t('config.sponsorblock')}
+          />
+        </div>
+
+        <div className="config-field">
+          <label htmlFor={id('concurrentFragments')}>{t('config.concurrentFragments')}</label>
+          <Select
+            id={id('concurrentFragments')}
+            value={form.concurrentFragments}
+            onChange={(value) => updateForm({ concurrentFragments: value })}
+            className="config-input"
+            items={[
+              {
+                value: '',
+                label: t('config.concurrentFragmentsDefault', {
+                  count: downloadDefaults.concurrentFragments ?? 1,
+                }),
+              },
+              ...FRAGMENT_CHOICES.map((fragments) => ({
+                value: String(fragments),
+                label: String(fragments),
+              })),
+            ]}
+          />
+        </div>
+
+        <div className="config-field">
+          <label htmlFor={id('extraArgs')}>{t('config.extraArgs')}</label>
+          <input
+            id={id('extraArgs')}
+            type="text"
+            value={form.extraArgs}
+            onChange={(e) => updateForm({ extraArgs: e.target.value })}
+            placeholder={t('config.extraArgsPlaceholder')}
+            className="config-input"
+          />
+          <p className="config-hint">
+            {downloadDefaults.extraArgs && downloadDefaults.extraArgs.length > 0
+              ? t('config.subtitleLangsPlaceholder', {
+                  langs: downloadDefaults.extraArgs.join(' '),
+                })
+              : t('config.extraArgsAllowed')}
+          </p>
+        </div>
+
+        <div className="config-actions">
+          <Button variant="success" onClick={() => void handleSave()} disabled={isSaving}>
+            {isSaving ? t('config.saving') : t('config.save')}
+          </Button>
+          <Button onClick={handleCancel} disabled={isSaving}>
+            {t('config.cancel')}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
