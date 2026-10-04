@@ -74,6 +74,27 @@ describe('VideoStateBadges', () => {
     expect(screen.queryByText(i18n.t('videoState.badge.video'))).toBeNull();
   });
 
+  it('names the reason a video cannot arrive instead of calling it not downloaded', () => {
+    render(<VideoStateBadges state={state({ files: null, missing: [] })} availability="subscriber_only" />);
+
+    const membersOnly = badge(i18n.t('videoState.badge.membersOnly'));
+    expect(membersOnly).toHaveClass('video-state-badge--info');
+    expect(screen.queryByText(i18n.t('videoState.badge.notDownloaded'))).toBeNull();
+  });
+
+  it('names Premium as the reason when that is what the catalog says', () => {
+    render(<VideoStateBadges state={state({ files: null, missing: [] })} availability="premium_only" />);
+
+    expect(badge(i18n.t('videoState.badge.premiumOnly'))).toBeInTheDocument();
+  });
+
+  it('keeps the file badges of a video that is on disk, whatever the catalog says', () => {
+    render(<VideoStateBadges state={state()} availability="subscriber_only" />);
+
+    expect(badge(i18n.t('videoState.badge.video'))).toBeInTheDocument();
+    expect(screen.queryByText(i18n.t('videoState.badge.membersOnly'))).toBeNull();
+  });
+
   it('renders nothing while the folder state is not there', () => {
     const { container } = render(<VideoStateBadges state={undefined} />);
 

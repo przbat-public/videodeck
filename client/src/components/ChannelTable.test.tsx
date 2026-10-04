@@ -95,6 +95,34 @@ describe('ChannelTable', () => {
     expect(screen.getByText('1 błąd')).not.toHaveAttribute('title');
   });
 
+  it('counts the videos that cannot arrive on their own line, out of the missing ones', () => {
+    renderTable([row({ summary: { videos: 40, downloaded: 2, notDownloaded: 38, unavailable: 38, stale: 0 } })]);
+
+    expect(screen.getByText('40 filmów')).toBeInTheDocument();
+    // Nothing is left to fetch, so the warning line goes away and the reason
+    // takes its place: 38 members-only videos are not 38 missing downloads.
+    expect(screen.queryByText('38 niepobranych')).toBeNull();
+    const unavailable = screen.getByText('38 niedostępnych');
+    expect(unavailable).toHaveClass('channel-count');
+    expect(unavailable).not.toHaveClass('channel-count--warn');
+  });
+
+  it('keeps the fetchable videos in the missing line when only some cannot arrive', () => {
+    renderTable([row({ summary: { videos: 40, downloaded: 1, notDownloaded: 39, unavailable: 1, stale: 0 } })]);
+
+    expect(screen.getByText('38 niepobranych')).toBeInTheDocument();
+    expect(screen.getByText('1 niedostępny')).toBeInTheDocument();
+  });
+
+  it('disables the download action when every missing video cannot arrive', async () => {
+    const user = userEvent.setup();
+    renderTable([row({ summary: { videos: 5, downloaded: 0, notDownloaded: 5, unavailable: 5, stale: 0 } })]);
+
+    await openRowMenu(user);
+
+    expect(screen.getByRole('menuitem', { name: 'Pobierz wszystkie' })).toHaveAttribute('data-disabled');
+  });
+
   it('stacks the video counts as plain lines, not as badges', () => {
     renderTable([row({ summary: { videos: 1257, downloaded: 1255, notDownloaded: 1, stale: 1 } })]);
 

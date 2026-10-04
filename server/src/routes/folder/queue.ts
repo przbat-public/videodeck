@@ -21,6 +21,8 @@ import { toListJob } from '../../services/downloadQueue';
 import { loadDownloadOptions } from '../../services/folderConfig';
 import type { FolderIndex } from '../../services/folderIndex';
 import { findEntryByVideoId, loadIndex } from '../../services/folderIndex';
+import type { UnavailableLookup } from '../../services/unavailableVideos';
+import { readUnavailability } from '../../services/unavailableVideos';
 import { stripUndefined } from '../../utils/objectUtils';
 import type { NoParams, RouteHandler } from '../http';
 import { errnoCode, readBody, readString } from '../http';
@@ -116,6 +118,8 @@ function toEnqueueRequest(
   folderPath: string,
   options: DownloadOptions,
   folderIndex: FolderIndex | null,
+  unavailableVideos: UnavailableLookup,
+  force: boolean,
 ): QueueVideoOutcome {
   const resolved = resolveVideoId(video);
   if ('reason' in resolved) {
@@ -166,6 +170,14 @@ function toEnqueueRequest(
   if (entry) {
     return { skipped: { videoId, reason: 'already downloaded' } };
   }
+  // What the folder knows against this video, and only for a download: one
+  // that is already on disk keeps its update and repair paths, where a failure
+  // is about the files the user asked to refresh rather than about fetching
+  // something new. `force` skips the check, never the validation above it.
+  const unavailable = force ? null : unavailableVideos.reasonFor(videoId);
+  if (unavailable !== null) {
+    return { skipped: { videoId, reason: unavailable } };
+  }
   return {
     request: stripUndefined<EnqueueRequest>({ folderPath, videoId, videoUrl: url, title, type, options }),
   };
@@ -212,6 +224,7 @@ export function createQueueHandlers(queue: DownloadQueueLike) {
       return;
     }
     const { type, videos } = parsed.data;
+    const force = parsed.data.force === true;
 
     if (!(await requireMountedFolder(folderPath, res))) {
       return;
@@ -225,11 +238,15 @@ export function createQueueHandlers(queue: DownloadQueueLike) {
     // reads it for the opposite reason: the app, not `--download-archive`,
     // decides which videos are still missing.
     const folderIndex = await loadIndex(folderPath);
+    // What the folder knows about videos that cannot arrive, read once for the
+    // whole request: the bulk "download all" of a channel asks about hundreds
+    // of videos at a time.
+    const unavailableVideos = await readUnavailability(folderPath);
 
     const requests: EnqueueRequest[] = [];
     const skipped: SkippedVideo[] = [];
     for (const video of videos) {
-      const outcome = toEnqueueRequest(video, type, folderPath, options, folderIndex);
+      const outcome = toEnqueueRequest(video, type, folderPath, options, folderIndex, unavailableVideos, force);
       if ('request' in outcome) {
         requests.push(outcome.request);
       } else {

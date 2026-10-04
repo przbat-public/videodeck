@@ -152,7 +152,9 @@
       "subs": "napisy: {{langs}}",
       "comments": "komentarze",
       "notDownloaded": "niepobrane",
-      "missing": "brakuje: {{items}}"
+      "missing": "brakuje: {{items}}",
+      "membersOnly": "tylko dla członków",
+      "premiumOnly": "tylko w Premium"
     },
     "missing": {
       "thumbnail": "miniatura",
@@ -301,7 +303,8 @@
       "no-space": "Brak miejsca na dysku pobierania",
       "geo-restricted": "Ten film nie jest dostępny w Twoim kraju",
       "bot-wall": "YouTube żąda zalogowania (ściana antybotowa)",
-      "age-gate": "Ten film jest dla dorosłych i wymaga zalogowanej sesji"
+      "age-gate": "Ten film jest dla dorosłych i wymaga zalogowanej sesji",
+      "premium-only": "Ten film jest dostępny tylko w YouTube Premium"
     },
     "loadSummaries": "Nie udało się policzyć filmów w kanałach",
     "searchElasticsearch": "Nie udało się wyszukać filmów: Elasticsearch nie odpowiada",
@@ -379,7 +382,11 @@
       "stale_few": "{{count}} nie zaktualizowane od miesiąca",
       "stale_many": "{{count}} nie zaktualizowanych od miesiąca",
       "stale_other": "{{count}} nie zaktualizowanych od miesiąca",
-      "loading": "liczę..."
+      "loading": "liczę...",
+      "unavailable_one": "{{count}} niedostępny",
+      "unavailable_few": "{{count}} niedostępne",
+      "unavailable_many": "{{count}} niedostępnych",
+      "unavailable_other": "{{count}} niedostępnych"
     },
     "queue": {
       "running": "{{count}} w toku",

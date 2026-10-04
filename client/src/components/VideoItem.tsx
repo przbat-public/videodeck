@@ -246,8 +246,10 @@ export function VideoItemInner({
         />
       </div>
       {/* What the folder state says is on disk for this video; nothing at all
-          while /api/folder/state has not answered yet */}
-      <VideoStateBadges state={video.downloadState} />
+          while /api/folder/state has not answered yet. The catalog's
+          availability rides along: it is what tells a members-only video apart
+          from one that is merely not downloaded. */}
+      <VideoStateBadges state={video.downloadState} availability={video.availability} />
       {isRunning && (
         <div
           className="download-progress"

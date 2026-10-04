@@ -671,12 +671,61 @@ describe('folder router', () => {
             videos: 3,
             downloaded: 2,
             notDownloaded: 1,
+            unavailable: 0,
             stale: 1,
             newestUpdate: FRESH_UPDATE,
           },
-          [OTHER_FOLDER]: { videos: 1, downloaded: 0, notDownloaded: 1, stale: 0 },
+          [OTHER_FOLDER]: { videos: 1, downloaded: 0, notDownloaded: 1, unavailable: 0, stale: 0 },
         },
       });
+    });
+
+    it('counts a members-only video as unavailable instead of a missing download', async () => {
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === listPath(OTHER_FOLDER)) {
+          return Promise.resolve(
+            JSON.stringify([
+              { id: 'w1', title: 'Members only', url: 'https://yt/watch?v=w1', availability: 'subscriber_only' },
+            ]),
+          );
+        }
+        return Promise.reject(enoent());
+      });
+
+      const response = await request(app).get('/api/folder/summaries').query({ folderPath: OTHER_FOLDER });
+
+      expect(response.body.summaries[OTHER_FOLDER]).toEqual({
+        videos: 1,
+        downloaded: 0,
+        notDownloaded: 1,
+        unavailable: 1,
+        stale: 0,
+      });
+    });
+
+    it('counts a video the folder recorded a permanent failure for as unavailable', async () => {
+      // A real-looking id, because the record only accepts keys shaped like
+      // YouTube video ids: `w1` and friends are for the catalog fixtures.
+      const recordedId = 'dQw4w9WgXcQ';
+      const record = {
+        version: 1,
+        entries: { [recordedId]: { code: 'removed', at: new Date().toISOString() } },
+      };
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === listPath(OTHER_FOLDER)) {
+          return Promise.resolve(listOf([recordedId]));
+        }
+        if (target === `${OTHER_FOLDER}/.unavailable.json`) {
+          return Promise.resolve(JSON.stringify(record));
+        }
+        return Promise.reject(enoent());
+      });
+
+      const response = await request(app).get('/api/folder/summaries').query({ folderPath: OTHER_FOLDER });
+
+      expect(response.body.summaries[OTHER_FOLDER].unavailable).toBe(1);
     });
 
     it('reports zeroes for a folder without a readable list.json', async () => {
@@ -686,8 +735,8 @@ describe('folder router', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.summaries).toEqual({
-        [FOLDER]: { videos: 0, downloaded: 0, notDownloaded: 0, stale: 0 },
-        [OTHER_FOLDER]: { videos: 0, downloaded: 0, notDownloaded: 0, stale: 0 },
+        [FOLDER]: { videos: 0, downloaded: 0, notDownloaded: 0, unavailable: 0, stale: 0 },
+        [OTHER_FOLDER]: { videos: 0, downloaded: 0, notDownloaded: 0, unavailable: 0, stale: 0 },
       });
     });
 
@@ -707,10 +756,11 @@ describe('folder router', () => {
 
       expect(response.status).toBe(200);
       expect(FolderSummariesResponseSchema.parse(response.body)).toEqual({
-        summaries: { [OTHER_FOLDER]: { videos: 1, downloaded: 0, notDownloaded: 1, stale: 0 } },
+        summaries: { [OTHER_FOLDER]: { videos: 1, downloaded: 0, notDownloaded: 1, unavailable: 0, stale: 0 } },
       });
-      // Two reads for the one folder, not two per configured folder
-      expect(mockedFs.readFile).toHaveBeenCalledTimes(1);
+      // Two reads for the one folder: its list.json and its unavailable record,
+      // not two per configured folder
+      expect(mockedFs.readFile).toHaveBeenCalledTimes(2);
       expect(mockedGetDownloadStatuses).toHaveBeenCalledTimes(1);
       expect(mockedGetDownloadStatuses).toHaveBeenCalledWith(OTHER_FOLDER);
     });
@@ -731,7 +781,14 @@ describe('folder router', () => {
       const one = await request(app).get('/api/folder/summaries').query({ folderPath: OTHER_FOLDER });
       const all = await request(app).get('/api/folder/summaries');
 
-      const fresh = { videos: 1, downloaded: 1, notDownloaded: 0, stale: 0, newestUpdate: FRESH_UPDATE };
+      const fresh = {
+        videos: 1,
+        downloaded: 1,
+        notDownloaded: 0,
+        unavailable: 0,
+        stale: 0,
+        newestUpdate: FRESH_UPDATE,
+      };
       expect(one.body.summaries[OTHER_FOLDER]).toEqual(fresh);
       expect(all.body.summaries[OTHER_FOLDER]).toEqual(fresh);
       expect(all.body.summaries[FOLDER].videos).toBe(3);
@@ -756,6 +813,7 @@ describe('folder router', () => {
         videos: 2,
         downloaded: 2,
         notDownloaded: 0,
+        unavailable: 0,
         stale: 1,
         newestUpdate: FRESH_UPDATE,
       });
@@ -973,6 +1031,15 @@ describe('folder router', () => {
   });
 
   describe('queue endpoints', () => {
+    afterEach(() => {
+      // The tests here install their own `readFile` answer (a catalog, a
+      // record, a refusing disk) and the automock keeps it for the next test
+      // in the file: without this reset the enqueue tests decide each other's
+      // outcome, which is how a recorded failure once leaked into the URL
+      // canonicalization test.
+      mockedFs.readFile.mockReset();
+    });
+
     it('validates enqueue input', async () => {
       expect(
         (await request(app).post('/api/folder/queue').send({ folderPath: '/x', type: 'download', videos: [] })).status,
@@ -1016,6 +1083,129 @@ describe('folder router', () => {
       expect(response.body.skipped).toEqual([{ videoId: '', reason: 'videoId or videoUrl is required' }]);
       expect(at(spawnCalls, 0).cwd).toBe(FOLDER);
       expect(at(spawnCalls, 0).args).toContain('--download-archive');
+    });
+
+    it('skips a members-only video instead of queueing a job that cannot succeed', async () => {
+      const membersOnly = 'dQw4w9WgXcQ';
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === `${FOLDER}/list.json`) {
+          return Promise.resolve(
+            JSON.stringify([
+              {
+                id: membersOnly,
+                title: 'Members only',
+                url: `https://www.youtube.com/watch?v=${membersOnly}`,
+                availability: 'subscriber_only',
+              },
+              { id: 'aaaaaaaaaaa', title: 'Public', url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa' },
+            ]),
+          );
+        }
+        return Promise.reject(enoent());
+      });
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({
+          folderPath: FOLDER,
+          type: 'download',
+          videos: [{ videoId: membersOnly }, { videoId: 'aaaaaaaaaaa' }],
+        });
+
+      expect(response.status).toBe(202);
+      expect(response.body.skipped).toEqual([{ videoId: membersOnly, reason: 'members-only' }]);
+      expect(response.body.jobs).toHaveLength(1);
+      expect(response.body.jobs[0]).toMatchObject({ videoId: 'aaaaaaaaaaa', type: 'download' });
+      expect(spawnCalls).toHaveLength(1);
+    });
+
+    it('skips a Premium-only video', async () => {
+      const premiumOnly = '9bZkp7q19f0';
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === `${FOLDER}/list.json`) {
+          return Promise.resolve(
+            JSON.stringify([
+              {
+                id: premiumOnly,
+                title: 'Premium only',
+                url: `https://www.youtube.com/watch?v=${premiumOnly}`,
+                availability: 'premium_only',
+              },
+            ]),
+          );
+        }
+        return Promise.reject(enoent());
+      });
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: premiumOnly }] });
+
+      expect(response.status).toBe(202);
+      expect(response.body.jobs).toHaveLength(0);
+      expect(response.body.skipped).toEqual([{ videoId: premiumOnly, reason: 'premium-only' }]);
+      expect(spawnCalls).toHaveLength(0);
+    });
+
+    it('still enqueues when the catalog cannot be read', async () => {
+      // The availability check is an optimization for the console, never a
+      // gate: a folder whose list.json is unreadable downloads as before.
+      mockedFs.readFile.mockRejectedValue(Object.assign(new Error('EACCES'), { code: 'EACCES' }));
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: 'aaaaaaaaaaa' }] });
+
+      expect(response.status).toBe(202);
+      expect(response.body.jobs).toHaveLength(1);
+      expect(response.body.skipped).toEqual([]);
+    });
+
+    it('skips a video the folder recorded a permanent failure for', async () => {
+      const recorded = 'dQw4w9WgXcQ';
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === `${FOLDER}/.unavailable.json`) {
+          return Promise.resolve(
+            JSON.stringify({ version: 1, entries: { [recorded]: { code: 'removed', at: new Date().toISOString() } } }),
+          );
+        }
+        return Promise.reject(enoent());
+      });
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: recorded }] });
+
+      expect(response.status).toBe(202);
+      expect(response.body.jobs).toHaveLength(0);
+      expect(response.body.skipped).toEqual([{ videoId: recorded, reason: 'removed' }]);
+      expect(spawnCalls).toHaveLength(0);
+    });
+
+    it('queues a remembered video anyway when the request forces it', async () => {
+      const recorded = 'dQw4w9WgXcQ';
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === `${FOLDER}/.unavailable.json`) {
+          return Promise.resolve(
+            JSON.stringify({ version: 1, entries: { [recorded]: { code: 'removed', at: new Date().toISOString() } } }),
+          );
+        }
+        return Promise.reject(enoent());
+      });
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: recorded }], force: true });
+
+      expect(response.status).toBe(202);
+      expect(response.body.skipped).toEqual([]);
+      expect(response.body.jobs).toHaveLength(1);
+      expect(response.body.jobs[0]).toMatchObject({ videoId: recorded });
+      expect(spawnCalls).toHaveLength(1);
     });
 
     it('refuses to enqueue into a folder whose drive is away', async () => {

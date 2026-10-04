@@ -53,16 +53,48 @@ export function missingSummary(missing: readonly string[], t: TFunction): string
  * The skip reasons the queue endpoint answers with are English machine
  * strings (`already downloaded`), not prose: the client translates them
  * instead of printing the server's wording in a Polish UI.
+ *
+ * The codes at the end are the ones the queue refuses a video with, either
+ * from the catalog or from the folder's own record of permanent failures. They
+ * reuse the job-error copy, because the reader has to see one sentence per
+ * reason, not two versions of it.
  */
 const SKIP_REASON_KEYS = {
   'already downloaded': 'skipReason.alreadyDownloaded',
   'not downloaded': 'skipReason.notDownloaded',
+  'members-only': 'errors.job.members-only',
+  'premium-only': 'errors.job.premium-only',
+  private: 'errors.job.private',
+  removed: 'errors.job.removed',
+  'geo-restricted': 'errors.job.geo-restricted',
+  'age-gate': 'errors.job.age-gate',
 } as const;
 
 /** A skip reason in the reader's language, or the server's own wording */
 export function skipReasonText(reason: string, t: TFunction): string {
   const key = SKIP_REASON_KEYS[reason as keyof typeof SKIP_REASON_KEYS];
   return key === undefined ? reason : t(key);
+}
+
+/**
+ * The badge a catalog availability deserves, or null when it needs none.
+ *
+ * The two values are YouTube's own, not a policy this app invented: they come
+ * from the channel listing and reach the row as `ChannelVideo.availability`.
+ * A video that is on disk is never labelled this way, which the badge
+ * component decides.
+ */
+export function availabilityBadgeKey(
+  availability: string | undefined,
+): 'videoState.badge.membersOnly' | 'videoState.badge.premiumOnly' | null {
+  switch (availability) {
+    case 'subscriber_only':
+      return 'videoState.badge.membersOnly';
+    case 'premium_only':
+      return 'videoState.badge.premiumOnly';
+    default:
+      return null;
+  }
 }
 
 /**

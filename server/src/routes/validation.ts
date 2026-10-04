@@ -22,6 +22,12 @@ export const queueBodySchema = z.object({
       }),
     )
     .min(1, 'videos must be a non-empty array'),
+  /**
+   * Queue a download even though the catalog or the folder's record says it
+   * cannot arrive. Off by default: the checks behind it exist to spare the
+   * console a wall of failures, not to forbid an operator who knows better.
+   */
+  force: z.boolean().optional(),
 });
 
 /** PUT /api/folder/config */

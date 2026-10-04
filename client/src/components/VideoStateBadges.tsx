@@ -1,11 +1,13 @@
 import type { DownloadState } from '@videodeck/shared/api';
 import type { JSX } from 'react';
 import { useTranslation } from 'react-i18next';
-import { missingSummary } from '../utils/videoState';
+import { availabilityBadgeKey, missingSummary } from '../utils/videoState';
 
 interface VideoStateBadgesProps {
   /** What the folder state says about this video; absent while it is unknown */
   state: DownloadState | undefined;
+  /** The catalog's availability, when list.json reported one */
+  availability?: string | undefined;
 }
 
 /**
@@ -13,8 +15,12 @@ interface VideoStateBadgesProps {
  * there, one warning pill naming everything that is not. A video that is not
  * downloaded says so once instead of listing six empty sidecars, because
  * `files: null` is the whole answer for it.
+ *
+ * A video the catalog calls members-only or Premium-only says that instead:
+ * "not downloaded" reads like work waiting to happen, and this one cannot
+ * happen at all.
  */
-export function VideoStateBadges({ state }: VideoStateBadgesProps): JSX.Element | null {
+export function VideoStateBadges({ state, availability }: VideoStateBadgesProps): JSX.Element | null {
   const { t } = useTranslation();
   if (state === undefined) {
     return null;
@@ -22,9 +28,14 @@ export function VideoStateBadges({ state }: VideoStateBadgesProps): JSX.Element 
 
   const { files } = state;
   if (files === null) {
+    const unavailableKey = availabilityBadgeKey(availability);
     return (
       <span className="video-state-badges">
-        <span className="video-state-badge">{t('videoState.badge.notDownloaded')}</span>
+        {unavailableKey === null ? (
+          <span className="video-state-badge">{t('videoState.badge.notDownloaded')}</span>
+        ) : (
+          <span className="video-state-badge video-state-badge--info">{t(unavailableKey)}</span>
+        )}
       </span>
     );
   }

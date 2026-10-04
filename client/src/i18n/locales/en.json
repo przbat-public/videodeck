@@ -136,7 +136,9 @@
       "subs": "subs: {{langs}}",
       "comments": "comments",
       "notDownloaded": "not downloaded",
-      "missing": "missing: {{items}}"
+      "missing": "missing: {{items}}",
+      "membersOnly": "members only",
+      "premiumOnly": "Premium only"
     },
     "missing": {
       "thumbnail": "thumbnail",
@@ -277,7 +279,8 @@
       "no-space": "No space left on the download disk",
       "geo-restricted": "This video is not available in your country",
       "bot-wall": "YouTube is asking for a sign-in (bot wall)",
-      "age-gate": "This video is age-restricted and requires a logged-in session"
+      "age-gate": "This video is age-restricted and requires a logged-in session",
+      "premium-only": "This video is available on YouTube Premium only"
     },
     "loadSummaries": "Could not count the videos per channel",
     "searchElasticsearch": "Failed to search videos: Elasticsearch is not responding",
@@ -351,7 +354,9 @@
       "notDownloaded_other": "{{count}} missing",
       "stale_one": "{{count}} not updated in a month",
       "stale_other": "{{count}} not updated in a month",
-      "loading": "counting..."
+      "loading": "counting...",
+      "unavailable_one": "{{count}} unavailable",
+      "unavailable_other": "{{count}} unavailable"
     },
     "queue": {
       "running": "{{count}} running",

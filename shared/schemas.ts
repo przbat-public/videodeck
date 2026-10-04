@@ -429,6 +429,18 @@ export const FolderSummarySchema = z.object({
   videos: z.number().int().nonnegative(),
   downloaded: z.number().int().nonnegative(),
   notDownloaded: z.number().int().nonnegative(),
+  /**
+   * Videos nothing is on disk for that cannot arrive either: members-only or
+   * Premium-only in the catalog, or a permanent failure this machine recorded
+   * (see `server/src/services/unavailableVideos.ts`). They stay inside
+   * `notDownloaded`; the console subtracts this count where it means "still to
+   * fetch" and shows it next to the label that explains why.
+   *
+   * Optional because it is a count the console alone reads: a response without
+   * it, from an older server or a stored fixture, means the same as zero, and
+   * making it required would rewrite every summary fixture for one number.
+   */
+  unavailable: z.number().int().nonnegative().optional(),
   stale: z.number().int().nonnegative(),
   newestUpdate: z.string().optional(),
 });

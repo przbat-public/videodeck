@@ -20,6 +20,7 @@ describe('summarizeFolder', () => {
           v2: '2026-01-01T00:00:00.000Z', // stale
         },
       },
+      new Set(),
       NOW,
     );
 
@@ -27,9 +28,41 @@ describe('summarizeFolder', () => {
       videos: 3,
       downloaded: 2,
       notDownloaded: 1,
+      unavailable: 0,
       stale: 1,
       newestUpdate: '2026-09-01T00:00:00.000Z',
     });
+  });
+
+  it('counts a video that will not arrive as unavailable', () => {
+    const summary = summarizeFolder(
+      [video('v1'), video('v2')],
+      { downloadStatuses: { v1: true }, lastUpdatedDates: { v1: '2026-09-10T00:00:00.000Z' } },
+      new Set(['v2']),
+      NOW,
+    );
+
+    // `v2` is missing, so it stays in notDownloaded: the console subtracts the
+    // unavailable count where it means "still to fetch".
+    expect(summary).toEqual({
+      videos: 2,
+      downloaded: 1,
+      notDownloaded: 1,
+      unavailable: 1,
+      stale: 0,
+      newestUpdate: '2026-09-10T00:00:00.000Z',
+    });
+  });
+
+  it('never calls a video on disk unavailable', () => {
+    const summary = summarizeFolder(
+      [video('v1')],
+      { downloadStatuses: { v1: true }, lastUpdatedDates: { v1: '2026-09-10T00:00:00.000Z' } },
+      new Set(['v1']),
+      NOW,
+    );
+
+    expect(summary.unavailable).toBe(0);
   });
 
   it('treats a download without a usable update date as stale', () => {
@@ -39,6 +72,7 @@ describe('summarizeFolder', () => {
         downloadStatuses: { v1: true, v2: true },
         lastUpdatedDates: { v2: 'not-a-date' },
       },
+      new Set(),
       NOW,
     );
 
@@ -47,10 +81,11 @@ describe('summarizeFolder', () => {
   });
 
   it('reports zeroes for a folder without list.json', () => {
-    expect(summarizeFolder(null, { downloadStatuses: {}, lastUpdatedDates: {} }, NOW)).toEqual({
+    expect(summarizeFolder(null, { downloadStatuses: {}, lastUpdatedDates: {} }, new Set(), NOW)).toEqual({
       videos: 0,
       downloaded: 0,
       notDownloaded: 0,
+      unavailable: 0,
       stale: 0,
     });
   });
@@ -62,6 +97,7 @@ describe('summarizeFolder', () => {
         downloadStatuses: { v1: true, gone: true },
         lastUpdatedDates: { v1: '2026-09-10T00:00:00.000Z', gone: '2020-01-01T00:00:00.000Z' },
       },
+      new Set(),
       NOW,
     );
 
@@ -71,6 +107,7 @@ describe('summarizeFolder', () => {
       videos: 1,
       downloaded: 1,
       notDownloaded: 0,
+      unavailable: 0,
       stale: 0,
       newestUpdate: '2026-09-10T00:00:00.000Z',
     });

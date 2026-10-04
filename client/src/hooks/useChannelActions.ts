@@ -11,7 +11,7 @@ import { apiGet, apiSend } from '../utils/apiClient';
 import type { RepairMethod } from '../utils/libraryActions';
 import { reconcileArchive, repairVideos, toastReconcileResult, toastRepairResult } from '../utils/libraryActions';
 import { selectDownloadable, selectDownloaded, selectStale } from '../utils/videoSelection';
-import { needsCompletion } from '../utils/videoState';
+import { needsCompletion, skipReasonText } from '../utils/videoState';
 
 /** Every queue action a console row can start */
 export type ChannelAction =
@@ -121,7 +121,12 @@ export function useChannelActions(options: UseChannelActionsOptions = {}): UseCh
       toast.success(i18n.t('toast.addedToQueue', { count: result.jobs.length, target }));
       const [firstSkipped] = result.skipped;
       if (firstSkipped) {
-        toast.error(i18n.t('toast.skipped', { count: result.skipped.length, reason: firstSkipped.reason }));
+        toast.error(
+          i18n.t('toast.skipped', {
+            count: result.skipped.length,
+            reason: skipReasonText(firstSkipped.reason, i18n.t),
+          }),
+        );
       }
       await onQueueChanged?.(folderPath);
     },

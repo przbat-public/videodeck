@@ -8,6 +8,7 @@ import { extractYtDlpProgress, isYtDlpProgressLine } from '@videodeck/shared/pro
 import { removePartialDownloads, writeTextAtomic } from '../../utils/fsUtils';
 import { logger } from '../../utils/logger';
 import { stripUndefined } from '../../utils/objectUtils';
+import { clearUnavailable, recordUnavailable } from '../unavailableVideos';
 import { buildYtDlpArgs } from '../ytdlp';
 import { detectPermanentFailure } from '../ytdlpFailures';
 import { PERSIST_COALESCE_MS, QUEUE_STATE_FILE, toEnqueueRequest, toPersistedJob } from './persistence';
@@ -816,7 +817,29 @@ export class DownloadQueue extends EventEmitter {
     this.logRemainder.delete(job.id);
     this.emitJob(job);
     this.persistState();
+    this.syncUnavailableRecord(job, status);
     this.pump();
+  }
+
+  /**
+   * Keep the folder's record of videos that cannot arrive in step with this
+   * job's outcome: a video-level failure is remembered, and a download that
+   * finally succeeded forgets what an earlier attempt recorded.
+   *
+   * Fire and forget. The record spares the next enqueue a doomed yt-dlp run,
+   * and a disk that refuses the write must not turn a job that has already
+   * finished into an unhandled rejection; both writers log their own failures.
+   * `recordUnavailable` drops the codes that describe the machine rather than
+   * the video, which is why the whole `job.error` can be handed over.
+   */
+  private syncUnavailableRecord(job: QueueJob, status: JobStatus): void {
+    if (status === 'done') {
+      void clearUnavailable(job.folderPath, [job.videoId]);
+      return;
+    }
+    if (status === 'error' && job.error !== undefined) {
+      void recordUnavailable(job.folderPath, [job.videoId], job.error);
+    }
   }
 
   private appendLog(job: QueueJob, text: string): void {
