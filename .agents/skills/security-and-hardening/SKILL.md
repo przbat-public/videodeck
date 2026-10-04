@@ -1,6 +1,6 @@
 ---
 name: security-and-hardening
-description: Turns the videodeck security invariants into an audit workflow: threat model first, boundary validation, OWASP checks mapped to this app, dependency triage and secrets hygiene. Use when touching routes, config, yt-dlp arguments, outbound fetches, file paths or dependencies.
+description: "Turns the videodeck security invariants into an audit workflow: threat model first, boundary validation, OWASP checks mapped to this app, dependency triage and secrets hygiene. Use when touching routes, config, yt-dlp arguments, outbound fetches, file paths or dependencies."
 user-invocable: true
 ---
 

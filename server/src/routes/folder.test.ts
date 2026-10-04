@@ -1434,6 +1434,11 @@ describe('createApp (full app with body limit)', () => {
       /* silence expected error logs */
     });
     mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+    // The mount guard asks the disk before anything is created, so this block
+    // stubs its own answer rather than inheriting the one a neighbouring
+    // describe happened to set: `-t` has to pass with no other test in front
+    // of it, and a shuffled order must not decide the outcome either.
+    mockedFs.stat.mockResolvedValue({ isDirectory: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockedFs.mkdir.mockResolvedValue(undefined);
     mockedLoadDownloadOptions.mockResolvedValue({ ...DEFAULT_DOWNLOAD_OPTIONS });
     downloadQueue.clear();

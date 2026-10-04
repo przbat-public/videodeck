@@ -24,13 +24,13 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
-    "openai": "^7.23.0",
+    "openai": "^7.25.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.6",
-    "@types/node": "^24.13.6",
+    "@types/node": "^24.19.0",
     "@types/supertest": "^7.2.1",
     "@videodeck/test-infra": "workspace:*",
     "@vitest/coverage-v8": "^5.0.2",
