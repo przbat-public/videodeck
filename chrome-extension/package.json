@@ -12,7 +12,7 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
-    "@types/chrome": "^0.3.0",
+    "@types/chrome": "^0.3.4",
     "@vitest/coverage-v8": "^5.0.0",
     "esbuild": "^0.28.0",
     "fast-check": "^4.10.2",
