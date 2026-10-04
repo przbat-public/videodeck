@@ -21,8 +21,8 @@ import { toListJob } from '../../services/downloadQueue';
 import { loadDownloadOptions } from '../../services/folderConfig';
 import type { FolderIndex } from '../../services/folderIndex';
 import { findEntryByVideoId, loadIndex } from '../../services/folderIndex';
-import type { AvailabilityById } from '../../services/unavailableVideos';
-import { availabilitySkipReason, readAvailability } from '../../services/unavailableVideos';
+import type { UnavailableLookup } from '../../services/unavailableVideos';
+import { readUnavailability } from '../../services/unavailableVideos';
 import { stripUndefined } from '../../utils/objectUtils';
 import type { NoParams, RouteHandler } from '../http';
 import { errnoCode, readBody, readString } from '../http';
@@ -118,7 +118,8 @@ function toEnqueueRequest(
   folderPath: string,
   options: DownloadOptions,
   folderIndex: FolderIndex | null,
-  availability: AvailabilityById,
+  unavailableVideos: UnavailableLookup,
+  force: boolean,
 ): QueueVideoOutcome {
   const resolved = resolveVideoId(video);
   if ('reason' in resolved) {
@@ -169,11 +170,11 @@ function toEnqueueRequest(
   if (entry) {
     return { skipped: { videoId, reason: 'already downloaded' } };
   }
-  // The catalog's own verdict, and only for a download: a video that is
-  // already on disk keeps its update and repair paths, where a failure is
-  // about the files the user asked to refresh rather than about fetching
-  // something new.
-  const unavailable = availabilitySkipReason(availability.get(videoId));
+  // What the folder knows against this video, and only for a download: one
+  // that is already on disk keeps its update and repair paths, where a failure
+  // is about the files the user asked to refresh rather than about fetching
+  // something new. `force` skips the check, never the validation above it.
+  const unavailable = force ? null : unavailableVideos.reasonFor(videoId);
   if (unavailable !== null) {
     return { skipped: { videoId, reason: unavailable } };
   }
@@ -223,6 +224,7 @@ export function createQueueHandlers(queue: DownloadQueueLike) {
       return;
     }
     const { type, videos } = parsed.data;
+    const force = parsed.data.force === true;
 
     if (!(await requireMountedFolder(folderPath, res))) {
       return;
@@ -236,14 +238,15 @@ export function createQueueHandlers(queue: DownloadQueueLike) {
     // reads it for the opposite reason: the app, not `--download-archive`,
     // decides which videos are still missing.
     const folderIndex = await loadIndex(folderPath);
-    // The catalog's availability, read once for the whole request: the bulk
-    // "download all" of a channel asks about hundreds of videos at a time.
-    const availability = await readAvailability(folderPath);
+    // What the folder knows about videos that cannot arrive, read once for the
+    // whole request: the bulk "download all" of a channel asks about hundreds
+    // of videos at a time.
+    const unavailableVideos = await readUnavailability(folderPath);
 
     const requests: EnqueueRequest[] = [];
     const skipped: SkippedVideo[] = [];
     for (const video of videos) {
-      const outcome = toEnqueueRequest(video, type, folderPath, options, folderIndex, availability);
+      const outcome = toEnqueueRequest(video, type, folderPath, options, folderIndex, unavailableVideos, force);
       if ('request' in outcome) {
         requests.push(outcome.request);
       } else {

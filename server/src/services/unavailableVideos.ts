@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { ChannelVideo } from '@videodeck/shared/api';
 import { UPDATE_STALE_AFTER_MS } from '@videodeck/shared/dates';
 import { isYoutubeVideoId } from '@videodeck/shared/youtube';
 import { writeJsonAtomic } from '../utils/fsUtils';
@@ -136,23 +137,40 @@ export interface AvailabilityRow {
   availability?: string | undefined;
 }
 
-/** What a folder's catalog says about availability, by video id */
-export type AvailabilityById = ReadonlyMap<string, string | undefined>;
+/** What a folder knows about videos that cannot arrive */
+export interface UnavailableLookup {
+  /** The skip reason for this video, or null when nothing is known against it */
+  reasonFor(videoId: string): SkipReason | null;
+}
 
 /**
- * The folder's `list.json` as an availability lookup.
+ * The folder's catalog and its record, as one question the queue asks per
+ * video: can this download succeed?
  *
- * A catalog that cannot be read answers "nothing known" rather than an error:
- * this check spares the queue jobs that cannot succeed, and a folder whose
- * catalog is unreadable has to keep downloading exactly as it did before.
+ * A catalog or a record that cannot be read answers "nothing known" rather
+ * than an error. This check spares the queue jobs that cannot succeed; it must
+ * never stop a folder that could have downloaded something.
  */
-export async function readAvailability(folderPath: string): Promise<AvailabilityById> {
+export async function readUnavailability(folderPath: string, now: number = Date.now()): Promise<UnavailableLookup> {
+  const [list, record] = await Promise.all([readCatalog(folderPath), readUnavailable(folderPath)]);
+  const availability = new Map((list ?? []).map((video) => [video.id, video.availability]));
+  return {
+    reasonFor: (videoId: string) =>
+      unavailableSkipReason({
+        availability: availability.get(videoId),
+        recorded: record.entries[videoId],
+        now,
+      }),
+  };
+}
+
+/** `list.json`, or null when the folder has none or it cannot be read */
+async function readCatalog(folderPath: string): Promise<ChannelVideo[] | null> {
   try {
-    const list = await readListJson(folderPath);
-    return new Map((list ?? []).map((video) => [video.id, video.availability]));
+    return await readListJson(folderPath);
   } catch (error) {
     logger.warn(`Cannot read list.json in ${folderPath} for the availability check: ${messageOf(error)}`);
-    return new Map();
+    return null;
   }
 }
 

@@ -1031,6 +1031,15 @@ describe('folder router', () => {
   });
 
   describe('queue endpoints', () => {
+    afterEach(() => {
+      // The tests here install their own `readFile` answer (a catalog, a
+      // record, a refusing disk) and the automock keeps it for the next test
+      // in the file: without this reset the enqueue tests decide each other's
+      // outcome, which is how a recorded failure once leaked into the URL
+      // canonicalization test.
+      mockedFs.readFile.mockReset();
+    });
+
     it('validates enqueue input', async () => {
       expect(
         (await request(app).post('/api/folder/queue').send({ folderPath: '/x', type: 'download', videos: [] })).status,
@@ -1152,6 +1161,51 @@ describe('folder router', () => {
       expect(response.status).toBe(202);
       expect(response.body.jobs).toHaveLength(1);
       expect(response.body.skipped).toEqual([]);
+    });
+
+    it('skips a video the folder recorded a permanent failure for', async () => {
+      const recorded = 'dQw4w9WgXcQ';
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === `${FOLDER}/.unavailable.json`) {
+          return Promise.resolve(
+            JSON.stringify({ version: 1, entries: { [recorded]: { code: 'removed', at: new Date().toISOString() } } }),
+          );
+        }
+        return Promise.reject(enoent());
+      });
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: recorded }] });
+
+      expect(response.status).toBe(202);
+      expect(response.body.jobs).toHaveLength(0);
+      expect(response.body.skipped).toEqual([{ videoId: recorded, reason: 'removed' }]);
+      expect(spawnCalls).toHaveLength(0);
+    });
+
+    it('queues a remembered video anyway when the request forces it', async () => {
+      const recorded = 'dQw4w9WgXcQ';
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === `${FOLDER}/.unavailable.json`) {
+          return Promise.resolve(
+            JSON.stringify({ version: 1, entries: { [recorded]: { code: 'removed', at: new Date().toISOString() } } }),
+          );
+        }
+        return Promise.reject(enoent());
+      });
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: recorded }], force: true });
+
+      expect(response.status).toBe(202);
+      expect(response.body.skipped).toEqual([]);
+      expect(response.body.jobs).toHaveLength(1);
+      expect(response.body.jobs[0]).toMatchObject({ videoId: recorded });
+      expect(spawnCalls).toHaveLength(1);
     });
 
     it('refuses to enqueue into a folder whose drive is away', async () => {
