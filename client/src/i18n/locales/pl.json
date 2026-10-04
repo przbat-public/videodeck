@@ -152,7 +152,9 @@
       "subs": "napisy: {{langs}}",
       "comments": "komentarze",
       "notDownloaded": "niepobrane",
-      "missing": "brakuje: {{items}}"
+      "missing": "brakuje: {{items}}",
+      "membersOnly": "tylko dla członków",
+      "premiumOnly": "tylko w Premium"
     },
     "missing": {
       "thumbnail": "miniatura",
@@ -379,7 +381,11 @@
       "stale_few": "{{count}} nie zaktualizowane od miesiąca",
       "stale_many": "{{count}} nie zaktualizowanych od miesiąca",
       "stale_other": "{{count}} nie zaktualizowanych od miesiąca",
-      "loading": "liczę..."
+      "loading": "liczę...",
+      "unavailable_one": "{{count}} niedostępny",
+      "unavailable_few": "{{count}} niedostępne",
+      "unavailable_many": "{{count}} niedostępnych",
+      "unavailable_other": "{{count}} niedostępnych"
     },
     "queue": {
       "running": "{{count}} w toku",

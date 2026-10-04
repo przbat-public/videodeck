@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import type { ChannelAction } from '../hooks/useChannelActions';
 import type { ChannelConsoleState } from '../utils/channelConsoleState';
 import type { AttentionReason, ChannelRow } from '../utils/channelTable';
-import { summarizeChannels } from '../utils/channelTable';
+import { missingToFetch, summarizeChannels } from '../utils/channelTable';
 import { Button } from './ui/Button';
 import { Menu, MenuContent, MenuItem, MenuLinkItem, MenuSeparator, MenuTrigger } from './ui/Menu';
 import { Tooltip } from './ui/Tooltip';
@@ -65,12 +65,22 @@ function ChannelVideosCell({ summary, countsLoading }: ChannelVideosCellProps): 
   if (summary === undefined) {
     return <span className="channel-muted">{countsLoading ? t('channelConsole.videos.loading') : '—'}</span>;
   }
+  const missing = missingToFetch(summary);
+  const unavailable = summary.unavailable ?? 0;
   return (
     <>
       <span className="channel-count">{t('channelConsole.videos.total', { count: summary.videos })}</span>
-      {summary.notDownloaded > 0 && (
+      {missing > 0 && (
         <span className="channel-count channel-count--warn">
-          {t('channelConsole.videos.notDownloaded', { count: summary.notDownloaded })}
+          {t('channelConsole.videos.notDownloaded', { count: missing })}
+        </span>
+      )}
+      {/* Not a warning: nothing here is broken, and this table can do nothing
+          about it. It sits under the missing line so the two numbers read as
+          "still to fetch" and "never coming". */}
+      {unavailable > 0 && (
+        <span className="channel-count channel-muted">
+          {t('channelConsole.videos.unavailable', { count: unavailable })}
         </span>
       )}
       {summary.stale > 0 && (
@@ -149,7 +159,7 @@ function ChannelBulkItems({ row, busy, onAction }: Omit<ChannelRowMenuProps, 'on
       {/* A collection holds downloads only: there is nothing to fetch */}
       {!row.collection && (
         <MenuItem
-          disabled={busy || (countsKnown && summary?.notDownloaded === 0)}
+          disabled={busy || (countsKnown && missingToFetch(summary) === 0)}
           onSelect={() => onAction(row, 'download')}
         >
           {t('channelConsole.actions.downloadAll')}

@@ -5,6 +5,7 @@ import {
   buildChannelRows,
   filterChannels,
   foldersWithFinishedJobs,
+  missingToFetch,
   sortChannels,
   summarizeChannels,
 } from './channelTable';
@@ -323,8 +324,40 @@ describe('summarizeChannels', () => {
       channels: 3,
       videos: 15,
       notDownloaded: 2,
+      unavailable: 0,
       needsAttention: 2,
     });
+  });
+
+  it('totals the videos that cannot arrive apart from the ones still to fetch', () => {
+    const built = buildChannelRows(
+      status,
+      {
+        ...summaries.summaries,
+        '/videos/kanal-a': { videos: 10, downloaded: 4, notDownloaded: 6, unavailable: 6, stale: 0 },
+      },
+      {},
+    );
+
+    const totals = summarizeChannels(built);
+    // Every missing video of kanal-a is members-only: nothing is left to fetch
+    // there, and the count that says so is the new one.
+    expect(totals.notDownloaded).toBe(0);
+    expect(totals.unavailable).toBe(6);
+  });
+});
+
+describe('missingToFetch', () => {
+  it('leaves out the videos that cannot arrive', () => {
+    expect(missingToFetch({ videos: 10, downloaded: 4, notDownloaded: 6, unavailable: 6, stale: 0 })).toBe(0);
+    expect(missingToFetch({ videos: 10, downloaded: 4, notDownloaded: 6, unavailable: 2, stale: 0 })).toBe(4);
+  });
+
+  it('reads a summary without the count as every missing video being fetchable', () => {
+    // An older server, or a stored fixture, answers without the field; the
+    // console must not hide work because a number is absent.
+    expect(missingToFetch({ videos: 2, downloaded: 0, notDownloaded: 2, stale: 0 })).toBe(2);
+    expect(missingToFetch(undefined)).toBe(0);
   });
 });
 

@@ -136,7 +136,9 @@
       "subs": "subs: {{langs}}",
       "comments": "comments",
       "notDownloaded": "not downloaded",
-      "missing": "missing: {{items}}"
+      "missing": "missing: {{items}}",
+      "membersOnly": "members only",
+      "premiumOnly": "Premium only"
     },
     "missing": {
       "thumbnail": "thumbnail",
@@ -351,7 +353,9 @@
       "notDownloaded_other": "{{count}} missing",
       "stale_one": "{{count}} not updated in a month",
       "stale_other": "{{count}} not updated in a month",
-      "loading": "counting..."
+      "loading": "counting...",
+      "unavailable_one": "{{count}} unavailable",
+      "unavailable_other": "{{count}} unavailable"
     },
     "queue": {
       "running": "{{count}} running",

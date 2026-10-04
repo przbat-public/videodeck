@@ -77,6 +77,27 @@ export function skipReasonText(reason: string, t: TFunction): string {
 }
 
 /**
+ * The badge a catalog availability deserves, or null when it needs none.
+ *
+ * The two values are YouTube's own, not a policy this app invented: they come
+ * from the channel listing and reach the row as `ChannelVideo.availability`.
+ * A video that is on disk is never labelled this way, which the badge
+ * component decides.
+ */
+export function availabilityBadgeKey(
+  availability: string | undefined,
+): 'videoState.badge.membersOnly' | 'videoState.badge.premiumOnly' | null {
+  switch (availability) {
+    case 'subscriber_only':
+      return 'videoState.badge.membersOnly';
+    case 'premium_only':
+      return 'videoState.badge.premiumOnly';
+    default:
+      return null;
+  }
+}
+
+/**
  * Whether a video on disk is missing something its folder asked for: the rule
  * behind both the warning badge and the "needs completion" filter. A video
  * that is not downloaded has `files: null` and an empty list, so it never

@@ -238,10 +238,27 @@ export function sortChannels(rows: readonly ChannelRow[], sort: ChannelSort): Ch
         return right - left || byName(a, b);
       });
     case 'missing':
-      return sorted.sort((a, b) => (b.summary?.notDownloaded ?? 0) - (a.summary?.notDownloaded ?? 0) || byName(a, b));
+      return sorted.sort((a, b) => missingToFetch(b.summary) - missingToFetch(a.summary) || byName(a, b));
     default:
       return sorted.sort(byName);
   }
+}
+
+/**
+ * Videos still to fetch: what is not on disk and can still arrive. The
+ * members-only and Premium-only videos of the catalog, and the ones this
+ * machine recorded as permanently failed, are counted apart, because "38
+ * missing" reads like 38 downloads waiting to happen.
+ *
+ * A summary without the count (an older server, or a stored fixture) keeps
+ * every missing video fetchable: a console that cannot read one number must
+ * not hide work.
+ */
+export function missingToFetch(summary: FolderSummary | undefined): number {
+  if (summary === undefined) {
+    return 0;
+  }
+  return Math.max(0, summary.notDownloaded - (summary.unavailable ?? 0));
 }
 
 /** Totals for the table's caption */
@@ -249,17 +266,20 @@ export function summarizeChannels(rows: readonly ChannelRow[]): {
   channels: number;
   videos: number;
   notDownloaded: number;
+  unavailable: number;
   needsAttention: number;
 } {
   let videos = 0;
   let notDownloaded = 0;
+  let unavailable = 0;
   let needsAttention = 0;
   for (const row of rows) {
     videos += row.summary?.videos ?? 0;
-    notDownloaded += row.summary?.notDownloaded ?? 0;
+    notDownloaded += missingToFetch(row.summary);
+    unavailable += row.summary?.unavailable ?? 0;
     if (row.attention.length > 0) {
       needsAttention += 1;
     }
   }
-  return { channels: rows.length, videos, notDownloaded, needsAttention };
+  return { channels: rows.length, videos, notDownloaded, unavailable, needsAttention };
 }
