@@ -59,6 +59,9 @@
      shadow is all but invisible (DESIGN.md section 3). */
   --shadow-card: light-dark(0 2px 8px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.45));
   --shadow-popover: light-dark(0 8px 24px rgba(30, 30, 60, 0.16), 0 8px 24px rgba(0, 0, 0, 0.55));
+  /* The wash a modal dialog lays over the page behind it (ui/Modal). Deeper
+     in dark mode, where the surface under it is already dark. */
+  --color-backdrop: light-dark(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.65));
 }
 
 /* The resolved value of the system/light/dark picker lands on

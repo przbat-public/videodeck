@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { StatusResponse } from '@videodeck/shared/api';
 import { MemoryRouter } from 'react-router-dom';
@@ -41,6 +41,8 @@ type FetchHandlers = {
   enqueue?: () => MockResponse;
   /** POST /api/folder/download-playlist — the playlist fetch the row menu starts */
   downloadPlaylist?: () => MockResponse;
+  /** PUT /api/folder/config — the config dialog's save */
+  saveConfig?: () => MockResponse;
 };
 
 /** Query-string routes the exact-path table cannot name */
@@ -83,10 +85,14 @@ function matchPrefixedRoute(url: string, handlers: FetchHandlers): MockResponse 
 function installFetch(handlers: FetchHandlers = {}): FetchMock {
   // One table per method keeps the dispatcher flat: `/api/folder/queue` alone
   // answers a GET (the queue) and a POST (an enqueue).
-  const methodRoutes: Record<string, () => MockResponse> = {
+  const methodRoutes: Record<string, (init?: RequestInit) => MockResponse> = {
     'POST /api/folder/queue': () => handlers.enqueue?.() ?? json({ jobs: [], skipped: [] }),
     'POST /api/folder/download-playlist': () => handlers.downloadPlaylist?.() ?? json({ output: 'ok' }),
     'DELETE /api/folder/queue/finished': () => json({ cleared: 2 }),
+    // The save answers with what it was sent, like the server does: the row
+    // then shows the config the dialog wrote
+    'PUT /api/folder/config': (init) =>
+      handlers.saveConfig?.() ?? json({ success: true, config: JSON.parse(String(init?.body)).config }),
   };
   // The mock keeps the pause state like the real server, so the queue bar
   // reads it back from the summary the pause click triggers.
@@ -115,7 +121,7 @@ function installFetch(handlers: FetchHandlers = {}): FetchMock {
   const fetchMock: FetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const byMethod = methodRoutes[`${init?.method ?? 'GET'} ${url}`];
     if (byMethod !== undefined) {
-      return byMethod();
+      return byMethod(init);
     }
     const exact = routes[url];
     if (exact !== undefined) {
@@ -300,9 +306,9 @@ describe('StatusPage', () => {
     expect(screen.queryByRole('heading', { name: '/videos/a' })).toBeNull();
   });
 
-  it('reaches the config form of a channel whose list.json is missing', async () => {
+  it('reaches the config dialog of a channel whose list.json is missing', async () => {
     const user = userEvent.setup();
-    renderPage();
+    const { container } = renderPage();
     const rowB = (await screen.findByText('/videos/b')).closest('tr') as HTMLElement;
 
     // Without list.json the row has no videos to show, and its toggle says so
@@ -311,36 +317,121 @@ describe('StatusPage', () => {
     await user.click(within(rowB).getByRole('button', { name: 'Więcej akcji' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Edytuj config.json' }));
 
-    expect(await screen.findByText('Plik config.json nie istnieje w tym folderze.')).toBeInTheDocument();
+    // The dialog reaches that folder all the same: it says the file is not
+    // there and offers the form that writes one
+    const dialog = await screen.findByRole('dialog', { name: i18n.t('config.title') });
+    expect(within(dialog).getByText('Plik config.json nie istnieje w tym folderze.')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Adres kanału YouTube:')).toBeInTheDocument();
+    expect(container.querySelector('.channel-expanded-row')).toBeNull();
   });
 
-  it('opens the config form from the row menu', async () => {
+  it('opens the config form in a dialog without expanding the row', async () => {
     const user = userEvent.setup();
-    renderPage();
+    const fetchMock = installFetch();
+    const { container } = renderPage();
     const rowA = (await screen.findByText('/videos/a')).closest('tr');
     expect(rowA).not.toBeNull();
 
     await user.click(within(rowA as HTMLElement).getByRole('button', { name: 'Więcej akcji' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Edytuj config.json' }));
 
-    expect(await screen.findByLabelText('Adres kanału YouTube:')).toHaveValue('https://yt/@a');
-    expect(screen.getByRole('button', { name: 'Zapisz' })).toBeInTheDocument();
+    // The form is a modal dialog: the video list stays where it was instead of
+    // opening under it, which used to leave the reader hiding it again
+    expect(await screen.findByRole('dialog', { name: i18n.t('config.title') })).toBeInTheDocument();
+    expect(screen.getByLabelText('Adres kanału YouTube:')).toHaveValue('https://yt/@a');
+    expect(within(rowA as HTMLElement).getByRole('button', { name: 'Pokaż filmy' })).toBeInTheDocument();
+    expect(container.querySelector('.channel-expanded-row')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('/api/folder/list?'));
   });
 
-  it('closes the config form when the editor is cancelled', async () => {
+  it('closes the config dialog when the editor is cancelled', async () => {
     const user = userEvent.setup();
     renderPage();
-    const rowA = (await screen.findByText('/videos/a')).closest('tr');
-    expect(rowA).not.toBeNull();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr') as HTMLElement;
+    const trigger = within(rowA).getByRole('button', { name: 'Więcej akcji' });
 
-    await user.click(within(rowA as HTMLElement).getByRole('button', { name: 'Więcej akcji' }));
+    await user.click(trigger);
     await user.click(await screen.findByRole('menuitem', { name: 'Edytuj config.json' }));
     const channelUrl = await screen.findByLabelText('Adres kanału YouTube:');
 
     await user.click(screen.getByRole('button', { name: 'Anuluj' }));
 
-    expect(screen.queryByLabelText('Adres kanału YouTube:')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(channelUrl).not.toBeInTheDocument();
+    // The dialog hands focus back to the control that opened it
+    expect(trigger).toHaveFocus();
+  });
+
+  it('closes the config dialog on Escape', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr') as HTMLElement;
+
+    await user.click(within(rowA).getByRole('button', { name: 'Więcej akcji' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Edytuj config.json' }));
+    await screen.findByLabelText('Adres kanału YouTube:');
+
+    // The browser turns Escape into a cancel event on the dialog
+    fireEvent(screen.getByRole('dialog'), new Event('cancel'));
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByLabelText('Adres kanału YouTube:')).toBeNull();
+  });
+
+  it('saves the config from the dialog, closes it and keeps the new values', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installFetch();
+    renderPage();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr') as HTMLElement;
+
+    await user.click(within(rowA).getByRole('button', { name: 'Więcej akcji' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Edytuj config.json' }));
+    const category = await screen.findByLabelText('Kategoria kanału:');
+    await user.type(category, 'fpv');
+    await user.click(screen.getByRole('button', { name: 'Zapisz' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(fetchMock).toHaveBeenCalledWith('/api/folder/config', expect.objectContaining({ method: 'PUT' }));
+
+    // The console kept what the dialog saved: reopening reads it back
+    await user.click(within(rowA).getByRole('button', { name: 'Więcej akcji' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Edytuj config.json' }));
+    expect(await screen.findByLabelText('Kategoria kanału:')).toHaveValue('fpv');
+  });
+
+  it('says so in the sheet when an open channel has no config.json', async () => {
+    const user = userEvent.setup();
+    installFetch({
+      status: () => json({ ...statusResponse, folderConfigs: {}, listExists: { '/videos/a': true } }),
+    });
+    renderPage();
+    const rowA = (await screen.findByText('/videos/a')).closest('tr') as HTMLElement;
+
+    await user.click(within(rowA).getByRole('button', { name: 'Pokaż filmy' }));
+
+    // The sheet names the missing file; writing one is the row menu's dialog
+    expect(await screen.findByText('Plik config.json nie istnieje w tym folderze.')).toBeInTheDocument();
+  });
+
+  it('opens a collection the status never gave a list.json for', async () => {
+    const user = userEvent.setup();
+    const fetchMock = installFetch({
+      status: () =>
+        json({
+          ...statusResponse,
+          videosFolderPath: ['/videos/youtube'],
+          folderConfigs: { '/videos/youtube': { kind: 'collection' } },
+          listExists: {},
+        }),
+    });
+    renderPage();
+    const row = (await screen.findByText('/videos/youtube')).closest('tr') as HTMLElement;
+
+    // A collection holds single downloads, so it reads the folder index
+    // instead of a playlist and opens without one
+    await user.click(within(row).getByRole('button', { name: 'Pokaż filmy' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/folder/list?folderPath=%2Fvideos%2Fyoutube'));
   });
 
   it('keeps a folder the status did not report closed until its list.json is known', async () => {

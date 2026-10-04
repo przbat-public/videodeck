@@ -177,6 +177,7 @@
     }
   },
   "config": {
+    "title": "Folder configuration",
     "save": "Save",
     "saving": "Saving...",
     "cancel": "Cancel",

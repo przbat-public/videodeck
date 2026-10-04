@@ -1,5 +1,5 @@
 import { Ellipsis } from 'lucide-react';
-import { Fragment, type JSX, type ReactNode } from 'react';
+import { Fragment, type JSX, type ReactNode, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import type { ChannelAction } from '../hooks/useChannelActions';
@@ -22,8 +22,12 @@ interface ChannelTableProps {
   pending: Record<string, ChannelAction>;
   /** Starts one of the row's queue actions; the page owns the fetch */
   onAction: (row: ChannelRow, action: ChannelAction) => void;
-  /** Opens the config editor for the row (the page expands it and edits) */
-  onEditConfig: (row: ChannelRow) => void;
+  /**
+   * Opens the config dialog for the row. The trigger comes along: the dialog
+   * hands focus back to it, because the menu entry that was clicked is gone by
+   * the time the dialog closes.
+   */
+  onEditConfig: (row: ChannelRow, returnFocus: HTMLButtonElement | null) => void;
 }
 
 /**
@@ -113,14 +117,14 @@ interface ChannelActionsCellProps {
   pendingAction: ChannelAction | undefined;
   onToggle: (row: ChannelRow) => void;
   onAction: (row: ChannelRow, action: ChannelAction) => void;
-  onEditConfig: (row: ChannelRow) => void;
+  onEditConfig: (row: ChannelRow, returnFocus: HTMLButtonElement | null) => void;
 }
 
 interface ChannelRowMenuProps {
   row: ChannelRow;
   busy: boolean;
   onAction: (row: ChannelRow, action: ChannelAction) => void;
-  onEditConfig: (row: ChannelRow) => void;
+  onEditConfig: (row: ChannelRow, returnFocus: HTMLButtonElement | null) => void;
 }
 
 /** What can be bulk-done with the folder, closed by the menu's last separator */
@@ -223,10 +227,12 @@ function ChannelRowMenu({ row, busy, onAction, onEditConfig }: ChannelRowMenuPro
   const { t } = useTranslation();
   const { queue } = row;
   const activeJobs = queue.running + queue.queued;
+  // Where the config dialog puts focus back when it closes
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
     <Menu>
-      <MenuTrigger aria-label={t('channelConsole.actions.more')}>
+      <MenuTrigger ref={triggerRef} aria-label={t('channelConsole.actions.more')}>
         <Ellipsis aria-hidden="true" focusable="false" className="channel-menu-icon" />
       </MenuTrigger>
       <MenuContent>
@@ -234,7 +240,9 @@ function ChannelRowMenu({ row, busy, onAction, onEditConfig }: ChannelRowMenuPro
         <MenuItem disabled={busy || activeJobs === 0} onSelect={() => onAction(row, 'cancel')}>
           {t('channelConsole.actions.cancel')}
         </MenuItem>
-        <MenuItem onSelect={() => onEditConfig(row)}>{t('channelConsole.actions.editConfig')}</MenuItem>
+        <MenuItem onSelect={() => onEditConfig(row, triggerRef.current)}>
+          {t('channelConsole.actions.editConfig')}
+        </MenuItem>
         {/* The search filters by channel name, so a folder whose videos are
             not indexed yet has nothing to link to. A collection mixes
             channels, so its most frequent one would be the wrong filter. */}
@@ -328,7 +336,7 @@ interface ChannelRowItemProps {
   pendingAction: ChannelAction | undefined;
   onToggle: (row: ChannelRow) => void;
   onAction: (row: ChannelRow, action: ChannelAction) => void;
-  onEditConfig: (row: ChannelRow) => void;
+  onEditConfig: (row: ChannelRow, returnFocus: HTMLButtonElement | null) => void;
   renderExpanded: (row: ChannelRow) => ReactNode;
 }
 

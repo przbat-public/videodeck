@@ -235,4 +235,76 @@ test.describe('channel console', () => {
       `/?channel=${encodeURIComponent(channelName(1))}`,
     );
   });
+
+  test('edits config.json in a real modal dialog and leaves the row alone', async ({ page }) => {
+    await consolePage(page);
+
+    const row = page.locator('.channel-row', { hasText: 'kanal-02' });
+    const trigger = row.getByRole('button', { name: 'Więcej akcji' });
+    await trigger.click();
+    await page.getByRole('menuitem', { name: 'Edytuj config.json' }).click();
+
+    // `showModal()`: the browser paints the panel in the top layer and moves
+    // focus into it, ahead of the table it covers
+    const dialog = page.getByRole('dialog', { name: 'Konfiguracja folderu' });
+    await expect(dialog.getByLabel('Adres kanału YouTube:')).toHaveValue('https://yt/@kanal2');
+    expect(await page.evaluate(() => document.activeElement?.closest('dialog') !== null)).toBe(true);
+
+    // Centred in the viewport: the global margin reset takes the `margin: auto`
+    // a modal dialog centres itself with, which pins it to a corner instead
+    const box = await dialog.boundingBox();
+    const left = box?.x ?? -1;
+    const right = 1280 - ((box?.x ?? 0) + (box?.width ?? 0));
+    expect(Math.abs(left - right)).toBeLessThanOrEqual(2);
+    // 44rem of room, which is where the form's longest labels stop wrapping
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(703);
+
+    // Opening the editor no longer opens the channel's videos with it, so
+    // there is no list to hide afterwards
+    await expect(page.locator('.channel-expanded-row')).toHaveCount(0);
+    await expect(row.getByRole('button', { name: 'Pokaż filmy' })).toBeVisible();
+
+    // The wheel over the backdrop moves nothing behind the dialog
+    const scrolledBefore = await page.evaluate(() => window.scrollY);
+    await page.mouse.move(20, 200);
+    await page.mouse.wheel(0, 400);
+    await expect.poll(async () => page.evaluate(() => window.scrollY)).toBe(scrolledBefore);
+
+    // Escape is the keyboard way out, and focus goes back to what opened it
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await expect(page.locator('.channel-expanded-row')).toHaveCount(0);
+  });
+
+  test('the config dialog stays inside a phone screen', async ({ page }) => {
+    await consolePage(page, { width: 360, height: 800 });
+
+    const row = page.locator('.channel-row', { hasText: 'kanal-02' });
+    await row.getByRole('button', { name: 'Więcej akcji' }).click();
+    await page.getByRole('menuitem', { name: 'Edytuj config.json' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Konfiguracja folderu' });
+    await expect(dialog).toBeVisible();
+
+    const box = await dialog.boundingBox();
+    const left = box?.x ?? -1;
+    const right = 360 - ((box?.x ?? 0) + (box?.width ?? 0));
+    expect(left).toBeGreaterThan(0);
+    expect(Math.abs(left - right)).toBeLessThanOrEqual(2);
+    // The form is taller than the screen, so the panel scrolls inside itself
+    // and still sits inside the viewport
+    expect(box?.height ?? 0).toBeLessThanOrEqual(800);
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(800);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+
+    // Touch contract: the dialog's own buttons reach 44px
+    const save = await dialog.getByRole('button', { name: 'Zapisz' }).boundingBox();
+    const cancel = await dialog.getByRole('button', { name: 'Anuluj' }).boundingBox();
+    expect(save?.height ?? 0).toBeGreaterThanOrEqual(43.5);
+    expect(cancel?.height ?? 0).toBeGreaterThanOrEqual(43.5);
+  });
 });

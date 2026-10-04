@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { DownloadOptions, FolderConfig } from '@videodeck/shared/api';
 import { useState } from 'react';
@@ -12,44 +12,74 @@ const FOLDER = '/videos/channel-a';
 const defaults: DownloadOptions = { maxHeight: 2160, subLangs: ['en'], writeComments: true };
 
 /**
- * The editor is controlled: the console's row menu owns "open the form".
- * The harness is that caller, with a button that stands in for the menu item
- * (and disappears while the form is open, like the menu entry does).
+ * The editor is the dialog the console's row menu opens, so the harness is
+ * that caller: a button standing in for the menu entry, the config the console
+ * holds (it hands over whatever its status says, and a test pushes a fresh one
+ * the way a status reload does), and the row's ⋯ trigger, which outlives the
+ * dialog and is where focus goes back.
  */
 function EditorHarness({
   config,
   knownCategories,
+  downloadDefaults,
   onConfigUpdate,
 }: {
   config: FolderConfig | null;
   knownCategories: string[];
+  downloadDefaults: DownloadOptions;
   onConfigUpdate: (folderPath: string, config: FolderConfig | null) => void;
 }): React.JSX.Element {
-  const [editing, setEditing] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [returnFocus, setReturnFocus] = useState<HTMLButtonElement | null>(null);
+
   return (
     <div>
-      {!editing && (
-        <button type="button" onClick={() => setEditing(true)}>
-          Edytuj konfigurację
-        </button>
+      <button
+        type="button"
+        onClick={(event) => {
+          setReturnFocus(event.currentTarget);
+          setOpen(true);
+        }}
+      >
+        Edytuj konfigurację
+      </button>
+      {open && (
+        <FolderConfigEditor
+          folderPath={FOLDER}
+          initialConfig={config}
+          downloadDefaults={downloadDefaults}
+          knownCategories={knownCategories}
+          returnFocus={returnFocus}
+          onClose={() => setOpen(false)}
+          onConfigUpdate={onConfigUpdate}
+        />
       )}
-      <FolderConfigEditor
-        folderPath={FOLDER}
-        initialConfig={config}
-        downloadDefaults={defaults}
-        knownCategories={knownCategories}
-        editing={editing}
-        onEditingFinished={() => setEditing(false)}
-        onConfigUpdate={onConfigUpdate}
-      />
     </div>
   );
 }
 
-const renderEditor = (config: FolderConfig | null, knownCategories: string[] = []) => {
+const renderEditor = (
+  config: FolderConfig | null,
+  knownCategories: string[] = [],
+  downloadDefaults: DownloadOptions = defaults,
+) => {
   const onConfigUpdate = vi.fn();
-  render(<EditorHarness config={config} knownCategories={knownCategories} onConfigUpdate={onConfigUpdate} />);
-  return { onConfigUpdate };
+  const harness = (current: FolderConfig | null) => (
+    <EditorHarness
+      config={current}
+      knownCategories={knownCategories}
+      downloadDefaults={downloadDefaults}
+      onConfigUpdate={onConfigUpdate}
+    />
+  );
+  const view = render(harness(config));
+  return {
+    onConfigUpdate,
+    /** What the console holds once its status has been read again */
+    showConfig: (next: FolderConfig | null): void => {
+      view.rerender(harness(next));
+    },
+  };
 };
 
 const lastPutBody = (fetchMock: FetchMock) => {
@@ -65,16 +95,20 @@ describe('FolderConfigEditor', () => {
     fetchMock = installFetchMock();
   });
 
-  it('shows the fields only after clicking edit', async () => {
+  it('shows the fields in a dialog only after clicking edit', async () => {
     const user = userEvent.setup();
     renderEditor({ channelUrl: 'https://yt/@a' });
 
     expect(screen.queryByLabelText('Adres kanału YouTube:')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
 
-    expect(screen.getByLabelText('Adres kanału YouTube:')).toHaveValue('https://yt/@a');
-    expect(screen.queryByRole('button', { name: 'Edytuj konfigurację' })).toBeNull();
+    // The form is a modal dialog named after what it edits, and the control
+    // that opened it stays on the page behind
+    const dialog = screen.getByRole('dialog', { name: i18n.t('config.title') });
+    expect(within(dialog).getByText(FOLDER)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Adres kanału YouTube:')).toHaveValue('https://yt/@a');
   });
 
   it('shows defaults for keys missing from config.json', async () => {
@@ -87,6 +121,25 @@ describe('FolderConfigEditor', () => {
     expect(screen.getByLabelText('Pobieraj napisy')).toBeChecked();
     expect(screen.getByLabelText('Języki napisów (po przecinku):')).toHaveAttribute('placeholder', 'domyślnie: en');
     expect(screen.getByLabelText('Pobieraj komentarze')).toBeChecked();
+  });
+
+  it('names the server default, including an empty one', async () => {
+    const user = userEvent.setup();
+    // The folder keeps its own subtitle languages, so the field is on screen
+    // while the server default behind it is empty
+    renderEditor({ channelUrl: 'https://yt/@a', subLangs: ['pl'] }, [], {
+      maxHeight: 2160,
+      subLangs: [],
+      writeComments: true,
+      extraArgs: ['--no-playlist'],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
+
+    // A server with no subtitle languages says "none" rather than an empty list
+    expect(screen.getByLabelText('Języki napisów (po przecinku):')).toHaveAttribute('placeholder', 'domyślnie: brak');
+    // The extra arguments default reads back as the flags it would pass
+    expect(screen.getByText('domyślnie: --no-playlist')).toBeInTheDocument();
   });
 
   it('shows explicit values from config.json', async () => {
@@ -116,7 +169,7 @@ describe('FolderConfigEditor', () => {
       sponsorblockRemove: false,
     };
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true, config: saved }) });
-    const { onConfigUpdate } = renderEditor({ channelUrl: 'https://yt/@a' });
+    const { onConfigUpdate, showConfig } = renderEditor({ channelUrl: 'https://yt/@a' });
 
     await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
     await user.click(screen.getByLabelText('Maks. rozdzielczość:'));
@@ -130,8 +183,12 @@ describe('FolderConfigEditor', () => {
     await waitFor(() => expect(onConfigUpdate).toHaveBeenCalledWith(FOLDER, saved));
     expect(fetchMock).toHaveBeenCalledWith('/api/folder/config', expect.objectContaining({ method: 'PUT' }));
     expect(lastPutBody(fetchMock)).toEqual({ folderPath: FOLDER, config: saved });
+    // A saved form closes itself: the console behind it is the page to be on
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 
-    await user.click(await screen.findByRole('button', { name: 'Edytuj konfigurację' }));
+    // The console keeps what the save answered, and the next open reads it back
+    showConfig(saved);
+    await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
     expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('1080p');
     expect(screen.getByLabelText('Języki napisów (po przecinku):')).toHaveValue('pl, en');
   });
@@ -303,25 +360,12 @@ describe('FolderConfigEditor', () => {
 
   it('adopts a config the console replaces while the form is open', async () => {
     const user = userEvent.setup();
-    const onConfigUpdate = vi.fn();
-    const view = render(
-      <EditorHarness
-        config={{ channelUrl: 'https://yt/@a', maxHeight: 720 }}
-        knownCategories={[]}
-        onConfigUpdate={onConfigUpdate}
-      />,
-    );
+    const { showConfig } = renderEditor({ channelUrl: 'https://yt/@a', maxHeight: 720 });
 
     await user.click(screen.getByRole('button', { name: 'Edytuj konfigurację' }));
-    // The row above re-read the status, so the open form gets a fresh config
+    // The console re-read the status, so the open dialog gets a fresh config
     // object under it; what the form shows is the config it was handed
-    view.rerender(
-      <EditorHarness
-        config={{ channelUrl: 'https://yt/@a', maxHeight: 2160 }}
-        knownCategories={[]}
-        onConfigUpdate={onConfigUpdate}
-      />,
-    );
+    showConfig({ channelUrl: 'https://yt/@a', maxHeight: 2160 });
 
     expect(screen.getByLabelText('Maks. rozdzielczość:')).toHaveTextContent('2160p');
   });

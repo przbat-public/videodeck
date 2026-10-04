@@ -193,6 +193,7 @@
     }
   },
   "config": {
+    "title": "Konfiguracja folderu",
     "save": "Zapisz",
     "saving": "Zapisywanie...",
     "cancel": "Anuluj",
