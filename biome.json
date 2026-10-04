@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.13/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
   "assist": {
     "actions": {
       "source": {
@@ -68,6 +68,7 @@
     {
       "includes": [
         "scripts/**",
+        "local-tools/**",
         "chrome-extension/src/**",
         "server/src/utils/logger.ts",
         "client/src/utils/logError.ts"
