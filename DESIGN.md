@@ -41,6 +41,7 @@ its dark twin.
 | `--color-focus-ring` | `rgba(102, 126, 234, 0.2)` | `rgba(165, 173, 255, 0.3)` | soft halo on focused controls (checkbox, select trigger) |
 | `--shadow-card` | `0 2px 8px rgba(0, 0, 0, 0.1)` | `0 2px 8px rgba(0, 0, 0, 0.45)` | search bar, detail panels, queue controls |
 | `--shadow-popover` | `0 8px 24px rgba(30, 30, 60, 0.16)` | `0 8px 24px rgba(0, 0, 0, 0.55)` | Select and Menu dropdowns |
+| `--color-backdrop` | `rgba(0, 0, 0, 0.5)` | `rgba(0, 0, 0, 0.65)` | the wash a modal dialog lays over the page behind it |
 
 Rows whose Light and Dark entries match are single literals in the
 stylesheet, not pairs. The table lists the resolved value either way.
@@ -105,8 +106,9 @@ uppercase beyond the PL/EN language buttons.
   snippets clamp to two lines, and the grid rows share one height, so
   every card in a result page is the same size. The panels that frame a page
   instead of holding a result (the search bar, the detail sections, the queue
-  controls) do carry `--shadow-card`, and the two floating menus share
-  `--shadow-popover`; both tokens from section 2 and both deeper in dark mode.
+  controls) do carry `--shadow-card`, and the two floating menus and the modal
+  dialog share `--shadow-popover`; both tokens from section 2 and both deeper in
+  dark mode.
 - Gaps are 0.25/0.5/1/2rem. 1rem is the default rhythm between controls.
 - Controls are compact: 0.75rem vertical padding on inputs and buttons,
   0.3-0.55rem on small buttons.
@@ -115,7 +117,7 @@ uppercase beyond the PL/EN language buttons.
 
 ## 6. Components
 
-Seven shared primitives in `client/src/components/ui/`:
+Eight shared primitives in `client/src/components/ui/`:
 
 - **Button** — variants: default (border, surface), `primary` (accent,
   white text), `danger`. Sizes: default and `small`. Disabled state at 60%
@@ -143,6 +145,15 @@ Seven shared primitives in `client/src/components/ui/`:
   `alert`, danger-soft background, danger text.
 - **Loading** — centered spinner plus an optional label; the only loading
   pattern, no skeletons.
+- **Modal** — a real `<dialog>` opened with `showModal()`, so the browser owns
+  the top layer, the backdrop, the focus trap and Escape. The panel is `min(44rem,
+  100vw - 2rem)` wide, the point where the config form's longest labels stop
+  wrapping, and it scrolls inside itself when the form is taller than the
+  screen. The caller mounts it to open it and unmounts it to close it: Escape
+  and the panel's own buttons all run through the same `onClose`, and focus goes
+  back to the control that opened the dialog. A click on the backdrop leaves the form alone, because
+  half-filled fields should not lose their edits to a stray click. The config
+  form on the download console is its first user.
 
 Composite patterns: top bar (brand icon, back link on the detail page,
 gear menu), skip link (the first focusable element in the shell, off screen
@@ -213,9 +224,11 @@ Data tables (the channel console on `/download`) follow one shape:
   made the column a row of chips that wrapped unpredictably.
 - The expanded row continues the table: it has no header of its own (the row
   names the channel, shows its warnings and carries the actions) and no
-  nested card. The config form is the menu's `Edytuj config.json` entry, so
-  the sheet has no edit button of its own and a channel without a
-  `config.json` just says so.
+  nested card. It holds the channel's videos, and a channel without a
+  `config.json` says so in one line. Editing that file is the menu's
+  `Edytuj config.json` entry, which opens a modal dialog: the sheet keeps
+  rendering whatever list it was showing, so closing the form never means
+  hiding videos first.
 - The "search in this channel" entry carries the channel name, because that
   is what the search filters by (`channelName.keyword`). The name comes from
   the `folders` map of `GET /api/videos/channels`, so a folder whose videos
@@ -284,7 +297,7 @@ English, key parity enforced by `locales.test.ts`. Rules:
 - `client/src/index.css` — tokens, themes, resets, focus, motion.
 - `client/src/App.css` — layout and component styles; colors only through
   tokens.
-- `client/src/components/ui/` — the seven primitives.
+- `client/src/components/ui/` — the eight primitives.
 - `client/src/components/` — composite components and pages.
 
 Changing the design means changing tokens or components, never

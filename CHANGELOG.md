@@ -766,6 +766,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for skills its own catalog listed, among them the security and migration
   playbooks. The descriptions are quoted now, and a repo-invariant check rejects
   the shape so it cannot come back
+- **A config.json edit no longer rearranges the console**: picking
+  `Edytuj config.json` from a row's ⋯ menu used to unfold the channel, drop the
+  fields on top of its videos and leave the reader to tidy up afterwards. The
+  form arrives in a `<dialog>` now: the browser handles the top layer, the
+  backdrop, the focus trap and Escape, a save or a cancel takes it down, and
+  focus lands on the ⋯ trigger again. A folder without config.json still says so
+  in its sheet, and the dialog repeats that line above the fields.
 
 ## [1.0.0] - 2026-09-14
 

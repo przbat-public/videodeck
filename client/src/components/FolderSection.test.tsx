@@ -13,8 +13,6 @@ const json = (body: unknown, status = 200): MockResponse => ({
   json: async () => body,
 });
 
-const downloadDefaults = { maxHeight: 2160, subLangs: ['en'], writeComments: true };
-
 const listResponse = {
   videos: [{ id: 'v1', title: 'Pierwszy film', url: 'https://yt/v1' }],
   downloadStatuses: {},
@@ -30,11 +28,7 @@ const renderSection = (props: Partial<Parameters<typeof FolderSection>[0]> = {})
       <FolderSection
         folderPath="/videos/a"
         initialConfig={{ channelUrl: 'https://www.youtube.com/@a' }}
-        downloadDefaults={downloadDefaults}
         initialListExists={true}
-        editingConfig={false}
-        onEditingFinished={vi.fn()}
-        onConfigUpdate={vi.fn()}
         {...props}
       />
     </MemoryRouter>,
@@ -100,5 +94,17 @@ describe('FolderSection', () => {
     expect(await screen.findByText('Pierwszy film')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith('/api/folder/list?folderPath=%2Fvideos%2Fyoutube');
     expect(screen.queryByRole('button', { name: /playlist/i })).toBeNull();
+  });
+
+  it('says a folder has no config.json instead of showing a form in the sheet', async () => {
+    renderSection({ initialConfig: null });
+
+    await screen.findByText('Pierwszy film');
+
+    // The missing file is information, not a form: editing lives in the row
+    // menu's dialog, so the sheet only says what is not there
+    expect(screen.getByText('Plik config.json nie istnieje w tym folderze.')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByLabelText('Adres kanału YouTube:')).toBeNull();
   });
 });
