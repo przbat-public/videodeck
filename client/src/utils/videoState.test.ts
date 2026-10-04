@@ -62,6 +62,17 @@ describe('skipReasonText', () => {
       'videoId is not a valid YouTube video id',
     );
   });
+
+  it('translates the codes the queue refuses a video with', () => {
+    // The queue answers with the code it recorded, and the copy is the one the
+    // job errors already use: one sentence per reason, not two.
+    expect(skipReasonText('members-only', i18n.t)).toBe(i18n.t('errors.job.members-only'));
+    expect(skipReasonText('premium-only', i18n.t)).toBe(i18n.t('errors.job.premium-only'));
+    expect(skipReasonText('private', i18n.t)).toBe(i18n.t('errors.job.private'));
+    expect(skipReasonText('removed', i18n.t)).toBe(i18n.t('errors.job.removed'));
+    expect(skipReasonText('geo-restricted', i18n.t)).toBe(i18n.t('errors.job.geo-restricted'));
+    expect(skipReasonText('age-gate', i18n.t)).toBe(i18n.t('errors.job.age-gate'));
+  });
 });
 
 describe('needsCompletion', () => {

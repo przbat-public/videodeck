@@ -53,10 +53,21 @@ export function missingSummary(missing: readonly string[], t: TFunction): string
  * The skip reasons the queue endpoint answers with are English machine
  * strings (`already downloaded`), not prose: the client translates them
  * instead of printing the server's wording in a Polish UI.
+ *
+ * The codes at the end are the ones the queue refuses a video with, either
+ * from the catalog or from the folder's own record of permanent failures. They
+ * reuse the job-error copy, because the reader has to see one sentence per
+ * reason, not two versions of it.
  */
 const SKIP_REASON_KEYS = {
   'already downloaded': 'skipReason.alreadyDownloaded',
   'not downloaded': 'skipReason.notDownloaded',
+  'members-only': 'errors.job.members-only',
+  'premium-only': 'errors.job.premium-only',
+  private: 'errors.job.private',
+  removed: 'errors.job.removed',
+  'geo-restricted': 'errors.job.geo-restricted',
+  'age-gate': 'errors.job.age-gate',
 } as const;
 
 /** A skip reason in the reader's language, or the server's own wording */

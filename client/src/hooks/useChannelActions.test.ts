@@ -152,6 +152,21 @@ describe('useChannelActions', () => {
     expect(toast.error).toHaveBeenCalledWith('Pominięto 1: already queued');
   });
 
+  it('translates the reason the queue refused a video', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(listBody()))
+      .mockResolvedValueOnce(jsonResponse({ jobs: [], skipped: [{ videoId: 'b', reason: 'members-only' }] }, 202));
+    const { result } = renderHook(() => useChannelActions({}));
+
+    await act(async () => {
+      await result.current.run(FOLDER, 'download');
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(
+      i18n.t('toast.skipped', { count: 1, reason: i18n.t('errors.job.members-only') }),
+    );
+  });
+
   it('does not queue anything when the channel has nothing to do', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(listBody({ downloaded: { a: true, b: true, c: true } })));
     const onQueueChanged = vi.fn();

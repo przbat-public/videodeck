@@ -276,7 +276,8 @@
       "no-space": "No space left on the download disk",
       "geo-restricted": "This video is not available in your country",
       "bot-wall": "YouTube is asking for a sign-in (bot wall)",
-      "age-gate": "This video is age-restricted and requires a logged-in session"
+      "age-gate": "This video is age-restricted and requires a logged-in session",
+      "premium-only": "This video is available on YouTube Premium only"
     },
     "loadSummaries": "Could not count the videos per channel",
     "searchElasticsearch": "Failed to search videos: Elasticsearch is not responding",
