@@ -7,16 +7,19 @@ import os from 'node:os';
 import path from 'node:path';
 import { UPDATE_STALE_AFTER_MS } from '@videodeck/shared/dates';
 import {
+  ArchiveReconcileResponseSchema,
   ClearFinishedResponseSchema,
   downloadVideoEventSchema,
   EnqueueJobsResponseSchema,
   FOLDER_UNAVAILABLE_CODE,
   FolderListResponseSchema,
+  FolderStateResponseSchema,
   FolderSummariesResponseSchema,
   QueueListResponseSchema,
   QueuePauseResponseSchema,
   StatusResponseSchema,
   VideoDownloadedResponseSchema,
+  VideoStateResponseSchema,
 } from '@videodeck/shared/schemas';
 import { extractYoutubeVideoId } from '@videodeck/shared/youtube';
 import type express from 'express';
@@ -34,9 +37,16 @@ import {
   loadDownloadOptions,
   readFolderConfig,
 } from '../services/folderConfig';
-import { findEntryByVideoId, getDownloadStatuses, loadIndex, rebuildIndex } from '../services/folderIndex';
+import {
+  ARCHIVE_FILE,
+  findEntryByVideoId,
+  getDownloadStatuses,
+  loadIndex,
+  readArchiveIds,
+  rebuildIndex,
+} from '../services/folderIndex';
 import { reconcileLibrary, resetLibraryState } from '../services/libraryState';
-import { at } from '../test-utils';
+import { at, indexEntry, indexFile } from '../test-utils';
 import { activeSseStreamCount } from '../utils/sseRegistry';
 import { invalidateStatusCache, invalidateSummaryCache } from './folder';
 
@@ -118,6 +128,7 @@ const mockedSpawn = spawn as MockedFunction<typeof spawn>;
 const mockedGetVideosFolderPaths = getVideosFolderPaths as MockedFunction<typeof getVideosFolderPaths>;
 const mockedFindEntry = findEntryByVideoId as MockedFunction<typeof findEntryByVideoId>;
 const mockedLoadIndex = loadIndex as MockedFunction<typeof loadIndex>;
+const mockedReadArchiveIds = readArchiveIds as MockedFunction<typeof readArchiveIds>;
 const mockedGetDownloadStatuses = getDownloadStatuses as MockedFunction<typeof getDownloadStatuses>;
 const mockedRebuildIndex = rebuildIndex as MockedFunction<typeof rebuildIndex>;
 const mockedReadFolderConfig = readFolderConfig as MockedFunction<typeof readFolderConfig>;
@@ -127,6 +138,9 @@ const mockedReadCollection = readCollection as MockedFunction<typeof readCollect
 
 const FOLDER = '/videos/channel-a';
 const OTHER_FOLDER = '/videos/channel-b';
+
+/** Path of a folder's list.json, as the handlers ask the fs mock for it */
+const listFile = (folder: string): string => path.join(folder, 'list.json');
 
 /**
  * The env value this file inherits. The library snapshot reads the process env
@@ -203,6 +217,10 @@ describe('folder router', () => {
     mockFileHandle.sync.mockResolvedValue(undefined);
     mockFileHandle.close.mockResolvedValue(undefined);
     mockedReadFolderConfig.mockResolvedValue(null);
+    // A download consults the folder index to decide whether the video is
+    // still missing, so every test starts from "nothing downloaded" and the
+    // tests that need an entry set it themselves.
+    mockedLoadIndex.mockResolvedValue(indexFile([]));
     mockedLoadDownloadOptions.mockResolvedValue({ ...DEFAULT_DOWNLOAD_OPTIONS });
     mockedListCachedFolders.mockResolvedValue({ folders: new Set([FOLDER]), elasticsearchUp: true });
     downloadQueue.clear();
@@ -533,11 +551,16 @@ describe('folder router', () => {
       const response = await request(app).get('/api/folder/list').query({ folderPath: FOLDER });
 
       expect(response.status).toBe(200);
-      expect(response.body.videos).toEqual([
+      // The catalog carries the metadata a flat-playlist dump has and the app
+      // reads: the two counts come straight from the fixture, and the list
+      // stays in the order the channel returned.
+      expect(response.body.videos).toMatchObject([
         {
           id: 'yf__frUKreI',
           title: 'Walksnail Ascent Firmware Update How-To',
           url: 'https://www.youtube.com/watch?v=yf__frUKreI',
+          duration: 615,
+          viewCount: 12044,
         },
         {
           id: 'abc123def45',
@@ -771,11 +794,7 @@ describe('folder router', () => {
 
   describe('POST /api/folder/rebuild-index', () => {
     it('rebuilds and reports the entry count', async () => {
-      mockedRebuildIndex.mockResolvedValue({
-        version: 1,
-        builtAt: '2024-01-01T00:00:00.000Z',
-        entries: { a: { baseName: 'a', videoFile: 'a.mp4', infoMtime: 'x' } },
-      });
+      mockedRebuildIndex.mockResolvedValue(indexFile(['a']));
 
       const response = await request(app).post('/api/folder/rebuild-index').send({ folderPath: FOLDER });
 
@@ -873,8 +892,8 @@ describe('folder router', () => {
       expect(mockFileHandle.writeFile).toHaveBeenCalledWith(
         JSON.stringify(
           [
-            { id: 'v1', title: 'One' },
-            { id: 'v2', title: 'Two' },
+            { id: 'v1', title: 'One', url: '' },
+            { id: 'v2', title: 'Two', url: '' },
           ],
           null,
           2,
@@ -934,7 +953,7 @@ describe('folder router', () => {
 
   describe('GET /api/folder/video-downloaded', () => {
     it('answers from the folder index', async () => {
-      mockedFindEntry.mockResolvedValueOnce({ baseName: 'x', videoFile: 'x.mp4', infoMtime: 'm' });
+      mockedFindEntry.mockResolvedValueOnce(indexEntry({ baseName: 'x', videoFile: 'x.mp4' }));
       expect(
         VideoDownloadedResponseSchema.parse(
           (await request(app).get('/api/folder/video-downloaded').query({ folderPath: FOLDER, videoId: 'v1' })).body,
@@ -1090,11 +1109,9 @@ describe('folder router', () => {
 
     it('enqueues update jobs pinned to the existing stem and skips non-downloaded videos', async () => {
       mockedLoadIndex.mockResolvedValue({
-        version: 1,
+        ...indexFile([]),
         builtAt: 'now',
-        entries: {
-          aaaaaaaaaaa: { baseName: '20240101_Old_Name', videoFile: 'x.mp4', infoMtime: 'm' },
-        },
+        entries: { aaaaaaaaaaa: indexEntry({ baseName: '20240101_Old_Name', videoFile: 'x.mp4' }) },
       });
 
       const response = await request(app)
@@ -1445,5 +1462,402 @@ describe('createApp (full app with body limit)', () => {
     expect(response.status).toBe(202);
     expect(response.body.jobs).toHaveLength(4000);
     expect(response.body.skipped).toEqual([]);
+  });
+});
+
+describe('folder state endpoints', () => {
+  let app: express.Application;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'error').mockImplementation(() => {
+      /* silence expected error logs */
+    });
+    process.env.VIDEOS_FOLDER_PATH = '';
+    resetLibraryState();
+    mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+    mockedFs.mkdir.mockResolvedValue(undefined);
+    mockedFs.stat.mockResolvedValue({ isDirectory: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+    // archive.txt is rewritten through the atomic writer, which opens a temp
+    // file: without this the write dies on the mocked handle.
+    mockedFs.writeFile.mockResolvedValue(undefined);
+    mockedFs.open.mockResolvedValue(mockFileHandle as unknown as import('node:fs/promises').FileHandle);
+    mockedFs.rename.mockResolvedValue(undefined);
+    mockFileHandle.writeFile.mockResolvedValue(undefined);
+    mockFileHandle.sync.mockResolvedValue(undefined);
+    mockFileHandle.close.mockResolvedValue(undefined);
+    mockedReadFolderConfig.mockResolvedValue(null);
+    mockedLoadIndex.mockResolvedValue(indexFile([]));
+    mockedReadArchiveIds.mockResolvedValue(new Set());
+    mockedLoadDownloadOptions.mockResolvedValue({ ...DEFAULT_DOWNLOAD_OPTIONS });
+    mockedListCachedFolders.mockResolvedValue({ folders: new Set([FOLDER]), elasticsearchUp: true });
+    downloadQueue.clear();
+    spawnCalls.length = 0;
+    invalidateSummaryCache();
+    invalidateStatusCache();
+    app = createApp();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('folder state', () => {
+    /** list.json with one video, and an index holding it plus a deleted one */
+    function seedStateFolder(): void {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === listFile(FOLDER)) {
+          return Promise.resolve(
+            JSON.stringify([{ id: 'aaaaaaaaaaa', title: 'Kept', url: 'https://youtu.be/aaaaaaaaaaa' }]),
+          );
+        }
+        if (target === path.join(FOLDER, ARCHIVE_FILE)) {
+          return Promise.resolve('youtube aaaaaaaaaaa\nyoutube gone0000001\n');
+        }
+        return Promise.reject(enoent());
+      });
+      mockedLoadIndex.mockResolvedValue({
+        ...indexFile([]),
+        entries: {
+          aaaaaaaaaaa: indexEntry({
+            baseName: '20240101_Kept',
+            subtitleLangs: ['en'],
+            hasComments: true,
+            hasDescription: true,
+            hasThumbnail: true,
+            videoBytes: 2048,
+            infoBytes: 512,
+          }),
+          deleted0001: indexEntry({ baseName: '20230101_Deleted', title: 'Deleted from the channel' }),
+        },
+      });
+    }
+
+    it('reports what each video has, what it misses and which videos only exist on disk', async () => {
+      seedStateFolder();
+      mockedReadFolderConfig.mockResolvedValue({ subLangs: ['pl', 'en'] });
+
+      const response = await request(app).get('/api/folder/state').query({ folderPath: FOLDER });
+
+      expect(response.status).toBe(200);
+      const body = FolderStateResponseSchema.parse(response.body);
+      expect(body.videos).toHaveLength(1);
+      expect(body.videos[0]).toMatchObject({
+        id: 'aaaaaaaaaaa',
+        downloadState: {
+          files: { video: true, thumbnail: true, description: true, subLangs: ['en'], comments: true },
+          // The Polish subtitle is the gap, which is what the console reports
+          missing: ['pl'],
+        },
+      });
+      expect(body.orphans.map((video) => video.id)).toEqual(['deleted0001']);
+      expect(body.orphans[0]?.orphan).toBe(true);
+      expect(body.counts).toEqual({ videos: 1, downloaded: 1, incomplete: 1, notDownloaded: 0, orphans: 1 });
+    });
+
+    it('reports the archive drift in both directions', async () => {
+      seedStateFolder();
+
+      const body = FolderStateResponseSchema.parse(
+        (await request(app).get('/api/folder/state').query({ folderPath: FOLDER })).body,
+      );
+
+      // `deleted0001` is on disk but not in the archive; `gone0000001` is the
+      // other way round, a video whose files were deleted after a download.
+      expect(body.drift.missingFromArchive).toEqual(['deleted0001']);
+      expect(body.drift.missingFromDisk).toEqual(['gone0000001']);
+    });
+
+    it('filters the list without changing the counts', async () => {
+      seedStateFolder();
+      mockedReadFolderConfig.mockResolvedValue({ subLangs: ['pl', 'en'] });
+
+      const incomplete = FolderStateResponseSchema.parse(
+        (await request(app).get('/api/folder/state').query({ folderPath: FOLDER, filter: 'incomplete' })).body,
+      );
+      expect(incomplete.videos.map((video) => video.id)).toEqual(['aaaaaaaaaaa']);
+      expect(incomplete.orphans).toEqual([]);
+      expect(incomplete.counts.orphans).toBe(1);
+
+      const notDownloaded = FolderStateResponseSchema.parse(
+        (await request(app).get('/api/folder/state').query({ folderPath: FOLDER, filter: 'not-downloaded' })).body,
+      );
+      expect(notDownloaded.videos).toEqual([]);
+
+      const orphans = FolderStateResponseSchema.parse(
+        (await request(app).get('/api/folder/state').query({ folderPath: FOLDER, filter: 'orphan' })).body,
+      );
+      expect(orphans.orphans.map((video) => video.id)).toEqual(['deleted0001']);
+    });
+
+    it('lists every orphan, sorted, whatever the filter', async () => {
+      // The sort and the map only run once there is more than one orphan, and
+      // an unsorted list is the kind of bug a screenshot does not catch.
+      seedStateFolder();
+      mockedLoadIndex.mockResolvedValue({
+        ...indexFile([]),
+        entries: {
+          aaaaaaaaaaa: indexEntry({ baseName: '20240101_Kept' }),
+          zzzzzzzzzzz: indexEntry({ baseName: '20230101_Last', title: 'Last' }),
+          bbbbbbbbbbb: indexEntry({ baseName: '20220101_First', title: 'First' }),
+        },
+      });
+
+      const body = FolderStateResponseSchema.parse(
+        (await request(app).get('/api/folder/state').query({ folderPath: FOLDER, filter: 'orphan' })).body,
+      );
+
+      expect(body.orphans.map((video) => video.id)).toEqual(['bbbbbbbbbbb', 'zzzzzzzzzzz']);
+      expect(body.orphans.map((video) => video.title)).toEqual(['First', 'Last']);
+      expect(body.counts.orphans).toBe(2);
+    });
+
+    it('refuses an unknown filter and an unknown folder', async () => {
+      seedStateFolder();
+
+      expect((await request(app).get('/api/folder/state').query({ folderPath: FOLDER, filter: 'nope' })).status).toBe(
+        400,
+      );
+      expect((await request(app).get('/api/folder/state').query({ folderPath: '/etc' })).status).toBe(403);
+    });
+
+    it('answers one video state and says when the id is unknown', async () => {
+      seedStateFolder();
+
+      const known = VideoStateResponseSchema.parse(
+        (await request(app).get('/api/folder/video-state').query({ folderPath: FOLDER, videoId: 'aaaaaaaaaaa' })).body,
+      );
+      expect(known.known).toBe(true);
+      expect(known.state.files?.video).toBe(true);
+
+      const unknown = VideoStateResponseSchema.parse(
+        (await request(app).get('/api/folder/video-state').query({ folderPath: FOLDER, videoId: 'zzzzzzzzzzz' })).body,
+      );
+      expect(unknown.known).toBe(false);
+      expect(unknown.state.files).toBeNull();
+      expect(unknown.state.missing).toEqual([]);
+    });
+
+    it('rejects a videoId that is not a YouTube id', async () => {
+      seedStateFolder();
+
+      const response = await request(app)
+        .get('/api/folder/video-state')
+        .query({ folderPath: FOLDER, videoId: '../../etc/passwd' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('asks for a videoId when the query carries none', async () => {
+      seedStateFolder();
+
+      const response = await request(app).get('/api/folder/video-state').query({ folderPath: FOLDER });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('videoId is required');
+    });
+
+    it('refuses a folder whose drive is away', async () => {
+      // The mounted-folder guard asks the disk before anything else, so a
+      // folder that is not a directory answers with the unavailable code
+      // instead of an empty state that reads like "nothing downloaded".
+      mockedFs.stat.mockResolvedValue({ isDirectory: () => false } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+
+      const response = await request(app).get('/api/folder/state').query({ folderPath: FOLDER });
+
+      expect(response.status).toBe(409);
+    });
+  });
+
+  describe('archive reconcile', () => {
+    it('rewrites the archive from the disk and reports the diff', async () => {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      mockedFs.stat.mockResolvedValue({ isDirectory: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+      // The unmounted-drive guard lists the folder first: one info.json is
+      // what makes reconcile follow the disk.
+      mockedFs.readdir.mockResolvedValue(['20240101_Kept.info.json', 'archive.txt'] as never);
+      // The atomic writer renames a temp file over archive.txt; the read that
+      // follows has to see the new content, so the fake remembers the write.
+      let archiveBody = 'youtube ghost000001\n';
+      mockFileHandle.writeFile.mockImplementation((content: string) => {
+        archiveBody = content;
+        return Promise.resolve();
+      });
+      mockedFs.readFile.mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === path.join(FOLDER, ARCHIVE_FILE)) {
+          return Promise.resolve(archiveBody);
+        }
+        if (target.endsWith('.info.json')) {
+          return Promise.resolve('{}');
+        }
+        return Promise.reject(enoent());
+      });
+      mockedLoadIndex.mockResolvedValue(indexFile(['aaaaaaaaaaa']));
+
+      const response = await request(app)
+        .post('/api/folder/archive/reconcile')
+        .send({ folderPath: FOLDER, method: 'rebuild' });
+
+      expect(response.status).toBe(200);
+      const body = ArchiveReconcileResponseSchema.parse(response.body);
+      expect(body.added).toEqual(['aaaaaaaaaaa']);
+      expect(body.removed).toEqual(['ghost000001']);
+      expect(body.drift).toEqual({ missingFromArchive: [], missingFromDisk: [] });
+    });
+
+    it('rejects a videoIds list that is not an array of ids', async () => {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      mockedFs.stat.mockResolvedValue({ isDirectory: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+
+      const notAnArray = await request(app)
+        .post('/api/folder/archive/reconcile')
+        .send({ folderPath: FOLDER, method: 'remove', videoIds: 'aaaaaaaaaaa' });
+      expect(notAnArray.status).toBe(400);
+
+      const invalidId = await request(app)
+        .post('/api/folder/archive/reconcile')
+        .send({ folderPath: FOLDER, method: 'remove', videoIds: ['../etc'] });
+      expect(invalidId.status).toBe(400);
+    });
+
+    it('refuses a method it does not know', async () => {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      mockedFs.stat.mockResolvedValue({ isDirectory: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+
+      const response = await request(app)
+        .post('/api/folder/archive/reconcile')
+        .send({ folderPath: FOLDER, method: 'delete-everything' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('refuses to rebuild while the drive looks unmounted', async () => {
+      // No .info.json anywhere: emptying the archive here would send the next
+      // run over the whole channel.
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      mockedFs.stat.mockResolvedValue({ isDirectory: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+      mockedFs.readdir.mockResolvedValue(['archive.txt', 'config.json'] as never);
+      mockedLoadIndex.mockResolvedValue(indexFile([]));
+
+      const response = await request(app)
+        .post('/api/folder/archive/reconcile')
+        .send({ folderPath: FOLDER, method: 'rebuild' });
+
+      expect(response.status).toBe(409);
+      expect(String(response.body.error)).toMatch(/unmounted/);
+    });
+  });
+
+  describe('repair endpoint', () => {
+    it('queues sidecar-only jobs pinned to the existing stem', async () => {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      mockedLoadIndex.mockResolvedValue({
+        ...indexFile([]),
+        entries: { aaaaaaaaaaa: indexEntry({ baseName: '20240101_Kept' }) },
+      });
+
+      const response = await request(app)
+        .post('/api/folder/repair')
+        .send({ folderPath: FOLDER, method: 'sidecars', videos: [{ videoId: 'aaaaaaaaaaa' }] });
+
+      expect(response.status).toBe(202);
+      const body = EnqueueJobsResponseSchema.parse(response.body);
+      expect(body.jobs).toHaveLength(1);
+      expect(body.jobs[0]).toMatchObject({ type: 'repair', baseName: '20240101_Kept' });
+      expect(body.jobs[0]?.writeComments).toBeUndefined();
+
+      await flush();
+      expect(at(spawnCalls, 0).args).toContain('--skip-download');
+      expect(at(spawnCalls, 0).args).toContain('--write-subs');
+      expect(at(spawnCalls, 0).args).not.toContain('--write-comments');
+      expect(at(spawnCalls, 0).args.some((arg) => arg.includes('archive'))).toBe(false);
+    });
+
+    it('refreshes comments only when the method asks for it', async () => {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      mockedLoadIndex.mockResolvedValue({
+        ...indexFile([]),
+        entries: { aaaaaaaaaaa: indexEntry({ baseName: '20240101_Kept' }) },
+      });
+
+      const response = await request(app)
+        .post('/api/folder/repair')
+        .send({ folderPath: FOLDER, method: 'comments', videos: [{ videoId: 'aaaaaaaaaaa' }] });
+
+      expect(response.status).toBe(202);
+      expect(EnqueueJobsResponseSchema.parse(response.body).jobs[0]?.writeComments).toBe(true);
+
+      await flush();
+      expect(at(spawnCalls, 0).args).toContain('--write-comments');
+    });
+
+    it('skips a video that is not downloaded rather than repairing nothing', async () => {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      mockedLoadIndex.mockResolvedValue(indexFile([]));
+
+      const response = await request(app)
+        .post('/api/folder/repair')
+        .send({ folderPath: FOLDER, method: 'sidecars', videos: [{ videoId: 'aaaaaaaaaaa' }] });
+
+      expect(response.status).toBe(202);
+      expect(EnqueueJobsResponseSchema.parse(response.body)).toMatchObject({
+        jobs: [],
+        skipped: [{ videoId: 'aaaaaaaaaaa', reason: 'not downloaded' }],
+      });
+    });
+
+    it('rejects an empty video list and an unknown method', async () => {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+
+      expect(
+        (await request(app).post('/api/folder/repair').send({ folderPath: FOLDER, method: 'sidecars', videos: [] }))
+          .status,
+      ).toBe(400);
+      expect(
+        (
+          await request(app)
+            .post('/api/folder/repair')
+            .send({ folderPath: FOLDER, method: 'everything', videos: [{ videoId: 'aaaaaaaaaaa' }] })
+        ).status,
+      ).toBe(400);
+    });
+  });
+
+  describe('download decision', () => {
+    it('skips a download for a video the folder already holds', async () => {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      mockedLoadIndex.mockResolvedValue({
+        ...indexFile([]),
+        entries: { aaaaaaaaaaa: indexEntry({ baseName: '20240101_Kept' }) },
+      });
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: 'aaaaaaaaaaa' }] });
+
+      expect(response.status).toBe(202);
+      expect(EnqueueJobsResponseSchema.parse(response.body)).toMatchObject({
+        jobs: [],
+        skipped: [{ videoId: 'aaaaaaaaaaa', reason: 'already downloaded' }],
+      });
+      expect(spawnCalls).toHaveLength(0);
+    });
+
+    it('downloads a video the folder does not hold, whatever archive.txt says', async () => {
+      // The archive is not consulted: a video whose files were deleted stays in
+      // it, so the app answers from the disk.
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      mockedLoadIndex.mockResolvedValue(indexFile([]));
+
+      const response = await request(app)
+        .post('/api/folder/queue')
+        .send({ folderPath: FOLDER, type: 'download', videos: [{ videoId: 'aaaaaaaaaaa' }] });
+
+      expect(EnqueueJobsResponseSchema.parse(response.body).jobs).toHaveLength(1);
+      expect(EnqueueJobsResponseSchema.parse(response.body).skipped).toEqual([]);
+    });
   });
 });

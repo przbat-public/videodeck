@@ -15,7 +15,7 @@
 
 export { QUEUE_STATE_FILE } from './downloadQueue/persistence';
 
-export { clearIndexRetries, indexChangedVideos } from './downloadQueue/postJobIndexing';
+export { clearIndexRetries, detectIncompleteJob, indexChangedVideos } from './downloadQueue/postJobIndexing';
 
 export type { DownloadQueueOptions, EnqueueRequest, SpawnedProcess, SpawnFn } from './downloadQueue/queue';
 export {

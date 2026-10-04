@@ -36,6 +36,8 @@ type FetchHandlers = {
   summaries?: () => MockResponse;
   folderSummary?: (folderPath: string) => MockResponse;
   list?: () => MockResponse;
+  /** GET /api/folder/state?folderPath= — the per-video state of one folder */
+  state?: () => MockResponse;
   enqueue?: () => MockResponse;
   /** POST /api/folder/download-playlist — the playlist fetch the row menu starts */
   downloadPlaylist?: () => MockResponse;
@@ -45,6 +47,19 @@ type FetchHandlers = {
 function matchPrefixedRoute(url: string, handlers: FetchHandlers): MockResponse | undefined {
   if (url.startsWith('/api/folder/list?')) {
     return handlers.list?.() ?? json({ videos: [], downloadStatuses: {}, lastUpdatedDates: {} });
+  }
+  // The per-video state the badges and the filter chips read
+  if (url.startsWith('/api/folder/state?')) {
+    return (
+      handlers.state?.() ??
+      json({
+        folderPath: '',
+        videos: [],
+        orphans: [],
+        drift: { missingFromArchive: [], missingFromDisk: [] },
+        counts: { videos: 0, downloaded: 0, incomplete: 0, notDownloaded: 0, orphans: 0 },
+      })
+    );
   }
   if (url.startsWith('/api/folder/list-exists')) {
     return json({ exists: false });
@@ -273,10 +288,10 @@ describe('StatusPage', () => {
     // One click opens the row and loads its videos: the toggle promises the
     // list, so no second button stands between the two
     expect(await screen.findByText('Film 1')).toBeInTheDocument();
-    // The videos hang off the expanded cell itself: the list is its first
-    // child, with no section wrapper or card in between
+    // The videos hang off the expanded cell itself, with no section wrapper or
+    // card in between: the list is the scroll viewport the rows paint into
     const cell = (rowA as HTMLElement).nextElementSibling?.querySelector('td');
-    expect(cell?.firstElementChild).toHaveAttribute('role', 'list');
+    expect(within(cell as HTMLElement).getByRole('list')).toHaveClass('videos-list');
     expect(within(cell as HTMLElement).getAllByRole('listitem')).toHaveLength(1);
     // No edit button of its own any more: the row menu owns that entry point
     expect(screen.queryByRole('button', { name: 'Utwórz config.json' })).toBeNull();

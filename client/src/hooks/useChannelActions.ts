@@ -1,13 +1,28 @@
-import type { FolderListResponse } from '@videodeck/shared/api';
-import { EnqueueJobsResponseSchema, FolderListResponseSchema } from '@videodeck/shared/schemas';
+import type { FolderListResponse, FolderStateResponse } from '@videodeck/shared/api';
+import {
+  EnqueueJobsResponseSchema,
+  FolderListResponseSchema,
+  FolderStateResponseSchema,
+} from '@videodeck/shared/schemas';
 import { useCallback, useState } from 'react';
 import toast from 'react-hot-toast';
 import i18n from '../i18n';
 import { apiGet, apiSend } from '../utils/apiClient';
+import type { RepairMethod } from '../utils/libraryActions';
+import { reconcileArchive, repairVideos, toastReconcileResult, toastRepairResult } from '../utils/libraryActions';
 import { selectDownloadable, selectDownloaded, selectStale } from '../utils/videoSelection';
+import { needsCompletion } from '../utils/videoState';
 
 /** Every queue action a console row can start */
-export type ChannelAction = 'download' | 'update' | 'update-stale' | 'cancel' | 'playlist';
+export type ChannelAction =
+  | 'download'
+  | 'update'
+  | 'update-stale'
+  | 'cancel'
+  | 'playlist'
+  | 'repair'
+  | 'repair-comments'
+  | 'reconcile';
 
 export interface UseChannelActionsOptions {
   /**
@@ -32,6 +47,20 @@ async function loadChannelVideos(folderPath: string): Promise<FolderListResponse
     cache: 'no-store',
     message: i18n.t('channelConsole.actions.listFailed'),
   });
+}
+
+/**
+ * The incomplete videos of a channel, read through the state endpoint's own
+ * filter. The answer decides who gets a repair job, and a video that is not on
+ * disk never does: a repair runs with `--skip-download`, so handing it a video
+ * the folder never downloaded would queue work that cannot do anything.
+ */
+async function loadIncompleteVideos(folderPath: string): Promise<FolderStateResponse> {
+  return apiGet(
+    `/api/folder/state?folderPath=${encodeURIComponent(folderPath)}&filter=incomplete`,
+    FolderStateResponseSchema,
+    { cache: 'no-store', failureMessage: (failure) => failure.message ?? i18n.t('videoState.loadError') },
+  );
 }
 
 /** The videos one bulk action works on, read from the channel's own list */
@@ -127,17 +156,58 @@ export function useChannelActions(options: UseChannelActionsOptions = {}): UseCh
     [onListChanged],
   );
 
+  /** Queue the sidecars the downloaded videos of a channel are missing */
+  const repairChannelGaps = useCallback(
+    async (folderPath: string, method: RepairMethod): Promise<void> => {
+      const state = await loadIncompleteVideos(folderPath);
+      const videoIds = state.videos.filter((video) => needsCompletion(video.downloadState)).map((video) => video.id);
+      if (videoIds.length === 0) {
+        toast.error(i18n.t('channelConsole.actions.nothingToDo'));
+        return;
+      }
+      const result = await repairVideos(folderPath, videoIds, method);
+      toastRepairResult(result, method);
+      await onQueueChanged?.(folderPath);
+    },
+    [onQueueChanged],
+  );
+
+  /** Rewrite `archive.txt` from the disk, and say what that changed */
+  const reconcileChannelArchive = useCallback(
+    async (folderPath: string): Promise<void> => {
+      const result = await reconcileArchive(folderPath);
+      toastReconcileResult(result);
+      await onQueueChanged?.(folderPath);
+    },
+    [onQueueChanged],
+  );
+
+  /** Which of the row's actions runs, and with what */
+  const runAction = useCallback(
+    async (folderPath: string, action: ChannelAction): Promise<void> => {
+      switch (action) {
+        case 'cancel':
+          return cancelFolderQueue(folderPath);
+        case 'playlist':
+          return downloadPlaylist(folderPath);
+        case 'repair':
+          return repairChannelGaps(folderPath, 'sidecars');
+        case 'repair-comments':
+          return repairChannelGaps(folderPath, 'comments');
+        case 'reconcile':
+          return reconcileChannelArchive(folderPath);
+        default:
+          return enqueueSelection(folderPath, action);
+      }
+    },
+    [cancelFolderQueue, downloadPlaylist, enqueueSelection, reconcileChannelArchive, repairChannelGaps],
+  );
+
   const run = useCallback(
     async (folderPath: string, action: ChannelAction): Promise<void> => {
       setFolderPending(folderPath, action);
       try {
-        if (action === 'cancel') {
-          await cancelFolderQueue(folderPath);
-        } else if (action === 'playlist') {
-          await downloadPlaylist(folderPath);
-        } else {
-          await enqueueSelection(folderPath, action);
-        }
+        await runAction(folderPath, action);
       } catch (err) {
         // A rejected request, a network failure or a bad body: reported once,
         // with the message the server sent when there was one
@@ -146,7 +216,7 @@ export function useChannelActions(options: UseChannelActionsOptions = {}): UseCh
         setFolderPending(folderPath, null);
       }
     },
-    [cancelFolderQueue, downloadPlaylist, enqueueSelection, setFolderPending],
+    [runAction, setFolderPending],
   );
 
   return { pending, run };

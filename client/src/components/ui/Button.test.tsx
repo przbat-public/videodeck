@@ -63,4 +63,15 @@ describe('Button', () => {
     expect(ref.current).toBeInstanceOf(HTMLButtonElement);
     expect(ref.current).toBe(screen.getByRole('button', { name: 'x' }));
   });
+
+  it('passes the aria attributes of a disclosure trigger through', () => {
+    render(
+      <Button aria-expanded={false} aria-label={'Stan plików: Film'}>
+        Stan plików
+      </Button>,
+    );
+
+    const button = screen.getByRole('button', { name: 'Stan plików: Film' });
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+  });
 });

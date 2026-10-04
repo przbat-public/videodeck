@@ -253,6 +253,30 @@ describe('filterChannels', () => {
     ]);
   });
 
+  it('puts a channel that was never updated last, and one that was first', () => {
+    // `newestUpdate` is absent while a channel has nothing downloaded, which
+    // reads as NaN. An update date that sorts above a missing one is the whole
+    // point of the "updated" order: the channels nobody has touched belong at
+    // the bottom, and two of them fall back to the name.
+    const dated = buildChannelRows(
+      status,
+      {
+        '/videos/kanal-a': {
+          videos: 1,
+          downloaded: 1,
+          notDownloaded: 0,
+          stale: 0,
+          newestUpdate: '2026-01-01T00:00:00.000Z',
+        },
+        '/videos/kanal-b': { videos: 1, downloaded: 0, notDownloaded: 1, stale: 0 },
+        '/videos/kanal-c': { videos: 1, downloaded: 0, notDownloaded: 1, stale: 0 },
+      },
+      {},
+    );
+
+    expect(sortChannels(dated, 'updated').map((row) => row.name)).toEqual(['kanal-a', 'kanal-b', 'kanal-c']);
+  });
+
   it('filters by attention, queue activity and failures', () => {
     const built = rows();
 
@@ -262,6 +286,20 @@ describe('filterChannels', () => {
     ]);
     expect(filterChannels(built, { query: '', filter: 'queue' }).map((row) => row.name)).toEqual(['kanal-a']);
     expect(filterChannels(built, { query: '', filter: 'failed' }).map((row) => row.name)).toEqual(['kanal-a']);
+  });
+});
+
+describe('channel names', () => {
+  it('reads the folder name whatever the separator, and never invents one', () => {
+    // Windows-style paths and a bare folder name reach the same rule: the last
+    // separator decides, and a path with none is already the name.
+    const rows = buildChannelRows(
+      { ...status, videosFolderPath: ['/videos/kanal-a', 'C:\\videos\\kanal-b', 'kanal-c'] },
+      {},
+      {},
+    );
+
+    expect(rows.map((row) => row.name).sort()).toEqual(['kanal-a', 'kanal-b', 'kanal-c']);
   });
 });
 

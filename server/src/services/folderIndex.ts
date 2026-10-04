@@ -10,15 +10,25 @@ import { isSafeVideoStem } from '../utils/videoStem';
  *
  * Replaces the previous approach of reading and JSON-parsing every `.info.json`
  * in a folder on each request. The index is a small hidden file
- * (`.videos-index.json`) mapping YouTube video id -> { baseName, infoMtime, title }.
- * Alongside it we maintain yt-dlp's `archive.txt` (`youtube <id>` per line)
- * so yt-dlp itself never re-downloads a video whose title changed.
+ * (`.videos-index.json`) mapping YouTube video id -> { baseName, infoMtime,
+ * title, what the download left on disk }. Alongside it we maintain yt-dlp's
+ * `archive.txt` (`youtube <id>` per line) so yt-dlp itself never re-downloads a
+ * video whose title changed.
  *
  * Both files are derived from disk state and can be rebuilt at any time.
+ * Version 2 added the per-file facts (`subtitleLangs`, `hasComments`,
+ * `hasDescription`, `videoBytes`); a version 1 file is rebuilt on read, because
+ * its entries cannot answer what a video is still missing.
  */
 
 export const INDEX_FILE = '.videos-index.json';
 export const ARCHIVE_FILE = 'archive.txt';
+/**
+ * Stored shape of `.videos-index.json`. Bumping it makes every folder rebuild
+ * once on the next read, which is what a new per-entry field needs; the file is
+ * derived state, so a rebuild loses nothing.
+ */
+export const INDEX_VERSION = 2;
 const INFO_SUFFIX = '.info.json';
 const VIDEO_EXTENSIONS = ['.mp4', '.mkv'];
 const ID_HEAD_BYTES = 8 * 1024;
@@ -34,10 +44,37 @@ export interface FolderIndexEntry {
   infoMtime: string;
   /** Video title from the info.json; absent in entries written before titles were recorded */
   title?: string;
+  /** Subtitle languages on disk (`en`, `pl`, …), sorted; [] when there are none */
+  subtitleLangs: string[];
+  /** Whether the info.json carries a non-empty comment list */
+  hasComments: boolean;
+  /** Whether a `.description` sidecar sits next to the video */
+  hasDescription: boolean;
+  /** Whether a thumbnail sidecar (`.webp`/`.jpg`) sits next to the video */
+  hasThumbnail: boolean;
+  /** Size of the video file in bytes, for the detail panel (0 when unreadable) */
+  videoBytes: number;
+  /** Size of the info.json in bytes, which is where the comments live */
+  infoBytes: number;
+}
+
+/**
+ * The per-file facts one index entry records. Kept apart from the entry so the
+ * rebuild, the incremental refresh and the stored-file reader build them the
+ * same way instead of each answering "what is on disk" on its own.
+ */
+export interface EntryFiles {
+  videoFile: string;
+  subtitleLangs: string[];
+  hasComments: boolean;
+  hasDescription: boolean;
+  hasThumbnail: boolean;
+  videoBytes: number;
+  infoBytes: number;
 }
 
 export interface FolderIndex {
-  version: 1;
+  version: 2;
   builtAt: string;
   entries: Record<string, FolderIndexEntry>;
 }
@@ -116,15 +153,121 @@ async function readVideoHead(infoPath: string): Promise<VideoHead | null> {
   }
 }
 
-function toIndexEntry(head: VideoHead, baseName: string, videoFile: string, infoMtime: Date): FolderIndexEntry {
-  const entry: FolderIndexEntry = { baseName, videoFile, infoMtime: infoMtime.toISOString() };
+function toIndexEntry(head: VideoHead, baseName: string, files: EntryFiles, infoMtime: Date): FolderIndexEntry {
+  const entry: FolderIndexEntry = {
+    baseName,
+    videoFile: files.videoFile,
+    infoMtime: infoMtime.toISOString(),
+    subtitleLangs: files.subtitleLangs,
+    hasComments: files.hasComments,
+    hasDescription: files.hasDescription,
+    hasThumbnail: files.hasThumbnail,
+    videoBytes: files.videoBytes,
+    infoBytes: files.infoBytes,
+  };
   if (head.title !== undefined) {
     entry.title = head.title;
   }
   return entry;
 }
 
-function findVideoFile(baseName: string, files: Set<string>): string | undefined {
+/** `<stem>.en.vtt`, `<stem>.pt-BR.vtt` → the language selector yt-dlp used */
+const SUBTITLE_LANG_RE = /\.([A-Za-z][A-Za-z0-9_-]*)\.vtt$/;
+
+/**
+ * The subtitle languages of one video, sorted. A file whose name is the stem
+ * plus `.vtt` alone belongs to the video but names no language, so it is left
+ * out: the badges report languages, not a file count.
+ */
+function subtitleLangsOf(baseName: string, files: Set<string>): string[] {
+  const prefix = `${baseName}.`;
+  const langs = new Set<string>();
+  for (const file of files) {
+    if (!file.startsWith(prefix) || !file.endsWith('.vtt')) {
+      continue;
+    }
+    const match = SUBTITLE_LANG_RE.exec(file.slice(baseName.length));
+    if (match?.[1] !== undefined) {
+      langs.add(match[1]);
+    }
+  }
+  return [...langs].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Whether the info.json carries comments, and whether it counts as a
+ * description source. Both come from the same read: the file is already open
+ * for its id, and comments are what make it large: a channel with comments on
+ * averages over a megabyte per video, most of it the comment list.
+ */
+async function readInfoExtras(infoPath: string): Promise<{ hasComments: boolean; hasDescription: boolean }> {
+  try {
+    const parsed: unknown = JSON.parse(await fs.readFile(infoPath, 'utf-8'));
+    if (typeof parsed !== 'object' || parsed === null) {
+      return { hasComments: false, hasDescription: false };
+    }
+    const record = parsed as Record<string, unknown>;
+    const comments = record.comments;
+    return {
+      hasComments: Array.isArray(comments) && comments.length > 0,
+      hasDescription: typeof record.description === 'string' && record.description.trim().length > 0,
+    };
+  } catch {
+    // An unreadable info.json is not a folder index failure: the video is
+    // still indexed from its head, it just reports no comments and no
+    // description.
+    return { hasComments: false, hasDescription: false };
+  }
+}
+
+/** Thumbnail sidecars, plain or numbered (`<stem>.webp`, `<stem>.mp4_4.webp`) */
+const THUMBNAIL_EXTENSIONS = ['.webp', '.jpg', '.jpeg', '.png'];
+
+/** Whether any thumbnail sidecar of this stem is on disk */
+function hasThumbnailOf(baseName: string, files: Set<string>): boolean {
+  if (THUMBNAIL_EXTENSIONS.some((ext) => files.has(`${baseName}${ext}`))) {
+    return true;
+  }
+  const prefix = `${baseName}.`;
+  for (const file of files) {
+    if (file.startsWith(prefix) && THUMBNAIL_EXTENSIONS.some((ext) => file.toLowerCase().endsWith(ext))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Everything the index records about the files of one video */
+async function collectEntryFiles(
+  folderPath: string,
+  baseName: string,
+  files: Set<string>,
+  videoFile: string,
+): Promise<EntryFiles> {
+  const infoPath = path.join(folderPath, `${baseName}${INFO_SUFFIX}`);
+  const [videoStats, infoStats, extras] = await Promise.all([
+    statOrNull(path.join(folderPath, videoFile)),
+    statOrNull(infoPath),
+    readInfoExtras(infoPath),
+  ]);
+  return {
+    videoFile,
+    subtitleLangs: subtitleLangsOf(baseName, files),
+    hasComments: extras.hasComments,
+    hasDescription: extras.hasDescription || files.has(`${baseName}.description`),
+    hasThumbnail: hasThumbnailOf(baseName, files),
+    videoBytes: videoStats?.size ?? 0,
+    infoBytes: infoStats?.size ?? 0,
+  };
+}
+
+/**
+ * The video file of a stem, or undefined when the folder holds none. Exported
+ * because "did this download produce its media" is asked outside this module
+ * too: the queue checks it after every successful exit, where `-i` hides a
+ * download that wrote only sidecars.
+ */
+export function findVideoFile(baseName: string, files: Set<string>): string | undefined {
   for (const ext of VIDEO_EXTENSIONS) {
     const candidate = `${baseName}${ext}`;
     if (files.has(candidate)) {
@@ -153,6 +296,10 @@ async function statOrNull(filePath: string): Promise<import('node:fs').Stats | n
  * entry we wrote and its `baseName` is a single path segment. The stem later
  * reaches yt-dlp's `-o` template, so a poisoned one is dropped here, where the
  * file is read, instead of travelling any further.
+ *
+ * The per-file fields fall back to their empty values instead of dropping the
+ * entry: a file written by a build that recorded fewer facts still describes a
+ * downloaded video, and losing it would report the video as missing.
  */
 function parseIndexEntry(value: unknown): FolderIndexEntry | null {
   if (typeof value !== 'object' || value === null) {
@@ -171,7 +318,20 @@ function parseIndexEntry(value: unknown): FolderIndexEntry | null {
     videoFile,
     infoMtime,
     ...(typeof record.title === 'string' ? { title: record.title } : {}),
+    subtitleLangs: Array.isArray(record.subtitleLangs)
+      ? record.subtitleLangs.filter((lang): lang is string => typeof lang === 'string')
+      : [],
+    hasComments: record.hasComments === true,
+    hasDescription: record.hasDescription === true,
+    hasThumbnail: record.hasThumbnail === true,
+    videoBytes: readSize(record.videoBytes),
+    infoBytes: readSize(record.infoBytes),
   };
+}
+
+/** A byte count from the index file, or 0 when the value is not a usable number */
+function readSize(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
 /** The stored index, with every entry that cannot be used left out */
@@ -180,7 +340,7 @@ function toFolderIndex(parsed: unknown): { index: FolderIndex; dropped: number }
     typeof parsed !== 'object' ||
     parsed === null ||
     !('version' in parsed) ||
-    parsed.version !== 1 ||
+    parsed.version !== INDEX_VERSION ||
     !('entries' in parsed) ||
     typeof parsed.entries !== 'object' ||
     parsed.entries === null
@@ -198,7 +358,7 @@ function toFolderIndex(parsed: unknown): { index: FolderIndex; dropped: number }
     }
     entries[id] = entry;
   }
-  return { index: { version: 1, builtAt, entries }, dropped };
+  return { index: { version: INDEX_VERSION, builtAt, entries }, dropped };
 }
 
 async function readIndexFile(folderPath: string): Promise<FolderIndex | null> {
@@ -314,13 +474,14 @@ export async function rebuildIndex(folderPath: string): Promise<FolderIndex> {
         return;
       }
       const stats = await fs.stat(infoPath);
-      entries[head.id] = toIndexEntry(head, baseName, videoFile, stats.mtime);
+      const entryFiles = await collectEntryFiles(folderPath, baseName, files, videoFile);
+      entries[head.id] = toIndexEntry(head, baseName, entryFiles, stats.mtime);
     } catch (error) {
       logger.error(`folderIndex: skipping ${infoPath}:`, error);
     }
   });
 
-  const index: FolderIndex = { version: 1, builtAt: new Date().toISOString(), entries };
+  const index: FolderIndex = { version: INDEX_VERSION, builtAt: new Date().toISOString(), entries };
   await saveIndex(folderPath, index);
   await writeArchive(folderPath, Object.keys(entries));
   return index;
@@ -429,7 +590,11 @@ async function collectChangedEntries(
       if (!head) {
         continue;
       }
-      existing.entries[head.id] = toIndexEntry(head, baseName, videoFile, stats.mtime);
+      // The sidecars of a video change with its download, so the per-file facts
+      // are re-read whenever the info.json is: a subtitle fetched by a repair
+      // job has to show up without a full rebuild.
+      const entryFiles = await collectEntryFiles(folderPath, baseName, files, videoFile);
+      existing.entries[head.id] = toIndexEntry(head, baseName, entryFiles, stats.mtime);
       changed.push(head.id);
     } catch (error) {
       logger.error(`folderIndex: skipping ${infoPath}:`, error);

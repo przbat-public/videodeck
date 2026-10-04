@@ -70,6 +70,49 @@ describe('buildYtDlpArgs', () => {
       '20260101_Ok [abc].%(ext)s',
     );
   });
+
+  it('fetches only sidecars for a repair job, and never consults the archive', () => {
+    // A repair exists because something is missing, so the archive must not
+    // decide that the video is done: `--download-archive` is what makes yt-dlp
+    // skip a video whose subtitles never arrived.
+    const args = buildYtDlpArgs({
+      ...job,
+      type: 'repair',
+      baseName: '20260101_A_Video',
+      options: { ...DEFAULT_DOWNLOAD_OPTIONS, subLangs: ['pl', 'en'] },
+    });
+
+    expect(args).toContain('--skip-download');
+    expect(args).toContain('--write-subs');
+    expect(args).toContain('--write-auto-subs');
+    expect(args[args.indexOf('--sub-lang') + 1]).toBe('pl,en');
+    expect(args[args.indexOf('-o') + 1]).toBe('20260101_A_Video.%(ext)s');
+    expect(args.some((arg) => arg.includes('archive'))).toBe(false);
+    expect(args).not.toContain('-f');
+    expect(args).not.toContain('--merge-output-format');
+  });
+
+  it('leaves comments alone for a sidecar repair and writes them when asked', () => {
+    const sidecars = buildYtDlpArgs({
+      ...job,
+      type: 'repair',
+      baseName: '20260101_A_Video',
+      writeComments: false,
+    });
+    expect(sidecars).not.toContain('--write-comments');
+
+    const withComments = buildYtDlpArgs({
+      ...job,
+      type: 'repair',
+      baseName: '20260101_A_Video',
+      writeComments: true,
+    });
+    expect(withComments).toContain('--write-comments');
+  });
+
+  it('still validates the output stem of a repair job', () => {
+    expect(() => buildYtDlpArgs({ ...job, type: 'repair', baseName: '../x' })).toThrow(/baseName/);
+  });
 });
 
 describe('getYtDlpVersion', () => {

@@ -5,13 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import type { QueueJob } from '@videodeck/shared/api';
 import type { Mock, MockedFunction, MockInstance } from 'vitest';
-import { at } from '../test-utils';
+import { at, indexEntry, indexFile } from '../test-utils';
 import { removePartialDownloads, writeTextAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import type { EnqueueRequest, SpawnedProcess } from './downloadQueue';
 import {
   clearIndexRetries,
   DownloadQueue,
+  detectIncompleteJob,
   indexChangedVideos,
   readConcurrency,
   restoreQueueState,
@@ -134,11 +135,11 @@ describe('indexChangedVideos', () => {
   it('refreshes the folder index from the job start and indexes the changed videos in Elasticsearch', async () => {
     mockedRefreshIndex.mockResolvedValue({
       index: {
-        version: 1,
+        ...indexFile([]),
         builtAt: 'x',
         entries: {
-          abc: { baseName: '20250101_New', videoFile: '20250101_New.mp4', infoMtime: 'x' },
-          old: { baseName: '20240101_Old', videoFile: '20240101_Old.mp4', infoMtime: 'x' },
+          abc: indexEntry({ baseName: '20250101_New', videoFile: '20250101_New.mp4' }),
+          old: indexEntry({ baseName: '20240101_Old', videoFile: '20240101_Old.mp4' }),
         },
       },
       changed: ['abc', 'ghost'],
@@ -160,9 +161,9 @@ describe('indexChangedVideos', () => {
     try {
       mockedRefreshIndex.mockResolvedValue({
         index: {
-          version: 1,
+          ...indexFile([]),
           builtAt: 'x',
-          entries: { abc: { baseName: '20250101_New', videoFile: '20250101_New.mp4', infoMtime: 'x' } },
+          entries: { abc: indexEntry({ baseName: '20250101_New', videoFile: '20250101_New.mp4' }) },
         },
         changed: ['abc'],
         removed: [],
@@ -194,9 +195,9 @@ describe('indexChangedVideos', () => {
       });
       mockedRefreshIndex.mockResolvedValue({
         index: {
-          version: 1,
+          ...indexFile([]),
           builtAt: 'x',
-          entries: { abc: { baseName: '20250101_New', videoFile: '20250101_New.mp4', infoMtime: 'x' } },
+          entries: { abc: indexEntry({ baseName: '20250101_New', videoFile: '20250101_New.mp4' }) },
         },
         changed: ['abc'],
         removed: [],
@@ -226,9 +227,9 @@ describe('indexChangedVideos', () => {
     try {
       mockedRefreshIndex.mockResolvedValue({
         index: {
-          version: 1,
+          ...indexFile([]),
           builtAt: 'x',
-          entries: { abc: { baseName: '20250101_New', videoFile: '20250101_New.mp4', infoMtime: 'x' } },
+          entries: { abc: indexEntry({ baseName: '20250101_New', videoFile: '20250101_New.mp4' }) },
         },
         changed: ['abc'],
         removed: [],
@@ -245,9 +246,81 @@ describe('indexChangedVideos', () => {
     }
   });
 
+  it('marks a download job incomplete when its media never appeared', async () => {
+    // yt-dlp runs with -i, so a download that wrote only sidecars exits 0 and
+    // the queue used to report a green job. The disk is the witness: no .mp4
+    // and an .info.json beside it means the media is missing.
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-verify-'));
+    try {
+      await fs.writeFile(path.join(dir, 'Video.info.json'), JSON.stringify({ id: 'abc', title: 'V' }), 'utf-8');
+      await fs.writeFile(path.join(dir, 'Video.en.vtt'), 'WEBVTT', 'utf-8');
+      await fs.writeFile(path.join(dir, 'Video.videos-index.json'), '{}', 'utf-8');
+      const job: QueueJob = {
+        ...jobWithoutStart,
+        folderPath: dir,
+        baseName: 'Video',
+        type: 'download',
+        status: 'running',
+      };
+
+      const reason = await detectIncompleteJob(job);
+
+      expect(reason).toMatch(/incomplete: Video has no video file/);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves a download job alone when the folder holds no files at all', async () => {
+    // An unmounted drive and a folder that lost everything read the same way,
+    // and blaming the job for an unplugged disk would be wrong twice.
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-verify-empty-'));
+    try {
+      const job: QueueJob = { ...jobWithoutStart, folderPath: dir, type: 'download', status: 'running' };
+
+      expect(await detectIncompleteJob(job)).toBeNull();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('never flags an update job, which rewrites the sidecars of a video that is there', async () => {
+    const job: QueueJob = { ...jobWithoutStart, type: 'update', baseName: '20240101_Kept', status: 'running' };
+
+    expect(await detectIncompleteJob(job)).toBeNull();
+  });
+
+  it('reports a video that is in neither the index nor the job', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-verify-unknown-'));
+    try {
+      await fs.writeFile(path.join(dir, 'Other.info.json'), '{"id":"other"}', 'utf-8');
+
+      const job: QueueJob = { ...jobWithoutStart, folderPath: dir, type: 'download', status: 'running' };
+
+      expect(await detectIncompleteJob(job)).toMatch(/nothing on disk to update/);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a job green when the folder cannot be listed', async () => {
+    // A folder that cannot be read must not turn a finished job into a failed
+    // one: the next poll simply shows no verdict.
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {
+      /* the warning is not the assertion */
+    });
+    mockedRefreshIndex.mockResolvedValue({ index: indexFile([]), changed: [], removed: [] });
+
+    const job: QueueJob = { ...jobWithoutStart, folderPath: '/definitely/not/here', status: 'running' };
+    await indexChangedVideos(job);
+
+    expect(job.incomplete).toBeUndefined();
+    warn.mockRestore();
+  });
+
   it('falls back to createdAt and skips Elasticsearch when nothing changed', async () => {
     mockedRefreshIndex.mockResolvedValue({
-      index: { version: 1, builtAt: 'x', entries: {} },
+      index: { ...indexFile([]), builtAt: 'x' },
       changed: [],
       removed: [],
     });

@@ -71,6 +71,7 @@ export function FolderSection({
       <VideoListSection
         folderPath={folderPath}
         listExists={isCollection || initialListExists === true}
+        collection={isCollection}
         queueRevision={queueRevision}
         onQueueChanged={handleQueueChanged}
       />

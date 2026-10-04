@@ -318,16 +318,105 @@ export const StatusResponseSchema = z.object({
   status: z.literal('ok'),
 });
 
+/**
+ * What one video has on disk. The folder index records it per file, so the
+ * console can show which subtitles a download actually produced instead of a
+ * single "downloaded" flag.
+ */
+export const VideoFilesStateSchema = z.object({
+  video: z.boolean(),
+  thumbnail: z.boolean(),
+  description: z.boolean(),
+  /** Subtitle languages on disk (`en`, `pl`, …) */
+  subLangs: z.array(z.string()),
+  comments: z.boolean(),
+  /** Size of the media file in bytes (0 when it could not be read) */
+  videoBytes: z.number().nonnegative(),
+  /** Size of the `.info.json` in bytes, which is where the comments live */
+  infoBytes: z.number().nonnegative(),
+});
+
+export const VideoArchiveStateSchema = z.object({
+  onDisk: z.boolean(),
+  inArchive: z.boolean(),
+  /** `archive.txt` and the disk disagree about this video */
+  drift: z.boolean(),
+});
+
+export const DownloadStateSchema = z.object({
+  /** null when nothing of this video is on disk */
+  files: VideoFilesStateSchema.nullable(),
+  archive: VideoArchiveStateSchema,
+  /**
+   * Sidecars the folder wanted and the video lacks: `thumbnail`, `description`,
+   * `comments`, or a subtitle language code. Empty for a video that is not
+   * downloaded at all, which `files: null` already says.
+   */
+  missing: z.array(z.string()),
+});
+
 export const ChannelVideoSchema = z.object({
   title: z.string(),
   url: z.string(),
   id: z.string(),
+  /** Seconds; absent in a list.json written before the field was kept */
+  duration: z.number().optional(),
+  viewCount: z.number().optional(),
+  /** `YYYYMMDD` from the catalog row */
+  uploadDate: z.string().optional(),
+  /** YouTube availability (`needs_auth`, `premium_only`, …) when it says so */
+  availability: z.string().optional(),
+  /** What is on disk for this video; absent while nothing is downloaded */
+  downloadState: DownloadStateSchema.optional(),
+  /** On disk, but the channel no longer lists it */
+  orphan: z.boolean().optional(),
 });
 
 export const FolderListResponseSchema = z.object({
   videos: z.array(ChannelVideoSchema),
   downloadStatuses: z.record(z.string(), z.boolean()),
   lastUpdatedDates: z.record(z.string(), z.string()),
+});
+
+/** What `archive.txt` and the disk disagree about, per folder */
+export const ArchiveDriftSchema = z.object({
+  missingFromArchive: z.array(z.string()),
+  missingFromDisk: z.array(z.string()),
+});
+
+/**
+ * The whole folder's per-video state, orphans included. The console reads this
+ * once per open channel instead of asking per video.
+ */
+export const FolderStateResponseSchema = z.object({
+  folderPath: z.string(),
+  /** Rows of `list.json`, each with its state */
+  videos: z.array(ChannelVideoSchema),
+  /** Videos on disk that `list.json` no longer contains */
+  orphans: z.array(ChannelVideoSchema),
+  drift: ArchiveDriftSchema,
+  counts: z.object({
+    videos: z.number().int().nonnegative(),
+    downloaded: z.number().int().nonnegative(),
+    incomplete: z.number().int().nonnegative(),
+    notDownloaded: z.number().int().nonnegative(),
+    orphans: z.number().int().nonnegative(),
+  }),
+});
+
+export const VideoStateResponseSchema = z.object({
+  folderPath: z.string(),
+  videoId: z.string(),
+  /** False when the video is in neither the catalog nor the folder index */
+  known: z.boolean(),
+  state: DownloadStateSchema,
+});
+
+export const ArchiveReconcileResponseSchema = z.object({
+  added: z.array(z.string()),
+  removed: z.array(z.string()),
+  unchanged: z.number().int().nonnegative(),
+  drift: ArchiveDriftSchema,
 });
 
 /**
@@ -354,10 +443,17 @@ export const QueueJobSchema = z.object({
   videoId: z.string(),
   videoUrl: z.string(),
   title: z.string().optional(),
-  type: z.enum(['download', 'update']),
+  type: z.enum(['download', 'update', 'repair']),
   baseName: z.string().optional(),
   options: DownloadOptionsSchema.optional(),
+  /** Repair jobs only: this run refreshes the comment section as well */
+  writeComments: z.boolean().optional(),
   status: z.enum(['queued', 'running', 'done', 'error', 'cancelled']),
+  /**
+   * A finished job whose media never appeared on disk. `yt-dlp -i` exits 0 for
+   * a run that wrote nothing, so the disk gets the last word.
+   */
+  incomplete: z.boolean().optional(),
   progress: z.number().optional(),
   log: z.array(z.string()),
   logLineCount: z.number(),
@@ -530,6 +626,14 @@ export type FolderConfig = z.infer<typeof FolderConfigSchema>;
 export type StatusResponse = z.infer<typeof StatusResponseSchema>;
 export type ChannelVideo = z.infer<typeof ChannelVideoSchema>;
 export type FolderListResponse = z.infer<typeof FolderListResponseSchema>;
+export type VideoFilesState = z.infer<typeof VideoFilesStateSchema>;
+export type DownloadState = z.infer<typeof DownloadStateSchema>;
+export type ArchiveDrift = z.infer<typeof ArchiveDriftSchema>;
+export type FolderStateResponse = z.infer<typeof FolderStateResponseSchema>;
+export type VideoStateResponse = z.infer<typeof VideoStateResponseSchema>;
+export type ArchiveReconcileResponse = z.infer<typeof ArchiveReconcileResponseSchema>;
+/** The three ways `archive.txt` can be brought in line with the disk */
+export type ArchiveMethod = 'add' | 'remove' | 'rebuild';
 export type FolderSummary = z.infer<typeof FolderSummarySchema>;
 export type FolderSummariesResponse = z.infer<typeof FolderSummariesResponseSchema>;
 export type QueueJob = z.infer<typeof QueueJobSchema>;

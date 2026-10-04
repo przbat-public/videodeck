@@ -13,9 +13,12 @@
  *
  * Failure simulation: video ids containing `member` / `private` / `removed`
  * print the corresponding YouTube error and exit 1, so permanent-failure
- * detection can be exercised offline. A `yt-dlp.conf` in the working
- * directory without `--ignore-config` exits 3: the real binary would have
- * loaded it. Everything else is a strict no-op success.
+ * detection can be exercised offline. A subtitle language named by
+ * `FAKE_YTDLP_RATE_LIMIT_SUB_LANG` is left unwritten and reported as a
+ * throttled subtitle after the other languages land, which is the partial
+ * repair a test needs. A `yt-dlp.conf` in the working directory without
+ * `--ignore-config` exits 3: the real binary would have loaded it. Everything
+ * else is a strict no-op success.
  *
  * With `.fake-ytdlp-argv.jsonl` present in the working directory, every
  * invocation appends its cwd and argv there as one JSON line, which is how
@@ -94,6 +97,18 @@ function failOnKnownError(id) {
  */
 const PROGRESS_DELAY_MS = Number(process.env.FAKE_YTDLP_PROGRESS_DELAY_MS ?? 0);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Subtitle language this run cannot fetch, so a test can drive the partial
+ * repair: every other requested language is written, this one is reported the
+ * way the live binary reports a throttled subtitle (`WARNING: Unable to
+ * download video subtitles for 'pl': HTTP Error 429: Too Many Requests`), and
+ * the run still exits 0. Every repair job passes `-i`, with which a subtitle
+ * that fails to download is a warning, not a failed run — a non-zero exit here
+ * would make the queue retry work that YouTube, not the job, refused.
+ * Unset (the default) every requested language is written.
+ */
+const RATE_LIMITED_SUB_LANG = process.env.FAKE_YTDLP_RATE_LIMIT_SUB_LANG ?? '';
 
 async function emitProgress(steps) {
   for (const percent of steps) {
@@ -201,10 +216,18 @@ if (writeDescription) {
   writeFileSync(path.join(process.cwd(), `${baseName}.description`), 'Fake description for deep integration tests.');
 }
 if (writeSubs) {
+  // The deep environment's videoFiles() helper (test-infra) promises this exact
+  // body, so the fake and that promise stay in lockstep.
+  const subtitleBody = 'WEBVTT\n\n00:00.000 --> 00:01.000\nDeep test subtitle line.\n';
   for (const lang of subLangs) {
-    writeFileSync(
-      path.join(process.cwd(), `${baseName}.${lang}.vtt`),
-      'WEBVTT\n\n00:00.000 --> 00:01.000\nDeep test subtitle line.\n',
+    if (lang === RATE_LIMITED_SUB_LANG) {
+      continue; // throttled below, after the languages that did answer
+    }
+    writeFileSync(path.join(process.cwd(), `${baseName}.${lang}.vtt`), subtitleBody);
+  }
+  if (subLangs.includes(RATE_LIMITED_SUB_LANG)) {
+    console.error(
+      `WARNING: Unable to download video subtitles for '${RATE_LIMITED_SUB_LANG}': HTTP Error 429: Too Many Requests`,
     );
   }
 }

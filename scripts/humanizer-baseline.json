@@ -24,5 +24,6 @@
   "chrome-extension/README.md": 2,
   "chrome-extension/INSTALL.md": 8,
   "chrome-extension/icons/README.md": 1,
-  ".github/pull_request_template.md": 0
+  ".github/pull_request_template.md": 0,
+  "docs/plans/library-control.md": 2
 }
