@@ -13,7 +13,7 @@ about.
 
 - No cookies and no new yt-dlp flags. The allowlist in `folderConfig.ts` and the
   forbidden list stay untouched; downloading members-only content is out of
-  scope by decision (owner has no membership on these channels).
+  scope by decision.
 - No per-video reason in the folder state response. Row badges read
   `availability`, which the catalog already carries.
 - No UI for the `force` escape hatch. It stays an API-level switch documented in
@@ -133,26 +133,44 @@ The gate is `pnpm run verify`. During the loop: `cd server && pnpm run test -t
 
 ## Tasks
 
-- [ ] T1: add `server/src/services/unavailableVideos.ts` with the availability
+- [x] T1: add `server/src/services/unavailableVideos.ts` with the availability
   rule, the record shape and the TTL, unit tested
   acceptance: `cd server && pnpm run test -- -t "unavailableVideos"`
-- [ ] T2: `FolderSummarySchema.unavailable` plus the pure count in
+- [x] T2: `FolderSummarySchema.unavailable` plus the pure count in
   `folderSummary.ts` and its route wiring
   acceptance: `cd server && pnpm run test -- -t "summarizeFolder"`
-- [ ] T3: skip `subscriber_only` and `premium_only` at enqueue
+- [x] T3: skip `subscriber_only` and `premium_only` at enqueue
   acceptance: `cd server && pnpm run test -- -t "enqueue skips"`
-- [ ] T4: record a video-level failure on finish, clear it on success
+- [x] T4: record a video-level failure on finish, clear it on success
   acceptance: `cd server && pnpm run test -- -t "permanent failure record"`
-- [ ] T5: skip remembered videos until the TTL, honour `force`
+- [x] T5: skip remembered videos until the TTL, honour `force`
   acceptance: `cd server && pnpm run test -- -t "remembered"`
-- [ ] T6: translate the skip reasons in the client and route the toast through
+- [x] T6: translate the skip reasons in the client and route the toast through
   `skipReasonText`
   acceptance: `cd client && pnpm run test:run -t "skip reason"`
-- [ ] T7: show unavailable videos separately in the console, with the row badge
+- [x] T7: show unavailable videos separately in the console, with the row badge
   and the pl/en copy
   acceptance: `cd client && pnpm run test:run -t "unavailable"`
-- [ ] T8: document the behaviour in `docs/API.md`, `CHANGELOG.md` entry, add
+- [x] T8: document the behaviour in `docs/API.md`, `CHANGELOG.md` entry, add
   this plan to the humanizer gate list
   acceptance: `pnpm run humanizer:gate`
-- [ ] T9: full gate
+- [x] T9: full gate
   acceptance: `pnpm run verify`
+
+## Outcome
+
+Ten commits on `feat/unavailable-videos`, ending on a green `pnpm run verify`.
+Two decisions changed while the work was built, and both are worth naming:
+
+- `FolderSummary.unavailable` ships optional, not required. A required field
+  rewrote about fifty summary fixtures in seven test files for one number that
+  only the console reads, so an absent count reads as zero instead. The server
+  fills it in on every answer.
+- The refusal reasons reach the channel console through `skipReasonText`, which
+  also fixed the one toast that printed the server's English code at the reader.
+
+One commit sits outside this plan. `server/src/test-env.ts` now points
+`QUEUE_STATE_FILE` at a temporary path, because a test run used to rewrite
+`server/.queue-state.json`, the same file a dev server in this checkout reads.
+That is how a live queue lost its pending jobs during this work, and the guard
+has its own test so the two can never share a file again.
