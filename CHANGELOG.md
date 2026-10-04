@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Videos YouTube will not hand over stop filling the queue with errors**: a
+  `download` for a video the catalog reports as `subscriber_only` or
+  `premium_only` is skipped before a job exists, and a failure that waiting
+  cannot fix (`members-only`, `private`, `removed`, `geo-restricted`,
+  `age-gate`) is remembered in the folder's `.unavailable.json` for 30 days.
+  The channel console counts those videos as `unavailable`, apart from
+  `notDownloaded`, and the row badge names the reason instead of calling a
+  members-only video "not downloaded". On the Charles Dowding channel this
+  turns 66 failing jobs into one line of text. `POST /api/folder/queue` takes
+  `force: true` to queue one anyway
 - **Per-video state instead of a yes/no flag**: `GET /api/folder/state` and
   `GET /api/folder/video-state` report what a download left on disk
   (thumbnail, description, subtitle languages, comments) and name what each
