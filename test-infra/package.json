@@ -21,8 +21,8 @@
     }
   },
   "dependencies": {
-    "express": "^5.2.1",
-    "supertest": "^7.3.0"
+    "express": "^5.3.0",
+    "supertest": "^7.3.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.5",
