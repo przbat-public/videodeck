@@ -34,10 +34,12 @@ const runWithEnv = (cwd, args, env) =>
 const WATCH_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
 
 /**
- * The arguments a `repair` job builds (server/src/services/ytdlp.ts,
- * buildYtDlpArgs): the sidecar flags on an existing stem, `--skip-download`,
- * and deliberately no `--download-archive` — the archive records videos, not
- * the sidecars a repair went looking for.
+ * The arguments of a `repair` job under yt-dlp's default overwrite policy
+ * (server/src/services/ytdlp.ts, buildYtDlpArgs): the sidecar flags on an
+ * existing stem, `--skip-download`, and deliberately no `--download-archive`
+ * — the archive records videos, not the sidecars a repair went looking for.
+ * A sidecar repair adds `--no-overwrites` and a comment repair
+ * `--write-comments`; the tests below splice those in where they matter.
  *
  * @param {string} stem
  */
@@ -265,4 +267,80 @@ test('prefixes permanent failures with the youtube extractor id, like the live b
   const removed = run('--simulate', 'https://www.youtube.com/watch?v=removed123');
   assert.equal(removed.status, 1);
   assert.match(removed.stderr, /^ERROR: \[youtube\] removed123: Video unavailable\. This video has been removed/);
+});
+
+// The live binary's file policy, which is what decides whether a refresh can
+// lose archived data (YoutubeDL._write_info_json and existing_file in yt-dlp
+// 2026.8.19). A fake that is kinder than the binary lets a test pass on a
+// server that destroys the archive.
+
+/**
+ * @param {string} dir
+ * @param {string} stem
+ */
+const readInfo = (dir, stem) => JSON.parse(readFileSync(path.join(dir, `${stem}.info.json`), 'utf-8'));
+
+test('writes the comment section only when the run asks for it', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    const stem = '20260101_Fake video dQw4w9WgXcQ';
+    writeFileSync(path.join(dir, `${stem}.mp4`), 'fake-mp4-bytes');
+
+    assert.equal(run(...repairArgs(stem), dir).status, 0);
+    assert.equal('comments' in readInfo(dir, stem), false);
+
+    const withComments = repairArgs(stem);
+    withComments.splice(withComments.length - 1, 0, '--write-comments');
+    assert.equal(run(...withComments, dir).status, 0);
+    assert.ok(readInfo(dir, stem).comments.length > 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('deletes a subtitle before fetching it again, so a refused fetch leaves it gone', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    const stem = '20260101_Fake video dQw4w9WgXcQ';
+    writeFileSync(path.join(dir, `${stem}.mp4`), 'fake-mp4-bytes');
+    writeFileSync(path.join(dir, `${stem}.en.vtt`), 'WEBVTT\n\narchived english\n');
+
+    const result = runWithEnv(dir, repairArgs(stem), { FAKE_YTDLP_RATE_LIMIT_SUB_LANG: 'en' });
+
+    // Exit 0 under -i, like the binary: the loss is a warning, not a failure
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(existsSync(path.join(dir, `${stem}.en.vtt`)), false);
+    assert.equal(readFileSync(path.join(dir, `${stem}.pl.vtt`), 'utf-8'), SUBTITLE_BODY);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('keeps every sidecar already on disk with --no-overwrites and fetches only the missing ones', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    const stem = '20260101_Fake video dQw4w9WgXcQ';
+    const archived = {
+      [`${stem}.mp4`]: 'fake-mp4-bytes',
+      [`${stem}.info.json`]: JSON.stringify({ id: 'dQw4w9WgXcQ', comments: [{ id: 'kept', text: 'Archived.' }] }),
+      [`${stem}.description`]: 'Archived description.',
+      [`${stem}.webp`]: 'archived-webp',
+      [`${stem}.en.vtt`]: 'WEBVTT\n\narchived english\n',
+    };
+    for (const [file, body] of Object.entries(archived)) {
+      writeFileSync(path.join(dir, file), body);
+    }
+    const args = repairArgs(stem);
+    args.splice(args.length - 1, 0, '--no-overwrites');
+
+    const result = runWithEnv(dir, args, { FAKE_YTDLP_RATE_LIMIT_SUB_LANG: 'en' });
+
+    assert.equal(result.status, 0, result.stderr);
+    for (const [file, body] of Object.entries(archived)) {
+      assert.equal(readFileSync(path.join(dir, file), 'utf-8'), body, `${file} was rewritten`);
+    }
+    assert.equal(readFileSync(path.join(dir, `${stem}.pl.vtt`), 'utf-8'), SUBTITLE_BODY);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
