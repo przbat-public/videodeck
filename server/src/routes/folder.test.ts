@@ -49,6 +49,7 @@ import { reconcileLibrary, resetLibraryState } from '../services/libraryState';
 import { at, indexEntry, indexFile } from '../test-utils';
 import { activeSseStreamCount } from '../utils/sseRegistry';
 import { invalidateStatusCache, invalidateSummaryCache } from './folder';
+import { JSON_BODY_LIMIT_BYTES, MAX_QUEUE_VIDEOS } from './validation';
 
 vi.mock('node:fs/promises');
 vi.mock('node:child_process');
@@ -1652,6 +1653,33 @@ describe('createApp (full app with body limit)', () => {
     expect(response.status).toBe(202);
     expect(response.body.jobs).toHaveLength(4000);
     expect(response.body.skipped).toEqual([]);
+  });
+
+  it('caps the list above what the body limit lets a real request carry', () => {
+    // The client sends one `{ videoId }` per selected video. A body with
+    // MAX_QUEUE_VIDEOS of them must already be over the limit, or the cap
+    // would refuse a selection the body limit lets through.
+    const videos = Array.from({ length: MAX_QUEUE_VIDEOS }, () => ({ videoId: 'dQw4w9WgXcQ' }));
+
+    const body = JSON.stringify({ folderPath: FOLDER, type: 'download', videos });
+
+    expect(Buffer.byteLength(body)).toBeGreaterThan(JSON_BODY_LIMIT_BYTES);
+  });
+
+  it('refuses more videos than one request may carry, before walking them', async () => {
+    // A bare number is the cheapest element to send and each one is invalid.
+    // A schema that walks the array before it checks the size answers with
+    // the first element's issue, after building one issue per element (a
+    // 1 MB body of them held about 280 MB of heap on zod 4.6.5).
+    const videos = Array.from({ length: MAX_QUEUE_VIDEOS + 1 }, () => 1);
+
+    const response = await request(createRealApp())
+      .post('/api/folder/queue')
+      .send({ folderPath: FOLDER, type: 'download', videos });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe(`videos: videos must hold at most ${MAX_QUEUE_VIDEOS} entries`);
+    expect(downloadQueue.list()).toEqual([]);
   });
 });
 
