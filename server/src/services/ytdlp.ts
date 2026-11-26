@@ -148,6 +148,15 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
     // No `--download-archive`: the file records videos, not the sidecars a
     // repair went looking for, so consulting it here would skip the very work
     // the job exists to do.
+    //
+    // A sidecar repair passes --no-overwrites, because yt-dlp's default is
+    // destructive for an archive: it rewrites the info.json (a repair asks for
+    // no comment section, so the archived comments went with it) and deletes
+    // a subtitle or a thumbnail before fetching it again (a 429 under -i then
+    // left it gone while the job reported success). With the flag yt-dlp keeps
+    // every file already there and writes only what is missing, which is what
+    // a repair is for. A comment repair cannot take it: the old info.json
+    // would win, and the fresh comment list would be thrown away.
     return [
       '--ignore-config',
       '-i',
@@ -155,6 +164,7 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
       '--newline',
       ...RUNTIME_ARGS,
       '--skip-download',
+      ...(job.writeComments === true ? [] : ['--no-overwrites']),
       '-o',
       `${escapeOutputTemplate(job.baseName)}.%(ext)s`,
       ...buildMetadataArgs(options, job.writeComments ?? false),
@@ -187,9 +197,23 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
  * `-i` turns per-video failures (private/deleted entries) into a successful
  * run: yt-dlp still exits non-zero without it, and the endpoint used to
  * answer 500 even though every remaining video was fetched.
+ *
+ * `raise_incomplete_data` keeps `-i` from going too far. Without it,
+ * "Incomplete data received" on a continuation page is a warning after three
+ * retries: yt-dlp stops paging and exits 0 with the pages it had, and the
+ * caller replaced list.json with the newest part of the channel. With it the
+ * run fails, and the list on disk stays as it was.
  */
 export function buildPlaylistArgs(channelUrl: string): string[] {
-  return ['--ignore-config', '--flat-playlist', '-i', '-j', channelUrl];
+  return [
+    '--ignore-config',
+    '--flat-playlist',
+    '-i',
+    '-j',
+    '--extractor-args',
+    'youtube:raise_incomplete_data',
+    channelUrl,
+  ];
 }
 
 /** Wall-clock limit for a playlist fetch (huge channels are slow) */

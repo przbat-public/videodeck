@@ -70,7 +70,12 @@ export async function indexChangedVideos(job: QueueJob): Promise<void> {
   // not fail the job, which has already produced its files.
 
   const since = new Date(job.startedAt ?? job.createdAt).getTime();
-  const { index, changed } = await refreshIndex(job.folderPath, since);
+  // An update or a repair names the stem it worked on. A sidecar repair
+  // leaves that stem's info.json untouched (--no-overwrites), so the mtime
+  // window alone would never see the subtitle it fetched: the stem is re-read
+  // regardless.
+  const ownStem = job.type !== 'download' && job.baseName !== undefined ? [job.baseName] : [];
+  const { index, changed } = await refreshIndex(job.folderPath, since, ownStem);
   const baseNames = changed
     .map((videoId) => index.entries[videoId]?.baseName)
     .filter((baseName): baseName is string => typeof baseName === 'string');
