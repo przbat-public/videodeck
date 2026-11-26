@@ -45,6 +45,20 @@ function Harness({ onClose = vi.fn() }: { onClose?: () => void }): React.JSX.Ele
   );
 }
 
+/** A dialog that is open from its first render, so no control hands it focus */
+function OpenedHarness({ onClose }: { onClose: () => void }): React.JSX.Element | null {
+  const [open, setOpen] = useState(true);
+  const close = (): void => {
+    setOpen(false);
+    onClose();
+  };
+  return open ? (
+    <Modal title="Konfiguracja folderu" onClose={close}>
+      <Button onClick={close}>Anuluj</Button>
+    </Modal>
+  ) : null;
+}
+
 describe('Modal', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -93,19 +107,7 @@ describe('Modal', () => {
   it('closes a dialog that has no control to hand focus back to', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    function OpenedHarness(): React.JSX.Element | null {
-      const [open, setOpen] = useState(true);
-      const close = (): void => {
-        setOpen(false);
-        onClose();
-      };
-      return open ? (
-        <Modal title="Konfiguracja folderu" onClose={close}>
-          <Button onClick={close}>Anuluj</Button>
-        </Modal>
-      ) : null;
-    }
-    render(<OpenedHarness />);
+    render(<OpenedHarness onClose={onClose} />);
 
     await user.click(screen.getByRole('button', { name: 'Anuluj' }));
 
