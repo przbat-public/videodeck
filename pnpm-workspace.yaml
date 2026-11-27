@@ -18,3 +18,12 @@ allowBuilds:
 # cooldown in .github/dependabot.yml waits at least as long, and
 # scripts/check-supply-chain.test.mjs keeps the two in step.
 minimumReleaseAge: 1440
+
+# The lockfile holds the resolved tree and nothing else. Left alone, pnpm 12
+# writes a first YAML document that records its own version, and GitHub's
+# dependency graph reads only that document: it saw 15 pnpm packages and none
+# of the 700 the app runs on, so Dependabot never raised an alert. `ignore`
+# keeps the document out. It also stops pnpm from switching to, or insisting
+# on, the pinned version locally; CI (pnpm/action-setup) and Docker
+# (corepack) still read the pin from `packageManager`.
+pmOnFail: ignore
