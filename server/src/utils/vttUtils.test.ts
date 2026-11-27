@@ -88,6 +88,16 @@ describe('findSubtitleFiles', () => {
     expect(findSubtitleFiles('X', ['X.5.vtt', 'X.5.webp'])).toEqual(['X.5.vtt']);
   });
 
+  it('keeps its own captions beside a twin video whose title ends in their language', () => {
+    // "Talk" and "Talk.en" from one day: yt-dlp never writes a plain track, so
+    // Talk.en.vtt is Talk's English one, while Talk.en.en.vtt is the twin's
+    const listing = ['Talk.info.json', 'Talk.mp4', 'Talk.en.vtt', 'Talk.en.info.json', 'Talk.en.mp4', 'Talk.en.en.vtt'];
+    expect(findSubtitleFiles('Talk', listing)).toEqual(['Talk.en.vtt']);
+    expect(findSubtitleFiles('Allegro', ['Allegro.mp4', 'Allegro.pl.vtt', 'Allegro.pl.mkv'])).toEqual([
+      'Allegro.pl.vtt',
+    ]);
+  });
+
   it('reads any iterable of names, the folder index passes a set', () => {
     expect(findSubtitleFiles('X', new Set(['X.mp4', 'X.en.vtt']))).toEqual(['X.en.vtt']);
   });

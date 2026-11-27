@@ -51,6 +51,9 @@ export function vttLanguage(fileName: string): string | undefined {
 /** What follows `<stem>.` in a subtitle of that stem: `vtt` alone, or a language with no dot and `.vtt` */
 const OWN_SUBTITLE_RE = /^(?:([^.]+)\.)?vtt$/;
 
+/** The shape of a yt-dlp language code: `en`, `fil`, `en-US`, `zh-Hans`, `es-419`, `en-orig` */
+const LANGUAGE_CODE_RE = /^[a-z]{2,3}(?:-[A-Za-z0-9]+)*$/;
+
 /**
  * The subtitle files of the video with this stem among a folder's file names,
  * in listing order: `<stem>.vtt` and `<stem>.<lang>.vtt`, one rule for the
@@ -59,7 +62,10 @@ const OWN_SUBTITLE_RE = /^(?:([^.]+)\.)?vtt$/;
  * title's, so "Part 1.5" is the video `<stem>.5` beside "Part 1" and its
  * captions (`<stem>.5.en.vtt`) start with the other stem. A name whose
  * language part makes a video of its own in the listing (`<stem>.5.vtt` beside
- * `<stem>.5.info.json` or `<stem>.5.mp4`) is that video's plain subtitle.
+ * `<stem>.5.info.json` or `<stem>.5.mp4`) is that video's plain subtitle,
+ * unless the part reads as a language code: beside a twin titled "Talk.en",
+ * `<stem>.en.vtt` is the stem's own English track, since yt-dlp never writes
+ * a plain one.
  */
 export function findSubtitleFiles(stem: string, files: Iterable<string>): string[] {
   const prefix = `${stem}.`;
@@ -71,7 +77,7 @@ export function findSubtitleFiles(stem: string, files: Iterable<string>): string
     }
     const rest = file.slice(prefix.length);
     const sibling = siblingVideoPart(rest);
-    if (sibling !== undefined) {
+    if (sibling !== undefined && !LANGUAGE_CODE_RE.test(sibling)) {
       siblings.add(sibling);
     }
     const subtitle = OWN_SUBTITLE_RE.exec(rest);
