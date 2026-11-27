@@ -1535,6 +1535,15 @@ describe('DownloadQueue', () => {
     expect(queue.list()).toHaveLength(1);
   });
 
+  it('queues a video once when one request lists it twice', () => {
+    // A channel list can name a video twice, and the dedup index is built
+    // once per request: it has to know the jobs that request just created
+    const jobs = queue.enqueue([request('a'), request('b'), request('a', { type: 'update', baseName: 'x' })]);
+
+    expect(at(jobs, 2).id).toBe(at(jobs, 0).id);
+    expect(queue.list().map((job) => job.videoId)).toEqual(['a', 'b']);
+  });
+
   it('cancels a queued job without spawning it', () => {
     const queued = at(queue.enqueue([request('a'), request('b')]), 1);
 
@@ -1918,6 +1927,71 @@ describe('DownloadQueue', () => {
 
     shortQueue.prune(Date.now() + 5000);
     expect(shortQueue.get(job.id)).toBeUndefined();
+  });
+
+  describe('scheduling', () => {
+    // start() can refuse a job before any spawn: a stem that is not a single
+    // path segment, an update without the stem it rewrites. The job then
+    // finishes as an error from inside the pump, and that finish pumps again,
+    // so the limits have to hold through the nested pass.
+    it('keeps both download limits when the pump starts a job that is refused', () => {
+      queue.enqueue([
+        request('a', { folderPath: '/videos/channel-b', baseName: '../escape' }),
+        request('b', { folderPath: '/videos/channel-c' }),
+        request('c', { folderPath: '/videos/channel-d' }),
+        request('d', { folderPath: '/videos/channel-c' }),
+      ]);
+
+      expect(statuses()).toEqual([
+        ['a', 'error'],
+        ['b', 'running'],
+        ['c', 'running'],
+        ['d', 'queued'], // two downloads run, and one of them holds channel-c
+      ]);
+      expect(spawn.calls.map((call) => call.cwd)).toEqual(['/videos/channel-c', '/videos/channel-d']);
+    });
+
+    it('keeps the update limit when the pump starts a job that is refused', () => {
+      queue.enqueue([request('a', { type: 'update' }), update('b'), update('c'), update('d'), update('e')]);
+
+      expect(statuses()).toEqual([
+        ['a', 'error'],
+        ['b', 'running'],
+        ['c', 'running'],
+        ['d', 'running'],
+        ['e', 'queued'],
+      ]);
+    });
+
+    it('keeps each transition linear in the size of the backlog', async () => {
+      // A channel backfill queues every video of the channel in one request,
+      // and backlogs of 6,000 jobs happen. The pump used to scan the whole
+      // queue once per queued job, so a transition cost the square of the
+      // backlog: about a second of blocked event loop at that size.
+      const backlog = [
+        ...Array.from({ length: 3_000 }, (_, i) => request(`d${i}`)),
+        ...Array.from({ length: 1_500 }, (_, i) => update(`u${i}`, { folderPath: '/videos/channel-b' })),
+      ];
+      const runningDownloads = () => queue.list().filter((job) => job.type === 'download' && job.status === 'running');
+
+      const started = performance.now();
+      queue.enqueue(backlog);
+      spawned(0).process.exit(0); // the running download finishes
+      spawned(1).process.exit(0); // and so does an update
+      for (let tick = 0; tick < 5; tick += 1) {
+        await flush();
+      }
+      queue.cancel(at(runningDownloads(), 0).id);
+      for (let tick = 0; tick < 5; tick += 1) {
+        await flush();
+      }
+      queue.enqueue([request('late')]);
+      const elapsed = performance.now() - started;
+
+      expect(runningDownloads().map((job) => job.videoId)).toEqual(['d2']);
+      expect(queue.list().filter((job) => job.type === 'update' && job.status === 'running')).toHaveLength(3);
+      expect(elapsed).toBeLessThan(1_000);
+    });
   });
 });
 

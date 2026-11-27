@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A backlog of thousands of jobs no longer stalls the server.** Every start,
+  finish or cancel rescanned the whole queue once per waiting job, which
+  blocked the event loop for about a second at 6,000 jobs. Scheduling now
+  walks the queue once per change
 - **Cancelled jobs stay cancelled across a restart.** A cancel arriving while
   an older state write was still in flight got compared with the file before
   that write, judged unchanged and skipped, so the next boot restored it
