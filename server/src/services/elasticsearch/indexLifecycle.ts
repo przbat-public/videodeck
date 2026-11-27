@@ -52,14 +52,8 @@ const SEARCH_ANALYZER = 'polish_folded';
 
 const INDEX_MAPPINGS = {
   properties: {
-    baseName: {
-      type: 'keyword',
-      fields: {
-        // analyzed variant for full-text search (baseName^4 in SEARCH_FIELDS);
-        // the keyword parent keeps exact lookups (getVideoByBaseName) working
-        text: { type: 'text', analyzer: SEARCH_ANALYZER },
-      },
-    },
+    // Exact lookups only (getVideoByBaseName); the file name is no search field
+    baseName: { type: 'keyword' },
     videoId: { type: 'keyword' },
     title: {
       type: 'text',

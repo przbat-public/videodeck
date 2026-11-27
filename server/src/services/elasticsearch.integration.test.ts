@@ -14,6 +14,7 @@ import {
   getVideoByFilePath,
   listChannelsByFolder,
   promoteIndexVersion,
+  SEARCH_FIELDS,
   searchVideos,
   searchVideosWithTotal,
   toDocument,
@@ -371,6 +372,31 @@ describeIntegration('Elasticsearch integration', () => {
 
     const page = await searchVideosWithTotal('rakieta', undefined, [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER]);
     expect(page.videos.map((item) => item.baseName)).toEqual(['20240101_tytul', '20240102_film_0']);
+  });
+
+  it('scores a downloaded file and a foreign-named file with the same title alike', async () => {
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      indexName,
+      [
+        // The stem yt-dlp writes, a single token under the standard tokenizer
+        toDocument({ ...video('20240101_Robot_Arm_Build_abc12345678', 'Robot Arm Build'), videoId: 'abc12345678' }),
+        // A file named outside the app, whose stem splits into words
+        toDocument({ ...video('Robot Arm Build [abc12345679]', 'Robot Arm Build'), videoId: 'abc12345679' }),
+      ],
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, indexName);
+
+    // The service's own match over its fields: with the file name among them
+    // at ^4, the second file's words lifted it above the first
+    const response = await esClient.search({
+      index: indexName,
+      query: { multi_match: { query: 'robot', fields: SEARCH_FIELDS, type: 'best_fields', fuzziness: 'AUTO' } },
+    });
+    const scores = response.hits.hits.map((hit) => hit._score);
+    expect(scores).toHaveLength(2);
+    expect(scores[0]).toBe(scores[1]);
   });
 
   // The scenarios below are the twins of the fake's own tests: the same

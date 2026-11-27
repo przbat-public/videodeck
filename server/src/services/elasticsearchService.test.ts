@@ -233,6 +233,8 @@ describe('elasticsearchService', () => {
         analyzer: 'polish_folded',
       });
       expect(request.settings.analysis.analyzer.polish_folded.filter).toEqual(['lowercase', 'asciifolding']);
+      // A bare keyword: the exact lookup by file name is all that reads it
+      expect(request.mappings.properties.baseName).toEqual({ type: 'keyword' });
       expect(request.mappings.properties).not.toHaveProperty('comments');
       expect(request.settings.index).not.toHaveProperty('mapping');
       expect(mockClient.indices.updateAliases).not.toHaveBeenCalled();
@@ -1009,7 +1011,9 @@ describe('elasticsearchService', () => {
         },
       });
       expect(SEARCH_FIELDS).toContain('commentsText');
-      expect(SEARCH_FIELDS[0]).toBe('baseName.text^4');
+      // The file name is no search field: new stems are one token under the
+      // standard tokenizer, and a foreign-named file's words outscored titles
+      expect(SEARCH_FIELDS.filter((field) => field.startsWith('baseName'))).toEqual([]);
       expect(request.sort).toEqual([{ viewCount: { order: 'desc', missing: '_last' } }]);
       expect(request.from).toBe(0);
       expect(request.size).toBe(100);

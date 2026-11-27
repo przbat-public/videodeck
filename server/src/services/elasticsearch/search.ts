@@ -120,7 +120,14 @@ function buildSortOptions(sortOption: SortOption): estypes.SortCombinations[] {
   }
 }
 
-export const SEARCH_FIELDS = ['baseName.text^4', 'title^3', 'description^2', 'transcriptText^2', 'commentsText'];
+/**
+ * The fields a phrase is matched against, with their boosts. The file name is
+ * not one of them: under the standard tokenizer a `<date>_<title>_<id>` stem
+ * written with --restrict-filenames is a single token no phrase matches, while
+ * a file named outside the app splits into words that outscored the title at
+ * ^4. The title carries those words, and a video without one gets its stem's.
+ */
+export const SEARCH_FIELDS = ['title^3', 'description^2', 'transcriptText^2', 'commentsText'];
 
 /** How many results one page holds by default (shared with the client) */
 export const SEARCH_DEFAULT_LIMIT = SEARCH_DEFAULT_PAGE_SIZE;

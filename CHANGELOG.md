@@ -112,6 +112,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Search ignores file names.** A stem yt-dlp writes is one token to the
+  analyzer and never matched, while a file named by hand split into words
+  that weighed more than its title. Titles carry those words; a video
+  without one borrows its file name's when indexed. Older indices keep the
+  unused subfield until their next reindex
 - **Test runs never read `server/.env`.** Only the server's entry point
   loads it, ahead of every import, where `config.ts` used to load it for
   anything that imported the app. A remote cluster for the server's
