@@ -321,7 +321,7 @@
   },
   "health": {
     "elasticsearchDown": "Elasticsearch nie odpowiada. Wyszukiwanie i indeksowanie są wyłączone, pobieranie i lista filmów działają dalej.",
-    "elasticsearchReadOnly": "Elasticsearch przyjmuje tylko odczyty, zwykle z powodu prawie pełnego dysku. Wyszukiwanie działa, ale nowe pobrania nie trafią do wyników, dopóki zapis znów nie będzie możliwy.",
+    "elasticsearchReadOnly": "Elasticsearch przyjmuje tylko odczyty, zwykle z powodu prawie pełnego dysku. Wyszukiwanie działa, ale filmy pobrane w międzyczasie mogą nie pojawić się w wynikach: gdy zapis znów będzie możliwy, uruchom „{{refresh}}” z odznaczoną opcją „{{onlyMissing}}”.",
     "recheck": "Sprawdź ponownie"
   },
   "theme": {

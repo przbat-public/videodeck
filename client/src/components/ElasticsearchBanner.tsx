@@ -11,7 +11,10 @@ import { Button } from './ui/Button';
  *
  * A cluster that answers but refuses writes, as it does on a nearly full disk,
  * gets the same strip with its own message: search works, and new videos do
- * not reach it. An outage outranks that message, since nothing works then.
+ * not reach it. The write after a download gives up after about 10.5 minutes
+ * of retries, so the message names the way back in the menu's own labels: a
+ * reindex with the only-missing switch off, once writes come back. An outage
+ * outranks that message, since nothing works then.
  *
  * This is the only component that polls: the pages and the menu read the same
  * state from the store.
@@ -24,7 +27,10 @@ export function ElasticsearchBanner(): JSX.Element | null {
   if (elasticsearch === 'down') {
     message = t('health.elasticsearchDown');
   } else if (writesRefused) {
-    message = t('health.elasticsearchReadOnly');
+    message = t('health.elasticsearchReadOnly', {
+      refresh: t('reindex.start'),
+      onlyMissing: t('reindex.onlyMissing'),
+    });
   } else {
     return null;
   }

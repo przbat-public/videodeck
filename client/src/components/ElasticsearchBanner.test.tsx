@@ -47,14 +47,25 @@ describe('ElasticsearchBanner', () => {
 
   describe('a cluster that refuses writes', () => {
     const readOnly = () => jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1, writes: 'refused' });
+    /** The message as the strip renders it, with the menu labels filled in */
+    const readOnlyMessage = () =>
+      i18n.t('health.elasticsearchReadOnly', {
+        refresh: i18n.t('reindex.start'),
+        onlyMissing: i18n.t('reindex.onlyMissing'),
+      });
 
-    it('says search still works and new videos do not reach it, in the same strip', async () => {
+    it('says search still works and names the full reindex that brings in the videos downloaded meanwhile', async () => {
       fetchMock.mockResolvedValue(readOnly());
 
       render(<ElasticsearchBanner />);
 
       const banner = await screen.findByRole('status');
-      expect(banner).toHaveTextContent(i18n.t('health.elasticsearchReadOnly'));
+      expect(banner).toHaveTextContent(readOnlyMessage());
+      // The write after a download gives up after about 10.5 minutes of
+      // retries, so the strip names the way back in the menu's own words: the
+      // reindex, and the switch that would skip the folders already indexed
+      expect(banner).toHaveTextContent(i18n.t('reindex.start'));
+      expect(banner).toHaveTextContent(i18n.t('reindex.onlyMissing'));
       expect(banner).toHaveClass('health-banner');
     });
 
@@ -78,7 +89,7 @@ describe('ElasticsearchBanner', () => {
       act(() => reportElasticsearchUnavailable());
 
       expect(screen.getByRole('status')).toHaveTextContent(i18n.t('health.elasticsearchDown'));
-      expect(screen.getByRole('status')).not.toHaveTextContent(i18n.t('health.elasticsearchReadOnly'));
+      expect(screen.getByRole('status')).not.toHaveTextContent(readOnlyMessage());
     });
   });
 });
