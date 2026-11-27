@@ -13,9 +13,11 @@ Readiness probe: pings Elasticsearch and returns `200 { status: 'ok', elasticsea
 
 Dependency-free liveness probe: `200 { status: 'ok' }` when the server process responds.
 
-### GET /metrics (public)
+### GET /metrics
 
-Prometheus: `http_requests_total` and `http_request_duration_seconds` (method/route/status labels on the counter, method/route on the histogram; unknown paths go to the `unmatched` label so as not to multiply series per URL), `download_queue_size`, and summary cost metrics: `summary_requests_total`, `summary_tokens_total`, `summary_estimated_cost_cents_total`, each labelled with the provider (`openai` or `deepseek`) and the model (a USD estimate based on approximate model pricing; DeepSeek is priced at its off-peak rate).
+Prometheus: `http_requests_total` and `http_request_duration_seconds` (method/route/status labels on the counter, method/route on the histogram; unknown paths go to the `unmatched` label so as not to multiply series per URL), `download_queue_size`, and summary cost metrics: `summary_requests_total`, `summary_tokens_total`, `summary_estimated_cost_cents_total`, each labelled with the provider (`openai` or `deepseek`) and the model that was asked and answered, by its configured name and not the dated snapshot a response names (`gpt-4o`, not `gpt-4o-2024-08-06`). The cost is a USD estimate based on that model's approximate pricing; DeepSeek is priced at its off-peak rate. An answer that holds no summary counts as an `error`, and its tokens are still recorded.
+
+The endpoint sits behind the same guard as `/api`: with `API_TOKEN` set, a scrape has to send `Authorization: Bearer <token>`.
 
 ### GET /api/events
 

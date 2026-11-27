@@ -102,6 +102,21 @@ function rateLimitError(): Error {
   });
 }
 
+/**
+ * The value of one series of a summary counter, 0 before its first increment.
+ * The counters live in the module and add up across this file, so a test reads
+ * the series before its call and compares the difference.
+ */
+async function seriesValue(name: string, labels: Readonly<Record<string, string>>): Promise<number> {
+  const values = (await metricsRegistry.getSingleMetric(name)?.get())?.values ?? [];
+  const keys = Object.keys(labels);
+  const series = values.find(
+    (entry) =>
+      Object.keys(entry.labels).length === keys.length && keys.every((key) => entry.labels[key] === labels[key]),
+  );
+  return series?.value ?? 0;
+}
+
 /** The file handle handed out by the fs.open mock (writeTextAtomic) */
 const mockFileHandle = {
   writeFile: vi.fn<(content: string, encoding: BufferEncoding) => Promise<void>>(),
@@ -383,7 +398,11 @@ This is a test subtitle`;
       mockedFs.readFile.mockResolvedValueOnce(VTT as never);
       mockOpenAIInstance.chat.completions.create
         .mockRejectedValueOnce(rateLimitError())
-        .mockResolvedValueOnce(mockCompletion('Summary'));
+        .mockResolvedValueOnce({ ...mockCompletion('Summary'), model: 'gpt-4o-mini-2024-07-18' });
+      const primaryError = { provider: 'openai', model: 'gpt-4o', status: 'error' };
+      const fallbackOk = { provider: 'openai', model: 'gpt-4o-mini', status: 'ok' };
+      const errorsBefore = await seriesValue('summary_requests_total', primaryError);
+      const answersBefore = await seriesValue('summary_requests_total', fallbackOk);
 
       const pending = generateSummary(INPUT);
       // The fallback model waits out exactly the Retry-After the provider sent
@@ -397,6 +416,9 @@ This is a test subtitle`;
       // The first call used gpt-4o, the fallback gpt-4o-mini
       expect(at(mockOpenAIInstance.chat.completions.create.mock.calls, 0)[0].model).toBe('gpt-4o');
       expect(at(mockOpenAIInstance.chat.completions.create.mock.calls, 1)[0].model).toBe('gpt-4o-mini');
+      // Each attempt counts under the profile it asked, whatever name the answer carries
+      expect(await seriesValue('summary_requests_total', primaryError)).toBe(errorsBefore + 1);
+      expect(await seriesValue('summary_requests_total', fallbackOk)).toBe(answersBefore + 1);
     } finally {
       vi.useRealTimers();
     }
@@ -438,6 +460,30 @@ This is a test subtitle`;
     });
 
     await expect(generateSummary(INPUT)).rejects.toThrow('The openai API did not return a summary');
+  });
+
+  it('counts an empty answer as an error, with the tokens it was billed', async () => {
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {
+      /* silence the expected billing log */
+    });
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+    mockedFs.readFile.mockResolvedValueOnce(VTT as never);
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue({
+      ...mockCompletion(''),
+      usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+    });
+    const gpt4o = { provider: 'openai', model: 'gpt-4o' };
+    const okBefore = await seriesValue('summary_requests_total', { ...gpt4o, status: 'ok' });
+    const errorsBefore = await seriesValue('summary_requests_total', { ...gpt4o, status: 'error' });
+    const promptBefore = await seriesValue('summary_tokens_total', { ...gpt4o, type: 'prompt' });
+
+    await expect(generateSummary(INPUT)).rejects.toThrow('The openai API did not return a summary');
+
+    expect(await seriesValue('summary_requests_total', { ...gpt4o, status: 'ok' })).toBe(okBefore);
+    expect(await seriesValue('summary_requests_total', { ...gpt4o, status: 'error' })).toBe(errorsBefore + 1);
+    // The provider bills the call whatever it sent back
+    expect(await seriesValue('summary_tokens_total', { ...gpt4o, type: 'prompt' })).toBe(promptBefore + 100);
+    infoSpy.mockRestore();
   });
 
   it('propagates subtitle read errors', async () => {
@@ -655,30 +701,35 @@ This is a test subtitle`;
     expect(at(mockOpenAIInstance.chat.completions.create.mock.calls, 0)[0].model).toBe('gpt-4o');
   });
 
-  it('logs the billed tokens, approximate cost and records cost metrics per provider', async () => {
+  it('labels and prices a summary by the model profile asked, not the snapshot name the answer carries', async () => {
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {
       /* silence the expected billing log */
     });
     mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
     mockedFs.readFile.mockResolvedValueOnce(VTT as never);
+    // OpenAI answers a request for gpt-4o with the dated snapshot that served it
     mockOpenAIInstance.chat.completions.create.mockResolvedValue({
       ...mockCompletion('Summary'),
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o-2024-08-06',
       usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
     });
+    const gpt4o = { provider: 'openai', model: 'gpt-4o' };
+    const okBefore = await seriesValue('summary_requests_total', { ...gpt4o, status: 'ok' });
+    const promptBefore = await seriesValue('summary_tokens_total', { ...gpt4o, type: 'prompt' });
+    const costBefore = await seriesValue('summary_estimated_cost_cents_total', gpt4o);
 
     await generateSummary(INPUT);
 
-    // 100/1M × $0.15 + 50/1M × $0.60 = $0.000045 = 0.0045 cents
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('provider=openai'));
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('≈0.0045 cents'));
-    expect(metricsRegistry.getSingleMetric('summary_requests_total')).toBeDefined();
-    expect(metricsRegistry.getSingleMetric('summary_tokens_total')).toBeDefined();
-    const costMetric = metricsRegistry.getSingleMetric('summary_estimated_cost_cents_total');
-    expect(costMetric).toBeDefined();
-    expect((await costMetric?.get())?.values).toContainEqual(
-      expect.objectContaining({ labels: { provider: 'openai', model: 'gpt-4o-mini' } }),
-    );
+    expect(await seriesValue('summary_requests_total', { ...gpt4o, status: 'ok' })).toBe(okBefore + 1);
+    expect(await seriesValue('summary_tokens_total', { ...gpt4o, type: 'prompt' })).toBe(promptBefore + 100);
+    // gpt-4o's rate: 100/1M × $2.50 + 50/1M × $10 = $0.00075 = 0.075 cents
+    expect(await seriesValue('summary_estimated_cost_cents_total', gpt4o)).toBeCloseTo(costBefore + 0.075);
+    expect(
+      await seriesValue('summary_estimated_cost_cents_total', { provider: 'openai', model: 'gpt-4o-2024-08-06' }),
+    ).toBe(0);
+    // The log line keeps the name that answered, the one to quote to the provider
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('provider=openai model=gpt-4o-2024-08-06'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('≈0.0750 cents'));
     infoSpy.mockRestore();
   });
 

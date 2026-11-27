@@ -8,6 +8,7 @@ import { logger } from '../utils/logger';
 import {
   resolveSummaryProvider,
   type SummaryModelProfile,
+  type SummaryProviderId,
   type SummaryProviderProfile,
   type SummaryRequestExtras,
 } from './llmProviders';
@@ -333,21 +334,21 @@ async function generateUncached(input: GenerateSummaryInput, summaryFilePath: st
 
   await acquireGenerationSlot();
   try {
-    const { completion, truncated } = await completeWithFallback(client, profile, subtitleText);
+    const { completion, model, truncated } = await completeWithFallback(client, profile, subtitleText);
 
-    const model = completion.model;
-    summaryRequestsTotal.inc({ provider: profile.id, model, status: 'ok' });
-
+    // Tokens are billed whatever the answer holds, so an empty one counts too
     if (completion.usage) {
-      recordUsage(profile, baseName, model, completion.usage);
+      recordUsage(profile.id, model, completion.model, baseName, completion.usage);
     }
 
     // Defensive `?.` on message: the API has returned choices without one
     const summary = completion.choices[0]?.message?.content;
 
     if (!summary) {
+      summaryRequestsTotal.inc({ provider: profile.id, model: model.name, status: 'error' });
       throw new Error(`The ${profile.id} API did not return a summary`);
     }
+    summaryRequestsTotal.inc({ provider: profile.id, model: model.name, status: 'ok' });
 
     // `finish_reason: 'length'` means the model hit max_tokens mid-sentence:
     // the summary is cut off. Return it marked as truncated and DO NOT cache
@@ -382,6 +383,8 @@ async function generateUncached(input: GenerateSummaryInput, summaryFilePath: st
 /** Result of the fallback chain: the completion plus whether the input was cut */
 interface FallbackResult {
   completion: OpenAI.Chat.Completions.ChatCompletion;
+  /** The profile entry that was asked and answered: the metrics carry its name and its prices */
+  model: SummaryModelProfile;
   truncated: boolean;
 }
 
@@ -449,7 +452,7 @@ async function completeWithFallback(
     const { text, truncated } = prepareModelInput(model, subtitleText);
     try {
       const completion = await attemptModel(client, model, text);
-      return { completion, truncated };
+      return { completion, model, truncated };
     } catch (error) {
       lastError = error;
       summaryRequestsTotal.inc({ provider: profile.id, model: model.name, status: 'error' });
@@ -490,23 +493,30 @@ async function waitForRetryAfter(error: unknown): Promise<number> {
   return delay / 1000;
 }
 
-/** Record token usage and the approximate cost of a summary response */
+/**
+ * Record token usage and the approximate cost of a summary response. The
+ * series carry the configured name of the profile that was asked and answered,
+ * priced at its rates: a response names the dated snapshot that served it
+ * (gpt-4o-2024-08-06 for gpt-4o), which no profile lists, so keying on that
+ * name priced every answer at 0 and split one model into a series per
+ * snapshot. The log line keeps the answered name, the one to quote to the
+ * provider.
+ */
 function recordUsage(
-  profile: SummaryProviderProfile,
+  provider: SummaryProviderId,
+  model: SummaryModelProfile,
+  answeredName: string,
   baseName: string,
-  model: string,
   usage: OpenAI.CompletionUsage,
 ): void {
-  const provider = profile.id;
-  summaryTokensTotal.inc({ provider, model, type: 'prompt' }, usage.prompt_tokens);
-  summaryTokensTotal.inc({ provider, model, type: 'completion' }, usage.completion_tokens);
-  // The response names the model that answered: price it by name, and fall back
-  // to free rather than guessing a rate for a model no profile knows.
-  const [inputPrice, outputPrice] = profile.models.find((candidate) => candidate.name === model)?.prices ?? [0, 0];
+  const labels = { provider, model: model.name };
+  summaryTokensTotal.inc({ ...labels, type: 'prompt' }, usage.prompt_tokens);
+  summaryTokensTotal.inc({ ...labels, type: 'completion' }, usage.completion_tokens);
+  const [inputPrice, outputPrice] = model.prices;
   const costCents =
     (usage.prompt_tokens / 1_000_000) * inputPrice * 100 + (usage.completion_tokens / 1_000_000) * outputPrice * 100;
-  summaryEstimatedCostCents.inc({ provider, model }, costCents);
+  summaryEstimatedCostCents.inc(labels, costCents);
   logger.info(
-    `Summary for ${baseName}: provider=${provider} model=${model} prompt=${usage.prompt_tokens} completion=${usage.completion_tokens} tokens, ≈${costCents.toFixed(4)} cents`,
+    `Summary for ${baseName}: provider=${provider} model=${answeredName} prompt=${usage.prompt_tokens} completion=${usage.completion_tokens} tokens, ≈${costCents.toFixed(4)} cents`,
   );
 }
