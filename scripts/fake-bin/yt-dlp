@@ -26,7 +26,7 @@
  * invocation appends its cwd and argv there as one JSON line, which is how
  * tests assert the arguments the queue built.
  */
-import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const args = process.argv.slice(2);
@@ -112,6 +112,23 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 const RATE_LIMITED_SUB_LANG = process.env.FAKE_YTDLP_RATE_LIMIT_SUB_LANG ?? '';
 
+/**
+ * What YouTube serves today, for the refresh tests:
+ *  - FAKE_YTDLP_COMMENTS=disabled: comments turned off upstream, so the
+ *    info.json carries no comment section even with --write-comments;
+ *  - FAKE_YTDLP_COMMENTS=interrupted: a later comment page is refused, so the
+ *    run writes every file with the comments that arrived and no
+ *    comment_count, then exits 1 (yt-dlp's report_error under -i);
+ *  - FAKE_YTDLP_DESCRIPTION=blank: the uploader blanked the description;
+ *  - FAKE_YTDLP_FAIL_AFTER_WRITE=1: synthetic: the run writes every file,
+ *    then prints a permanent failure. The live binary fails a private video
+ *    before it writes anything; this stands in for an error that comes after
+ *    files landed (ENOSPC, say), the case where a failed run must not count.
+ */
+const COMMENTS_MODE = process.env.FAKE_YTDLP_COMMENTS ?? '';
+const BLANK_DESCRIPTION = process.env.FAKE_YTDLP_DESCRIPTION === 'blank';
+const FAIL_AFTER_WRITE = process.env.FAKE_YTDLP_FAIL_AFTER_WRITE === '1';
+
 async function emitProgress(steps) {
   for (const percent of steps) {
     console.log(`download  ${percent}% (~12.34MiB @ 5.00MiB/s, ETA 00:02)`);
@@ -156,9 +173,11 @@ if (args.includes('--simulate')) {
   process.exit(0);
 }
 
-// -o template: downloads use %(upload_date)s_%(title)s.%(ext)s, updates use
-// <baseName>.%(ext)s with --skip-download. baseName is the STEM; the fake
-// writes the video as <stem>.mp4 and the sidecars as <stem>.<sidecar>.
+// -o template: downloads use %(upload_date)s_%(title)s.%(ext)s, a sidecar
+// repair uses <baseName>.%(ext)s with --skip-download, and an update or a
+// comment repair uses .videodeck-staging/<jobId>/<baseName>.%(ext)s, so
+// `baseName` below can be that relative path. The fake writes the video as
+// <baseName>.mp4 and the sidecars as <baseName>.<sidecar>.
 const outputArgIndex = args.indexOf('-o');
 const outputTemplate = outputArgIndex >= 0 ? args[outputArgIndex + 1] : '';
 const skipDownload = args.includes('--skip-download');
@@ -203,7 +222,12 @@ const subLangs = subLangIndex >= 0 ? (args[subLangIndex + 1] ?? 'en').split(',')
  *  - with --no-overwrites every file already there is kept as it is ("Video
  *    metadata is already present") and only what is missing gets written.
  */
-const target = (file) => path.join(process.cwd(), file);
+/** A file under the cwd; an -o template with directories (a staged run) gets them created */
+const target = (file) => {
+  const full = path.join(process.cwd(), file);
+  mkdirSync(path.dirname(full), { recursive: true });
+  return full;
+};
 
 /** An info.json or a description: rewritten unless --no-overwrites keeps it */
 function writeSidecar(file, body) {
@@ -241,12 +265,16 @@ if (writeInfoJson) {
       view_count: 1234,
       like_count: 56,
       channel: 'Deep test channel',
-      description: 'Deep test description.',
+      description: BLANK_DESCRIPTION ? '' : 'Deep test description.',
       webpage_url: url,
       // Like the binary: a run without --write-comments writes no comment
-      // section at all, not an empty one
-      ...(writeComments
-        ? { comment_count: 1, comments: [{ id: `Ugx-fake-${id}`, author: 'Fake viewer', text: 'Fake comment.' }] }
+      // section at all, not an empty one, and an interrupted extraction has
+      // no comment_count
+      ...(writeComments && COMMENTS_MODE !== 'disabled'
+        ? {
+            ...(COMMENTS_MODE === 'interrupted' ? {} : { comment_count: 1 }),
+            comments: [{ id: `Ugx-fake-${id}`, author: 'Fake viewer', text: 'Fake comment.' }],
+          }
         : {}),
     }),
   );
@@ -255,7 +283,7 @@ if (writeThumbnail) {
   refetch(`${baseName}.webp`, () => 'fake-webp');
 }
 if (writeDescription) {
-  writeSidecar(`${baseName}.description`, 'Fake description for deep integration tests.');
+  writeSidecar(`${baseName}.description`, BLANK_DESCRIPTION ? '' : 'Fake description for deep integration tests.');
 }
 if (writeSubs) {
   // The deep environment's videoFiles() helper (test-infra) promises this exact
@@ -279,6 +307,15 @@ if (writeSubs) {
 }
 if (archiveIndex >= 0) {
   appendFileSync(path.join(process.cwd(), args[archiveIndex + 1]), `youtube ${id}\n`);
+}
+
+if (writeComments && COMMENTS_MODE === 'interrupted') {
+  console.error(`ERROR: [youtube] ${id}: Unable to download comment API JSON: HTTP Error 403: Forbidden`);
+  process.exit(1);
+}
+if (FAIL_AFTER_WRITE) {
+  console.error(FAILURE_CASES.private(id));
+  process.exit(1);
 }
 
 console.log(`[download] Destination: ${baseName}.mp4`);

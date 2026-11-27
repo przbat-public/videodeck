@@ -22,7 +22,8 @@ const run = (...args) => {
 
 /**
  * Run in `cwd` with extra environment variables: how a test opts into one of
- * the fake's simulations (FAKE_YTDLP_RATE_LIMIT_SUB_LANG).
+ * the fake's simulations (FAKE_YTDLP_RATE_LIMIT_SUB_LANG, FAKE_YTDLP_COMMENTS,
+ * FAKE_YTDLP_DESCRIPTION, FAKE_YTDLP_FAIL_AFTER_WRITE).
  *
  * @param {string} cwd
  * @param {string[]} args
@@ -340,6 +341,101 @@ test('keeps every sidecar already on disk with --no-overwrites and fetches only 
       assert.equal(readFileSync(path.join(dir, file), 'utf-8'), body, `${file} was rewritten`);
     }
     assert.equal(readFileSync(path.join(dir, `${stem}.pl.vtt`), 'utf-8'), SUBTITLE_BODY);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// What YouTube serves today, for the staged-refresh journeys. Each knob is a
+// behaviour the server is held to, so each has its own test here: a fake that
+// drifted would let a journey pass or fail for the wrong reason.
+
+/**
+ * The argv of a staged run: an update or a comment repair writes under
+ * `.videodeck-staging/<jobId>/` instead of next to the video.
+ *
+ * @param {string} stem
+ * @param {string[]} extra flags spliced in before the URL
+ */
+const stagedArgs = (stem, extra = []) => {
+  const args = repairArgs(stem);
+  args[args.indexOf('-o') + 1] = `.videodeck-staging/job-1/${stem}.%(ext)s`;
+  args.splice(args.length - 1, 0, ...extra);
+  return args;
+};
+
+test('writes a staged run under its directory and leaves the files next to the video alone', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    const stem = '20260101_Fake video dQw4w9WgXcQ';
+    writeFileSync(path.join(dir, `${stem}.en.vtt`), 'archived');
+
+    const result = run(...stagedArgs(stem), dir);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(existsSync(path.join(dir, '.videodeck-staging', 'job-1', `${stem}.info.json`)), true);
+    assert.equal(readFileSync(path.join(dir, `${stem}.en.vtt`), 'utf-8'), 'archived');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('writes no comment section when comments are turned off upstream', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    const stem = '20260101_Fake video dQw4w9WgXcQ';
+    const result = runWithEnv(dir, stagedArgs(stem, ['--write-comments']), { FAKE_YTDLP_COMMENTS: 'disabled' });
+
+    assert.equal(result.status, 0, result.stderr);
+    const info = JSON.parse(readFileSync(path.join(dir, '.videodeck-staging', 'job-1', `${stem}.info.json`), 'utf-8'));
+    assert.equal('comments' in info, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('writes every file with the comments that arrived, no comment_count, then exits 1 for an interrupted extraction', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    const stem = '20260101_Fake video dQw4w9WgXcQ';
+    const result = runWithEnv(dir, stagedArgs(stem, ['--write-comments']), { FAKE_YTDLP_COMMENTS: 'interrupted' });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /^ERROR: .*HTTP Error 403/m);
+    const staged = path.join(dir, '.videodeck-staging', 'job-1');
+    const info = JSON.parse(readFileSync(path.join(staged, `${stem}.info.json`), 'utf-8'));
+    assert.ok(info.comments.length > 0);
+    assert.equal('comment_count' in info, false);
+    assert.equal(existsSync(path.join(staged, `${stem}.en.vtt`)), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('blanks both descriptions when the uploader blanked it', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    const stem = '20260101_Fake video dQw4w9WgXcQ';
+    const result = runWithEnv(dir, stagedArgs(stem), { FAKE_YTDLP_DESCRIPTION: 'blank' });
+
+    assert.equal(result.status, 0, result.stderr);
+    const staged = path.join(dir, '.videodeck-staging', 'job-1');
+    assert.equal(JSON.parse(readFileSync(path.join(staged, `${stem}.info.json`), 'utf-8')).description, '');
+    assert.equal(readFileSync(path.join(staged, `${stem}.description`), 'utf-8'), '');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('writes every file, then fails for good, when asked to fail after the write', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    const stem = '20260101_Fake video dQw4w9WgXcQ';
+    const result = runWithEnv(dir, stagedArgs(stem), { FAKE_YTDLP_FAIL_AFTER_WRITE: '1' });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /^ERROR: \[youtube\] dQw4w9WgXcQ: Private video/m);
+    assert.equal(existsSync(path.join(dir, '.videodeck-staging', 'job-1', `${stem}.info.json`)), true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

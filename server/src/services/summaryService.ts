@@ -235,8 +235,9 @@ export async function generateSummary(input: GenerateSummaryInput): Promise<Gene
   const truncatedMarkerPath = path.join(folderPath, `${baseName}.summary.truncated`);
 
   // A summary on disk wins — it was paid for once already. Unless the
-  // subtitles are NEWER: an update job rewrites the .vtt in place, and the
-  // stale summary of the old subtitles must not be served forever.
+  // subtitles are NEWER: an update that brings a changed subtitle moves it in
+  // with the commit time as its mtime (refreshStaging.ts), so a summary of
+  // the old text reads as older and must not be served forever.
   try {
     const realPath = await resolveContainedPath(folderPath, `${baseName}.summary.txt`);
     const [summaryStats, subtitleStats] = await Promise.all([

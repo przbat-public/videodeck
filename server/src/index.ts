@@ -1,9 +1,9 @@
 import dotenv from 'dotenv';
 import { createApp } from './app';
 import { startServing } from './boot';
-import { ELASTICSEARCH_URL, getApiToken, getHost } from './config';
+import { ELASTICSEARCH_URL, getApiToken, getHost, getVideosFolderPaths } from './config';
 import { validateEnv } from './env';
-import { downloadQueue, restoreQueueState } from './services/downloadQueue';
+import { downloadQueue, QUEUE_STATE_FILE, restoreQueueState } from './services/downloadQueue';
 import {
   checkElasticsearchConnection,
   sweepOrphanIndexVersions,
@@ -34,7 +34,7 @@ async function startServer() {
     startLibraryWatch();
 
     // Re-enqueue jobs persisted by a previous run (reboot recovery).
-    const restored = await restoreQueueState();
+    const restored = await restoreQueueState(downloadQueue, QUEUE_STATE_FILE, getVideosFolderPaths());
     if (restored > 0) {
       logger.info(`Restored ${restored} queued job(s) from the previous run`);
     }

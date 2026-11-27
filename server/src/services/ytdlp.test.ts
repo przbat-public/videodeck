@@ -21,6 +21,7 @@ describe('buildPlaylistArgs', () => {
 
 describe('buildYtDlpArgs', () => {
   const job = {
+    id: 'job-1',
     type: 'download' as const,
     videoUrl: 'https://www.youtube.com/watch?v=abc',
   };
@@ -73,7 +74,7 @@ describe('buildYtDlpArgs', () => {
     // checked rather than silently dropped.
     expect(() => buildYtDlpArgs({ ...job, baseName: '../x' })).toThrow(/baseName/);
     expect(buildYtDlpArgs({ ...job, type: 'update', baseName: '20260101_Ok [abc]' })).toContain(
-      '20260101_Ok [abc].%(ext)s',
+      '.videodeck-staging/job-1/20260101_Ok [abc].%(ext)s',
     );
   });
 
@@ -126,6 +127,24 @@ describe('buildYtDlpArgs', () => {
 
     expect(withComments).toContain('--write-comments');
     expect(withComments).not.toContain('--no-overwrites');
+    // Into its staging directory instead: refreshStaging merges the fresh
+    // comment list with the archived one
+    expect(withComments[withComments.indexOf('-o') + 1]).toBe('.videodeck-staging/job-1/20260101_A_Video.%(ext)s');
+  });
+
+  it('writes an update into its staging directory and a sidecar repair in place', () => {
+    const updateArgs = buildYtDlpArgs({ ...job, type: 'update', baseName: '20260101_A_Video' });
+    const sidecars = buildYtDlpArgs({ ...job, type: 'repair', baseName: '20260101_A_Video' });
+
+    expect(updateArgs[updateArgs.indexOf('-o') + 1]).toBe('.videodeck-staging/job-1/20260101_A_Video.%(ext)s');
+    expect(sidecars[sidecars.indexOf('-o') + 1]).toBe('20260101_A_Video.%(ext)s');
+  });
+
+  it('refuses a staged run without a plain job id', () => {
+    // The id becomes a directory name inside the channel folder
+    for (const id of [undefined, '../x', 'a/b', '']) {
+      expect(() => buildYtDlpArgs({ ...job, id, type: 'update', baseName: '20260101_A_Video' })).toThrow(/job id/);
+    }
   });
 
   it('still validates the output stem of a repair job', () => {

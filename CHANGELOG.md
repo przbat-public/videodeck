@@ -17,9 +17,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   serves. It also deleted a subtitle or a thumbnail before fetching it again,
   so a 429 left the file missing while the job reported success. Sidecar
   repairs now run with `--no-overwrites`: every file already there stays as
-  it is, and only the missing ones are written. "Refresh comments" keeps the
-  default policy for now: it rewrites the info.json and fetches subtitles and
-  the thumbnail again, so a 429 there can still lose a file
+  it is, and only the missing ones are written
+- **Refreshing a video's metadata no longer overwrites the archive with what
+  YouTube serves today.** "Update", "Update stale" and "Refresh comments" ran
+  yt-dlp over the archived files. Comments turned off since the download, a
+  refused or cut-off comment page, or a blanked description all landed as
+  they were, and a throttled subtitle was deleted before it failed to come
+  back. A run that failed had rewritten the files anyway, once per attempt.
+  These jobs now write into a hidden `.videodeck-staging/<job>/` directory,
+  and the server merges the result into the archive. The comment section is
+  the union of the archived and the fresh one (fresh copies win, archived
+  publish dates stay), a field or a file the run did not bring stays, a blank
+  description never replaces a real one, an archived thumbnail stays, and a
+  file that came back unchanged is not touched, so its cached summary stays
+  valid. Machine captions never overwrite an archived subtitle a person
+  wrote. A run that fails leaves the archive exactly as it was. A comment
+  refresh YouTube cut short is merged rather than retried from page one. Two
+  videos that share one file name stop the refresh instead of being merged
+  into one, and an archived `info.json` that does not parse is copied aside
+  (`<stem>.info.json.unparseable-<time>`) before the fresh one replaces it
 - **An index rebuild no longer rewrites `archive.txt`.** A rebuild runs on its
   own whenever a folder's index is missing or outdated, and it replaced the
   archive with the videos it could index. Lines for a `.webm`, a video

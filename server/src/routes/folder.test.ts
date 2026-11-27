@@ -1343,7 +1343,10 @@ describe('folder router', () => {
       });
       expect(response.body.skipped).toEqual([{ videoId: 'iiiiiiiiiii', reason: 'not downloaded' }]);
       expect(at(spawnCalls, 0).args).toContain('--skip-download');
-      expect(at(spawnCalls, 0).args).toContain('20240101_Old_Name.%(ext)s');
+      // Into the job's own staging directory, merged into the archive afterwards
+      expect(at(spawnCalls, 0).args).toContainEqual(
+        expect.stringMatching(/^\.videodeck-staging\/[\w-]+\/20240101_Old_Name\.%\(ext\)s$/),
+      );
     });
 
     it('lists jobs, optionally filtered by folder', async () => {
