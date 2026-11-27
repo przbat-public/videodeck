@@ -209,15 +209,67 @@ test('the documented Elasticsearch docker run caps its log like the compose stac
 });
 
 /**
+ * Every HEALTHCHECK instruction of a Dockerfile, continuation lines joined.
+ *
+ * @param {string} dockerfile
+ */
+function healthchecksOf(dockerfile) {
+  const joined = dockerfile.replace(/\\\n\s*/g, ' ');
+  return joined.split('\n').filter((line) => /^HEALTHCHECK\s/.test(line));
+}
+
+/**
  * The HEALTHCHECK instruction of a Dockerfile with its continuation lines
  * joined, or null when the image has none.
  *
  * @param {string} dockerfile
  */
 function healthcheckOf(dockerfile) {
-  const joined = dockerfile.replace(/\\\n\s*/g, ' ');
-  return joined.split('\n').find((line) => /^HEALTHCHECK\s/.test(line)) ?? null;
+  return healthchecksOf(dockerfile)[0] ?? null;
 }
+
+/**
+ * The option names a HEALTHCHECK passes before CMD or NONE, without the
+ * leading dashes and the value: `--interval=30s` gives `interval`.
+ *
+ * @param {string} healthcheck
+ */
+function healthcheckOptions(healthcheck) {
+  /** @type {string[]} */
+  const options = [];
+  for (const word of healthcheck.split(/\s+/).slice(1)) {
+    if (!word.startsWith('--')) {
+      break; // CMD or NONE: the options end here
+    }
+    options.push(word.slice(2).split('=')[0] ?? '');
+  }
+  return options;
+}
+
+test('every image healthcheck parses on Docker Engine 24', () => {
+  // The Dockerfile parser in Engine 24 and older knows these four options and
+  // refuses the whole file on any other, before the first step runs, so
+  // `docker compose up --build` stops at "unknown flag: start-interval".
+  // Synology's Container Manager and Debian 12's docker.io ship such engines.
+  const engine24 = new Set(['interval', 'timeout', 'start-period', 'retries']);
+  /** @type {[string, string][]} */
+  const dockerfiles = [
+    ['server/Dockerfile', SERVER_DOCKERFILE],
+    ['client/Dockerfile', CLIENT_DOCKERFILE],
+  ];
+  for (const [name, dockerfile] of dockerfiles) {
+    const healthchecks = healthchecksOf(dockerfile);
+    assert.notEqual(healthchecks.length, 0, `${name} has no HEALTHCHECK`);
+    for (const healthcheck of healthchecks) {
+      const unknown = healthcheckOptions(healthcheck).filter((option) => !engine24.has(option));
+      assert.deepEqual(
+        unknown,
+        [],
+        `${name}: HEALTHCHECK --${unknown.join(', --')} fails the build on Docker Engine 24 and older, which know only --interval, --timeout, --start-period and --retries`,
+      );
+    }
+  }
+});
 
 test('both images probe their liveness path, never a readiness one', () => {
   // /health and /api/health answer 503 while Elasticsearch is down, and the

@@ -97,7 +97,9 @@ USER node
 # (docker compose ps, up --wait) and restarts nothing. The slim base has no
 # curl, so node asks; 127.0.0.1 reaches both binds the docs describe, the
 # default loopback and the 0.0.0.0 the compose stack sets. The start period
-# covers a boot that restores a long queue.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --start-interval=5s --retries=3 \
+# covers a boot that restores a long queue. No --start-interval: Docker Engine
+# 24 and older refuse the flag, and the whole build with it, while Engine 27
+# and later probe every 5 s during the start period without being asked.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3001) + '/health/live').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 CMD ["node", "server/dist/server/src/index.js"]
