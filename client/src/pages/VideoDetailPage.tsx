@@ -174,7 +174,10 @@ export default function VideoDetailPage(): JSX.Element {
   }
 
   const videoUrl = assetUrl(state.details.videoPath, state.details.folderPath);
-  const posterUrl = assetUrl(state.details.thumbnailPath, state.details.folderPath);
+  // A video indexed without a thumbnail plays without a poster
+  const posterUrl = state.details.thumbnailPath
+    ? assetUrl(state.details.thumbnailPath, state.details.folderPath)
+    : undefined;
   const subtitleUrl = (subtitlePath: string) => assetUrl(subtitlePath, state.details?.folderPath);
 
   return (
@@ -195,11 +198,11 @@ export default function VideoDetailPage(): JSX.Element {
             )}
             {/* Native HTML5 video: the files are plain mp4s and the server
                 supports Range requests — no react-player dependency needed.
-                The poster is the downloaded thumbnail, served by the same
-                endpoint as the video file. `playsInline` is what stops iOS from
-                taking the video full screen on its own, and preloading only the
-                header keeps the self-hosted server from streaming a video the
-                viewer may never start. */}
+                The poster is the downloaded thumbnail, when there is one,
+                served by the same endpoint as the video file. `playsInline` is
+                what stops iOS from taking the video full screen on its own, and
+                preloading only the header keeps the self-hosted server from
+                streaming a video the viewer may never start. */}
             {/* biome-ignore lint/a11y/useMediaCaption: subtitle tracks are injected dynamically from the API */}
             <video
               ref={setPlayer}

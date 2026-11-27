@@ -1,7 +1,13 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
+import fs, { writeFile } from 'node:fs/promises';
 import type { QueueJob } from '@videodeck/shared/api';
-import { QueueJobResponseSchema, QueueListResponseSchema, QueueSummaryResponseSchema } from '@videodeck/shared/schemas';
+import {
+  QueueJobResponseSchema,
+  QueueListResponseSchema,
+  QueueSummaryResponseSchema,
+  SearchResponseSchema,
+  VideoDetailsResponseSchema,
+} from '@videodeck/shared/schemas';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import {
   createDeepServerTestEnv,
@@ -223,6 +229,86 @@ describe('deep server integration (real app, fake external world)', () => {
     }
   });
 
+  it('searches and opens a video that has no thumbnail', async () => {
+    // Downloaded with --no-write-thumbnail, or its image lost since: the media
+    // and the info.json are on disk, and search used to skip the video
+    const withoutThumbnail = Object.fromEntries(
+      Object.entries(videoFiles('nothumb0001', 'Bez miniatury')).filter(([name]) => !name.endsWith('.webp')),
+    );
+    await env.seedFolder('no-thumbnail', withoutThumbnail);
+    env.setFolders('no-thumbnail');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const search = await env.agent.get('/api/videos/search?q=miniatury').expect(200);
+    expect(search.body.totalCount).toBe(1);
+    // The shared contract the client parses pages with takes the item as it is
+    const [found] = SearchResponseSchema.parse(search.body).videos;
+    expect(found?.title).toBe('Bez miniatury');
+    expect(found).not.toHaveProperty('thumbnailPath');
+
+    const details = await env.agent.get('/api/videos/nothumb0001/details').expect(200);
+    const parsed = VideoDetailsResponseSchema.parse(details.body).details;
+    expect(parsed.videoPath).toBe('20260101_Bez miniatury.mp4');
+    expect(parsed).not.toHaveProperty('thumbnailPath');
+  });
+
+  it('builds the details from the index and reads the info.json only for its comments', async () => {
+    // The route parsed the whole info.json on every view for six short
+    // fields the index already holds, and the comment store parsed it again
+    const comment = { id: 'Ugx-details', author: 'Viewer', text: 'First comment', like_count: 1 };
+    await env.seedFolder(
+      'details-from-index',
+      videoFiles('details0001', 'Details from the index', { comments: [comment] }),
+    );
+    env.setFolders('details-from-index');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+    const readFile = vi.spyOn(fs, 'readFile');
+    const infoJsonReads = (): number =>
+      readFile.mock.calls.filter(([file]) => String(file).endsWith('20260101_Details from the index.info.json')).length;
+
+    try {
+      const first = await env.agent.get('/api/videos/details0001/details').expect(200);
+      expect(infoJsonReads()).toBe(1);
+      await env.agent.get('/api/videos/details0001/details').expect(200);
+      expect(infoJsonReads()).toBe(1);
+
+      expect(VideoDetailsResponseSchema.parse(first.body).details).toMatchObject({
+        title: 'Details from the index',
+        description: 'Deep test description.',
+        uploadDate: '20260101',
+        viewCount: 1234,
+        likeCount: 56,
+        channelName: 'Deep test channel',
+        comments: [expect.objectContaining({ id: 'Ugx-details', text: 'First comment' })],
+        commentCount: 1,
+      });
+    } finally {
+      readFile.mockRestore();
+    }
+  });
+
+  it('opens a hand-edited video with a string count and no title', async () => {
+    // The index coerces the count and takes the title from the file name; the
+    // route read the file again and answered a string count and an empty
+    // title, a payload the client's own contract refuses
+    await env.seedFolder(
+      'details-hand-edited',
+      videoFiles('handedit001', 'Edited by hand', { title: undefined, view_count: '1234' }),
+    );
+    env.setFolders('details-hand-edited');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const response = await env.agent.get('/api/videos/handedit001/details').expect(200);
+
+    expect(VideoDetailsResponseSchema.parse(response.body).details).toMatchObject({
+      title: 'Edited by hand',
+      viewCount: 1234,
+    });
+  });
+
   it('answers a search whose page crosses the result window with a short page, not a 500', async () => {
     await env.seedFolder('window', videoFiles('vid00000010', 'Okno wyników'));
     env.setFolders('window');
@@ -238,8 +324,7 @@ describe('deep server integration (real app, fake external world)', () => {
     // window ends rather than guessing from an empty page
     expect(response.body.totalCount).toBe(1);
 
-    const searches = env.fakeEs.requestLog.filter((request) => request.path.includes('_search'));
-    const lastBody = searches.at(-1)?.body as { from?: number; size?: number };
+    const lastBody = env.fakeEs.searchLog.at(-1)?.body as { from?: number; size?: number };
     expect((lastBody.from ?? 0) + (lastBody.size ?? 0)).toBeLessThanOrEqual(10_000);
   });
 
@@ -256,17 +341,138 @@ describe('deep server integration (real app, fake external world)', () => {
 
     // A size-0 query is the one shape a real cluster still answers there, and
     // it keeps the total honest instead of guessing
-    const searches = env.fakeEs.requestLog.filter((request) => request.path.includes('_search'));
-    const lastBody = searches.at(-1)?.body as { size?: number } | undefined;
+    const lastBody = env.fakeEs.searchLog.at(-1)?.body as { size?: number } | undefined;
     expect(lastBody?.size).toBe(0);
+  });
+
+  it('serves every folder of a typed search when one video carries more comment text than the highlighter analyzes', async () => {
+    // One comment of 1,100,000 characters, past the 1,000,000 a cluster's
+    // highlighter analyzes by default: that hit failed the fetch of its
+    // folder's whole shard, so the folder's videos left the page
+    const heavyComment = { id: 'Ugx-heavy', author: 'Viewer', text: 'komentarz '.repeat(110_000), like_count: 0 };
+    await env.seedFolder('highlight-heavy', {
+      ...videoFiles('heavy000001', 'Film z komentarzami', { comments: [heavyComment] }),
+      ...videoFiles('heavy000002', 'Film bez komentarzy'),
+      'config.json': folderConfig('https://www.youtube.com/@heavy', 'heavy'),
+    });
+    await env.seedFolder('highlight-light', {
+      ...videoFiles('light000001', 'Film z innego folderu'),
+      'config.json': folderConfig('https://www.youtube.com/@light', 'light'),
+    });
+    env.setFolders('highlight-heavy', 'highlight-light');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const both = await env.agent.get('/api/videos/search?q=film').expect(200);
+    expect(both.body.totalCount).toBe(3);
+    expect((both.body.videos as Array<{ title: string }>).map((video) => video.title).sort()).toEqual([
+      'Film bez komentarzy',
+      'Film z innego folderu',
+      'Film z komentarzami',
+    ]);
+
+    // The heavy folder alone is one shard, where the same failure was a 500
+    const heavy = await env.agent.get('/api/videos/search?q=film&category=heavy').expect(200);
+    expect(heavy.body.totalCount).toBe(2);
+    expect(heavy.body.videos).toHaveLength(2);
+  });
+
+  it('finds the video a pasted link or bare id names, and nothing for a link the library lacks', async () => {
+    // Old-style stems, which hold no id: the text search had nothing to find
+    // the id in, and a link matched the newer video through "https", "watch"
+    // and "v" in its description
+    await env.seedFolder('pasted-links', {
+      ...videoFiles('dQw4w9WgXcQ', 'Stary klip', { upload_date: '20200101' }),
+      ...videoFiles('newer000001', 'Nowszy klip', {
+        upload_date: '20250101',
+        description: 'Polecam https://www.youtube.com/watch?v=otherVideo1',
+      }),
+    });
+    env.setFolders('pasted-links');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const found = async (q: string) => {
+      const response = await env.agent.get('/api/videos/search').query({ q }).expect(200);
+      const body = response.body as { videos: Array<{ videoId?: string }>; totalCount: number };
+      return { ids: body.videos.map((video) => video.videoId), total: body.totalCount };
+    };
+
+    for (const q of [
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      'https://youtu.be/dQw4w9WgXcQ?si=share',
+      'dQw4w9WgXcQ',
+    ]) {
+      expect(await found(q), q).toEqual({ ids: ['dQw4w9WgXcQ'], total: 1 });
+    }
+    expect(await found('https://www.youtube.com/watch?v=notArchived')).toEqual({ ids: [], total: 0 });
+  });
+
+  it('searches, opens and lists channels across 300 configured folders', async () => {
+    const folderPath = await env.seedFolder('library-300', {
+      ...videoFiles('lib300video', 'Film z dużej biblioteki', { channel: 'Kanał biblioteki' }),
+      'config.json': folderConfig('https://www.youtube.com/@library300'),
+    });
+    env.setFolders('library-300');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    // 299 more folders the library lists and nobody has indexed yet, the way a
+    // freshly attached drive arrives. Every read names all 300 aliases, and in
+    // a _search URL that list alone is about 7.8 KB of request line, which a
+    // cluster refuses past 4 KB before it reads a single name.
+    const unindexed = Array.from({ length: 299 }, (_unused, index) => `library-300-unindexed-${index}`);
+    env.setFolders('library-300', ...unindexed);
+
+    const search = await env.agent.get('/api/videos/search?q=biblioteki').expect(200);
+    expect(search.body.totalCount).toBe(1);
+    expect(search.body.videos[0].title).toBe('Film z dużej biblioteki');
+
+    const details = await env.agent.get('/api/videos/lib300video/details').expect(200);
+    expect(details.body.details.title).toBe('Film z dużej biblioteki');
+
+    const channels = await env.agent.get('/api/videos/channels').expect(200);
+    expect(channels.body.folders[folderPath]).toBe('Kanał biblioteki');
+    expect(channels.body.channels).toContain('Kanał biblioteki');
+  });
+
+  it('indexes videos past 2,147,483,647 views and sorts them by value', async () => {
+    // Real counts, not hand edits: the biggest music videos are past three
+    // billion views. The integer mapping refused each such video, and a folder
+    // holding nothing else failed its whole bulk write.
+    await env.seedFolder('views-billions', {
+      ...videoFiles('views000003', 'Trzy miliardy', { view_count: 3_000_000_000 }),
+      ...videoFiles('views000999', 'Dziewięćset', { view_count: 999 }),
+    });
+    await env.seedFolder(
+      'views-seven-billion',
+      videoFiles('views000007', 'Siedem miliardów', { view_count: 7_000_000_000 }),
+    );
+    env.setFolders('views-billions', 'views-seven-billion');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const status = await env.agent.get('/api/videos/refreshCache/status').expect(200);
+    expect(status.body).toMatchObject({ indexed: 3, skipped: 0, errors: [] });
+
+    // By value across both folders: compared as text, 999 came first
+    const ranked = await env.agent.get('/api/videos/search?sort=views-desc').expect(200);
+    expect((ranked.body.videos as Array<{ title: string }>).map((video) => video.title)).toEqual([
+      'Siedem miliardów',
+      'Trzy miliardy',
+      'Dziewięćset',
+    ]);
+
+    const details = await env.agent.get('/api/videos/views000003/details').expect(200);
+    expect(details.body.details.viewCount).toBe(3_000_000_000);
   });
 
   it('reports the document the cluster refused and still indexes the rest of the batch', async () => {
     // The bug class a journey could not see: a per-item bulk failure used to
     // be invisible here, so one refused document either vanished from search
-    // without a word or was counted as indexed. A digit string past int32
+    // without a word or was counted as indexed. A digit string past int64
     // survives toDocument's coercion as a number, and the viewCount mapping
-    // (integer) refuses it while its siblings in the same batch land.
+    // (long) refuses it while its siblings in the same batch land.
     await env.seedFolder('bulk-partial', {
       ...videoFiles('bulk00000001', 'Film dobry'),
       ...videoFiles('bulk00000002', 'Film z ogromna liczba wyswietlen', { view_count: '99999999999999999999' }),

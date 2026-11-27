@@ -115,7 +115,7 @@ ELASTICSEARCH_URL=http://localhost:9200
 VIDEOS_FOLDER_PATH=/Volumes/*/*
 ```
 
-This single line finds all channels on every currently mounted volume. A drive that is absent simply contributes no folders (the server starts with a warning and picks the folders up when the drive comes back; the list is refreshed every few seconds). You can mix patterns with literals (`~/` expands to the home directory):
+This single line finds all channels on every currently mounted volume. A drive that is absent simply contributes no folders (the server starts with a warning and picks the folders up when the drive comes back). The watch sits on `/Volumes` and on the top of each drive, never inside a channel, so downloads cost it nothing. Drives coming and going show up right away. So does a new channel, unless the folder sits empty for a while before its first `config.json` or `*.info.json` arrives; then it waits for the scan that runs every minute anyway, which is also how network shares, sending no events, get noticed. You can mix patterns with literals (`~/` expands to the home directory):
 
 ```
 VIDEOS_FOLDER_PATH=/Volumes/MEDIA/example-*;/Volumes/MEDIA/*;/Users/<user>/Downloads/youtube/youtube-chrome
@@ -138,7 +138,7 @@ API_TOKEN=secret            # bearer token protecting /api (see the Security sec
 CORS_ORIGINS=https://example.com  # extra CORS origins (comma-separated), beyond localhost and chrome-extension://
 ALLOWED_HOSTS=nas.local,192.168.0.10  # extra hostnames/IPs allowed in the Host header (needed with HOST=0.0.0.0)
 EXTENSION_ORIGINS=chrome-extension://abcdefghijklmnop  # exact extension id allowed by CORS (without it: any chrome-extension://)
-RATE_LIMIT_MAX=2000         # HTTP request limit per time window per IP (default 2000)
+RATE_LIMIT_MAX=2000         # HTTP request limit per time window per IP (default 2000; only a file read, such as a thumbnail, a video or a subtitle, that names its folder and passes the auth does not count)
 RATE_LIMIT_WINDOW_MS=600000 # rate-limit window length in ms (default 10 minutes)
 ```
 
@@ -148,7 +148,7 @@ RATE_LIMIT_WINDOW_MS=600000 # rate-limit window length in ms (default 10 minutes
 - **AI summaries run on OpenAI or DeepSeek.** Set one key and that provider answers; with both set DeepSeek wins, because adding its key is the switch. `SUMMARY_PROVIDER` pins the choice either way, and a pinned provider whose key is missing answers `503` instead of spending the other account. One provider call has a 60 s timeout, summaries are cached next to the subtitles as `<name>.summary.txt`, and the first request for a long video can take half a minute.
 - **`DEEPSEEK_MODEL` picks the model and how hard it thinks.** The value is a model name, or `name:effort` where effort is `none`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max`. `deepseek-v4-pro:high` runs that model with thinking mode on at high effort; a bare `deepseek-flash` (the default) keeps thinking off, which is cheaper and enough for a summary, and `deepseek-flash:none` says so out loud. DeepSeek folds the words into three levels, so `low` and `minimal` are the same request. A colon that is not one of those words stays inside the model name, which leaves room for gateway tags like `qwen3:32b`.
 - If you use Docker and get a "Cannot connect to the Docker daemon" error, make sure Docker Desktop is running.
-- After starting the server for the first time, you must manually call the `POST /api/videos/refreshCache` endpoint to index videos into Elasticsearch (this may take a while depending on the number of videos). The same applies after an upgrade that changes the search analyzer (see [docs/API.md](API.md)).
+- After starting the server for the first time, you must manually call the `POST /api/videos/refreshCache` endpoint to index videos into Elasticsearch (this may take a while depending on the number of videos). The same applies, without `onlyMissing`, after an upgrade that changes the index mapping or analysis: the boot log then names each folder whose index predates it (see [docs/API.md](API.md)).
 - **Keep yt-dlp up to date**: YouTube regularly breaks older versions. yt-dlp recommends the `nightly` channel (stable tends to be "stale and prone to external breakage"); the version is shown in the server startup log (`yt-dlp version: ...`), and when downloads start failing with "Sign in to confirm you're not a bot"/429 errors, the first thing to try is `yt-dlp -U` or the `nightly` channel. In a channel's `config.json` you can also enable `impersonate: true` (browser impersonation, without cookies).
 
 

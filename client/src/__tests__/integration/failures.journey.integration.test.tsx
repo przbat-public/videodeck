@@ -118,7 +118,7 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
   });
 
   it('shows the search failure when Elasticsearch breaks and recovers on reload', async () => {
-    env.fakeEs.failRequestsMatching('/_search', 500);
+    env.fakeEs.failRequestsMatching('/_msearch', 500);
 
     const page = await renderApp('/');
     // The user sees the failure toast, not a broken page or stale results.

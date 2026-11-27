@@ -465,7 +465,10 @@ async function commitDescription(target: CommitTarget, name: string | undefined,
  * An archived thumbnail stays. A refresh cannot tell a better image from a
  * fallback: after a 429 on the best candidates yt-dlp writes a worse one
  * under the same name, and a cut transfer leaves a truncated file. Only a
- * video that has none gets the staged one.
+ * video that has none gets the staged one. The file route counts on this
+ * too: it lets browsers keep a thumbnail for a year without asking again
+ * (routes/videos/files.ts), so new bytes under an old name would never
+ * reach a browser that had cached it.
  */
 async function commitThumbnail(target: CommitTarget, names: string[], report: CommitReport) {
   const [thumbnail] = names;

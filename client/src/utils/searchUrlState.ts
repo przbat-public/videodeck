@@ -1,10 +1,14 @@
 import type { SortOption } from '@videodeck/shared/api';
+import { defaultSortFor } from '@videodeck/shared/search';
 
 /**
  * The search state of /videos lives in the URL (`?q=&sort=&category=`), so a
  * link can be bookmarked or shared and a reload lands on the same results.
  * This module is the only place that knows how the two shapes map onto each
  * other; both directions are pure so they can be tested exhaustively.
+ *
+ * The default sort depends on the phrase (relevance with one, newest first
+ * without, see defaultSortFor), and both directions measure against that.
  */
 
 export interface SearchState {
@@ -17,11 +21,9 @@ export interface SearchState {
   channel: string;
 }
 
-export const DEFAULT_SORT: SortOption = 'date-desc';
-
 export const DEFAULT_SEARCH_STATE: SearchState = {
   query: '',
-  sort: DEFAULT_SORT,
+  sort: defaultSortFor(''),
   category: '',
   channel: '',
 };
@@ -50,15 +52,16 @@ export const isSortOption = (value: string): value is SortOption =>
   SORT_OPTIONS.some((option) => option.value === value);
 
 /**
- * URL → state. Values are trimmed, an unknown `sort` falls back to the
- * default and anything else in the URL is ignored. Never throws: a
- * hand-typed URL must not break the page.
+ * URL → state. Values are trimmed, a missing or unknown `sort` falls back to
+ * the phrase's default and anything else in the URL is ignored. Never throws:
+ * a hand-typed URL must not break the page.
  */
 export function parseSearchState(params: URLSearchParams): SearchState {
   const sort = (params.get('sort') ?? '').trim();
+  const query = (params.get('q') ?? '').trim();
   return {
-    query: (params.get('q') ?? '').trim(),
-    sort: isSortOption(sort) ? sort : DEFAULT_SORT,
+    query,
+    sort: isSortOption(sort) ? sort : defaultSortFor(query),
     category: (params.get('category') ?? '').trim(),
     channel: (params.get('channel') ?? '').trim(),
   };
@@ -74,7 +77,7 @@ export function toSearchParams(state: SearchState): URLSearchParams {
   if (query.length > 0) {
     params.set('q', query);
   }
-  if (state.sort !== DEFAULT_SORT) {
+  if (state.sort !== defaultSortFor(query)) {
     params.set('sort', state.sort);
   }
   const category = state.category.trim();
@@ -86,4 +89,19 @@ export function toSearchParams(state: SearchState): URLSearchParams {
     params.set('channel', channel);
   }
   return params;
+}
+
+/**
+ * The state a committed change should land on. The form commits a new phrase
+ * with the sort it showed, and a sort that only stood for the old phrase's
+ * default would otherwise outlive it: a phrase typed on the start page kept
+ * newest first, and a cleared phrase kept relevance. Such a sort follows the
+ * phrase to its own default; a sort the user picked stays as it is.
+ */
+export function followDefaultSort(previous: SearchState, next: SearchState): SearchState {
+  const query = next.query.trim();
+  if (query === previous.query.trim() || next.sort !== defaultSortFor(previous.query)) {
+    return next;
+  }
+  return { ...next, sort: defaultSortFor(query) };
 }

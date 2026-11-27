@@ -60,12 +60,11 @@ interface SearchBody {
   sort?: unknown;
 }
 
-/** The parsed body of the last search the app sent to the fake ES */
+/** The last search the app sent to the fake ES: the names it targeted and its parsed body */
 const lastSearch = () => {
-  const requests = env.fakeEs.requestLog.filter((request) => request.path.includes('_search'));
-  const last = requests.at(-1);
+  const last = env.fakeEs.searchLog.at(-1);
   expect(last, 'the app never searched the fake Elasticsearch').toBeDefined();
-  return { request: last, body: (last?.body ?? {}) as SearchBody };
+  return { index: last?.index ?? [], body: (last?.body ?? {}) as SearchBody };
 };
 
 describe('search journey — real user, real backend, fake Elasticsearch', () => {
@@ -113,6 +112,41 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
     expect(await findSearchInput()).toHaveValue('');
   });
 
+  it('sorts a typed phrase by relevance and the cleared one newest first', async () => {
+    // The title answers the phrase; the newer vlog shares one common word with
+    // it, in its only comment. Newest first put the vlog on top of the pizza.
+    await env.seedFolder('channel-relevance', {
+      ...videoFiles('relevance01', 'Jak zrobić pizzę', { upload_date: '20230101' }),
+      ...videoFiles('relevance02', 'Vlog z wakacji', {
+        upload_date: '20240105',
+        comments: [{ id: 'relevance-comment', author: 'Widz', text: 'jak zawsze super', like_count: 0 }],
+      }),
+    });
+    env.setFolders('channel-relevance');
+    await refreshCacheAndWait();
+
+    const page = await renderApp('/');
+    const cards = () => screen.getAllByRole('link').filter((link) => link.getAttribute('href')?.startsWith('/video/'));
+    await findCardByTitle('Vlog z wakacji');
+
+    await typeAndCommitPhrase(page.user, 'jak zrobić');
+
+    await waitFor(() => expect(JSON.stringify(lastSearch().body.query)).toContain('jak zrobić'));
+    expect(lastSearch().body.sort).toEqual([]);
+    // Relevance is the phrase's own default, so the URL names no sort at all
+    expect(new URLSearchParams(page.router.state.location.search).get('sort')).toBeNull();
+    expect(sortSelect()).toHaveTextContent(i18n.t('sortOption.relevance'));
+    await waitFor(() => expect(cards()[0]).toHaveTextContent('Jak zrobić pizzę'));
+
+    // Clearing the phrase goes back to the newest video first
+    await page.user.click(screen.getByRole('button', { name: i18n.t('search.clear') }));
+
+    await waitFor(() => expect(lastSearch().body.sort).toEqual([{ uploadDate: { order: 'desc', missing: '_last' } }]));
+    expect(page.router.state.location.search).toBe('');
+    expect(sortSelect()).toHaveTextContent(i18n.t('sortOption.dateDesc'));
+    await waitFor(() => expect(cards()[0]).toHaveTextContent('Vlog z wakacji'));
+  });
+
   it('groups the channel filter by category and leaves single downloads out of it', async () => {
     // A folder of single downloads (`kind: "collection"`) gathers channels from
     // all over YouTube. Those names belong to no channel folder, so the filter
@@ -140,8 +174,8 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
     await pickOption(page.user, await categorySelect(), 'other');
     await waitFor(() => expect(queryCardByTitle('Głęboka integracja')).not.toBeInTheDocument());
     expect(queryCardByTitle('Drugi kanał wideo')).toBeInTheDocument();
-    // A single-category search targets one physical index, never a comma list.
-    expect(lastSearch().request?.path.includes(',')).toBe(false);
+    // A single-category search targets that folder's alias alone, never a list.
+    expect(lastSearch().index).toHaveLength(1);
 
     await pickOption(page.user, await categorySelect(), 'tests');
     await waitFor(() => expect(queryCardByTitle('Drugi kanał wideo')).not.toBeInTheDocument());

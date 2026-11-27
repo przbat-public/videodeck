@@ -12,7 +12,6 @@ const details: VideoDetails = {
   title: 'A talk about hedgehogs',
   description: 'Everything about hedgehogs',
   uploadDate: '20240615',
-  duration: '10:30',
   viewCount: 1234,
   likeCount: 56,
   channelName: 'Nature',
@@ -169,6 +168,18 @@ describe('VideoDetailPage', () => {
       'poster',
       `/api/videos/file/hedgehogs.webp?folder=${encodeURIComponent('/videos/a')}`,
     );
+  });
+
+  it('plays a video without a thumbnail, with no poster', async () => {
+    // The details of such a video carry no thumbnailPath, which the page's
+    // response schema refused: the viewer got the error screen instead
+    const { thumbnailPath: _thumbnailPath, ...withoutThumbnail } = details;
+    installFetch({ details: () => json({ details: withoutThumbnail }) });
+    renderPage();
+
+    const player = await screen.findByTestId('video-player');
+    expect(player).toHaveAttribute('src', `/api/videos/file/hedgehogs.mp4?folder=${encodeURIComponent('/videos/a')}`);
+    expect(player).not.toHaveAttribute('poster');
   });
 
   it('renders one subtitle track per file with the language from its name', async () => {

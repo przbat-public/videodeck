@@ -1,5 +1,4 @@
 import fs from 'node:fs/promises';
-import path from 'node:path';
 import type {
   CommentWithReplies,
   SubtitleTrack,
@@ -9,10 +8,9 @@ import type {
 } from '@videodeck/shared/api';
 import { COMMENTS_PAGE_SIZE } from '@videodeck/shared/schemas';
 import { loadCommentTree } from '../../services/commentStore';
-import type { VideoInfoJson } from '../../types';
 import { logger } from '../../utils/logger';
 import { stripUndefined } from '../../utils/objectUtils';
-import { vttLanguage } from '../../utils/vttUtils';
+import { findSubtitleFiles, vttLanguage } from '../../utils/vttUtils';
 import type { RouteHandler } from '../http';
 import { findVideo } from './helpers';
 
@@ -20,21 +18,23 @@ import { findVideo } from './helpers';
  * GET /api/videos/:identifier/details: the metadata payload the player and the
  * details panel render.
  *
- * info.json supplies the text fields and the indexed video item the paths; the
- * comment store parses info.json once per mtime. Subtitle tracks come from the
+ * The text fields, the counts and the paths come from the video's index
+ * document, which the lookup already fetched; the info.json is read only for
+ * its comments, through the comment store, which parses it once per mtime. A
+ * file rewritten outside the app shows its old fields until the folder is
+ * indexed again, and its comments at once. Subtitle tracks come from the
  * folder listing, with the indexed subtitle path as the fallback for videos
  * indexed before that listing existed.
  */
 
 /**
- * VTT files of a video, sorted by name; [] when the folder is unreadable.
+ * VTT files of a video, by the rule the index uses (utils/vttUtils.ts), sorted
+ * by name; [] when the folder is unreadable.
  */
 async function listSubtitles(folderPath: string, baseName: string): Promise<SubtitleTrack[]> {
   try {
     const entries = (await fs.readdir(folderPath)) ?? [];
-    const prefix = `${baseName}.`;
-    return entries
-      .filter((file) => file.startsWith(prefix) && file.endsWith('.vtt'))
+    return findSubtitleFiles(baseName, entries)
       .map((file) => stripUndefined<SubtitleTrack>({ path: file, lang: vttLanguage(file) }))
       .sort((a, b) => a.path.localeCompare(b.path));
   } catch (error) {
@@ -43,50 +43,25 @@ async function listSubtitles(folderPath: string, baseName: string): Promise<Subt
   }
 }
 
-/** First truthy value among the candidates (0, '' and undefined fall through) */
-function firstTruthy<T>(...values: Array<T | undefined | null>): T | undefined {
-  for (const value of values) {
-    if (value) {
-      return value;
-    }
-  }
-  return undefined;
-}
-
-/** Human-readable duration: `duration_string` wins, numeric `duration` is the fallback */
-function durationString(info: VideoInfoJson): string {
-  if (info.duration_string) {
-    return info.duration_string;
-  }
-  if (!info.duration) {
-    return '';
-  }
-  // yt-dlp `duration` is whole seconds — format it instead of showing "630"
-  const totalSeconds = Math.floor(info.duration);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const mm = String(minutes).padStart(2, '0');
-  const ss = String(seconds).padStart(2, '0');
-  return hours > 0 ? `${hours}:${mm}:${ss}` : `${minutes}:${ss}`;
-}
-
-/** The details payload assembled from info.json + the indexed video item */
+/**
+ * The details payload: the indexed fields of the video, one page of its
+ * comments and its subtitle tracks. The index already applied the fallbacks
+ * (a title from the file name, the uploader for a missing channel, counts
+ * read as numbers), so a field it left out is empty here.
+ */
 function buildDetails(
-  infoJson: VideoInfoJson,
   video: VideoListItem,
   comments: CommentWithReplies[],
   commentCount: number,
   subtitles: SubtitleTrack[],
 ): VideoDetails {
   return stripUndefined<VideoDetails>({
-    title: firstTruthy(infoJson.title, infoJson.fulltitle) ?? '',
-    description: firstTruthy(infoJson.description, infoJson.title, infoJson.fulltitle) ?? '',
-    uploadDate: firstTruthy(infoJson.upload_date) ?? '',
-    duration: durationString(infoJson),
-    viewCount: firstTruthy(infoJson.view_count) ?? 0,
-    likeCount: firstTruthy(infoJson.like_count) ?? 0,
-    channelName: firstTruthy(infoJson.channel, infoJson.uploader) ?? '',
+    title: video.title,
+    description: video.description ?? '',
+    uploadDate: video.uploadDate ?? '',
+    viewCount: video.viewCount ?? 0,
+    likeCount: video.likeCount ?? 0,
+    channelName: video.channelName ?? '',
     comments,
     commentCount,
     videoPath: video.videoPath ?? '',
@@ -106,25 +81,15 @@ export const getDetails: RouteHandler<{ identifier: string }, VideoDetailsRespon
     return;
   }
 
-  // Use the folder path from the video item
-  const infoJsonPath = path.join(video.folderPath, `${video.baseName}.info.json`);
-
-  // Check if video file details exist
+  // The details response carries only the first page; the rest comes from
+  // GET /:identifier/comments, and the comment store parses a huge info.json
+  // once per mtime for both
+  let commentsTree: CommentWithReplies[] | null;
   try {
-    await fs.access(infoJsonPath);
-  } catch {
-    res.status(404).json({ error: 'Video details not found' });
-    return;
-  }
-
-  // Read and parse info.json
-  let infoJson: VideoInfoJson;
-  try {
-    const infoJsonContent = await fs.readFile(infoJsonPath, 'utf-8');
-    infoJson = JSON.parse(infoJsonContent) as VideoInfoJson;
-  } catch (parseError) {
-    logger.error(`Error reading or parsing info.json file ${infoJsonPath}:`, parseError);
-    if (parseError instanceof SyntaxError) {
+    commentsTree = await loadCommentTree(video.folderPath, video.baseName);
+  } catch (error) {
+    logger.error(`Error reading or parsing the info.json of ${video.baseName} in ${video.folderPath}:`, error);
+    if (error instanceof SyntaxError) {
       res.status(500).json({
         error: 'Invalid JSON format in video metadata',
         message: 'The video metadata file is corrupted or invalid',
@@ -132,15 +97,13 @@ export const getDetails: RouteHandler<{ identifier: string }, VideoDetailsRespon
       return;
     }
     // Re-throw file read errors to the error handler middleware
-    throw parseError;
+    throw error;
   }
-
-  const commentsTree = await loadCommentTree(video.folderPath, video.baseName);
-  // The details response carries only the first page; the rest comes from
-  // GET /:identifier/comments — huge info.json files are parsed once and
-  // cached by mtime (services/commentStore).
-  const comments = commentsTree?.slice(0, COMMENTS_PAGE_SIZE) ?? [];
-  const commentCount = commentsTree?.length ?? 0;
+  if (commentsTree === null) {
+    res.status(404).json({ error: 'Video details not found' });
+    return;
+  }
+  const comments = commentsTree.slice(0, COMMENTS_PAGE_SIZE);
 
   // Every subtitle file the folder actually holds for this video, so the
   // player can offer each language instead of one hardcoded track.
@@ -155,7 +118,7 @@ export const getDetails: RouteHandler<{ identifier: string }, VideoDetailsRespon
     ];
   }
 
-  const details = buildDetails(infoJson, video, comments, commentCount, subtitles);
+  const details = buildDetails(video, comments, commentsTree.length, subtitles);
 
   res.json({ details });
 };

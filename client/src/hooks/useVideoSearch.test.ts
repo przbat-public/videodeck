@@ -87,7 +87,12 @@ describe('useVideoSearch', () => {
   describe('request URL', () => {
     it.each<[string, SearchState, string]>([
       ['the defaults', state(), '/api/videos/search?offset=0&limit=100'],
-      ['a query', state({ query: 'drone' }), '/api/videos/search?q=drone&offset=0&limit=100'],
+      ['a query', state({ query: 'drone', sort: 'relevance' }), '/api/videos/search?q=drone&offset=0&limit=100'],
+      [
+        'a query sorted newest first, a choice next to a phrase',
+        state({ query: 'drone', sort: 'date-desc' }),
+        '/api/videos/search?q=drone&sort=date-desc&offset=0&limit=100',
+      ],
       ['a sort', state({ sort: 'views-desc' }), '/api/videos/search?sort=views-desc&offset=0&limit=100'],
       ['a category', state({ category: 'fpv' }), '/api/videos/search?category=fpv&offset=0&limit=100'],
       [
@@ -97,7 +102,7 @@ describe('useVideoSearch', () => {
       ],
       [
         'whitespace-padded values (trimmed)',
-        state({ query: '  drone ', category: ' fpv ' }),
+        state({ query: '  drone ', sort: 'relevance', category: ' fpv ' }),
         '/api/videos/search?q=drone&category=fpv&offset=0&limit=100',
       ],
       [
@@ -254,7 +259,7 @@ describe('useVideoSearch', () => {
         .mockResolvedValueOnce(jsonResponse({ videos: [video('b')], totalCount: 2 }));
       const { result } = renderHook(() => useVideoSearch());
 
-      await act(() => result.current.search(state({ query: 'drone', category: 'fpv' })));
+      await act(() => result.current.search(state({ query: 'drone', sort: 'relevance', category: 'fpv' })));
       await act(() => result.current.loadMore());
 
       expect(fetchMock).toHaveBeenLastCalledWith('/api/videos/search?q=drone&category=fpv&offset=1&limit=100', {

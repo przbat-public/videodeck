@@ -1,17 +1,23 @@
 import { once } from 'node:events';
+import fs from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
 import zlib, { type Gunzip, gzipSync } from 'node:zlib';
 import type { HealthResponse } from '@videodeck/shared/api';
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
+import type { Test } from 'supertest';
 import request from 'supertest';
 import type { MockedFunction } from 'vitest';
 import { createApp } from '../app';
-import { checkElasticsearchConnection } from '../services/elasticsearchService';
-import { createAuthMiddleware, isAllowedCorsOrigin } from './http';
+import { checkElasticsearchConnection, getVideoByFilePath } from '../services/elasticsearchService';
+import { type Authorizer, createAuthMiddleware, createAuthorizer, isAllowedCorsOrigin } from './http';
 
 vi.mock('../services/elasticsearchService', () => ({
   checkElasticsearchConnection: vi.fn(),
+  getVideoByFilePath: vi.fn(),
 }));
 
 const mockedCheckElasticsearch = checkElasticsearchConnection as MockedFunction<typeof checkElasticsearchConnection>;
@@ -19,14 +25,49 @@ const mockedCheckElasticsearch = checkElasticsearchConnection as MockedFunction<
 // config.ts validates VIDEOS_FOLDER_PATH at import time
 process.env.VIDEOS_FOLDER_PATH = '/test/videos';
 
+/** Folders a test made its library, removed once it ends */
+const tempLibraries: string[] = [];
+
+/**
+ * A library of one real folder holding the named files, set as
+ * VIDEOS_FOLDER_PATH for the rest of the test. The file route reads the disk,
+ * so a test of what it answers needs files that exist.
+ */
+function useTempLibrary(...fileNames: string[]): string {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'http-test-library-'));
+  for (const name of fileNames) {
+    fs.writeFileSync(path.join(folder, name), `bytes of ${name}`);
+  }
+  tempLibraries.push(folder);
+  process.env.VIDEOS_FOLDER_PATH = folder;
+  return folder;
+}
+
+afterEach(() => {
+  process.env.VIDEOS_FOLDER_PATH = '/test/videos';
+  for (const folder of tempLibraries.splice(0)) {
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
+});
+
 describe('createAuthMiddleware', () => {
-  function buildApp(token?: string): express.Express {
+  /**
+   * The guard in a bare app, the way createApp mounts it. Like that app, it
+   * sits behind a rate limit, which CodeQL asks of every app that authorizes;
+   * this one never counts close to its limit.
+   */
+  function guardedApp(authorize: Authorizer): express.Express {
     const app = express();
-    app.use(createAuthMiddleware(token));
+    app.use(rateLimit({ windowMs: 60_000, limit: 10_000 }));
+    app.use(createAuthMiddleware(authorize));
     app.get('/test', (_req, res) => {
       res.json({ ok: true });
     });
     return app;
+  }
+
+  function buildApp(token?: string): express.Express {
+    return guardedApp(createAuthorizer(token));
   }
 
   it('lets requests through when no token is configured', async () => {
@@ -79,11 +120,7 @@ describe('createAuthMiddleware', () => {
   });
 
   it('accepts a CORS_ORIGINS entry as same-site', async () => {
-    const app = express();
-    app.use(createAuthMiddleware(undefined, false, { extraOrigins: ['https://deck.example'] }));
-    app.get('/test', (_req, res) => {
-      res.json({ ok: true });
-    });
+    const app = guardedApp(createAuthorizer(undefined, false, { extraOrigins: ['https://deck.example'] }));
 
     expect((await request(app).get('/test').set('Sec-Fetch-Site', 'cross-site')).status).toBe(403);
     expect(
@@ -406,9 +443,41 @@ describe('Host header guard (DNS rebinding)', () => {
   });
 });
 
+describe('file responses', () => {
+  // The real sendFile on real files: the unit suite's stand-in for it cannot
+  // show which Content-Type and Cache-Control reach the browser
+  it.each([
+    ['a.webp', 'image/webp'],
+    ['b.jpg', 'image/jpeg'],
+    ['c.jpeg', 'image/jpeg'],
+    ['d.png', 'image/png'],
+  ])('serves a %s thumbnail as %s with the thumbnail cache policy', async (name, contentType) => {
+    const folder = useTempLibrary(name);
+
+    const response = await request(createApp()).get(`/api/videos/file/${name}`).query({ folder });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toBe(contentType);
+    expect(response.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+  });
+
+  it.each(['e.info.json', 'e.description', 'e.en.srt'])(
+    'serves %s, which an update rewrites in place, under the no-store of the API',
+    async (name) => {
+      const folder = useTempLibrary(name);
+
+      const response = await request(createApp()).get(`/api/videos/file/${name}`).query({ folder });
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+    },
+  );
+});
+
 describe('rate limiting', () => {
   const originalMax = process.env.RATE_LIMIT_MAX;
   const originalWindow = process.env.RATE_LIMIT_WINDOW_MS;
+  const originalRequireToken = process.env.REQUIRE_API_TOKEN;
 
   afterEach(() => {
     if (originalMax === undefined) {
@@ -420,6 +489,11 @@ describe('rate limiting', () => {
       delete process.env.RATE_LIMIT_WINDOW_MS;
     } else {
       process.env.RATE_LIMIT_WINDOW_MS = originalWindow;
+    }
+    if (originalRequireToken === undefined) {
+      delete process.env.REQUIRE_API_TOKEN;
+    } else {
+      process.env.REQUIRE_API_TOKEN = originalRequireToken;
     }
   });
 
@@ -435,6 +509,142 @@ describe('rate limiting', () => {
     const limited = await request(app).get('/health/live');
     expect(limited.status).toBe(429);
     expect(limited.body).toEqual({ error: 'Too many requests' });
+  });
+
+  it('lets media reads through without spending the API budget', async () => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const folder = useTempLibrary('a.webp');
+    const app = createApp();
+
+    // A results page asks for one thumbnail per card and the player for range
+    // after range of one video, so a budget sized for the API ran out mid-page
+    for (let i = 0; i < 5; i += 1) {
+      expect((await request(app).get('/api/videos/file/a.webp').query({ folder })).status).toBe(200);
+    }
+
+    // The budget is still whole, and the same query on another path buys
+    // nothing: only the file route is exempt
+    for (let i = 0; i < 3; i += 1) {
+      expect((await request(app).get('/api/videos/refreshCache/status').query({ folder })).status).toBe(200);
+    }
+    const limited = await request(app).get('/api/videos/refreshCache/status').query({ folder });
+    expect(limited.status).toBe(429);
+  });
+
+  it('lets media reads with the right token through without spending the API budget', async () => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const folder = useTempLibrary('a.webp');
+    const app = createApp({ apiToken: 'media-token' });
+
+    // Five reads on a budget of three: the auth lets each one through, so
+    // none of them counts
+    for (let i = 0; i < 5; i += 1) {
+      const response = await request(app)
+        .get('/api/videos/file/a.webp')
+        .query({ folder })
+        .set('Authorization', 'Bearer media-token');
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it.each<[string, () => express.Express, Record<string, string>, number]>([
+    ['a wrong token', () => createApp({ apiToken: 'media-token' }), { Authorization: 'Bearer guess' }, 401],
+    ['a cross-site page', () => createApp(), { 'Sec-Fetch-Site': 'cross-site' }, 403],
+    [
+      'an untrusted origin on this host',
+      () => createApp(),
+      { 'Sec-Fetch-Site': 'same-site', Origin: 'http://localhost:4000' },
+      403,
+    ],
+    [
+      'REQUIRE_API_TOKEN without a token',
+      () => {
+        process.env.REQUIRE_API_TOKEN = 'true';
+        return createApp();
+      },
+      {},
+      401,
+    ],
+  ])('still counts a media read that auth refuses: %s', async (_case, makeApp, headers, refusal) => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const folder = useTempLibrary('a.webp');
+    const app = makeApp();
+    const read = () => request(app).get('/api/videos/file/a.webp').query({ folder }).set(headers);
+
+    // A refused read is a guess, at the token or at an origin the guard
+    // trusts, and the budget is what bounds the guesses
+    for (let i = 0; i < 3; i += 1) {
+      expect((await read()).status).toBe(refusal);
+    }
+    expect((await read()).status).toBe(429);
+  });
+
+  it.each<[string, (read: Test) => Test]>([
+    ['a JSON body', (read) => read.set('Content-Type', 'application/json').send('{}')],
+    ['a Content-Type alone', (read) => read.set('Content-Type', 'application/json')],
+    ['a body without a Content-Type', (read) => read.send(Buffer.from('{}'))],
+    ['a chunked body', (read) => read.set('Transfer-Encoding', 'chunked')],
+  ])('still counts a file read that carries %s', async (_case, withBody) => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const folder = useTempLibrary('a.webp');
+    const app = createApp();
+    const read = () => withBody(request(app).get('/api/videos/file/a.webp').query({ folder }));
+
+    // An img or a video element never sends a body. A JSON-typed one goes
+    // through the parser, whose failures reach the error log, so a GET that
+    // declares any body pays like an API call
+    for (let i = 0; i < 3; i += 1) {
+      expect((await read()).status).toBe(200);
+    }
+    expect((await read()).status).toBe(429);
+  });
+
+  it('lets a media read that declares an empty body through', async () => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const folder = useTempLibrary('a.webp');
+    const app = createApp();
+
+    // Content-Length: 0 says there is no body, as a missing one does
+    for (let i = 0; i < 5; i += 1) {
+      const response = await request(app).get('/api/videos/file/a.webp').query({ folder }).set('Content-Length', '0');
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it('still counts a file read that asks Elasticsearch for its folder', async () => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    useTempLibrary('a.webp');
+    vi.mocked(getVideoByFilePath).mockResolvedValue(null);
+    const app = createApp();
+
+    // The shipped clients always name the folder; a read without one costs a
+    // lookup in the cluster, so it stays on the budget
+    for (let i = 0; i < 3; i += 1) {
+      expect((await request(app).get('/api/videos/file/a.webp')).status).toBe(404);
+    }
+    const limited = await request(app).get('/api/videos/file/a.webp');
+    expect(limited.status).toBe(429);
+  });
+
+  it('still counts a file request that is not a GET', async () => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const folder = useTempLibrary('a.webp');
+    const app = createApp();
+
+    // Express answers a HEAD from the GET route, but no page sends one: an
+    // image or a video element reads with GET
+    for (let i = 0; i < 3; i += 1) {
+      expect((await request(app).head('/api/videos/file/a.webp').query({ folder })).status).toBe(200);
+    }
+    const limited = await request(app).head('/api/videos/file/a.webp').query({ folder });
+    expect(limited.status).toBe(429);
   });
 });
 

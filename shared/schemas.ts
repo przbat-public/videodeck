@@ -120,12 +120,13 @@ export const VideoListItemSchema = z.object({
   baseName: z.string(),
   videoId: z.string().optional(),
   title: z.string(),
-  // Optional on purpose: search responses exclude the heavyweight fields
-  // (full yt-dlp descriptions are MBs of payload) — the details endpoint
-  // serves them from info.json instead.
+  // Optional on purpose: search leaves the heavy fields out of its hits (the
+  // descriptions of a 500-hit page add up to megabytes), and the details
+  // endpoint reads them from the video's index document.
   description: z.string().optional(),
   videoPath: z.string().optional(),
-  thumbnailPath: z.string(),
+  /** Absent for a video indexed without a thumbnail on disk; the card shows a placeholder */
+  thumbnailPath: z.string().optional(),
   folderPath: z.string(),
   uploadDate: z.string().optional(),
   viewCount: z.number().optional(),
@@ -167,14 +168,14 @@ export const VideoDetailsSchema = z.object({
   title: z.string(),
   description: z.string(),
   uploadDate: z.string(),
-  duration: z.string(),
   viewCount: z.number(),
   likeCount: z.number(),
   channelName: z.string(),
   comments: z.array(CommentWithRepliesSchema),
   commentCount: z.number(),
   videoPath: z.string(),
-  thumbnailPath: z.string(),
+  /** Absent for a video without a thumbnail on disk; the player then has no poster */
+  thumbnailPath: z.string().optional(),
   /** Primary subtitle (first track found); kept for summaries */
   subtitlePath: z.string().optional(),
   /** Every subtitle file the folder holds for this video */

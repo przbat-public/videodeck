@@ -9,6 +9,107 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Videos with hundreds of thousands of comments no longer fail their
+  folder's reindex.** Every comment went into the document's search text, so
+  one such video pushed a bulk request past the 100 MB Elasticsearch takes,
+  and the cluster answered 413. A document now keeps whole comments up to 10
+  million characters and stops before the first one that would cross that
+  mark. The video page still lists every comment; the ones past the mark just
+  stop matching a search
+- **Opening comment-heavy videos one after another no longer fills the
+  server's memory.** The comment cache kept the last 50 parsed trees however
+  large they were. The cache now books each tree by the size of the file it
+  came from and keeps the trees within a quarter of the heap, which only the
+  one just parsed may pass; the tree read longest ago goes first. Two views
+  of one video that arrive together share a single parse
+- **A video page reads its `info.json` once.** The details route parsed the
+  whole file for the title and counts, then the comment cache parsed it
+  again. Those fields come from the index now, so a count written by hand as
+  text no longer breaks the page, and an edit made outside the app shows
+  after the folder's next reindex
+- **A video whose `info.json` passes 512 MiB stays searchable.** Node cannot
+  hold a string that long, so the reindex skipped such a video as unreadable
+  and its comments answered 500. Its id and title now come from the head of
+  the file, and its page opens with no comments
+- **A download finished during an index rebuild stays in
+  `.videos-index.json`.** A rebuild that listed the folder before the job's
+  files landed saved last and dropped the new video, and a collection read
+  beside a job's refresh could lose an entry the same way. Writes to one
+  folder's index now take turns
+- **A full reindex of a big folder stops spending seconds on file names.**
+  Each video searched the whole folder listing for its sidecars, about 4 s
+  for 1,500 videos with six sidecars apiece; grouping the listing by stem once
+  brings that to some 40 ms. Rebuilding `.videos-index.json` no longer
+  parses each `info.json` whole either: a scan stops once it has seen the
+  comment and description keys
+- **Thumbnails and playback stop spending the request budget.** Each card's
+  thumbnail and every range the player fetched counted toward the 2,000
+  requests per 10 minutes an IP may make, so a long session ran it out:
+  thumbnails answered 429 and vanished, and the tab's own API calls were
+  refused next. A file read that names its folder and passes the auth, as
+  the web UI's reads do, is no longer counted. One the auth refuses, such as
+  a guess at the API token, still counts, and so does a read without the
+  folder, which asks Elasticsearch where the file lives
+- **`.jpg`, `.jpeg` and `.png` thumbnails load as images and stay cached.**
+  The file route only knew `.webp`, so the rest went out as
+  `application/octet-stream`, uncached, and came down again on every visit.
+  They now get the year-long immutable cache `.webp` has
+- **Downloads no longer keep the library watcher busy.** It watched whole
+  drives recursively, so every write a download made woke it, and on Linux
+  Node armed one watch per file and listed a folder again on each event. Only
+  the directories that decide the folder list are watched now, such as
+  `/Volumes` and the top of each drive. A folder that turns into a channel
+  some time after it was created waits for the check that runs every minute
+- **A video no longer takes a sibling's subtitles.** An older
+  `<date>_<title>` name keeps a title's dot, so every caption of "Part 1.5"
+  started with the name of "Part 1", which indexed them as its transcript,
+  offered them as player tracks and counted their languages in the console.
+  A subtitle belongs to a video only as `<name>.vtt` or
+  `<name>.<language>.vtt` now, and the captions of a sibling video never
+  count. The console's language badges follow after
+  `POST /api/folder/rebuild-index`
+- **Videos without a thumbnail show up in search.** The reindex dropped any
+  video lacking a `.webp` or `.jpg` beside it, so a folder downloaded with
+  `--no-write-thumbnail` stayed invisible, while the channel console counted
+  `.png` and `.jpeg` too and reported no gap. Media plus `info.json` is
+  enough now: the card draws a placeholder, the player goes without a
+  poster, and search and console share one thumbnail rule. A folder whose
+  every video failed to read, as on a dying drive, keeps its previous index
+  instead of publishing an empty one
+- **Auto-captions are read once per line.** YouTube's rolling captions show
+  each line two or three times, and every copy went into the text, so the
+  100,000-character transcript cap kept only the first third or so of a long
+  video's speech, and summaries paid for each sentence thrice. A line
+  equal to the one before it is dropped now; one said again later stays.
+  Cached summaries are kept, and stored transcripts shrink when reindexed
+- **"World's" turns up for `world`.** The tokenizer keeps a possessive
+  whole, two edits away from its word, while fuzzy matching lets a
+  five-letter query differ by one, so titles like "Tesla's Cheapest Car"
+  never matched their brand. The analyzer drops a trailing `'s` now, written
+  with `'`, `’`, `‘` or `＇`, from stored and typed text alike, in folders
+  reindexed after the upgrade
+- **Videos with billions of views get indexed.** View counts were mapped as
+  32-bit integers, so the cluster turned away anything past 2,147,483,647,
+  and a folder of nothing but such hits lost its whole reindex. They are
+  stored as `long` now, and sorting by views spans old and new folders; a
+  folder indexed earlier keeps refusing them until it is rebuilt in full
+- **An abandoned search stops on the cluster too.** Typing a new phrase
+  aborted the browser's request, but the server kept waiting on
+  Elasticsearch, which went on scoring and highlighting a page nobody would
+  read. The server now drops its own request once the client disconnects,
+  and Elasticsearch cancels the search along with it
+- **One huge comment section no longer empties its folder from a search.**
+  Past a million characters the highlighter failed the shard holding that
+  video, so its neighbours vanished from the page while the total still
+  counted them, and searching that folder's category alone answered 500.
+  Snippets now come from the first 100,000 characters of a field. A folder
+  that cannot answer for another reason is left off the page as before, and
+  the server log now names it
+- **Libraries past 155 folders can search again.** Each read put every
+  folder's alias into its URL, and from folder 156 on that request line
+  outgrew the 4 KB Elasticsearch accepts, so searching, opening a video and
+  listing channels all failed with a 500. The alias list now travels inside
+  an `_msearch` body, whatever the folder count
 - **A rate-limited summary waits as long as the provider asks.** The OpenAI
   SDK hands a 429 its response's `Headers` object, which the retry read as a
   plain record and never found `Retry-After` in, so every throttled request
@@ -89,6 +190,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Rebuild every index once after upgrading:** `POST /api/videos/refreshCache`
+  without `onlyMissing` (Refresh index, with "only missing" unchecked). An
+  `onlyMissing` run or a drive swap keeps indices built earlier, which lack
+  the billion-view counts, possessive matching, once-per-line auto-captions,
+  thumbnail-less videos, capped comment text, oversized `info.json` files and
+  captions taken from a sibling video fixed above. New indices carry an analysis version in their mapping, and
+  the boot log names each folder still behind
+- **`GET /api/videos/:id/details` no longer returns `duration`.** Nothing
+  rendered it, and the index does not store it, so keeping it would have
+  meant parsing the `info.json` on every view again
+- **A typed phrase ranks by relevance unless you pick a sort.** Results
+  stayed newest first, so a recent video sharing one common word with the
+  phrase in a single comment outranked the video the phrase named in its
+  title. With a phrase and no sort chosen, results now follow the score,
+  computed over the statistics of every folder at once, and the word as you
+  typed it weighs more than a near spelling; clearing the phrase brings back
+  newest first, and a sort you picked survives both. Old `?q=` bookmarks
+  open by relevance
+- **Search ignores file names.** A stem yt-dlp writes is one token to the
+  analyzer and never matched, while a file named by hand split into words
+  that weighed more than its title. Titles carry those words; a video
+  without one borrows its file name's when indexed. Older indices keep the
+  unused subfield until their next reindex
 - **Test runs never read `server/.env`.** Only the server's entry point
   loads it, ahead of every import, where `config.ts` used to load it for
   anything that imported the app. A remote cluster for the server's
@@ -113,6 +237,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Paste a YouTube link or id into search to check whether it is
+  archived.** A watch, share or Shorts link is looked up by id within the
+  current filters: the video comes back, or an empty list if the library
+  lacks it. A bare 11-character id finds its video the same way, and one the
+  library lacks is searched as text, like any other word
 - **Videos YouTube will not hand over stop filling the queue with errors**: a
   `download` for a video the catalog reports as `subscriber_only` or
   `premium_only` is skipped before a job exists, and a failure that waiting

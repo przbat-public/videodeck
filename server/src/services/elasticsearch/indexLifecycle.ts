@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { estypes } from '@elastic/elasticsearch';
 import type { RecreateIndicesStatus } from '@videodeck/shared/api';
 import { getVideosFolderPaths } from '../../config';
 import { logger } from '../../utils/logger';
@@ -43,23 +44,45 @@ export function buildIndexVersionName(folderPath: string, now: Date = new Date()
 
 /**
  * Text analysis for search: diacritics folding, so `srodek` finds `środek`
- * and `ŚRODEK` without the user typing diacritics. Polish stemming/stopwords
- * would need the `analysis-stempel` plugin (not in the stock docker image),
- * so this analyzer sticks to built-in components only; indices created before
- * it existed keep the old `standard` mapping until the next reindex.
+ * and `ŚRODEK` without the user typing diacritics, and English possessives cut
+ * to their word, so `world` finds "World's". The standard tokenizer keeps
+ * world's as one token, two edits from `world`, while fuzziness AUTO gives a
+ * five-letter word one. Polish stemming/stopwords would need the
+ * `analysis-stempel` plugin (not in the stock docker image), so this analyzer
+ * sticks to built-in components only; an index keeps the chain it was created
+ * with until the next full reindex.
  */
 const SEARCH_ANALYZER = 'polish_folded';
 
+/**
+ * Lucene's English possessive stemmer: strips a trailing 's, written with ',
+ * ’ or ＇. It runs after asciifolding, which turns ‘ into ', so those four
+ * spellings reach it as one it knows. U+02BC (modifier letter apostrophe) is
+ * not among them: neither filter maps it, and it is rare in titles.
+ */
+const POSSESSIVE_FILTER = 'english_possessive';
+
+/**
+ * The version of the rules a new index is built under, stamped in its
+ * mapping's `_meta`: the analysis chain, the field types and what a scan
+ * writes into it. A change that only a rebuild brings to an existing index
+ * raises it, because an `onlyMissing` run and a disk swap both keep the index
+ * a folder has, and the same analyzer name can hide another chain. An index
+ * without the stamp predates version 1.
+ */
+const INDEX_ANALYSIS_VERSION = 1;
+
+/** What the current version brings over the one before, for the boot warning */
+const INDEX_ANALYSIS_CHANGES =
+  'long view counts, English possessives cut to their word, auto-captions read once per line, ' +
+  'videos without a thumbnail, capped comment text, info.json files past the string limit indexed ' +
+  'from their head and no captions taken from a sibling video';
+
 const INDEX_MAPPINGS = {
+  _meta: { analysis_version: INDEX_ANALYSIS_VERSION },
   properties: {
-    baseName: {
-      type: 'keyword',
-      fields: {
-        // analyzed variant for full-text search (baseName^4 in SEARCH_FIELDS);
-        // the keyword parent keeps exact lookups (getVideoByBaseName) working
-        text: { type: 'text', analyzer: SEARCH_ANALYZER },
-      },
-    },
+    // Exact lookups only (getVideoByBaseName); the file name is no search field
+    baseName: { type: 'keyword' },
     videoId: { type: 'keyword' },
     title: {
       type: 'text',
@@ -77,7 +100,9 @@ const INDEX_MAPPINGS = {
     subtitlePath: { type: 'keyword' },
     folderPath: { type: 'keyword' },
     uploadDate: { type: 'keyword' },
-    viewCount: { type: 'integer' },
+    // Past int32: the biggest music videos have more than three billion views,
+    // which an integer field refused. Likes stay far below that.
+    viewCount: { type: 'long' },
     likeCount: { type: 'integer' },
     channelName: {
       type: 'text',
@@ -115,11 +140,14 @@ export async function createIndexVersion(folderPath: string): Promise<string> {
         number_of_replicas: 0,
       },
       analysis: {
+        filter: {
+          [POSSESSIVE_FILTER]: { type: 'stemmer', language: 'possessive_english' },
+        },
         analyzer: {
           [SEARCH_ANALYZER]: {
             type: 'custom',
             tokenizer: 'standard',
-            filter: ['lowercase', 'asciifolding'],
+            filter: ['lowercase', 'asciifolding', POSSESSIVE_FILTER],
           },
         },
       },
@@ -503,9 +531,40 @@ async function deleteIndexBestEffort(index: string): Promise<void> {
   }
 }
 
+/** The analysis version an index mapping carries, 0 for one built before the stamp existed */
+function analysisVersionOf(mappings: estypes.MappingTypeMapping | undefined): number {
+  const stamped = (mappings?._meta as { analysis_version?: unknown } | undefined)?.analysis_version;
+  return typeof stamped === 'number' ? stamped : 0;
+}
+
 /**
- * Log a warning for indices whose mapping predates the current analyzer
- * (they keep the old `standard` search behavior until a manual reindex).
+ * How an index built under older rules differs from a new one, one reason
+ * each; empty for an index built under the current ones. The version covers
+ * every such change; the properties named on top say what an old index does
+ * wrong today.
+ */
+function legacyMappingReasons(mappings: estypes.MappingTypeMapping | undefined): string[] {
+  const properties = mappings?.properties ?? {};
+  const analyzer = (properties.title as { analyzer?: string } | undefined)?.analyzer;
+  const version = analysisVersionOf(mappings);
+  const reasons: string[] = [];
+  if (version < INDEX_ANALYSIS_VERSION) {
+    reasons.push(`analysis version ${version}, before ${INDEX_ANALYSIS_VERSION} brought ${INDEX_ANALYSIS_CHANGES}`);
+  }
+  if (analyzer !== undefined && analyzer !== SEARCH_ANALYZER) {
+    reasons.push(`title uses the "${analyzer}" analyzer, not "${SEARCH_ANALYZER}"`);
+  }
+  if (properties.viewCount?.type === 'integer') {
+    reasons.push('viewCount as integer refuses every video past 2,147,483,647 views');
+  }
+  return reasons;
+}
+
+/**
+ * Log a warning for every folder whose index was built under older rules. A
+ * reindex with `onlyMissing` skips such a folder and a disk swap brings its
+ * index back as it was, so the old behavior stays until a full reindex. A
+ * folder with no index yet gets nothing: its first reindex builds a current one.
  */
 export async function warnOnLegacyMappings(folderPaths: string[] = getVideosFolderPaths()): Promise<void> {
   for (const folderPath of folderPaths) {
@@ -513,14 +572,15 @@ export async function warnOnLegacyMappings(folderPaths: string[] = getVideosFold
       const alias = getIndexNameFromFolderPath(folderPath);
       const mapping = await getProbeClient().indices.getMapping({ index: alias, ignore_unavailable: true });
       const indexMapping = mapping[Object.keys(mapping)[0] ?? ''];
-      const analyzer = (indexMapping?.mappings?.properties?.title as { analyzer?: string } | undefined)?.analyzer;
-      if (analyzer !== undefined && analyzer !== SEARCH_ANALYZER) {
+      const reasons = indexMapping === undefined ? [] : legacyMappingReasons(indexMapping.mappings);
+      if (reasons.length > 0) {
         logger.warn(
-          `Folder ${folderPath}: index mapping uses analyzer "${analyzer}" — reindex to switch to "${SEARCH_ANALYZER}"`,
+          `Folder ${folderPath}: its index predates the current mapping (${reasons.join('; ')}). ` +
+            'Run a full reindex: POST /api/videos/refreshCache without onlyMissing',
         );
       }
     } catch {
-      // ES down at boot — the warning is cosmetic, nothing to do here
+      // ES down at boot: the warning is cosmetic, nothing to do here
     }
   }
 }

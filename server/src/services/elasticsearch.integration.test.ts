@@ -4,18 +4,24 @@ import path from 'node:path';
 import { Client } from '@elastic/elasticsearch';
 import type { VideoListItem } from '@videodeck/shared/api';
 import { ELASTICSEARCH_URL, invalidateVideosFolderCache } from '../config';
+import { logger } from '../utils/logger';
 import {
+  buildIndexVersionName,
   bulkIndexDocuments,
   createIndexVersion,
   deleteAllVideosFromFolder,
   deleteIndex,
+  getIndexNameFromFolderPath,
   getIndexVersions,
   getVideoByFilePath,
+  listAllIndexVersions,
   listChannelsByFolder,
   promoteIndexVersion,
+  SEARCH_FIELDS,
   searchVideos,
   searchVideosWithTotal,
   toDocument,
+  warnOnLegacyMappings,
 } from './elasticsearchService';
 
 /**
@@ -40,10 +46,12 @@ const runIntegration = process.env.RUN_ES_INTEGRATION === '1';
 const describeIntegration = runIntegration ? describe : describe.skip;
 
 const SCRATCH_FOLDER = '/integration-scratch-folder';
+/** A second folder, so one search spans two single-shard indices */
+const SECOND_SCRATCH_FOLDER = '/integration-scratch-folder-two';
 
 /**
- * A count past int32. A digit string survives `toDocument`'s coercion as this
- * number, so a hand-edited info.json puts it on the wire, and the `integer`
+ * A count past int64. A digit string survives `toDocument`'s coercion as this
+ * number, so a hand-edited info.json puts it on the wire, and the `long`
  * mapping refuses it.
  */
 const OUT_OF_RANGE_VIEW_COUNT = 100_000_000_000_000_000_000;
@@ -57,6 +65,11 @@ interface SearchErrorBody {
     failed_shards: Array<{ reason: { type: string } }>;
   };
   status: number;
+}
+
+/** Alias-shaped names nothing holds, as many as the folders of a large library */
+function aliasNames(count: number): string[] {
+  return Array.from({ length: count }, (_unused, index) => `videos_${String(index).padStart(16, '0')}`);
 }
 
 function video(baseName: string, title: string): VideoListItem {
@@ -80,6 +93,15 @@ describeIntegration('Elasticsearch integration', () => {
 
   afterEach(async () => {
     await deleteIndex(SCRATCH_FOLDER);
+    await deleteIndex(SECOND_SCRATCH_FOLDER);
+    // deleteIndex only reaches the versions behind an alias: a test that wrote
+    // into a version it never promoted would leave it on the cluster, which for
+    // a developer run is the one holding the real library
+    for (const folder of [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER]) {
+      for (const version of await listAllIndexVersions(folder)) {
+        await esClient.indices.delete({ index: version, ignore_unavailable: true });
+      }
+    }
   });
 
   /**
@@ -104,6 +126,61 @@ describeIntegration('Elasticsearch integration', () => {
     throw new Error(`the cluster served from=${from} size=${size} instead of refusing the page`);
   }
 
+  /** Status and body of a raw request the cluster refused */
+  async function rejectionOf(request: Promise<unknown>): Promise<{ status: number; body: unknown }> {
+    try {
+      await request;
+    } catch (error) {
+      const failure = error as { meta?: { statusCode?: number }; body?: unknown };
+      if (failure.meta?.statusCode !== undefined) {
+        return { status: failure.meta.statusCode, body: failure.body };
+      }
+      throw error;
+    }
+    throw new Error('the cluster served a request it was expected to refuse');
+  }
+
+  /**
+   * The first folder holds a video whose comments run past
+   * index.highlight.max_analyzed_offset (1,000,000 characters) next to a light
+   * one, the second a light video of its own. Every title holds "film".
+   */
+  async function seedHighlightFolders(): Promise<{ heavy: string; other: string }> {
+    const heavy = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      heavy,
+      [
+        { ...toDocument(video('20240103_ciezki', 'Film z komentarzami')), commentsText: 'komentarz '.repeat(110_000) },
+        toDocument(video('20240101_lekki', 'Film bez komentarzy')),
+      ],
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, heavy);
+    const other = await createIndexVersion(SECOND_SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      other,
+      [toDocument({ ...video('20240102_inny', 'Film z innego folderu'), folderPath: SECOND_SCRATCH_FOLDER })],
+      false,
+    );
+    await promoteIndexVersion(SECOND_SCRATCH_FOLDER, other);
+    return {
+      heavy: getIndexNameFromFolderPath(SCRATCH_FOLDER),
+      other: getIndexNameFromFolderPath(SECOND_SCRATCH_FOLDER),
+    };
+  }
+
+  /** A typed search that highlights the comments, as the service's page search does */
+  function highlightBody(maxAnalyzedOffset?: number) {
+    return {
+      query: { multi_match: { query: 'film', fields: ['title', 'commentsText'] } },
+      track_total_hits: true,
+      highlight: {
+        fields: { commentsText: { fragment_size: 160, number_of_fragments: 1 } },
+        ...(maxAnalyzedOffset === undefined ? {} : { max_analyzed_offset: maxAnalyzedOffset }),
+      },
+    };
+  }
+
   /** One document behind the folder alias, so a search really has an index */
   async function indexOneVideo(baseName: string, title: string): Promise<string> {
     const indexName = await createIndexVersion(SCRATCH_FOLDER);
@@ -120,6 +197,26 @@ describeIntegration('Elasticsearch integration', () => {
     // No diacritics in the query — asciifolding makes it match
     const folded = await searchVideos('srodek', 'date-desc', [SCRATCH_FOLDER]);
     expect(folded.map((item) => item.baseName)).toContain('20240101_czyszczenie');
+  });
+
+  it('matches an English possessive through its base word', async () => {
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      indexName,
+      documentsOf([video('20240101_pizza', "World's Biggest Pizza"), video('20240102_tesla', 'Tesla’s Cheapest Car')]),
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, indexName);
+
+    // The standard tokenizer keeps each possessive in one token, two edits
+    // from a five-letter query that fuzziness AUTO allows one; asciifolding
+    // turns ‘ into the ' the stemmer knows
+    const analyzed = await esClient.indices.analyze({ index: indexName, field: 'title', text: 'World’s World‘s' });
+    expect(analyzed.tokens?.map((token) => token.token)).toEqual(['world', 'world']);
+    const baseNamesFor = async (q: string) =>
+      (await searchVideos(q, 'relevance', [SCRATCH_FOLDER])).map((item) => item.baseName);
+    expect(await baseNamesFor('world')).toEqual(['20240101_pizza']);
+    expect(await baseNamesFor('tesla')).toEqual(['20240102_tesla']);
   });
 
   it('matches any query term, tolerates a typo and ignores a substring that is not a token', async () => {
@@ -245,7 +342,130 @@ describeIntegration('Elasticsearch integration', () => {
     expect(results.map((item) => item.baseName)).toEqual(['20240101_kept']);
   });
 
-  // The five scenarios below are the twins of the fake's own tests: the same
+  it('serves every folder of a typed search when one video carries more comment text than the highlighter analyzes', async () => {
+    await seedHighlightFolders();
+
+    // The deep suite's scenario on a cluster: the service caps the highlighter,
+    // so neither the two-folder page nor the heavy folder alone loses a hit
+    const page = await searchVideosWithTotal('film', 'date-desc', [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER]);
+    expect(page.total).toBe(3);
+    expect(page.videos.map((item) => item.baseName).sort()).toEqual([
+      '20240101_lekki',
+      '20240102_inny',
+      '20240103_ciezki',
+    ]);
+
+    const single = await searchVideosWithTotal('film', 'date-desc', [SCRATCH_FOLDER]);
+    expect(single.videos.map((item) => item.baseName).sort()).toEqual(['20240101_lekki', '20240103_ciezki']);
+  });
+
+  it('ranks the video a typed phrase names above a newer one sharing a word in a comment', async () => {
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      indexName,
+      [
+        // Newer, and tied to the phrase by one common word in its one comment
+        {
+          ...toDocument({ ...video('20240105_vlog', 'Vlog z wakacji'), uploadDate: '20240105' }),
+          commentsText: 'jak zawsze super',
+        },
+        toDocument({ ...video('20230101_pizza', 'Jak zrobić pizzę w domu'), uploadDate: '20230101' }),
+      ],
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, indexName);
+
+    // No sort asked for: the phrase ranks by relevance, where newest first led
+    // with the vlog
+    const page = await searchVideosWithTotal('jak zrobić', undefined, [SCRATCH_FOLDER]);
+    expect(page.videos.map((item) => item.baseName)).toEqual(['20230101_pizza', '20240105_vlog']);
+  });
+
+  it('ranks a title match above a comment match across folders by the statistics of the whole library', async () => {
+    // One folder holds one video whose title has the word, the other ten
+    // commented videos, one of which has it in a comment. Scored per shard,
+    // the word is in every document of the first folder and weighs next to
+    // nothing there, while it is rare in the second: the comment led. Over the
+    // statistics of both folders (dfs_query_then_fetch) the title match wins,
+    // once the phrase also goes out as typed: the fuzzy clause alone expanded
+    // to nothing in the second folder's titles, which kept its title
+    // statistics out of the DFS round, and this test failed on a real cluster.
+    const titled = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(titled, [toDocument(video('20240101_tytul', 'Rakieta na Marsa'))], false);
+    await promoteIndexVersion(SCRATCH_FOLDER, titled);
+
+    const commented = await createIndexVersion(SECOND_SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      commented,
+      Array.from({ length: 10 }, (_unused, index) => ({
+        ...toDocument({ ...video(`20240102_film_${index}`, `Odcinek ${index}`), folderPath: SECOND_SCRATCH_FOLDER }),
+        commentsText: index === 0 ? 'rakieta super' : 'super odcinek',
+      })),
+      false,
+    );
+    await promoteIndexVersion(SECOND_SCRATCH_FOLDER, commented);
+
+    const page = await searchVideosWithTotal('rakieta', undefined, [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER]);
+    expect(page.videos.map((item) => item.baseName)).toEqual(['20240101_tytul', '20240102_film_0']);
+
+    // A typo still finds both: the clause as typed matches nothing, and the
+    // fuzzy clause keeps the near word
+    const typo = await searchVideosWithTotal('rakita', undefined, [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER]);
+    expect(typo.videos.map((item) => item.baseName).sort()).toEqual(['20240101_tytul', '20240102_film_0']);
+  });
+
+  it('finds the video a pasted watch link points at', async () => {
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      indexName,
+      [
+        toDocument({ ...video('20091025_klip', 'Klip'), videoId: 'dQw4w9WgXcQ', uploadDate: '20091025' }),
+        // Newer, with a link to another video in its description: the text
+        // search matched it through "https", "watch" and "v"
+        {
+          ...toDocument({ ...video('20240101_nowy', 'Nowy film'), videoId: 'nowy0000001', uploadDate: '20240101' }),
+          description: 'Linki: https://www.youtube.com/watch?v=abcdefghijk',
+        },
+      ],
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, indexName);
+
+    const baseNamesFor = async (q: string) =>
+      (await searchVideos(q, 'date-desc', [SCRATCH_FOLDER])).map((item) => item.baseName);
+    expect(await baseNamesFor('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toEqual(['20091025_klip']);
+    expect(await baseNamesFor('dQw4w9WgXcQ')).toEqual(['20091025_klip']);
+    expect(await baseNamesFor('https://www.youtube.com/watch?v=notArchived')).toEqual([]);
+  });
+
+  it('scores a downloaded file and a foreign-named file with the same title alike', async () => {
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      indexName,
+      [
+        // The stem yt-dlp writes, a single token under the standard tokenizer
+        toDocument({ ...video('20240101_Robot_Arm_Build_abc12345678', 'Robot Arm Build'), videoId: 'abc12345678' }),
+        // A file named outside the app, whose stem splits into words
+        toDocument({ ...video('Robot Arm Build [abc12345679]', 'Robot Arm Build'), videoId: 'abc12345679' }),
+      ],
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, indexName);
+
+    // The service's own match over its fields, the phrase as typed and within
+    // the typo budget: with the file name among them at ^4, the second file's
+    // words lifted it above the first
+    const asTyped = { query: 'robot', fields: SEARCH_FIELDS, type: 'best_fields' as const };
+    const response = await esClient.search({
+      index: indexName,
+      query: { bool: { should: [{ multi_match: asTyped }, { multi_match: { ...asTyped, fuzziness: 'AUTO' } }] } },
+    });
+    const scores = response.hits.hits.map((hit) => hit._score);
+    expect(scores).toHaveLength(2);
+    expect(scores[0]).toBe(scores[1]);
+  });
+
+  // The scenarios below are the twins of the fake's own tests: the same
   // scenario name, the same expectation, once against the fake and once here.
 
   it('refuses a page past the result window the way Elasticsearch does', async () => {
@@ -309,6 +529,72 @@ describeIntegration('Elasticsearch integration', () => {
     expect(results.map((item) => item.baseName)).toEqual(['20240101_dobry']);
   });
 
+  it('stores a count past int32 in a long field and refuses it in an integer one', async () => {
+    // The service's own mapping: views are long, likes integer. 2^63 - 1024 is
+    // the last double below Long.MAX_VALUE, and 2^63 the first one past it.
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    const documents = [
+      { ...toDocument(video('20240101_trzy', 'Trzy miliardy')), viewCount: 3_000_000_000 },
+      { ...toDocument(video('20240102_polubienia', 'Za dużo polubień')), likeCount: 3_000_000_000 },
+      { ...toDocument(video('20240103_krawedz', 'Na krawędzi')), viewCount: 2 ** 63 - 1024 },
+      { ...toDocument(video('20240104_poza', 'Za krawędzią')), viewCount: 2 ** 63 },
+    ];
+
+    const response = await esClient.bulk({
+      operations: documents.flatMap((document) => [{ index: { _index: indexName, _id: document.baseName } }, document]),
+    });
+
+    expect(response.items.map(({ index }) => index?.error?.type ?? index?.status)).toEqual([
+      201,
+      'document_parsing_exception',
+      201,
+      'document_parsing_exception',
+    ]);
+    expect(response.items[1]?.index?.error?.reason).toContain('failed to parse field [likeCount] of type [integer]');
+    expect(response.items[3]?.index?.error?.reason).toContain('failed to parse field [viewCount] of type [long]');
+  });
+
+  it('sorts counts by value across an integer and a long index', async () => {
+    // A library mid-upgrade: the second folder still has the index it got while
+    // views were integer, the first one a current index with long views
+    const legacy = buildIndexVersionName(SECOND_SCRATCH_FOLDER);
+    await esClient.indices.create({ index: legacy, mappings: { properties: { viewCount: { type: 'integer' } } } });
+    await bulkIndexDocuments(
+      legacy,
+      [
+        toDocument({ ...video('20240101_stary', 'Stary'), folderPath: SECOND_SCRATCH_FOLDER, viewCount: 999 }),
+        toDocument({ ...video('20240102_bez', 'Bez licznika'), folderPath: SECOND_SCRATCH_FOLDER }),
+      ],
+      false,
+    );
+    await promoteIndexVersion(SECOND_SCRATCH_FOLDER, legacy);
+    const current = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      current,
+      [
+        toDocument({ ...video('20240103_trzy', 'Trzy miliardy'), viewCount: 3_000_000_000 }),
+        toDocument({ ...video('20240104_siedem', 'Siedem miliardów'), viewCount: 7_000_000_000 }),
+      ],
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, current);
+
+    const baseNamesFor = async (sort: 'views-desc' | 'views-asc') =>
+      (await searchVideos('', sort, [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER])).map((item) => item.baseName);
+    expect(await baseNamesFor('views-desc')).toEqual([
+      '20240104_siedem',
+      '20240103_trzy',
+      '20240101_stary',
+      '20240102_bez',
+    ]);
+    expect(await baseNamesFor('views-asc')).toEqual([
+      '20240101_stary',
+      '20240103_trzy',
+      '20240104_siedem',
+      '20240102_bez',
+    ]);
+  });
+
   it('finds a video by its video or thumbnail file name, and nothing for a name no video holds', async () => {
     // getVideoByFilePath searches every configured folder, so the configuration
     // points at a directory of this test's own, as the channel test does
@@ -350,6 +636,117 @@ describeIntegration('Elasticsearch integration', () => {
         process.env.VIDEOS_FOLDER_PATH = previous;
       }
       invalidateVideosFolderCache();
+    }
+  });
+
+  it('refuses a request line past 4 KB the way Elasticsearch does', async () => {
+    await indexOneVideo('20240101_linia', 'Długa linia');
+    const names = [getIndexNameFromFolderPath(SCRATCH_FOLDER), ...aliasNames(299)];
+
+    // http.max_initial_line_length is 4kb and static: the client encodes the
+    // commas of 300 names into about 7.8 KB of URL, refused before any lookup
+    const failure = await rejectionOf(esClient.search({ index: names, ignore_unavailable: true }));
+
+    expect(failure.status).toBe(400);
+    expect(JSON.stringify(failure.body)).toContain('An HTTP line is larger than 4096 bytes.');
+
+    // The service's read over as many folders sends the list in an _msearch
+    // header, so the same library is served
+    const unindexed = Array.from({ length: 299 }, (_unused, index) => `${SCRATCH_FOLDER}-unindexed-${index}`);
+    const page = await searchVideosWithTotal('', 'date-desc', [SCRATCH_FOLDER, ...unindexed]);
+    expect(page.videos.map((item) => item.baseName)).toEqual(['20240101_linia']);
+    expect(page.total).toBe(1);
+  });
+
+  it('answers _msearch with one response per search', async () => {
+    await indexOneVideo('20240101_wielokrotne', 'Wielokrotne');
+    const alias = getIndexNameFromFolderPath(SCRATCH_FOLDER);
+
+    const response = await esClient.msearch({
+      searches: [
+        // 300 names, 299 of which nothing holds: ignore_unavailable skips them
+        { index: [alias, ...aliasNames(299)], ignore_unavailable: true },
+        { query: { match_all: {} } },
+        // A page past the result window fails its own search, not the request
+        { index: alias, ignore_unavailable: true },
+        { query: { match_all: {} }, from: 9990, size: 20 },
+      ],
+    });
+
+    expect(response.responses).toHaveLength(2);
+    const [served, refused] = response.responses;
+    expect(served?.status).toBe(200);
+    expect(served && 'hits' in served ? served.hits.total : undefined).toEqual({ value: 1, relation: 'eq' });
+    expect(refused?.status).toBe(400);
+    expect(refused && 'error' in refused ? refused.error.type : undefined).toBe('search_phase_execution_exception');
+  });
+
+  it('fails the shard of a hit whose highlighted field passes the analyzed-offset limit, unless the request caps it', async () => {
+    const { heavy, other } = await seedHighlightFolders();
+
+    // Both folders: the heavy one's shard fails in the fetch phase, so its two
+    // hits count in the total and are missing from the page of a 200 answer
+    const partial = await esClient.search({ index: [heavy, other], ...highlightBody() });
+    expect(partial._shards).toMatchObject({ total: 2, successful: 1, failed: 1 });
+    expect(JSON.stringify(partial._shards.failures)).toContain('max_analyzed_offset');
+    expect(partial.hits.total).toEqual({ value: 3, relation: 'eq' });
+    expect(partial.hits.hits.map((hit) => hit._id)).toEqual(['20240102_inny']);
+
+    // The heavy folder alone is one shard, so the same failure fails the search
+    const single = await rejectionOf(esClient.search({ index: heavy, ...highlightBody() }));
+    expect(single.status).toBe(400);
+    expect(single.body).toMatchObject({
+      error: { type: 'search_phase_execution_exception', reason: 'all shards failed' },
+    });
+
+    // A request cap at or below the index limit truncates the field instead
+    const capped = await esClient.search({ index: [heavy, other], ...highlightBody(100_000) });
+    expect(capped._shards).toMatchObject({ total: 2, successful: 2, failed: 0 });
+    expect(capped.hits.hits.map((hit) => hit._id).sort()).toEqual([
+      '20240101_lekki',
+      '20240102_inny',
+      '20240103_ciezki',
+    ]);
+  });
+
+  it('refuses a page with a failed shard when partial results are not allowed', async () => {
+    const { heavy, other } = await seedHighlightFolders();
+
+    // The short page above becomes a 400 once partial results are refused
+    const refused = await rejectionOf(
+      esClient.search({ index: [heavy, other], allow_partial_search_results: false, ...highlightBody() }),
+    );
+    expect(refused.status).toBe(400);
+    expect(refused.body).toMatchObject({ error: { type: 'search_phase_execution_exception' } });
+
+    // The same flag in an _msearch header fails that search's item instead
+    const response = await esClient.msearch({
+      searches: [
+        { index: [heavy, other], ignore_unavailable: true, allow_partial_search_results: false },
+        highlightBody(),
+      ],
+    });
+    const [item] = response.responses;
+    expect(item?.status).toBe(400);
+    expect(item && 'error' in item ? item.error.type : undefined).toBe('search_phase_execution_exception');
+  });
+
+  it('hands back the _meta an index was created with on a mapping read', async () => {
+    const indexName = await indexOneVideo('20240101_wersja', 'Wersja analizy');
+
+    const mapping = await esClient.indices.getMapping({
+      index: getIndexNameFromFolderPath(SCRATCH_FOLDER),
+      ignore_unavailable: true,
+    });
+    expect(mapping[indexName]?.mappings._meta).toEqual({ analysis_version: 1 });
+
+    // So the boot check has nothing to say about a folder built under it
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    try {
+      await warnOnLegacyMappings([SCRATCH_FOLDER]);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
     }
   });
 

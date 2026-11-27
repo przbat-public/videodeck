@@ -6,11 +6,11 @@ import path from 'node:path';
 /**
  * Turning `VIDEOS_FOLDER_PATH` into the folders that exist right now.
  *
- * One half of the library: the roots, the segment-level glob expansion and the
+ * One half of the library: the roots, the segment-level glob expansion, the
  * two scans (a synchronous one for the cold boot, an asynchronous one for every
- * pass after it). Nothing here holds state or publishes anything, so it can be
- * read and tested on its own; `libraryState.ts` owns the snapshot these scans
- * feed.
+ * pass after it) and the directories a watch has to sit on to see their result
+ * move. Nothing here holds state or publishes anything, so it can be read and
+ * tested on its own; `libraryState.ts` owns the snapshot these scans feed.
  */
 
 // ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ export function parseLibraryRoots(raw: string): string[] {
   return roots;
 }
 
-export function hasGlobMagic(value: string): boolean {
+function hasGlobMagic(value: string): boolean {
   return value.includes('*');
 }
 
@@ -96,7 +96,7 @@ function listDirectories(dir: string): string[] {
   }
 }
 
-export function isDirectory(dir: string): boolean {
+function isDirectory(dir: string): boolean {
   try {
     return fs.statSync(dir).isDirectory();
   } catch {
@@ -299,4 +299,52 @@ export async function scanLibraryAsync(raw: string): Promise<LibraryScan> {
     pushFolder(folders, seen, root);
   }
   return { raw, roots, folders, awayLiterals };
+}
+
+// ---------------------------------------------------------------------------
+// What a watch has to see
+// ---------------------------------------------------------------------------
+
+/** `dir` when it is a directory, else its nearest parent that is; null when none is */
+function longestExistingAncestor(dir: string): string | null {
+  let candidate = dir;
+  while (!isDirectory(candidate)) {
+    const parent = path.dirname(candidate);
+    if (parent === candidate) {
+      return null;
+    }
+    candidate = parent;
+  }
+  return candidate;
+}
+
+/**
+ * The directories whose own entries decide what one root resolves to, which
+ * is where a plain watch has to sit to see the folder list move. A literal
+ * root appears, leaves or is renamed in its parent. A glob root is decided by
+ * its literal prefix, then by every directory each glob level matches, down
+ * to the parents of the last level. The folders the last level matches are
+ * left out: a running download writes into a channel folder all the time, and
+ * none of those writes can change the list. A directory that only becomes a
+ * channel folder after it appeared is therefore left to the backstop. While
+ * the prefix, or a literal root's parent, is away, its longest existing
+ * ancestor stands in, since that is where the drive shows up again.
+ */
+export function watchDirectoriesFor(root: string): string[] {
+  const resolved = path.resolve(root);
+  const segments = resolved.split('/').filter((segment) => segment.length > 0);
+  const firstGlob = segments.findIndex(hasGlobMagic);
+  const deciding = firstGlob === -1 ? path.dirname(resolved) : path.join('/', ...segments.slice(0, firstGlob));
+  const anchor = longestExistingAncestor(deciding);
+  if (anchor !== deciding) {
+    return anchor === null ? [] : [anchor];
+  }
+  const directories = [deciding];
+  let bases = [deciding];
+  // Every glob level but the last: its matches are the bases the next one lists
+  for (const segment of firstGlob === -1 ? [] : segments.slice(firstGlob, -1)) {
+    bases = expandSegment(segment, bases);
+    directories.push(...bases);
+  }
+  return directories;
 }
