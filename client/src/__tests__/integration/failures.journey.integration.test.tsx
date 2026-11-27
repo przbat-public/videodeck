@@ -81,10 +81,12 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
 
     // The fake yt-dlp fails each id immediately with the live error text;
     // the queue maps it to a machine-readable code and the row translates
-    // it, while the raw stderr stays visible in the job log below. The jobs
-    // run two at a time and the page polls the queue every 1.5 s, so each
-    // row's error can land a poll after the one before it: every wait gets
-    // the same budget, where the second used to get the default second.
+    // it, while the raw stderr stays visible in the job log below. The three
+    // downloads share one folder, and the queue runs one download per folder
+    // at a time, so they run one after another. The page polls the queue
+    // every 1.5 s, which lets each row's error arrive one poll after the one
+    // before it. Every wait gets the same budget; the later ones used to get
+    // the default 1 s.
     const settled = { timeout: 30_000 };
     await within(section).findByText(
       'Ten film jest dostępny tylko dla członków kanału (members-only)',
