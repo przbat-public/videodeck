@@ -60,7 +60,15 @@ export interface CreateAppOptions {
   downloadQueue?: DownloadQueueLike;
 }
 
-/** One log line and one metrics sample per finished request */
+/**
+ * The server image's healthcheck asks this path every 30 s. A log line per
+ * probe buried the requests an operator reads the log for, so a probe that
+ * answers 200 is counted in the metrics and left out of the log. Anything
+ * else it answers still gets a line.
+ */
+const LIVENESS_PATH = '/health/live';
+
+/** One metrics sample per finished request, and one log line for all but a healthy liveness probe */
 function requestLogger(req: Request, res: Response, next: NextFunction): void {
   const requestId = randomUUID();
   res.locals.requestId = requestId;
@@ -80,6 +88,9 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
     // instead of a new series per URL (every filename would be one).
     const route = req.route?.path ?? 'unmatched';
     recordRequest(req.method, route, res.statusCode, durationMs);
+    if (requestPath === LIVENESS_PATH && res.statusCode === 200) {
+      return;
+    }
     // The path, not the whole URL: a query string carries folder paths and
     // search phrases, and the log is where they would outlive the request.
     logger.info(`${req.method} ${requestPath} → ${res.statusCode} (${durationMs}ms) [${requestId}]`);

@@ -13,6 +13,7 @@ import type { Test } from 'supertest';
 import request from 'supertest';
 import type { MockedFunction } from 'vitest';
 import { createApp } from '../app';
+import { metricsRegistry } from '../metricsRegistry';
 import {
   checkElasticsearchConnection,
   checkElasticsearchWrites,
@@ -56,6 +57,15 @@ afterEach(() => {
     fs.rmSync(folder, { recursive: true, force: true });
   }
 });
+
+/** The 200 answers to /health/live that http_requests_total has counted so far */
+async function countedLivenessProbes(): Promise<number> {
+  const counter = metricsRegistry.getSingleMetric('http_requests_total');
+  const samples = (await counter?.get())?.values ?? [];
+  return samples
+    .filter((sample) => sample.labels.route === '/health/live' && String(sample.labels.status) === '200')
+    .reduce((sum, sample) => sum + sample.value, 0);
+}
 
 describe('createAuthMiddleware', () => {
   /**
@@ -372,6 +382,26 @@ describe('createApp auth wiring', () => {
     const line = String(log.mock.calls.at(-1)?.[0] ?? '');
     expect(line).toContain('GET /api/folder/queue');
     expect(line).not.toContain('/private/videos');
+
+    log.mockRestore();
+  });
+
+  it('keeps liveness probes out of the request log and still counts them', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {
+      /* captured by the assertions below */
+    });
+    const app = createApp();
+    const countedBefore = await countedLivenessProbes();
+
+    const response = await request(app).get('/health/live');
+
+    // The server image's healthcheck asks this path every 30 s: a line per
+    // probe buried the requests an operator reads the log for
+    expect(response.status).toBe(200);
+    const lines = log.mock.calls.map((call) => String(call[0]));
+    expect(lines.filter((line) => line.includes('/health/live'))).toEqual([]);
+    // A stalled event loop still shows up on /metrics
+    expect(await countedLivenessProbes()).toBe(countedBefore + 1);
 
     log.mockRestore();
   });

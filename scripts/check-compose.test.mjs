@@ -8,8 +8,10 @@ import { fileURLToPath } from 'node:url';
 // else in the gate reads it: a service without a restart policy stays down
 // after a host reboot, and a proxy that forgets X-Forwarded-For turns the
 // rate-limit key into a header the client picks. A log without a cap grows on
-// the Docker disk, the one whose flood stage turns the index read-only. Each
-// is cheap to state here and expensive to notice in production.
+// the Docker disk, the one whose flood stage turns the index read-only. An
+// image healthcheck that asks a readiness path marks the server unhealthy
+// whenever Elasticsearch is down. Each is cheap to state here and expensive to
+// notice in production.
 //
 // Parsed by indentation instead of a YAML dependency: the file is ours, and a
 // parser would be a dependency the gate has to keep alive.
@@ -17,6 +19,8 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const read = (/** @type {string[]} */ ...parts) => readFileSync(path.join(ROOT, ...parts), 'utf8');
 const COMPOSE = read('docker-compose.yml');
 const NGINX_TEMPLATE = read('client', 'nginx.conf.template');
+const SERVER_DOCKERFILE = read('server', 'Dockerfile');
+const CLIENT_DOCKERFILE = read('client', 'Dockerfile');
 
 /**
  * The `services:` block as `{ name, body }`, one entry per service.
@@ -200,6 +204,64 @@ test('the documented Elasticsearch docker run caps its log like the compose stac
       command,
       new RegExp(`--log-opt max-file=${maxFile}\\s`),
       `${doc}: the docker run must keep at most max-file=${maxFile} log files, as the compose stack does`,
+    );
+  }
+});
+
+/**
+ * The HEALTHCHECK instruction of a Dockerfile with its continuation lines
+ * joined, or null when the image has none.
+ *
+ * @param {string} dockerfile
+ */
+function healthcheckOf(dockerfile) {
+  const joined = dockerfile.replace(/\\\n\s*/g, ' ');
+  return joined.split('\n').find((line) => /^HEALTHCHECK\s/.test(line)) ?? null;
+}
+
+test('both images probe their liveness path, never a readiness one', () => {
+  // /health and /api/health answer 503 while Elasticsearch is down, and the
+  // server is alive then: its banner says so. /health/live asks the process.
+  const server = healthcheckOf(SERVER_DOCKERFILE);
+  assert.ok(server, 'server/Dockerfile has no HEALTHCHECK');
+  assert.match(
+    server,
+    /'http:\/\/127\.0\.0\.1:'.*'\/health\/live'/,
+    'the server HEALTHCHECK must ask 127.0.0.1 for /health/live',
+  );
+  // The client answers its own probe, so a server outage leaves the UI that
+  // reports it healthy
+  const client = healthcheckOf(CLIENT_DOCKERFILE);
+  assert.ok(client, 'client/Dockerfile has no HEALTHCHECK');
+  assert.match(
+    client,
+    /http:\/\/127\.0\.0\.1\/health\/live\b/,
+    'the client HEALTHCHECK must ask nginx for /health/live',
+  );
+  const probe = nginxLocation('= /health/live');
+  assert.ok(probe, 'client/nginx.conf.template has no `location = /health/live` for the probe');
+  assert.match(probe, /^\s*return\s+200\b/m, 'the probe location must answer by itself, without the upstream');
+  assert.match(probe, /^\s*access_log\s+off;/m, 'the probe location must stay out of the access log');
+});
+
+test('the Elasticsearch healthcheck asks the cluster, not the root path', () => {
+  const elasticsearch = composeServices().find((service) => service.name === 'elasticsearch');
+  assert.ok(elasticsearch, 'docker-compose.yml has no elasticsearch service');
+  // The server waits for this one (depends_on: service_healthy), and `/`
+  // answers before the cluster accepts index work
+  assert.match(
+    elasticsearch.body,
+    /_cluster\/health\?wait_for_status=yellow/,
+    'the elasticsearch healthcheck must wait for a yellow cluster',
+  );
+});
+
+test('no compose service turns an image healthcheck off', () => {
+  for (const service of composeServices()) {
+    assert.doesNotMatch(
+      service.body,
+      /^\s+disable:\s*true\b|\[\s*['"]NONE['"]\s*\]/m,
+      `docker-compose.yml: service "${service.name}" switches its healthcheck off`,
     );
   }
 });

@@ -57,8 +57,12 @@ points at `http://<host>:3001`.
 
 3. Bring the stack up:
    ```bash
-   docker compose up -d --build
+   docker compose up -d --build --wait
    ```
+   `--wait` returns once every service reports healthy. Elasticsearch gets
+   there when the cluster takes index work. The server and the UI only have to
+   answer their liveness probe, `/health/live`, which they do with the cluster
+   down as well.
    - Web UI: `http://<host>:3000`
    - API: `http://<host>:3001` (`/health`, `/api/...`)
    - First searchable content appears after `POST /api/videos/refreshCache`
@@ -73,7 +77,7 @@ points at `http://<host>:3001`.
 ## Upgrades
 
 ```bash
-docker compose pull && docker compose up -d --build
+docker compose pull && docker compose up -d --build --wait
 ```
 
 After an upgrade, check the boot log for "its index predates the current

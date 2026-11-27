@@ -92,4 +92,12 @@ EXPOSE 3001
 # Video folders must be writable by this user: the folder index and archive
 # live next to the videos. See docs/DEPLOYMENT.md.
 USER node
+# Liveness only: /health/live answers while Elasticsearch is down, so a cluster
+# outage does not mark this container unhealthy. Docker reports the state
+# (docker compose ps, up --wait) and restarts nothing. The slim base has no
+# curl, so node asks; 127.0.0.1 reaches both binds the docs describe, the
+# default loopback and the 0.0.0.0 the compose stack sets. The start period
+# covers a boot that restores a long queue.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --start-interval=5s --retries=3 \
+    CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3001) + '/health/live').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 CMD ["node", "server/dist/server/src/index.js"]

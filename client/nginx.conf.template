@@ -14,6 +14,14 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
+    # The image's healthcheck asks here. nginx answers by itself, without the
+    # static files or the upstream, and the probe stays out of the log.
+    location = /health/live {
+        access_log off;
+        default_type text/plain;
+        return 200 'ok';
+    }
+
     location /api/ {
         # The server writes a line for every API request already, and this
         # log would add the query string it leaves out on purpose: a folder

@@ -21,3 +21,9 @@ COPY --from=build /app/client/dist /usr/share/nginx/html
 # proxy header at container start, so the token never lands in the image.
 COPY client/nginx.conf.template /etc/nginx/templates/default.conf.template
 EXPOSE 80
+# nginx answers /health/live by itself (see the template), so this probe says
+# nothing about the server: the UI stays healthy to show the banner when the
+# server is not. busybox wget ships with the alpine base. 127.0.0.1, not
+# localhost: the server block listens on IPv4 only.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --start-interval=2s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1/health/live || exit 1

@@ -11,7 +11,7 @@ Readiness probe: pings Elasticsearch and returns `200 { status: 'ok', elasticsea
 
 ### GET /health/live (public)
 
-Dependency-free liveness probe: `200 { status: 'ok' }` when the server process responds.
+Dependency-free liveness probe: `200 { status: 'ok' }` when the server process responds. The server image's `HEALTHCHECK` asks it every 30 s, so a `200` here counts in `http_requests_total` but leaves no line in the request log.
 
 ### GET /metrics
 

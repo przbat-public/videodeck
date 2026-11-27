@@ -363,6 +363,22 @@ jobs:
           grep -q '"elasticsearch":"down"' /tmp/health.json
           # The token is enforced inside the image, not only in the tests
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8091/api/health)" = "401"
+          # Docker's own probe, run inside the container. It asks the liveness
+          # path, which answers while Elasticsearch is down, so the container
+          # turns healthy here too.
+          for _ in $(seq 1 30); do
+            health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' server)
+            [ "$health" = "healthy" ] && break
+            sleep 2
+          done
+          test "$health" = "healthy" || { echo "::error::the server container reports health '$health'"; exit 1; }
+          # The same probe where nothing listens has to fail, or "healthy"
+          # above proves nothing
+          probe=$(docker inspect -f '{{index .Config.Healthcheck.Test 3}}' videodeck-server:ci)
+          if docker run --rm --network none --entrypoint node videodeck-server:ci -e "$probe"; then
+            echo "::error::the server probe passed with no server listening"
+            exit 1
+          fi
       - name: Smoke-test the client image
         run: |
           # On the same network as the server, so nginx resolves its upstream at
@@ -384,14 +400,27 @@ jobs:
           done
           test "$code" = "503"
           grep -q '"elasticsearch":"down"' /tmp/proxied.json
-          # nginx logs the page but not the API: the server writes a line for
-          # each API request already, and nginx's line would add the query
-          # string. stdout only, which is the access log; the error log goes to
-          # stderr.
+          # nginx answers its own probe, so the UI turns healthy whatever the
+          # server's state, and the probe fails where nginx is not running
+          for _ in $(seq 1 30); do
+            health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' client)
+            [ "$health" = "healthy" ] && break
+            sleep 2
+          done
+          test "$health" = "healthy" || { echo "::error::the client container reports health '$health'"; exit 1; }
+          probe=$(docker inspect -f '{{index .Config.Healthcheck.Test 1}}' videodeck-client:ci)
+          if docker run --rm --network none --entrypoint sh videodeck-client:ci -c "$probe"; then
+            echo "::error::the client probe passed with nginx not running"
+            exit 1
+          fi
+          # nginx logs the page but neither the API nor the probes: the server
+          # writes a line for each API request already, and nginx's line would
+          # add the query string. stdout only, which is the access log; the
+          # error log goes to stderr.
           docker logs client > /tmp/client-access.log 2>/dev/null
           grep -q '"GET / HTTP/1.1" 200' /tmp/client-access.log
-          if grep 'GET /api/' /tmp/client-access.log; then
-            echo "::error::nginx writes API requests to its access log (listed above)"
+          if grep -E 'GET /(api/|health/live)' /tmp/client-access.log; then
+            echo "::error::nginx writes API requests or probes to its access log (listed above)"
             exit 1
           fi
       - name: Container logs on failure
@@ -399,6 +428,8 @@ jobs:
         run: |
           docker logs server || true
           docker logs client || true
+          # The last probe answers, for a container that never turned healthy
+          docker inspect -f '{{.Name}} {{json .State.Health}}' server client || true
 
   e2e:
     name: Playwright E2E (mocked API)
