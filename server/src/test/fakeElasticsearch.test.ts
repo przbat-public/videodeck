@@ -34,6 +34,19 @@ describe('FakeElasticsearch controls', () => {
     await fake.stop();
   });
 
+  // Every test writes into the one fixture index, and a fuzzy query reaches a
+  // neighbour's token ('betaunikat' is two edits from 'deltaunikat'), so each
+  // test starts from an empty index. The mapping and the alias stay. The delete
+  // is checked: one the fake refused would bring the leak back without a sound.
+  beforeEach(async () => {
+    const emptied = await fetch(`${baseUrl}/videos_x/_delete_by_query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: { match_all: {} } }),
+    });
+    expect(emptied.status).toBe(200);
+  });
+
   const search = () =>
     fetch(`${baseUrl}/videos_x/_search`, {
       method: 'POST',
@@ -274,8 +287,8 @@ describe('FakeElasticsearch controls', () => {
   };
 
   it('matches any of the query terms, the way best_fields with the default operator does', async () => {
-    // Invented tokens, so the count cannot depend on what earlier tests left in
-    // the shared fixture index.
+    // Invented tokens, and the index starts empty, so the count cannot depend
+    // on what another test wrote.
     await putDocument('operator-or-1', { title: 'Alfaunikat' });
     await putDocument('operator-or-2', { title: 'Betaunikat' });
 
@@ -410,5 +423,13 @@ describe('FakeElasticsearch controls', () => {
     await stopping;
 
     expect((await held).status).toBe(200);
+  });
+
+  it('starts every test from an empty fixture index', async () => {
+    // Declared last, so in file order, the order PR CI runs, every test that
+    // writes into the fixture index has run before this one reads it
+    const total = ((await (await search()).json()) as { hits: { total: { value: number } } }).hits.total.value;
+
+    expect(total).toBe(0);
   });
 });
