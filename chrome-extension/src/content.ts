@@ -52,12 +52,15 @@ function getYouTubeVideoInfo(videoId: string): VideoInfo {
   };
 }
 
-/** Finds a plausible video title in the YouTube player markup. */
+/**
+ * Finds a plausible video title in the YouTube player markup. textContent
+ * alone: an innerText fallback could never help, since an element whose text
+ * nodes trim to nothing renders nothing either.
+ */
 function findYoutubeTitle(): string | null {
   for (const selector of YOUTUBE_TITLE_SELECTORS) {
-    const element = document.querySelector(selector);
-    const text = element?.textContent?.trim() || (element instanceof HTMLElement ? element.innerText.trim() : '');
-    if (text && text !== 'YouTube' && text.length > 0) {
+    const text = document.querySelector(selector)?.textContent?.trim() ?? '';
+    if (text.length > 0 && text !== 'YouTube') {
       return text;
     }
   }
