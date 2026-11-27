@@ -1,7 +1,12 @@
 import { HealthResponseSchema } from '@videodeck/shared/schemas';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import type { ElasticsearchState } from '../utils/elasticsearchStatus';
-import { setElasticsearchState, useElasticsearchState } from '../utils/elasticsearchStatus';
+import {
+  setElasticsearchState,
+  setWritesRefused,
+  useElasticsearchState,
+  useWritesRefused,
+} from '../utils/elasticsearchStatus';
 import { applyLibraryRevision } from '../utils/libraryStatus';
 
 /** How often the shell asks the readiness probe while the app is open */
@@ -22,14 +27,12 @@ export interface UseServerHealthResult {
 /**
  * Keeps the Elasticsearch state fresh: one `/health` poll, plus a check when
  * the window regains focus (the user comes back to the tab and wants to know if
- * it recovered). The answer lands in the small store so a failed request and
- * the menu read the same value.
+ * it recovered). The answer, the write refusal included, lands in the small
+ * store so a failed request and the menu read the same value.
  */
 export function useServerHealth(pollIntervalMs = DEFAULT_POLL_MS): UseServerHealthResult {
   const elasticsearch = useElasticsearchState();
-  // Only the banner reads it, so it stays here instead of in the store the
-  // pages share: a refusal changes nothing about what they can ask for
-  const [writesRefused, setWritesRefused] = useState(false);
+  const writesRefused = useWritesRefused();
 
   const check = useCallback(async (): Promise<void> => {
     try {
@@ -58,7 +61,6 @@ export function useServerHealth(pollIntervalMs = DEFAULT_POLL_MS): UseServerHeal
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount fetch, the update lands after the await (see the rule note in eslint.config.mjs)
     void check();
     const timer = setInterval(() => {
       if (document.visibilityState !== 'hidden') {
