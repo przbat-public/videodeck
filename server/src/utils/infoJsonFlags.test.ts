@@ -59,10 +59,35 @@ function pythonDumps(value: unknown, ensureAscii: boolean): string {
   return text.replace(/[\u0080-￿]/g, (unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, '0')}`);
 }
 
-function serialize(object: unknown, format: 'compact' | 'pretty' | 'python' | 'python-ascii'): string {
+/**
+ * Tab indents, CRLF line ends, a tab after every colon and every closing
+ * bracket on a line of its own, an empty list's too: a file formatted by hand
+ * on Windows. A tab or a CR then sits where the scan must see past whitespace
+ * to judge a value, after a key's colon and inside an empty comment list.
+ * JSON.stringify with a tab indent puts neither there: it writes `": "` and
+ * `[]`.
+ */
+function tabbedDumps(value: unknown, indent = ''): string {
+  const inner = `${indent}\t`;
+  if (Array.isArray(value)) {
+    const items = value.map((item) => `\r\n${inner}${tabbedDumps(item, inner)}`);
+    return `[${items.join(',')}\r\n${indent}]`;
+  }
+  if (typeof value === 'object' && value !== null) {
+    const members = Object.entries(value).map(
+      ([key, item]) => `\r\n${inner}${JSON.stringify(key)}:\t${tabbedDumps(item, inner)}`,
+    );
+    return `{${members.join(',')}\r\n${indent}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+function serialize(object: unknown, format: 'compact' | 'pretty' | 'tabs-crlf' | 'python' | 'python-ascii'): string {
   switch (format) {
     case 'pretty':
       return JSON.stringify(object, null, 2);
+    case 'tabs-crlf':
+      return tabbedDumps(object);
     case 'python':
       return pythonDumps(object, false);
     case 'python-ascii':
@@ -125,7 +150,7 @@ describe('scanInfoJsonFlags', () => {
     await fc.assert(
       fc.asyncProperty(
         infoArb,
-        fc.constantFrom('compact', 'pretty', 'python', 'python-ascii' as const),
+        fc.constantFrom('compact', 'pretty', 'tabs-crlf', 'python', 'python-ascii' as const),
         fc.array(fc.integer({ min: 1, max: 40 }), { maxLength: 6 }),
         async (object, format, sizes) => {
           const text = serialize(object, format);
@@ -166,6 +191,8 @@ describe('scanInfoJsonFlags', () => {
     ['a top-level array', '[{"comments": [1]}]', NO_FLAGS],
     ['an empty file', '', NO_FLAGS],
     ['a file that is no JSON', '{not json', NO_FLAGS],
+    // JSON.parse refuses a byte order mark like any other byte before the value
+    ['a file that starts with a byte order mark', '\uFEFF{"description": "d", "comments": [1]}', NO_FLAGS],
     ['a file cut off before the comments', '{"id": "x", "description": "d", "comm', NO_FLAGS],
     ['a file cut off inside the description', '{"id": "x", "description": "a long descr', NO_FLAGS],
   ])('reads %s the way a parse of the whole file does, byte by byte', async (_name, text, expected) => {
@@ -181,6 +208,21 @@ describe('scanInfoJsonFlags', () => {
     }
 
     await expect(scanInfoJsonFlags(source())).resolves.toEqual({ hasComments: true, hasDescription: true });
+  });
+
+  it('drops a key too long to be watched instead of keeping it whole', async () => {
+    // Kept byte by byte, a key of a megabyte would sit in memory until its
+    // closing quote and then be decoded whole
+    const text = `{"${'k'.repeat(1024 * 1024)}": 1, "description": "d", "comments": [1]}`;
+    const parse = vi.spyOn(JSON, 'parse');
+
+    const flags = await flagsOf(text, [64 * 1024]);
+    const longestParsed = Math.max(...parse.mock.calls.map(([input]) => input.length));
+    parse.mockRestore();
+
+    expect(flags).toEqual({ hasComments: true, hasDescription: true });
+    // The longest key worth decoding: `description` written as \u escapes, in its quotes
+    expect(longestParsed).toBeLessThanOrEqual(6 * 'description'.length + 2);
   });
 
   it('rejects a file that ends inside its top-level object before both flags are known', async () => {
