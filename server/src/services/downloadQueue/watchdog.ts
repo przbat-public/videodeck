@@ -19,7 +19,9 @@ export function killProcessGroup(child: SpawnedProcess | undefined, signal: Node
     return;
   }
   child.kill(signal);
-  if (child.pid !== undefined) {
+  // Never below 2: a group id of 1 would make the call a broadcast to every
+  // process the server user can signal
+  if (child.pid !== undefined && child.pid > 1) {
     try {
       process.kill(-child.pid, signal);
     } catch {

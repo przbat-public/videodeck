@@ -41,6 +41,48 @@ describe('detectPermanentFailure', () => {
     expect(detectPermanentFailure(['ERROR: [youtube] x: Sign in to confirm your age'])?.code).toBe('age-gate');
   });
 
+  it('detects the geo-block wording yt-dlp 2026.8.19 prints for YouTube', () => {
+    // _video.py raises YouTube's own subreason as a GeoRestrictedError
+    expect(
+      detectPermanentFailure([
+        'ERROR: [youtube] x: The uploader has not made this video available in your country',
+        'This video is available in Poland.',
+        'You might want to use a VPN or a proxy server (with --proxy) to workaround.',
+      ])?.code,
+    ).toBe('geo-restricted');
+  });
+
+  it("detects yt-dlp's generic geo-restriction message", () => {
+    expect(
+      detectPermanentFailure([
+        'ERROR: [youtube] x: This video is not available from your location due to geo restriction',
+      ])?.code,
+    ).toBe('geo-restricted');
+  });
+
+  it('reads only error lines, never a file name or a notice', () => {
+    // A title lands in the log through the Destination and Merger lines, and
+    // yt-dlp prints its own age notice for a video it can still download.
+    // Neither is a failure: the run that printed them may well succeed.
+    expect(
+      detectPermanentFailure([
+        '[download] Destination: 20240101_Why_my_video_got_age-restricted.f137.mp4',
+        '[youtube] x: This video is age-restricted; some formats may be missing without authentication.',
+        '[Merger] Merging formats into "20240101_ENOSPC_explained.mp4"',
+      ]),
+    ).toBeUndefined();
+  });
+
+  it('takes a video-level reason only from the extractor, not from an error that quotes a file name', () => {
+    // A disk error that names the file is not an age gate
+    expect(
+      detectPermanentFailure([
+        "ERROR: unable to open for writing: [Errno 13] Permission denied: '20240101_age-restricted.f137.mp4.part'",
+      ]),
+    ).toBeUndefined();
+    expect(detectPermanentFailure(['ERROR: unable to write: No space left on device'])?.code).toBe('no-space');
+  });
+
   it('returns undefined for retryable and unrelated lines', () => {
     expect(
       detectPermanentFailure(['[download]  45.2% of 123.45MiB', 'ERROR: HTTP Error 429: Too Many Requests']),

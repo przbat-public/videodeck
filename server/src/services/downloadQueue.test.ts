@@ -18,7 +18,7 @@ import {
   restoreQueueState,
 } from './downloadQueue';
 import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
-import { refreshIndex } from './folderIndex';
+import { loadIndex, refreshIndex } from './folderIndex';
 import { commitStagedRefresh, removeStaging, stagedCommentsInterrupted, sweepStagingDirs } from './refreshStaging';
 import { readUnavailable, recordUnavailable } from './unavailableVideos';
 import { indexVideosFromDisk } from './videoScanner';
@@ -79,6 +79,7 @@ beforeEach(() => {
 class FakeProcess extends EventEmitter implements SpawnedProcess {
   stdout = new EventEmitter();
   stderr = new EventEmitter();
+  pid?: number;
   kill = vi.fn((signal?: NodeJS.Signals) => {
     // simulate the OS closing the process shortly after SIGTERM
     setImmediate(() => this.emit('close', signal === 'SIGTERM' ? null : 0));
@@ -226,6 +227,116 @@ describe('indexChangedVideos', () => {
     }
   });
 
+  it('retries the earlier batch too when a second job in the folder fails to index', async () => {
+    // One retry per folder: a newer failure used to replace the pending batch,
+    // and the videos of the first one never reached search
+    vi.useFakeTimers();
+    try {
+      const entry = (baseName: string) => indexEntry({ baseName, videoFile: `${baseName}.mp4` });
+      mockedIndexVideosFromDisk.mockResolvedValue(0);
+      mockedRefreshIndex.mockResolvedValueOnce({
+        index: { ...indexFile([]), builtAt: 'x', entries: { a: entry('20250101_A') } },
+        changed: ['a'],
+        removed: [],
+      });
+      await indexChangedVideos(job);
+      mockedRefreshIndex.mockResolvedValueOnce({
+        index: { ...indexFile([]), builtAt: 'x', entries: { b: entry('20250101_B') } },
+        changed: ['b'],
+        removed: [],
+      });
+      await indexChangedVideos({ ...job, id: 'job-2', videoId: 'b' });
+
+      mockedIndexVideosFromDisk.mockResolvedValue(2);
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      const retried = mockedIndexVideosFromDisk.mock.calls.at(-1)?.[1] ?? [];
+      expect([...retried].sort()).toEqual(['20250101_A', '20250101_B']);
+    } finally {
+      vi.useRealTimers();
+      clearIndexRetries();
+    }
+  });
+
+  it('restarts the backoff for a fresh failure that joins a batch at its last retry', async () => {
+    // Batch A failed twice and waits for its last retry. Batch B then fails:
+    // the merged retry runs 30 s later with both, and B is not given up on
+    // after a single attempt because A was nearly out of them
+    vi.useFakeTimers();
+    try {
+      const entry = (baseName: string) => indexEntry({ baseName, videoFile: `${baseName}.mp4` });
+      mockedIndexVideosFromDisk.mockResolvedValue(0);
+      mockedRefreshIndex.mockResolvedValueOnce({
+        index: { ...indexFile([]), builtAt: 'x', entries: { a: entry('20250101_A') } },
+        changed: ['a'],
+        removed: [],
+      });
+      await indexChangedVideos(job);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(120_000);
+      mockedRefreshIndex.mockResolvedValueOnce({
+        index: { ...indexFile([]), builtAt: 'x', entries: { b: entry('20250101_B') } },
+        changed: ['b'],
+        removed: [],
+      });
+      await indexChangedVideos({ ...job, id: 'job-2', videoId: 'b' });
+      const callsBefore = mockedIndexVideosFromDisk.mock.calls.length;
+
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(mockedIndexVideosFromDisk.mock.calls.length).toBe(callsBefore + 1);
+      const retried = mockedIndexVideosFromDisk.mock.calls.at(-1)?.[1] ?? [];
+      expect([...retried].sort()).toEqual(['20250101_A', '20250101_B']);
+    } finally {
+      vi.useRealTimers();
+      clearIndexRetries();
+    }
+  });
+
+  it('keeps the retries of a fresh batch when a retry at its last attempt fails into it', async () => {
+    // Batch A is on its last retry when batch B fails. A's retry then fails
+    // too while B waits for its first one: the merged batch keeps B's count,
+    // so A running out of attempts cannot take B down with it
+    vi.useFakeTimers();
+    try {
+      const entry = (baseName: string) => indexEntry({ baseName, videoFile: `${baseName}.mp4` });
+      mockedIndexVideosFromDisk.mockResolvedValue(0);
+      mockedRefreshIndex.mockResolvedValueOnce({
+        index: { ...indexFile([]), builtAt: 'x', entries: { a: entry('20250101_A') } },
+        changed: ['a'],
+        removed: [],
+      });
+      await indexChangedVideos(job);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(120_000);
+      let finishLastRetry: (indexed: number) => void = () => undefined;
+      mockedIndexVideosFromDisk.mockImplementationOnce(
+        () =>
+          new Promise<number>((resolve) => {
+            finishLastRetry = resolve;
+          }),
+      );
+      await vi.advanceTimersByTimeAsync(480_000);
+      mockedRefreshIndex.mockResolvedValueOnce({
+        index: { ...indexFile([]), builtAt: 'x', entries: { b: entry('20250101_B') } },
+        changed: ['b'],
+        removed: [],
+      });
+      await indexChangedVideos({ ...job, id: 'job-2', videoId: 'b' });
+      finishLastRetry(0);
+      const callsBefore = mockedIndexVideosFromDisk.mock.calls.length;
+
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(mockedIndexVideosFromDisk.mock.calls.length).toBe(callsBefore + 1);
+      const retried = mockedIndexVideosFromDisk.mock.calls.at(-1)?.[1] ?? [];
+      expect([...retried].sort()).toEqual(['20250101_A', '20250101_B']);
+    } finally {
+      vi.useRealTimers();
+      clearIndexRetries();
+    }
+  });
+
   it('logs a warning instead of letting a rejected index retry escape', async () => {
     vi.useFakeTimers();
     const unhandled: unknown[] = [];
@@ -288,61 +399,64 @@ describe('indexChangedVideos', () => {
     }
   });
 
-  it('marks a download job incomplete when its media never appeared', async () => {
-    // yt-dlp runs with -i, so a download that wrote only sidecars exits 0 and
-    // the queue used to report a green job. The disk is the witness: no .mp4
-    // and an .info.json beside it means the media is missing.
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-verify-'));
+  it('leaves a download alone when its media landed in a folder that already had an index', async () => {
+    // The enqueue route builds the folder index before the job runs, so the
+    // index on disk never lists the video the job is downloading; the verdict
+    // has to come from the index the post-job refresh returns
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-verify-indexed-'));
     try {
-      await fs.writeFile(path.join(dir, 'Video.info.json'), JSON.stringify({ id: 'abc', title: 'V' }), 'utf-8');
-      await fs.writeFile(path.join(dir, 'Video.en.vtt'), 'WEBVTT', 'utf-8');
-      await fs.writeFile(path.join(dir, 'Video.videos-index.json'), '{}', 'utf-8');
-      const job: QueueJob = {
-        ...jobWithoutStart,
-        folderPath: dir,
-        baseName: 'Video',
-        type: 'download',
-        status: 'running',
-      };
+      await loadIndex(dir);
+      await fs.writeFile(path.join(dir, '20250101_New.mp4'), 'video', 'utf-8');
+      await fs.writeFile(path.join(dir, '20250101_New.info.json'), JSON.stringify({ id: 'abc' }), 'utf-8');
+      mockedRefreshIndex.mockResolvedValue({
+        index: {
+          ...indexFile([]),
+          entries: { abc: indexEntry({ baseName: '20250101_New', videoFile: '20250101_New.mp4' }) },
+        },
+        changed: [],
+        removed: [],
+      });
+      const download: QueueJob = { ...job, folderPath: dir, type: 'download', status: 'running' };
 
-      const reason = await detectIncompleteJob(job);
+      await indexChangedVideos(download);
 
-      expect(reason).toMatch(/incomplete: Video has no video file/);
+      expect(download.incomplete).toBeUndefined();
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }
   });
 
-  it('leaves a download job alone when the folder holds no files at all', async () => {
+  it('marks a repair incomplete when its stem has no media on disk', () => {
+    // The disk is the witness: sidecars with no video file beside them mean
+    // the media is missing, whatever the exit code said
+    const repair: QueueJob = { ...jobWithoutStart, baseName: 'Video', type: 'repair', status: 'running' };
+
+    const reason = detectIncompleteJob(repair, indexFile([]), new Set(['Video.info.json', 'Video.en.vtt']));
+
+    expect(reason).toMatch(/incomplete: Video has no video file, only 2 sidecar/);
+  });
+
+  it('leaves a download job alone when the folder holds no files at all', () => {
     // An unmounted drive and a folder that lost everything read the same way,
     // and blaming the job for an unplugged disk would be wrong twice.
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-verify-empty-'));
-    try {
-      const job: QueueJob = { ...jobWithoutStart, folderPath: dir, type: 'download', status: 'running' };
+    const download: QueueJob = { ...jobWithoutStart, type: 'download', status: 'running' };
 
-      expect(await detectIncompleteJob(job)).toBeNull();
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+    expect(detectIncompleteJob(download, indexFile([]), new Set())).toBeNull();
   });
 
-  it('never flags an update job, which rewrites the sidecars of a video that is there', async () => {
-    const job: QueueJob = { ...jobWithoutStart, type: 'update', baseName: '20240101_Kept', status: 'running' };
+  it('never flags an update job, which rewrites the sidecars of a video that is there', () => {
+    const update: QueueJob = { ...jobWithoutStart, type: 'update', baseName: '20240101_Kept', status: 'running' };
 
-    expect(await detectIncompleteJob(job)).toBeNull();
+    expect(detectIncompleteJob(update, indexFile([]), new Set(['Other.info.json']))).toBeNull();
   });
 
-  it('reports a video that is in neither the index nor the job', async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'queue-verify-unknown-'));
-    try {
-      await fs.writeFile(path.join(dir, 'Other.info.json'), '{"id":"other"}', 'utf-8');
+  it('reports a download the refreshed index does not list', () => {
+    // The refresh adds a video only once its media file is there
+    const download: QueueJob = { ...jobWithoutStart, type: 'download', status: 'running' };
 
-      const job: QueueJob = { ...jobWithoutStart, folderPath: dir, type: 'download', status: 'running' };
-
-      expect(await detectIncompleteJob(job)).toMatch(/nothing on disk to update/);
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
+    expect(detectIncompleteJob(download, indexFile([]), new Set(['Other.info.json']))).toMatch(
+      /incomplete: abc has no video file on disk/,
+    );
   });
 
   it('keeps a job green when the folder cannot be listed', async () => {
@@ -724,6 +838,54 @@ describe('DownloadQueue', () => {
         ['b', 'queued'],
       ]);
     });
+  });
+
+  it("finishes a download yt-dlp only warned about, whatever its title or yt-dlp's notices say", async () => {
+    // yt-dlp prints an age notice for a video it can still download through
+    // another client, and a title reaches the log through the Destination
+    // line: an exit-0 run carrying either used to fail as 'age-gate', with
+    // the video recorded as unavailable for 30 days
+    const [job] = queue.enqueue([request('aaaaaaaaaaa')]);
+    spawned().process.output('[download] Destination: 20240101_Why_my_video_got_age-restricted.f137.mp4\n');
+    spawned().process.output('[youtube] aaaaaaaaaaa: This video is age-restricted; some formats may be missing\n');
+
+    spawned().process.exit(0);
+    await flush();
+
+    expect(queue.get(job?.id ?? '')?.status).toBe('done');
+    expect(afterJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs every job that ends in an error, with its reason', async () => {
+    // The finished list keeps a job for an hour and a restart drops it; the
+    // server log is where an overnight batch's failures can still be read
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    const [job] = queue.enqueue([request('aaaaaaaaaaa')]);
+    spawned().process.output('ERROR: [youtube] aaaaaaaaaaa: Private video. Sign in if you have been granted access\n');
+
+    spawned().process.exit(1);
+    await flush();
+
+    expect(queue.get(job?.id ?? '')?.status).toBe('error');
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`Job ${job?.id} .*failed.*private`)));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('ERROR: [youtube] aaaaaaaaaaa: Private video'));
+  });
+
+  it('kills every tracked process group at once, synchronously, never a group below 2', () => {
+    // An 'exit' listener cannot await: the kill has to be a plain call
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      queue.enqueue([request('a'), request('b', { folderPath: '/videos/channel-b' })]);
+      spawned(0).process.pid = 4242;
+      spawned(1).process.pid = 1;
+
+      queue.killAllProcessesNow();
+
+      expect(kill).toHaveBeenCalledWith(-4242, 'SIGKILL');
+      expect(kill).not.toHaveBeenCalledWith(-1, expect.anything());
+    } finally {
+      kill.mockRestore();
+    }
   });
 
   describe('staged metadata runs', () => {
@@ -1399,6 +1561,96 @@ describe('DownloadQueue', () => {
     expect(mockedRemovePartialDownloads).toHaveBeenCalledWith('/videos/channel-a', ['Video a.mp4']);
   });
 
+  it('keeps the partial files of a download a shutdown interrupts, for the next boot to resume', async () => {
+    // The state file keeps the job and the next boot restores it with -c;
+    // sweeping its .part on the way out made that resume start at byte 0
+    queue.enqueue([request('a')]);
+    spawned().process.output('[download] Destination: Video a.mp4\n');
+
+    await queue.stopForShutdown();
+    await flush();
+    await flush();
+
+    expect(spawned().process.kill).toHaveBeenCalledWith('SIGTERM');
+    expect(mockedRemovePartialDownloads).not.toHaveBeenCalled();
+  });
+
+  it('sweeps the partial files of a download cancelled while it waited to retry', async () => {
+    // In the backoff the job has no process, so no close handler would ever
+    // run the sweep for it
+    vi.useFakeTimers();
+    try {
+      queue = new DownloadQueue({ maxAttempts: 2, retryDelayMs: 60_000, spawnFn: spawn.spawnFn, afterJob });
+      const [job] = queue.enqueue([request('a')]);
+      spawned().process.output('[download] Destination: Video a.mp4\n');
+      spawned().process.exit(1);
+      await vi.advanceTimersByTimeAsync(0);
+
+      queue.cancel(job?.id ?? '');
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mockedRemovePartialDownloads).toHaveBeenCalledWith('/videos/channel-a', ['Video a.mp4']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the partial files of a download waiting to retry when the server shuts down', async () => {
+    vi.useFakeTimers();
+    try {
+      queue = new DownloadQueue({ maxAttempts: 2, retryDelayMs: 60_000, spawnFn: spawn.spawnFn, afterJob });
+      queue.enqueue([request('a')]);
+      spawned().process.output('[download] Destination: Video a.mp4\n');
+      spawned().process.exit(1);
+      await vi.advanceTimersByTimeAsync(0);
+
+      await queue.stopForShutdown();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mockedRemovePartialDownloads).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sweeps the partial files of a download the user cancelled just before a shutdown', async () => {
+    // Its process only exits during the shutdown drain; the job is gone from
+    // the state file, so nothing would ever resume or remove its files
+    const [job] = queue.enqueue([request('a')]);
+    spawned().process.output('[download] Destination: Video a.mp4\n');
+    spawned().process.kill = vi.fn(() => true);
+
+    queue.cancel(job?.id ?? '');
+    await queue.stopForShutdown();
+    spawned().process.emit('close', null);
+    await flush();
+
+    expect(mockedRemovePartialDownloads).toHaveBeenCalledWith('/videos/channel-a', ['Video a.mp4']);
+  });
+
+  it('sweeps a download cancelled after the paused queue put it back as queued', async () => {
+    // Its backoff ran out while the queue was paused: no timer and no
+    // process are left, so no close handler will ever clean up after it
+    vi.useFakeTimers();
+    try {
+      queue = new DownloadQueue({ maxAttempts: 2, retryDelayMs: 1000, spawnFn: spawn.spawnFn, afterJob });
+      const [job] = queue.enqueue([request('a')]);
+      spawned().process.output('[download] Destination: Video a.mp4\n');
+      spawned().process.exit(1);
+      await vi.advanceTimersByTimeAsync(0);
+      queue.setPaused(true);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(queue.get(job?.id ?? '')?.status).toBe('queued');
+
+      queue.cancel(job?.id ?? '');
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mockedRemovePartialDownloads).toHaveBeenCalledWith('/videos/channel-a', ['Video a.mp4']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('holds the folder slot until the cancelled process really exits', async () => {
     const enqueued = queue.enqueue([request('a'), request('b')]);
     const child = spawned(0).process;
@@ -1680,6 +1932,7 @@ describe('queue state persistence', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     // The queue writes its state fire-and-forget in the background, so a
     // rename can still be creating files while the directory is removed,
     // and the rmdir step fails with ENOTEMPTY. Let fs.rm retry briefly
@@ -1879,6 +2132,80 @@ describe('queue state persistence', () => {
     // cancelled in the state file the killed queue leaves behind.
     const persisted = JSON.parse(await fs.readFile(stateFile, 'utf-8')) as { jobs?: QueueJob[] };
     expect((persisted.jobs ?? []).map((job) => job.videoId)).toEqual(['a', 'b']);
+  });
+
+  it('records a cancel that lands while an older snapshot is still being written', async () => {
+    // The dedup compared each snapshot with the last write that had landed,
+    // not with the last one queued: a cancel whose snapshot matched the file
+    // as it was before the in-flight write was skipped, and the job came back
+    // after the next restart.
+    const writes: Array<{ text: string; release: () => void }> = [];
+    mockedWriteTextAtomic.mockImplementation(
+      (_file, text) =>
+        new Promise<void>((resolve) => {
+          writes.push({ text, release: resolve });
+        }),
+    );
+    const queue = new DownloadQueue({
+      spawnFn: createFakeSpawn().spawnFn,
+      afterJob: silentAfterJob(),
+      stateFile,
+      maxAttempts: 1,
+    });
+    queue.setPaused(true);
+    const paused = queue.whenPersisted();
+    await flush();
+    writes[0]?.release();
+    await paused;
+
+    const [job] = queue.enqueue([request('a')]);
+    const enqueued = queue.whenPersisted();
+    await flush();
+    // The enqueue snapshot is in flight when the cancel comes
+    queue.cancel(job?.id ?? '');
+    const cancelled = queue.whenPersisted();
+    for (let round = 0; round < 5; round += 1) {
+      for (const write of writes) {
+        write.release();
+      }
+      await flush();
+    }
+    await Promise.all([enqueued, cancelled]);
+
+    const last = JSON.parse(writes.at(-1)?.text ?? '{}') as { jobs?: QueueJob[] };
+    expect(last.jobs).toEqual([]);
+  });
+
+  it('writes a snapshot again after the write that carried it failed', async () => {
+    let fail = true;
+    mockedWriteTextAtomic.mockImplementation(async (file, text) => {
+      if (fail) {
+        fail = false;
+        throw new Error('EIO: i/o error');
+      }
+      await realFsUtils.writeTextAtomic(file, text);
+    });
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    try {
+      const queue = new DownloadQueue({
+        spawnFn: createFakeSpawn().spawnFn,
+        afterJob: silentAfterJob(),
+        stateFile,
+        maxAttempts: 1,
+      });
+
+      queue.setPaused(true);
+      await queue.whenPersisted();
+      // The same snapshot again: it never landed, so it must not be skipped
+      queue.setPaused(false);
+      queue.setPaused(true);
+      await queue.whenPersisted();
+
+      const state = JSON.parse(await fs.readFile(stateFile, 'utf-8')) as { paused?: boolean };
+      expect(state.paused).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('serializes state writes so an older snapshot cannot land after a newer one', async () => {

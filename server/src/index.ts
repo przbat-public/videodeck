@@ -104,6 +104,7 @@ async function startServer() {
       awaitIdle: (timeoutMs) => downloadQueue.waitForIdle(timeoutMs),
       closeSseStreams: closeAllSseStreams,
       stopLibraryWatch,
+      killProcessesNow: () => downloadQueue.killAllProcessesNow(),
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

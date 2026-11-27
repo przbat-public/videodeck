@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Cancelled jobs stay cancelled across a restart.** A cancel arriving while
+  an older state write was still in flight got compared with the file before
+  that write, judged unchanged and skipped, so the next boot restored it
+- **Successful downloads stop showing `incomplete`.** The verdict read the
+  folder index from before the job, which never lists a video still being
+  fetched
+- **Notices and file names cannot fail a run anymore.** Permanent failures
+  come only from `ERROR:` lines, and reasons about the video only when the
+  extractor itself raised them. yt-dlp's "age-restricted; some formats may
+  be missing" notice used to mark a finished download unavailable for 30
+  days, and `ENOSPC` inside a title failed one as a full disk
+- yt-dlp 2026.8.19 words geo blocks as "The uploader has not made this video
+  available in your country"; that wording is recognised now instead of
+  costing three attempts
+- Interrupted downloads keep their `.part` files through a shutdown, so the
+  restored job resumes them; cancelling one that waits for a retry removes
+  them
+- Index retries in one folder merge their batches, so a later failure cannot
+  discard an earlier one
+- Each failed job writes one warning with its reason and yt-dlp's last error
+  line to the server log
+- On an uncaught crash the server SIGKILLs its yt-dlp process groups, so no
+  ffmpeg merge survives to corrupt the file the restored job merges
 - **A sidecar repair no longer destroys what it was sent to complete.**
   "Repair gaps" and "Repair this video" asked yt-dlp for the missing files
   with its default overwrite policy. That rewrote the info.json without a
