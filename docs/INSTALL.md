@@ -85,8 +85,10 @@ recovery before it gets there.
 
 3. Configure environment variables:
 
-Create a `server/.env` file (the server loads it from its own directory,
-because `dotenv.config()` runs with cwd=`server/`; a root-level `.env` is ignored):
+Create a `server/.env` file (the server loads it from its own directory:
+`import 'dotenv/config'` at the top of `src/index.ts` reads `.env` from the
+working directory, `server/`. A root-level `.env` is ignored, and test runs
+read neither):
 
 ```bash
 VIDEOS_FOLDER_PATH=/path/to/videos/folder

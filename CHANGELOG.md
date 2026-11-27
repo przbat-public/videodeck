@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A rate-limited summary waits as long as the provider asks.** The OpenAI
+  SDK hands a 429 its response's `Headers` object, which the retry read as a
+  plain record and never found `Retry-After` in, so every throttled request
+  sat out a flat 5 s before the next model. The wait now follows the header,
+  kept between 1 and 30 s
 - **Downloads finished mid-reindex stay searchable.** Their job wrote each
   video through the alias into the outgoing index, which the swap was going
   to drop, so it disappeared from search until another full reindex. On a
@@ -84,6 +89,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Test runs never read `server/.env`.** Only the server's entry point
+  loads it, ahead of every import, where `config.ts` used to load it for
+  anything that imported the app. A remote cluster for the server's
+  `test:integration` now has to be exported as `ELASTICSEARCH_URL`, and a
+  deep test environment refuses to boot when a server module loaded first
+  and pinned the developer's own values
 - **A new download's file name ends in its id**:
   `<upload_date>_<title>_<id>` replaces `<upload_date>_<title>`. Under
   `--restrict-filenames`, titles differing only in Polish letters or
