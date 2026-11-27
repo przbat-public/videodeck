@@ -177,10 +177,17 @@ describe('runPool', () => {
 });
 
 describe('groupFilesByStemPrefix', () => {
-  /** What the sidecar rules look at: media, images of each kind and size, subtitles and other metadata */
+  /**
+   * What the sidecar rules look at: media in either case, images of each kind
+   * and size, subtitles, other metadata and a name that is the stem alone. The
+   * `.5` names make the sibling video `<stem>.5`, as "Part 1.5" is beside
+   * "Part 1": its metadata, its media, and a thumbnail and subtitles that read
+   * like a size and languages of the stem.
+   */
   const SIDECARS = [
     '.info.json',
     '.mp4',
+    '.MP4',
     '.mkv',
     '.webp',
     '.jpg',
@@ -193,6 +200,12 @@ describe('groupFilesByStemPrefix', () => {
     '.en.vtt',
     '.pl.vtt',
     '.description',
+    '',
+    '.5.info.json',
+    '.5.mp4',
+    '.5.webp',
+    '.5.vtt',
+    '.5.en.vtt',
   ];
 
   /** A few stems, dots in them included, and a shuffled part of their sidecars as the folder listing */
@@ -204,13 +217,17 @@ describe('groupFilesByStemPrefix', () => {
   );
 
   it("gives findVideoFiles the answer of the whole listing from a stem's group alone", () => {
+    // A rule that reads another stem's sibling differs only in a listing that
+    // keeps that sibling's files and drops the stem's own, which the default
+    // 100 runs missed in about three seeds of ten; 500 take some 40 ms
     fc.assert(
       fc.property(folderArb, ({ stems, listing }) => {
         const groups = groupFilesByStemPrefix(listing);
-        for (const stem of stems) {
+        for (const stem of [...stems, ...stems.map((each) => `${each}.5`)]) {
           expect(findVideoFiles(stem, groups.get(stem) ?? [])).toEqual(findVideoFiles(stem, listing));
         }
       }),
+      { numRuns: 500 },
     );
   });
 });
