@@ -139,8 +139,10 @@ describe('validateVideosFolder', () => {
   });
 
   it('refuses a literal folder that does not exist and names the glob that boots without it', async () => {
-    // The drive is there and the channel folder is not: a typo, most likely
+    // The drive is there with its other channels, and this one is not: a
+    // typo, most likely
     const media = path.join(base, 'MEDIA');
+    fs.mkdirSync(path.join(media, 'channel-a'));
     process.env.VIDEOS_FOLDER_PATH = path.join(media, 'missing');
 
     const validation = validateVideosFolder();
@@ -161,6 +163,48 @@ describe('validateVideosFolder', () => {
     );
     await expect(validation).rejects.toThrow('the drive looks unmounted');
     await expect(validation).rejects.toThrow(`${drive}/*`);
+  });
+
+  it('says the drive looks unmounted, or misspelled, when the parent is an empty folder', async () => {
+    // A Linux mount point (an fstab entry, a Docker bind target) stays behind
+    // as an empty folder while its drive is away
+    const mountPoint = path.join(base, 'EMPTY_MOUNTPOINT');
+    fs.mkdirSync(mountPoint);
+    process.env.VIDEOS_FOLDER_PATH = path.join(mountPoint, 'channel');
+
+    const validation = validateVideosFolder();
+
+    await expect(validation).rejects.toThrow(
+      `${path.join(mountPoint, 'channel')} does not exist, and ${mountPoint} is empty`,
+    );
+    await expect(validation).rejects.toThrow('the drive looks unmounted, or check the spelling');
+  });
+
+  it('says the drive looks unmounted when the folder is a link left pointing nowhere', async () => {
+    // A library root linked into the drive outlives the drive itself
+    const target = path.join(base, 'NOT_MOUNTED', 'YouTube');
+    const link = path.join(base, 'linked-library');
+    fs.symlinkSync(target, link);
+    process.env.VIDEOS_FOLDER_PATH = link;
+
+    const validation = validateVideosFolder();
+
+    await expect(validation).rejects.toThrow(`${link} links to ${target}, which does not exist`);
+    await expect(validation).rejects.toThrow('the drive looks unmounted');
+  });
+
+  it('promises the glob a warning only when nothing else matches', async () => {
+    // Beside a folder that exists, a glob that matches nothing starts the
+    // server without a word, so the closing line cannot promise one
+    const channel = path.join(base, 'MEDIA', 'channel-a');
+    fs.mkdirSync(channel);
+    const drive = path.join(base, 'NOT_MOUNTED');
+    process.env.VIDEOS_FOLDER_PATH = `${path.join(drive, 'channel')};${channel}`;
+
+    const validation = validateVideosFolder();
+
+    await expect(validation).rejects.toThrow('lets the server start, with a warning only when nothing else matches');
+    await expect(validation).rejects.toThrow(`${drive}/*, which also matches the folders beside the missing one`);
   });
 
   it('boots when a glob matches nothing', async () => {

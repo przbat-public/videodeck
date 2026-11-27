@@ -33,12 +33,45 @@ async function pathExists(target: string): Promise<boolean> {
 }
 
 /**
- * The line for a folder that does not exist. Its parent tells the two usual
- * causes apart: a parent that exists points at a typo in the last segment, and
- * a parent that is missing as well at a drive that is not mounted.
+ * Where a missing folder that is a link leads, or null when it is no link.
+ * readlink only answers for a link, and the folder is missing, so a link here
+ * is one left pointing nowhere.
+ */
+async function danglingLinkTarget(folderPath: string): Promise<string | null> {
+  try {
+    return path.resolve(path.dirname(folderPath), await fs.readlink(folderPath));
+  } catch {
+    return null;
+  }
+}
+
+/** Whether this is a directory with nothing in it */
+async function isEmptyDirectory(target: string): Promise<boolean> {
+  try {
+    return (await fs.readdir(target)).length === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The line for a folder that does not exist. A link left pointing nowhere
+ * means the drive it led into is away. Otherwise the parent tells the usual
+ * causes apart: an empty parent is how a Linux mount point (an fstab entry, a
+ * Docker bind target) looks without its drive, though it may be a typo on a
+ * drive that holds nothing else; a parent with entries points at a typo in
+ * the last segment; and a parent that is missing as well at a drive that is
+ * not mounted.
  */
 async function describeMissingFolder(folderPath: string): Promise<string> {
+  const linkTarget = await danglingLinkTarget(folderPath);
+  if (linkTarget !== null) {
+    return `${folderPath} links to ${linkTarget}, which does not exist: the drive looks unmounted`;
+  }
   const parent = path.dirname(folderPath);
+  if (await isEmptyDirectory(parent)) {
+    return `${folderPath} does not exist, and ${parent} is empty: the drive looks unmounted, or check the spelling`;
+  }
   if (await pathExists(parent)) {
     return `${folderPath} does not exist, but ${parent} does: check the spelling`;
   }
@@ -49,9 +82,10 @@ async function describeMissingFolder(folderPath: string): Promise<string> {
  * The lines for the folders that do not exist, none when every folder does,
  * closed by one line on how to start without the drive. Only a folder written
  * out in full can be missing here, because a glob expands to the folders that
- * exist. The glob in that line is built from the first missing folder and
- * offered as an example, not as a fix: it matches the sibling channel folders
- * as well.
+ * exist. A glob that matches nothing warns only when no other entry matches
+ * either (libraryState.ts), so the line promises no more. The glob in it is
+ * built from the first missing folder and offered as an example, not as a
+ * fix: it matches the sibling channel folders as well.
  */
 async function describeMissingFolders(missing: readonly string[]): Promise<string[]> {
   const [first] = missing;
@@ -61,8 +95,9 @@ async function describeMissingFolders(missing: readonly string[]): Promise<strin
   const lines = await Promise.all(missing.map((folderPath) => describeMissingFolder(folderPath)));
   const pattern = path.join(path.dirname(first), '*');
   lines.push(
-    'A folder written out in full must exist at startup, while a glob that matches nothing ' +
-      `(for example ${pattern}) starts the server with a warning and picks the folders up once the drive is mounted.`,
+    'A folder written out in full must exist at startup. A glob that matches nothing lets the server start, ' +
+      'with a warning only when nothing else matches, and picks up its folders once the drive is mounted: ' +
+      `for example ${pattern}, which also matches the folders beside the missing one.`,
   );
   return lines;
 }
