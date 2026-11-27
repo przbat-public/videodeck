@@ -288,3 +288,34 @@ describe('getTrustProxy', () => {
     expect(() => getTrustProxy()).toThrow(/TRUST_PROXY/);
   });
 });
+
+describe('.env loading', () => {
+  it('reads no .env when the app loads', async () => {
+    // A test run imports the app from a working directory that may hold the
+    // developer's own .env, and its values would steer the suite: the cluster
+    // URL, the RUN_* gates of the real-binary suites. Only the entry point
+    // loads the file.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'videodeck-dotenv-'));
+    fs.writeFileSync(path.join(dir, '.env'), 'VIDEODECK_DOTENV_SENTINEL=from-dotenv\n');
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(dir);
+    try {
+      vi.resetModules();
+      await import('./app.js');
+
+      expect(process.env.VIDEODECK_DOTENV_SENTINEL).toBeUndefined();
+    } finally {
+      cwd.mockRestore();
+      delete process.env.VIDEODECK_DOTENV_SENTINEL;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('loads .env in the entry point before any other import', () => {
+    // config.ts and the download queue read some values once, when they load,
+    // so the file has to reach process.env before the first of them runs.
+    const source = fs.readFileSync(path.join(__dirname, 'index.ts'), 'utf-8');
+    const firstImport = source.split('\n').find((line) => line.startsWith('import '));
+
+    expect(firstImport).toBe("import 'dotenv/config';");
+  });
+});

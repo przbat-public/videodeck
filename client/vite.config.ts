@@ -12,7 +12,9 @@ const analyze = process.env.ANALYZE === '1';
 // with @vitejs/plugin-react 6, which dropped its inline `babel` option, so the
 // compiler rides @rolldown/plugin-babel, the Babel pass of Vite 8's Rolldown.
 // Existing manual memoization stays: removing it changes compiler output.
-const reactCompiler = babel({ presets: [reactCompilerPreset()] });
+// Exported for vitest.integration.config.ts, so the integration suite compiles
+// its components with this same definition.
+export const reactCompiler = babel({ presets: [reactCompilerPreset()] });
 
 const vendorChunks: Record<string, string[]> = {
   'react-vendor': ['react', 'react-dom', 'react-router-dom'],
@@ -28,8 +30,9 @@ export default defineConfig(({ mode }) => ({
     // rewrites every component it compiles, so the v8 coverage of the unit
     // suite would measure the injected memo caches instead of the source the
     // tests were written against (statements fell from 97% to 94% with it in).
-    // The compiled output is still exercised end to end, because Playwright
-    // drives this same config's dev server.
+    // Only the unit run stays uncompiled, for its coverage. Playwright drives
+    // this config's dev server, and the in-process integration suite adds the
+    // same plugin in vitest.integration.config.ts, so both run compiled code.
     ...(mode === 'test' ? [] : [reactCompiler]),
     ...(analyze ? [visualizer({ gzipSize: true })] : []),
   ],

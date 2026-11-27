@@ -18,7 +18,10 @@ import { MockOpenai } from './mockOpenai';
  *  - queue state    → inside the temp directory (QUEUE_STATE_FILE)
  *
  * The app module is imported dynamically AFTER the environment is set, so
- * the module-level env reads (config.ts) see the test values.
+ * the module-level env reads (config.ts) see the test values. A suite that
+ * imports a server module before this runs gets the cached copy, which still
+ * holds what it read back then, so the boot compares those values with its
+ * own and refuses on any difference.
  */
 
 // test-infra/src → repo root. vite-node shims __dirname for the ESM transform,
@@ -41,11 +44,40 @@ export const YTDLP_ARGV_LOG_NAME = '.fake-ytdlp-argv.jsonl';
 export const YTDLP_TITLES_NAME = '.fake-ytdlp-titles.json';
 
 type AppModule = typeof import('../../server/src/app.js');
+type ConfigModule = typeof import('../../server/src/config.js');
+type DownloadQueueModule = typeof import('../../server/src/services/downloadQueue.js');
 type FolderRoutesModule = typeof import('../../server/src/routes/folder.js');
 type IndexMaintenanceModule = typeof import('../../server/src/routes/videos/indexMaintenance.js');
 type LibraryStateModule = typeof import('../../server/src/services/libraryState.js');
 
 const loadAppModule = async (): Promise<AppModule> => import('../../server/src/app.js');
+
+const loadConfigModule = async (): Promise<ConfigModule> => import('../../server/src/config.js');
+
+const loadDownloadQueueModule = async (): Promise<DownloadQueueModule> =>
+  import('../../server/src/services/downloadQueue.js');
+
+/** The server values read once, when their module loads, that this environment sets */
+const LOAD_TIME_VALUES = ['ELASTICSEARCH_URL', 'YTDLP_PATH', 'QUEUE_STATE_FILE'] as const;
+
+type LoadTimeValues = Record<(typeof LOAD_TIME_VALUES)[number], string>;
+
+/**
+ * Each load-time value the app holds that differs from the one this
+ * environment set, as `NAME=held (set: wanted)`. A difference means a test
+ * file imported a server module before createDeepServerTestEnv ran.
+ */
+async function findPinnedValues(wanted: LoadTimeValues): Promise<string[]> {
+  const [config, queue] = await Promise.all([loadConfigModule(), loadDownloadQueueModule()]);
+  const held: LoadTimeValues = {
+    ELASTICSEARCH_URL: config.ELASTICSEARCH_URL,
+    YTDLP_PATH: queue.YTDLP_PATH,
+    QUEUE_STATE_FILE: queue.QUEUE_STATE_FILE,
+  };
+  return LOAD_TIME_VALUES.filter((name) => held[name] !== wanted[name]).map(
+    (name) => `${name}=${held[name]} (set: ${wanted[name]})`,
+  );
+}
 
 const loadFolderRoutesModule = async (): Promise<FolderRoutesModule> => import('../../server/src/routes/folder.js');
 
@@ -121,15 +153,16 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
   // Both providers reach the same mock, so a test may switch with one variable.
   process.env.DEEPSEEK_BASE_URL = openaiUrl;
   // The DeepSeek key wins over the OpenAI one by design (that is the switch),
-  // so a key in the developer's own server/.env would move every suite onto
-  // DeepSeek. Empty, not deleted: dotenv.config() runs again when the app is
-  // imported below and would re-inject a deleted variable, while an empty value
-  // reads as "no key" and survives. A test that wants DeepSeek sets its own.
+  // so a key exported in the developer's shell would move every suite onto
+  // DeepSeek. An empty value reads as "no key", and no .env refills it: only
+  // the server entry point (index.ts) loads that file, and no suite imports
+  // it. A test that wants DeepSeek sets its own.
   process.env.DEEPSEEK_API_KEY = '';
   process.env.DEEPSEEK_MODEL = '';
   process.env.SUMMARY_PROVIDER = '';
   process.env.YTDLP_PATH = FAKE_YTDLP;
-  process.env.QUEUE_STATE_FILE = path.join(root, '.queue-state.json');
+  const queueStateFile = path.join(root, '.queue-state.json');
+  process.env.QUEUE_STATE_FILE = queueStateFile;
   // The environment's own folder set, before any test narrows it with
   // setFolders: the server refuses to answer /api without one, and a value
   // inherited from another test file in the same worker would point it at
@@ -142,6 +175,24 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
 
   // Import after the environment is set (config.ts pins env values at load).
   const { createApp } = await loadAppModule();
+  // A server module the test file imported first came back from the cache
+  // with the values the process held then, and the app would reach a real
+  // cluster, the real yt-dlp or a queue file outside the temp root. Nothing
+  // listens or watches yet, so a refusal only has the fakes and the root to
+  // release.
+  const pinned = await findPinnedValues({
+    ELASTICSEARCH_URL: esUrl,
+    YTDLP_PATH: FAKE_YTDLP,
+    QUEUE_STATE_FILE: queueStateFile,
+  });
+  if (pinned.length > 0) {
+    await Promise.all([fakeEs.stop(), mockOpenai.stop()]);
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    throw new Error(
+      `A server module was imported before createDeepServerTestEnv set the environment, so the app holds ${pinned.join(', ')}. ` +
+        'Import server modules inside a test or hook, after createDeepServerTestEnv resolves.',
+    );
+  }
   const app = createApp();
   // The real watcher runs for the whole environment, so a suite can create a
   // channel folder while the app is up and have it reach the folder list.

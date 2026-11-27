@@ -15,6 +15,13 @@ export default defineConfig({
     // test that crosses a process boundary still gets ten seconds.
     setupFiles: ['./src/test-env.ts'],
     testTimeout: 10_000,
+    // Every mock starts a test the way vi.fn(impl) built it: no stub and no
+    // queued once-answer left by the test before. The default, clearMocks,
+    // only empties the call log and keeps both, so a stub answered the next
+    // test and the shuffled nightly decided which tests passed. restoreMocks
+    // would only undo spyOn. The reset runs before beforeEach, so a default a
+    // hook installs still holds (src/test/mockIsolation.test.ts pins this).
+    mockReset: true,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],

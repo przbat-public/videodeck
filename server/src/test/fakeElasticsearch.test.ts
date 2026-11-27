@@ -14,11 +14,20 @@ describe('FakeElasticsearch controls', () => {
     await fetch(`${baseUrl}/videos_x`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      // The mapping the range rule reads; a real index maps the counts as
-      // integer, so a value outside int32 is refused per item.
+      // The mapping the range and term rules read, in the production shape: a
+      // real index maps the counts as integer, so a value outside int32 is
+      // refused per item, and the file names and the title's subfield as
+      // keyword, which a term query compares raw.
       body: JSON.stringify({
         settings: {},
-        mappings: { properties: { title: { type: 'text' }, viewCount: { type: 'integer' } } },
+        mappings: {
+          properties: {
+            title: { type: 'text', fields: { keyword: { type: 'keyword' } } },
+            videoPath: { type: 'keyword' },
+            thumbnailPath: { type: 'keyword' },
+            viewCount: { type: 'integer' },
+          },
+        },
       }),
     });
     // The alias is part of the fixture, not a leftover of the test that
@@ -32,6 +41,19 @@ describe('FakeElasticsearch controls', () => {
 
   afterAll(async () => {
     await fake.stop();
+  });
+
+  // Every test writes into the one fixture index, and a fuzzy query reaches a
+  // neighbour's token ('betaunikat' is two edits from 'deltaunikat'), so each
+  // test starts from an empty index. The mapping and the alias stay. The delete
+  // is checked: one the fake refused would bring the leak back without a sound.
+  beforeEach(async () => {
+    const emptied = await fetch(`${baseUrl}/videos_x/_delete_by_query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: { match_all: {} } }),
+    });
+    expect(emptied.status).toBe(200);
   });
 
   const search = () =>
@@ -274,8 +296,8 @@ describe('FakeElasticsearch controls', () => {
   };
 
   it('matches any of the query terms, the way best_fields with the default operator does', async () => {
-    // Invented tokens, so the count cannot depend on what earlier tests left in
-    // the shared fixture index.
+    // Invented tokens, and the index starts empty, so the count cannot depend
+    // on what another test wrote.
     await putDocument('operator-or-1', { title: 'Alfaunikat' });
     await putDocument('operator-or-2', { title: 'Betaunikat' });
 
@@ -362,13 +384,138 @@ describe('FakeElasticsearch controls', () => {
     const response = await fetch(`${baseUrl}/videos_x/_delete_by_query`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ query: { term: { title: 'Znikatoken' } } }),
+      // The keyword subfield: a term on the analysed title compares one
+      // lowercased token on a cluster, which the fake refuses to guess
+      body: JSON.stringify({ query: { term: { 'title.keyword': 'Znikatoken' } } }),
     });
     expect(response.status).toBe(200);
     expect(((await response.json()) as { deleted: number }).deleted).toBe(1);
 
     expect(await matchesFor('zostajetoken', 'title')).toBe(1);
     expect(await matchesFor('znikatoken', 'title')).toBe(0);
+  });
+
+  it('finds a video by its video or thumbnail file name, and nothing for a name no video holds', async () => {
+    await putDocument('file-a', { title: 'Plik A', videoPath: 'a.mp4', thumbnailPath: 'a.webp' });
+    await putDocument('file-b', { title: 'Plik B', videoPath: 'b.mp4', thumbnailPath: 'b.webp' });
+
+    // getVideoByFilePath's query (server/src/services/elasticsearch/search.ts),
+    // size 1 as findOne asks. The fake used to drop the should list, so every
+    // name matched every video and resolved to the first one.
+    const byFileName = async (fileName: string) => {
+      const response = await fetch(`${baseUrl}/videos_x/_search`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          query: {
+            bool: {
+              should: [{ term: { videoPath: fileName } }, { term: { thumbnailPath: fileName } }],
+              minimum_should_match: 1,
+            },
+          },
+          size: 1,
+        }),
+      });
+      const body = (await response.json()) as { hits: { total: { value: number }; hits: Array<{ _id: string }> } };
+      return { total: body.hits.total.value, ids: body.hits.hits.map((hit) => hit._id) };
+    };
+
+    expect(await byFileName('b.mp4')).toEqual({ total: 1, ids: ['file-b'] });
+    expect(await byFileName('a.webp')).toEqual({ total: 1, ids: ['file-a'] });
+    expect(await byFileName('missing.mp4')).toEqual({ total: 0, ids: [] });
+
+    // Without minimum_should_match a should list on its own still needs one
+    // match, which is the cluster's default
+    const unbounded = await fetch(`${baseUrl}/videos_x/_search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: { bool: { should: [{ term: { videoPath: 'b.mp4' } }] } } }),
+    });
+    expect(((await unbounded.json()) as { hits: { total: { value: number } } }).hits.total.value).toBe(1);
+  });
+
+  it('reads a should list next to must as optional, and refuses a minimum it does not model', async () => {
+    await putDocument('should-1', { title: 'Opcjonalny', videoPath: 'opt.mp4' });
+    const boolSearch = (bool: Record<string, unknown>) =>
+      fetch(`${baseUrl}/videos_x/_search`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query: { bool } }),
+      });
+
+    // Next to must or filter, a cluster asks for none of the should clauses
+    const optional = await boolSearch({ must: [{ match_all: {} }], should: [{ term: { videoPath: 'other.mp4' } }] });
+    expect(((await optional.json()) as { hits: { total: { value: number } } }).hits.total.value).toBe(1);
+
+    // A cluster also takes '1' or '75%'; the fake models whole numbers only,
+    // and says so rather than guess
+    const percent = await boolSearch({ should: [{ term: { videoPath: 'opt.mp4' } }], minimum_should_match: '75%' });
+    expect(percent.status).toBe(500);
+    expect(JSON.stringify(await percent.json())).toContain('minimum_should_match');
+  });
+
+  it('matches nothing for a term on a subfield the mapping does not declare', async () => {
+    await putDocument('subfield-1', { title: 'Podpoledokument', videoPath: 'subfield.mp4' });
+
+    const totalFor = async (field: string): Promise<number> => {
+      const response = await fetch(`${baseUrl}/videos_x/_search`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query: { term: { [field]: 'subfield.mp4' } } }),
+      });
+      return ((await response.json()) as { hits: { total: { value: number } } }).hits.total.value;
+    };
+
+    // videoPath is a keyword with no subfields, so a cluster has no
+    // videoPath.keyword to compare and answers no hits rather than an error,
+    // the same silence folderPath.keyword got from the aggregation. The fake
+    // used to fold the suffix away and match.
+    expect(await totalFor('videoPath.keyword')).toBe(0);
+    expect(await totalFor('videoPath')).toBe(1);
+  });
+
+  it('answers a query shape it does not model with a 500 that names it', async () => {
+    await putDocument('shape-1', { title: 'Ksztaltdokument', videoPath: 'shape.mp4' });
+
+    const searchFor = (query: Record<string, unknown>) =>
+      fetch(`${baseUrl}/videos_x/_search`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+    const failureOf = async (response: Response) => ({
+      status: response.status,
+      error: ((await response.json()) as { error?: unknown }).error,
+    });
+
+    // A shape the fake ignored used to match every document, and a term on the
+    // analysed title compared the raw text, so a test could read an answer no
+    // cluster gives and still pass
+    expect(await failureOf(await searchFor({ terms: { videoPath: ['shape.mp4'] } }))).toEqual({
+      status: 500,
+      error: expect.stringContaining('the terms query is not modelled'),
+    });
+    expect(await failureOf(await searchFor({ bool: { must_not: [{ match_all: {} }] } }))).toEqual({
+      status: 500,
+      error: expect.stringContaining('bool.must_not is not modelled'),
+    });
+    expect(await failureOf(await searchFor({ term: { title: 'ksztaltdokument' } }))).toEqual({
+      status: 500,
+      error: expect.stringContaining('a term query on the text field title is not modelled'),
+    });
+
+    // The delete variant is the one that cost data: a clause the fake ignored
+    // matched every document, so the whole index went
+    const deleted = await fetch(`${baseUrl}/videos_x/_delete_by_query`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: { match: { title: 'ksztaltdokument' } } }),
+    });
+    expect(await failureOf(deleted)).toEqual({
+      status: 500,
+      error: expect.stringContaining('the match query is not modelled'),
+    });
+    expect(await matchesFor('ksztaltdokument', 'title')).toBe(1);
   });
 
   it('holds a matching request until it is released, and serves the others meanwhile', async () => {
@@ -410,5 +557,13 @@ describe('FakeElasticsearch controls', () => {
     await stopping;
 
     expect((await held).status).toBe(200);
+  });
+
+  it('starts every test from an empty fixture index', async () => {
+    // Declared last, so in file order, the order PR CI runs, every test that
+    // writes into the fixture index has run before this one reads it
+    const total = ((await (await search()).json()) as { hits: { total: { value: number } } }).hits.total.value;
+
+    expect(total).toBe(0);
   });
 });

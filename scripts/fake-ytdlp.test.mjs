@@ -6,9 +6,12 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-// The fake binary doubles as a validation gate for the yt-dlp argument
-// templates AND as the download backend of the deep integration tests; the
-// CI integration job puts scripts/fake-bin on PATH.
+// The fake binary is the download backend of the deep integration tests,
+// which reach it through YTDLP_PATH. It does not validate the argument
+// templates, which the real yt-dlp does in the CI integration job (installed
+// at the server/Dockerfile pin); it still checks the URL shape, the refused
+// cookie flags and the --ignore-config rule, which the tests below pin
+// (server/src/services/ytdlp.integration.test.ts).
 const fakeYtDlp = fileURLToPath(new URL('./fake-bin/yt-dlp', import.meta.url));
 
 /**

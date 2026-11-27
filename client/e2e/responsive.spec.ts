@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import type { MockApiHandlers } from './helpers';
-import { expandChannel, json, mockApi, video } from './helpers';
+import { expandChannel, mockApi, video } from './helpers';
 
 /**
  * Responsive regression guard, per DESIGN.md section 11 and the
@@ -83,35 +83,38 @@ async function folderListPage(page: Page): Promise<void> {
       downloadStatuses: { v1: true },
       lastUpdatedDates: { v1: '2020-01-01T00:00:00.000Z' },
     },
+    // A running job is needed for the fourth bulk button. mockApi serves this
+    // body for the queue list GET only, so the counters the queue bar polls
+    // (/queue/summaries) and the job read keep their own default answers.
+    queue: {
+      paused: false,
+      total: 1,
+      jobs: [
+        {
+          id: 'job-1',
+          folderPath: '/videos/e2e',
+          videoId: 'v2',
+          videoUrl: 'https://yt/v2',
+          title: 'Jeszcze nie pobrany',
+          type: 'download',
+          status: 'running',
+          progress: 30,
+          log: [],
+          logLineCount: 0,
+          createdAt: '2026-01-01T10:00:00.000Z',
+        },
+      ],
+    },
   });
-  // mockApi answers the queue with no jobs; a running one is needed for the
-  // fourth bulk button, so this route is registered after it (and thus wins).
-  await page.route(/\/api\/folder\/queue/, (route) =>
-    route.fulfill(
-      json({
-        paused: false,
-        total: 1,
-        jobs: [
-          {
-            id: 'job-1',
-            folderPath: '/videos/e2e',
-            videoId: 'v2',
-            videoUrl: 'https://yt/v2',
-            title: 'Jeszcze nie pobrany',
-            type: 'download',
-            status: 'running',
-            progress: 30,
-            log: [],
-            logLineCount: 0,
-            createdAt: '2026-01-01T10:00:00.000Z',
-          },
-        ],
-      }),
-    ),
-  );
+  const summaryRead = page.waitForResponse('**/api/folder/queue/summaries');
   await page.goto('/download');
   await expandChannel(page);
   await page.getByText('Pobrany dawno temu').waitFor();
+  // The queue bar parses the counters it polls through the shared contract,
+  // so a fixture that answers the summaries with any other body renders a
+  // queue error over the layout these probes measure
+  await summaryRead;
+  await expect(page.locator('.channel-queue-bar').getByRole('alert')).toHaveCount(0);
 }
 
 // WCAG contrast scanning. page.evaluate serializes only the function it

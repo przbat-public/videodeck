@@ -467,12 +467,15 @@ async function completeWithFallback(
   );
 }
 
-/** Seconds slept on a 429 (bounded); honors the Retry-After header when numeric */
+/**
+ * Seconds slept on a 429 (bounded); honors the Retry-After header when numeric.
+ * The SDK attaches the fetch Response's Headers object to its errors, so the
+ * value is read with get(): a property lookup on it finds nothing.
+ */
 async function waitForRetryAfter(error: unknown): Promise<number> {
   const headers = (error as { headers?: unknown }).headers;
-  const raw =
-    typeof headers === 'object' && headers !== null ? (headers as Record<string, unknown>)['retry-after'] : undefined;
-  const parsed = typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : 5;
+  const raw = headers instanceof Headers ? headers.get('retry-after') : null;
+  const parsed = raw !== null && /^\d+$/.test(raw) ? Number(raw) : 5;
   const delay = Math.min(Math.max(parsed, 1), 30) * 1000;
   await new Promise<void>((resolve) => setTimeout(resolve, delay));
   return delay / 1000;

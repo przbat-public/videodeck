@@ -87,6 +87,21 @@ function mockCompletion(summary: string, finishReason = 'stop') {
   };
 }
 
+/** The wait a rate-limited provider asks for. The service's fallback is 5 s, so 1 s tells the two apart. */
+const RETRY_AFTER_SECONDS = 1;
+const RETRY_AFTER_MS = RETRY_AFTER_SECONDS * 1000;
+
+/**
+ * A 429 shaped the way the openai SDK throws it: the SDK hands its errors the
+ * fetch Response's Headers object, not a plain record of header names.
+ */
+function rateLimitError(): Error {
+  return Object.assign(new Error('Rate limit exceeded'), {
+    status: 429,
+    headers: new Headers({ 'retry-after': String(RETRY_AFTER_SECONDS) }),
+  });
+}
+
 /** The file handle handed out by the fs.open mock (writeTextAtomic) */
 const mockFileHandle = {
   writeFile: vi.fn<(content: string, encoding: BufferEncoding) => Promise<void>>(),
@@ -321,20 +336,19 @@ This is a test subtitle`;
     try {
       mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
       mockedFs.readFile.mockResolvedValueOnce(VTT as never);
-      const rateLimitError = Object.assign(new Error('Rate limit exceeded'), {
-        status: 429,
-        headers: { 'retry-after': '1' },
-      });
       mockOpenAIInstance.chat.completions.create
-        .mockRejectedValueOnce(rateLimitError)
+        .mockRejectedValueOnce(rateLimitError())
         .mockResolvedValueOnce(mockCompletion('Summary'));
 
       const pending = generateSummary(INPUT);
-      await vi.advanceTimersByTimeAsync(1500);
+      // The fallback model waits out exactly the Retry-After the provider sent
+      await vi.advanceTimersByTimeAsync(RETRY_AFTER_MS - 1);
+      expect(mockOpenAIInstance.chat.completions.create).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(mockOpenAIInstance.chat.completions.create).toHaveBeenCalledTimes(2);
       const result = await pending;
 
       expect(result.summary).toBe('Summary');
-      expect(mockOpenAIInstance.chat.completions.create).toHaveBeenCalledTimes(2);
       // The first call used gpt-4o, the fallback gpt-4o-mini
       expect(at(mockOpenAIInstance.chat.completions.create.mock.calls, 0)[0].model).toBe('gpt-4o');
       expect(at(mockOpenAIInstance.chat.completions.create.mock.calls, 1)[0].model).toBe('gpt-4o-mini');
@@ -348,15 +362,13 @@ This is a test subtitle`;
     try {
       mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
       mockedFs.readFile.mockResolvedValueOnce(VTT as never);
-      mockOpenAIInstance.chat.completions.create.mockRejectedValue(
-        Object.assign(new Error('Rate limit exceeded'), { status: 429, headers: { 'retry-after': '1' } }),
-      );
+      mockOpenAIInstance.chat.completions.create.mockRejectedValue(rateLimitError());
 
       const pending = generateSummary(INPUT);
       const expectation = expect(pending).rejects.toThrow('Rate limit exceeded for all models');
-      await vi.advanceTimersByTimeAsync(2500);
-      await expectation;
+      await vi.advanceTimersByTimeAsync(RETRY_AFTER_MS);
       expect(mockOpenAIInstance.chat.completions.create).toHaveBeenCalledTimes(2);
+      await expectation;
       expect(mockFileHandle.writeFile).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();

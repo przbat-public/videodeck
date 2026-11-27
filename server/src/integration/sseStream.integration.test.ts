@@ -2,7 +2,7 @@ import http from 'node:http';
 import type { CancelJobResponse, QueueListResponse, QueuePauseResponse } from '@videodeck/shared/api';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { createDeepServerTestEnv, folderConfig } from '@videodeck/test-infra/deepServerTestEnv';
-import { downloadQueue } from '../services/downloadQueue';
+import type { DownloadQueue } from '../services/downloadQueue';
 import { at } from '../test-utils';
 import { activeSseStreamCount } from '../utils/sseRegistry';
 
@@ -22,9 +22,14 @@ const FOLDER = 'sse-abort';
 
 describe('download-video SSE stream cleanup on client disconnect', () => {
   let env: DeepServerTestEnv;
+  // The app's queue singleton, loaded once the environment is up: a static
+  // import would load it first, with the developer's yt-dlp path, queue file
+  // and Elasticsearch URL, and the boot refuses that order
+  let downloadQueue: DownloadQueue;
 
   beforeAll(async () => {
     env = await createDeepServerTestEnv({ listen: true });
+    ({ downloadQueue } = await import('../services/downloadQueue.js'));
   });
 
   afterAll(async () => {
