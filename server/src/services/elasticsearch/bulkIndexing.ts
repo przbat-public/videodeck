@@ -166,6 +166,9 @@ export async function bulkIndexVideos(
  * document no longer sinks the whole folder's reindex. Only when EVERY
  * document fails (e.g. a real mapping conflict) does this throw — promoting
  * an empty index over a good one would silently empty the search results.
+ * The failed items are counted, not their ids: two stems of one video send
+ * the same id twice, and a batch whose every item failed read as partly
+ * written when those ids were folded into one.
  */
 export async function bulkIndexDocuments(
   indexName: string,
@@ -185,20 +188,16 @@ export async function bulkIndexDocuments(
   const response = await esClient.bulk({ operations });
 
   if (response.errors) {
-    const failedIds = new Set(
-      response.items
-        .filter((item) => item.index?.error)
-        .map((item) => item.index?._id)
-        .filter((id): id is string => typeof id === 'string'),
-    );
-    if (failedIds.size === documents.length) {
+    const failed = response.items.filter((item) => item.index?.error);
+    if (failed.length >= documents.length) {
       throw new Error(`Bulk indexing failed for all ${documents.length} videos in ${indexName}`);
     }
-    logger.error(`${failedIds.size} videos failed to index in ${indexName} (skipped):`, [...failedIds].slice(0, 5));
+    const failedIds = failed.map((item) => item.index?._id).filter((id): id is string => typeof id === 'string');
+    logger.error(`${failed.length} videos failed to index in ${indexName} (skipped):`, failedIds.slice(0, 5));
     if (refresh) {
       await esClient.indices.refresh({ index: indexName });
     }
-    return { indexed: documents.length - failedIds.size, skipped: failedIds.size };
+    return { indexed: documents.length - failed.length, skipped: failed.length };
   }
 
   if (refresh) {

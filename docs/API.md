@@ -69,11 +69,13 @@ State of the ongoing (or last) reindex.
   "filesTotal": 2563,
   "indexed": 3285,
   "skipped": 8,
-  "errors": []
+  "rejected": 0,
+  "errors": [],
+  "folderErrors": 0
 }
 ```
 
-`filesDone/filesTotal` refer to the current folder, `indexed/skipped` to the whole run. `errors` is the list of folders that failed to index (max. 20 entries), `lastError` the last error message, and `finishedAt` appears once finished. A video needs its video file (`.mp4` or `.mkv`) and its `info.json`; one without a thumbnail is indexed all the same. When a folder holds videos and not one of them could be read, as on a drive failing its reads, the folder keeps the index it had and shows up in `errors`.
+`filesDone/filesTotal` refer to the current folder, the counts to the whole run: `indexed` documents written, `skipped` videos whose files could not be read, and `rejected` documents Elasticsearch refused one at a time while the rest of their batch was written. A batch it refuses whole fails its folder instead. `errors` lists the messages of the folders that failed to index (max. 20 entries), `folderErrors` counts every one of those folders, `lastError` is the last error message, and `finishedAt` appears once finished. A video needs its video file (`.mp4` or `.mkv`) and its `info.json`; one without a thumbnail is indexed all the same. When a folder holds videos and not one of them could be read, as on a drive failing its reads, the folder keeps the index it had and shows up in `errors`.
 
 #### How the reindex works
 

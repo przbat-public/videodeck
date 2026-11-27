@@ -467,7 +467,9 @@ describe('videos router', () => {
         filesTotal: 100,
         indexed: 40,
         skipped: 1,
+        rejected: 0,
         errors: [],
+        folderErrors: 0,
       };
       mockedIsReindexRunning.mockReturnValue(true);
       mockedGetReindexStatus.mockReturnValue(running);
@@ -508,7 +510,9 @@ describe('videos router', () => {
         filesTotal: 120,
         indexed: 140,
         skipped: 2,
+        rejected: 1,
         errors: [],
+        folderErrors: 0,
       };
       mockedGetReindexStatus.mockReturnValue(status);
 

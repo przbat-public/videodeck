@@ -58,7 +58,9 @@ const idleStatus = (): ReindexStatus => ({
   filesTotal: 0,
   indexed: 0,
   skipped: 0,
+  rejected: 0,
   errors: [],
+  folderErrors: 0,
 });
 
 let reindexStatus: ReindexStatus = idleStatus();
@@ -374,9 +376,11 @@ async function buildFolderVersion(folderPath: string): Promise<void> {
         return flushing;
       }
       const run = flushing.then(async () => {
-        const { indexed, skipped } = await bulkIndexDocuments(indexName, toSend, false);
+        // What the batch left out is what the cluster refused: the videos
+        // that could not be read never reach a batch, and count as skipped
+        const { indexed, skipped: refused } = await bulkIndexDocuments(indexName, toSend, false);
         reindexStatus.indexed += indexed;
-        reindexStatus.skipped += skipped;
+        reindexStatus.rejected += refused;
       });
       flushing = run;
       return run;
@@ -424,6 +428,8 @@ async function scanVideosFromDisk(folderPaths: string[]): Promise<void> {
       const message = `Error scanning folder ${folderPath}: ${describeError(error)}`;
       logger.error(message, error);
       recordError(message);
+      // Counted apart from the messages, which stop at MAX_STATUS_ERRORS
+      reindexStatus.folderErrors += 1;
     }
     reindexStatus.foldersDone += 1;
   }
@@ -476,7 +482,7 @@ export async function loadVideosCache(options: { onlyMissing?: boolean } = {}): 
     logger.info('Loading videos cache from disk...');
     await scanVideosFromDisk(folderPaths);
     logger.info(
-      `Reindex finished: ${reindexStatus.indexed} indexed, ${reindexStatus.skipped} skipped, ${reindexStatus.errors.length} folder errors`,
+      `Reindex finished: ${reindexStatus.indexed} indexed, ${reindexStatus.skipped} skipped, ${reindexStatus.rejected} refused by Elasticsearch, ${reindexStatus.folderErrors} folder errors`,
     );
   } catch (error) {
     recordError(describeError(error));

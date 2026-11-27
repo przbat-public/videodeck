@@ -231,8 +231,14 @@ export const ReindexStatusSchema = z.object({
   filesDone: z.number(),
   filesTotal: z.number(),
   indexed: z.number(),
+  /** Videos left out because their files could not be read: no media file, or an unreadable info.json */
   skipped: z.number(),
+  /** Documents Elasticsearch refused one at a time, while the rest of their batch was written */
+  rejected: z.number(),
+  /** The first 20 failure messages, a folder's or the whole run's */
   errors: z.array(z.string()),
+  /** Every folder that failed, including those past the 20 messages `errors` keeps */
+  folderErrors: z.number(),
   lastError: z.string().optional(),
 });
 

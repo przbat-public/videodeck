@@ -158,8 +158,10 @@ export function formatReindexResult(status: ReindexStatus): string {
     indexed: status.indexed,
     skipped: status.skipped,
   });
-  const errors = status.errors.length > 0 ? `, ${i18n.t('reindex.folderError', { count: status.errors.length })}` : '';
-  return `${base}${errors}`;
+  const rejected = status.rejected > 0 ? `, ${i18n.t('reindex.rejected', { count: status.rejected })}` : '';
+  // The count, not the messages: the server keeps only the first 20 of those
+  const errors = status.folderErrors > 0 ? `, ${i18n.t('reindex.folderError', { count: status.folderErrors })}` : '';
+  return `${base}${rejected}${errors}`;
 }
 
 async function fetchStatus(signal: AbortSignal): Promise<ReindexStatus> {

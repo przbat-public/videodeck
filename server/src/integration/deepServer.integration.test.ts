@@ -484,10 +484,10 @@ describe('deep server integration (real app, fake external world)', () => {
     await waitForRefreshIdle();
 
     // Three documents, one batch: the caller reports the refusal instead of
-    // counting all three as indexed
+    // counting all three as indexed, and apart from the videos it could not
+    // read, of which there are none here
     const status = await env.agent.get('/api/videos/refreshCache/status').expect(200);
-    expect(status.body.indexed).toBe(2);
-    expect(status.body.skipped).toBe(1);
+    expect(status.body).toMatchObject({ indexed: 2, skipped: 0, rejected: 1, folderErrors: 0 });
 
     // And the good documents are searchable, so the batch did not sink
     const search = await env.agent.get('/api/videos/search?q=film').expect(200);

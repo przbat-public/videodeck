@@ -1079,6 +1079,44 @@ describe('elasticsearchService', () => {
     });
   });
 
+  describe('bulk items the cluster refused', () => {
+    /** One refused item, as a cluster with a write block answers it */
+    const refusedItem = (id: string) => ({
+      index: { _id: id, status: 429, error: { type: 'cluster_block_exception', reason: 'blocked' } },
+    });
+
+    /** Two stems of one video, the shape an older download next to a newer one leaves */
+    const sameVideoTwice = () => [
+      toDocument(video({ videoId: 'dup00000001', baseName: '20240101_Video' })),
+      toDocument(video({ videoId: 'dup00000001', baseName: '20240101_Video_dup00000001' })),
+    ];
+
+    it('throws when every item failed, even when two documents share an id', async () => {
+      // The guard compared the ids that failed with the batch size, so a batch
+      // whose refused documents shared an id read as partly written, and the
+      // reindex promoted a version that held none of them
+      mockClient.bulk.mockResolvedValue({
+        errors: true,
+        items: [refusedItem('dup00000001'), refusedItem('dup00000001')],
+      });
+
+      await expect(bulkIndexDocuments('x', sameVideoTwice(), false)).rejects.toThrow(
+        'Bulk indexing failed for all 2 videos in x',
+      );
+    });
+
+    it('counts each refused item, not each refused id', async () => {
+      mockClient.bulk.mockResolvedValue({
+        errors: true,
+        items: [refusedItem('dup00000001'), refusedItem('dup00000001'), { index: { _id: 'other', status: 201 } }],
+      });
+
+      await expect(
+        bulkIndexDocuments('x', [...sameVideoTwice(), toDocument(video({ videoId: 'other' }))], false),
+      ).resolves.toEqual({ indexed: 1, skipped: 2 });
+    });
+  });
+
   describe('bulkIndexDocuments', () => {
     it('writes the documents as-is with videoId (or baseName) as id', async () => {
       await bulkIndexDocuments(

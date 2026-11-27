@@ -41,7 +41,9 @@ const finishedRun = {
   filesTotal: 1,
   indexed: 1,
   skipped: 0,
+  rejected: 0,
   errors: [],
+  folderErrors: 0,
 };
 
 /** The two endpoints the action talks to; anything else is a bug in the flow */
