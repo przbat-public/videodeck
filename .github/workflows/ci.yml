@@ -432,3 +432,49 @@ jobs:
           name: playwright-report-preview
           path: client/playwright-report/
           retention-days: 14
+
+  # The check the ruleset needs for this workflow. Required checks are listed
+  # by name, and GitHub counts a skipped job as a pass: a job added here gated
+  # nothing until the ruleset was edited too, and a failed `changes` job
+  # skipped every job behind it, so a pull request whose pipeline never ran
+  # could still merge. This job runs whatever happened and fails unless every
+  # job passed, or was skipped because the change touched documentation only.
+  # It covers this workflow alone: dependency-review and CodeQL run in their
+  # own workflows, `needs` cannot reach them, and they stay required by name.
+  # scripts/check-ci-gate.test.mjs keeps `needs` in step with the jobs above.
+  ci-ok:
+    name: CI ok
+    if: always()
+    needs:
+      - changes
+      - lint
+      - format
+      - audit
+      - typecheck
+      - unit-tests
+      - client-integration
+      - coverage
+      - integration
+      - build
+      - docker-images
+      - e2e
+      - e2e-preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed, or skipped for a documentation-only change
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          DOCS_ONLY: ${{ needs.changes.outputs.code == 'false' }}
+        run: |
+          failed=$(jq -r --arg docsOnly "$DOCS_ONLY" '
+            to_entries[]
+            | select(.value.result != "success")
+            | select(.value.result != "skipped" or $docsOnly != "true")
+            | "\(.key): \(.value.result)"' <<< "$RESULTS")
+          if [ -n "$failed" ]; then
+            echo "These jobs did not pass:"
+            echo "$failed"
+            exit 1
+          fi
+          echo "Every job passed, or was skipped for a documentation-only change."
