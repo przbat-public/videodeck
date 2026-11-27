@@ -65,8 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   started with the name of "Part 1", which indexed them as its transcript,
   offered them as player tracks and counted their languages in the console.
   A subtitle belongs to a video only as `<name>.vtt` or
-  `<name>.<language>.vtt` now, never when `<name>.<language>` is a video of
-  its own. The console's language badges follow after
+  `<name>.<language>.vtt` now, and the captions of a sibling video never
+  count. The console's language badges follow after
   `POST /api/folder/rebuild-index`
 - **Videos without a thumbnail show up in search.** The reindex dropped any
   video lacking a `.webp` or `.jpg` beside it, so a folder downloaded with
