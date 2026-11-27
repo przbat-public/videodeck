@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Libraries past 155 folders can search again.** Each read put every
+  folder's alias into its URL, and from folder 156 on that request line
+  outgrew the 4 KB Elasticsearch accepts, so searching, opening a video and
+  listing channels all failed with a 500. The alias list now travels inside
+  an `_msearch` body, whatever the folder count
 - **A rate-limited summary waits as long as the provider asks.** The OpenAI
   SDK hands a 429 its response's `Headers` object, which the retry read as a
   plain record and never found `Retry-After` in, so every throttled request

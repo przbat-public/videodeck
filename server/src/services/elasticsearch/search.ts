@@ -2,6 +2,7 @@ import type { estypes } from '@elastic/elasticsearch';
 import type { SortOption, VideoListItem } from '@videodeck/shared/api';
 import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULT_WINDOW } from '@videodeck/shared/schemas';
 import { getVideosFolderPaths } from '../../config';
+import { ElasticsearchUnavailableError } from '../elasticsearchErrors';
 import { fromDocument, type VideoDocument } from './bulkIndexing';
 import { assertElasticsearchReachable, getElasticsearchClient } from './connection';
 import { getIndexNameFromFolderPath } from './indexLifecycle';
@@ -29,11 +30,58 @@ const SEARCH_EXCLUDED_SOURCE_FIELDS = ['description', 'videoPath', 'subtitlePath
  * empty when no drive is mounted — that must fail loudly instead of
  * searching every index.
  */
-function getIndexPattern(folderPaths: string[] = getVideosFolderPaths()): string | string[] {
+function getIndexPattern(folderPaths: string[] = getVideosFolderPaths()): string[] {
   if (folderPaths.length === 0) {
     throw new Error('No video folders configured — refusing to search across all Elasticsearch indices');
   }
   return folderPaths.map((folderPath) => getIndexNameFromFolderPath(folderPath));
+}
+
+/**
+ * Run one search over the given aliases, through _msearch.
+ *
+ * A read names the alias of every folder it covers, and in a _search URL that
+ * list costs 26 bytes a folder: from 156 folders on, the request line passed
+ * the 4 KB Elasticsearch accepts (`http.max_initial_line_length`, a static
+ * setting) and every read answered 500. An _msearch header carries the list in
+ * the request body, so the line stays `POST /_msearch` whatever the folder
+ * count, and `ignore_unavailable` keeps applying per search, the way it did in
+ * the URL.
+ */
+async function searchAliases<TDocument>(
+  index: string[],
+  body: estypes.SearchSearchRequestBody,
+): Promise<estypes.MsearchMultiSearchItem<TDocument>> {
+  const response = await getElasticsearchClient().msearch<TDocument>({
+    searches: [{ index, ignore_unavailable: true }, body],
+  });
+  return unwrapSearchResponse(response.responses[0]);
+}
+
+/**
+ * The answer of a one-search _msearch. A search the cluster could not run
+ * comes back as an error item inside a 200, where _search threw instead. A 503
+ * item, a cluster with no shard ready yet, is still the outage it was, so the
+ * banner and the fail-fast window see it; any other error fails the read with
+ * the cluster's own reason in its message.
+ */
+function unwrapSearchResponse<TDocument>(
+  item: estypes.MsearchResponseItem<TDocument> | undefined,
+): estypes.MsearchMultiSearchItem<TDocument> {
+  if (item === undefined) {
+    throw new Error('Elasticsearch answered the search without a response');
+  }
+  if (!('error' in item)) {
+    return item;
+  }
+  const rootCause = item.error.root_cause?.[0];
+  const reason =
+    `${item.status} ${item.error.type}: ${item.error.reason ?? 'no reason given'}` +
+    (rootCause ? ` (${rootCause.type}: ${rootCause.reason ?? 'no reason given'})` : '');
+  if (item.status === 503) {
+    throw new ElasticsearchUnavailableError(`Elasticsearch could not run the search: ${reason}`);
+  }
+  throw new Error(`Elasticsearch refused the search: ${reason}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +167,6 @@ export async function searchVideosWithTotal(
     return { videos: [], total: 0 };
   }
   assertElasticsearchReachable();
-  const esClient = getElasticsearchClient();
   const { from, size } = normalizePaging(options);
 
   let mustQuery: Record<string, unknown> = { match_all: {} };
@@ -144,9 +191,7 @@ export async function searchVideosWithTotal(
   }
 
   // commentsText is search-only; it would dominate the payload otherwise
-  const response = await esClient.search<VideoDocument>({
-    index: getIndexPattern(folderPaths),
-    ignore_unavailable: true,
+  const response = await searchAliases<VideoDocument>(getIndexPattern(folderPaths), {
     query:
       filters.length > 0 ? { bool: { must: [mustQuery], filter: filters } } : hasQuery ? mustQuery : { match_all: {} },
     sort: buildSortOptions(sortOption),
@@ -260,10 +305,7 @@ interface TermsBucket {
  */
 export async function listChannelsByFolder(): Promise<ChannelsByFolder> {
   assertElasticsearchReachable();
-  const esClient = getElasticsearchClient();
-  const response = await esClient.search<VideoDocument>({
-    index: getIndexPattern(),
-    ignore_unavailable: true,
+  const response = await searchAliases<VideoDocument>(getIndexPattern(), {
     size: 0,
     aggs: {
       folders: {
@@ -293,10 +335,7 @@ export async function getAllVideos(sortOption: SortOption = 'date-desc'): Promis
 
 async function findOne(query: Record<string, unknown>): Promise<VideoListItem | null> {
   assertElasticsearchReachable();
-  const esClient = getElasticsearchClient();
-  const response = await esClient.search<VideoDocument>({
-    index: getIndexPattern(),
-    ignore_unavailable: true,
+  const response = await searchAliases<VideoDocument>(getIndexPattern(), {
     query,
     size: 1,
     _source: {

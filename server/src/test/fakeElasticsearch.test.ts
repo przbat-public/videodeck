@@ -78,12 +78,110 @@ describe('FakeElasticsearch controls', () => {
       body: `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`,
     });
 
+  /** `_msearch` NDJSON: a header line and a body line per search */
+  const msearch = (lines: unknown[]) =>
+    fetch(`${baseUrl}/_msearch`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-ndjson' },
+      body: `${lines.map((line) => JSON.stringify(line)).join('\n')}\n`,
+    });
+
+  /** Alias-shaped names, as many as the folders of a large library */
+  const aliasNames = (count: number) =>
+    Array.from({ length: count }, (_unused, index) => `videos_${String(index).padStart(16, '0')}`);
+
   it('logs every request with method, path and parsed body', async () => {
     await search();
     const last = fake.requestLog.at(-1);
     expect(last?.method).toBe('POST');
     expect(last?.path).toBe('/videos_x/_search');
     expect(last?.body).toEqual({ query: { match_all: {} } });
+  });
+
+  it('logs every search apart, with the names it targeted and its body', async () => {
+    await search();
+    await msearch([
+      { index: ['videos_alias', 'videos_missing'], ignore_unavailable: true },
+      { query: { match_all: {} }, size: 1 },
+    ]);
+
+    // One log for both routes, so a test reads the same entry whichever one
+    // the service uses
+    expect(fake.searchLog.slice(-2)).toEqual([
+      { index: ['videos_x'], body: { query: { match_all: {} } } },
+      { index: ['videos_alias', 'videos_missing'], body: { query: { match_all: {} }, size: 1 } },
+    ]);
+    // The request log keeps an _msearch body as parsed pairs, not NDJSON text
+    expect(fake.requestLog.at(-1)?.body).toEqual([
+      {
+        header: { index: ['videos_alias', 'videos_missing'], ignore_unavailable: true },
+        body: { query: { match_all: {} }, size: 1 },
+      },
+    ]);
+  });
+
+  it('refuses a request line past 4 KB the way Elasticsearch does', async () => {
+    // http.max_initial_line_length is 4kb by default, and a static setting. A
+    // _search naming 300 aliases in its URL, commas encoded the way the client
+    // sends them, needs about 7.8 KB of request line, so the cluster answers
+    // 400 before it reads a single index name.
+    const names = ['videos_alias', ...aliasNames(299)].join('%2C');
+    const longLine = await fetch(`${baseUrl}/${names}/_search?ignore_unavailable=true`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: { match_all: {} } }),
+    });
+
+    expect(longLine.status).toBe(400);
+    expect(JSON.stringify(await longLine.json())).toContain('An HTTP line is larger than 4096 bytes.');
+    // One name keeps the line short, and the same search is served
+    expect((await search()).status).toBe(200);
+  });
+
+  it('answers _msearch with one response per search', async () => {
+    await putDocument('msearch-1', { title: 'Wielokrotne' });
+
+    const response = await msearch([
+      // 300 names, 299 of which nothing holds: ignore_unavailable skips them
+      { index: ['videos_alias', ...aliasNames(299)], ignore_unavailable: true },
+      { query: { match_all: {} } },
+      // A page past the result window fails its own search, not the request
+      { index: 'videos_alias', ignore_unavailable: true },
+      { query: { match_all: {} }, from: 9990, size: 20 },
+    ]);
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      responses: Array<{ status: number; hits?: { total: unknown }; error?: { type: string } }>;
+    };
+    expect(body.responses).toHaveLength(2);
+    expect(body.responses[0]?.status).toBe(200);
+    expect(body.responses[0]?.hits?.total).toEqual({ value: 1, relation: 'eq' });
+    expect(body.responses[1]?.status).toBe(400);
+    expect(body.responses[1]?.error?.type).toBe('search_phase_execution_exception');
+  });
+
+  it('refuses an _msearch header it does not model with a 500 that names it', async () => {
+    const failureOf = async (header: Record<string, unknown>) => {
+      const response = await msearch([header, { query: { match_all: {} } }]);
+      return { status: response.status, error: ((await response.json()) as { error?: unknown }).error };
+    };
+
+    // Each of these changes the answer on a cluster: a header without an index
+    // searches every index, one without ignore_unavailable fails on a name
+    // nothing holds, and another key may route or score the search elsewhere
+    expect(await failureOf({ ignore_unavailable: true })).toEqual({
+      status: 500,
+      error: expect.stringContaining('an msearch header without an index is not modelled'),
+    });
+    expect(await failureOf({ index: 'videos_alias' })).toEqual({
+      status: 500,
+      error: expect.stringContaining('an msearch header without ignore_unavailable: true is not modelled'),
+    });
+    expect(await failureOf({ index: 'videos_alias', ignore_unavailable: true, routing: 'a' })).toEqual({
+      status: 500,
+      error: expect.stringContaining('the msearch header key routing is not modelled'),
+    });
   });
 
   it('answers faulted paths with the injected status until cleared', async () => {

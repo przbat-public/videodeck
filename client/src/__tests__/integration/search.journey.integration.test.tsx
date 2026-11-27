@@ -60,12 +60,11 @@ interface SearchBody {
   sort?: unknown;
 }
 
-/** The parsed body of the last search the app sent to the fake ES */
+/** The last search the app sent to the fake ES: the names it targeted and its parsed body */
 const lastSearch = () => {
-  const requests = env.fakeEs.requestLog.filter((request) => request.path.includes('_search'));
-  const last = requests.at(-1);
+  const last = env.fakeEs.searchLog.at(-1);
   expect(last, 'the app never searched the fake Elasticsearch').toBeDefined();
-  return { request: last, body: (last?.body ?? {}) as SearchBody };
+  return { index: last?.index ?? [], body: (last?.body ?? {}) as SearchBody };
 };
 
 describe('search journey — real user, real backend, fake Elasticsearch', () => {
@@ -140,8 +139,8 @@ describe('search journey — real user, real backend, fake Elasticsearch', () =>
     await pickOption(page.user, await categorySelect(), 'other');
     await waitFor(() => expect(queryCardByTitle('Głęboka integracja')).not.toBeInTheDocument());
     expect(queryCardByTitle('Drugi kanał wideo')).toBeInTheDocument();
-    // A single-category search targets one physical index, never a comma list.
-    expect(lastSearch().request?.path.includes(',')).toBe(false);
+    // A single-category search targets that folder's alias alone, never a list.
+    expect(lastSearch().index).toHaveLength(1);
 
     await pickOption(page.user, await categorySelect(), 'tests');
     await waitFor(() => expect(queryCardByTitle('Drugi kanał wideo')).not.toBeInTheDocument());

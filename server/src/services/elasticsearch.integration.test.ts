@@ -9,6 +9,7 @@ import {
   createIndexVersion,
   deleteAllVideosFromFolder,
   deleteIndex,
+  getIndexNameFromFolderPath,
   getIndexVersions,
   getVideoByFilePath,
   listChannelsByFolder,
@@ -59,6 +60,11 @@ interface SearchErrorBody {
   status: number;
 }
 
+/** Alias-shaped names nothing holds, as many as the folders of a large library */
+function aliasNames(count: number): string[] {
+  return Array.from({ length: count }, (_unused, index) => `videos_${String(index).padStart(16, '0')}`);
+}
+
 function video(baseName: string, title: string): VideoListItem {
   return {
     baseName,
@@ -102,6 +108,20 @@ describeIntegration('Elasticsearch integration', () => {
       throw error;
     }
     throw new Error(`the cluster served from=${from} size=${size} instead of refusing the page`);
+  }
+
+  /** Status and body of a raw request the cluster refused */
+  async function rejectionOf(request: Promise<unknown>): Promise<{ status: number; body: unknown }> {
+    try {
+      await request;
+    } catch (error) {
+      const failure = error as { meta?: { statusCode?: number }; body?: unknown };
+      if (failure.meta?.statusCode !== undefined) {
+        return { status: failure.meta.statusCode, body: failure.body };
+      }
+      throw error;
+    }
+    throw new Error('the cluster served a request it was expected to refuse');
   }
 
   /** One document behind the folder alias, so a search really has an index */
@@ -245,7 +265,7 @@ describeIntegration('Elasticsearch integration', () => {
     expect(results.map((item) => item.baseName)).toEqual(['20240101_kept']);
   });
 
-  // The five scenarios below are the twins of the fake's own tests: the same
+  // The scenarios below are the twins of the fake's own tests: the same
   // scenario name, the same expectation, once against the fake and once here.
 
   it('refuses a page past the result window the way Elasticsearch does', async () => {
@@ -351,6 +371,48 @@ describeIntegration('Elasticsearch integration', () => {
       }
       invalidateVideosFolderCache();
     }
+  });
+
+  it('refuses a request line past 4 KB the way Elasticsearch does', async () => {
+    await indexOneVideo('20240101_linia', 'Długa linia');
+    const names = [getIndexNameFromFolderPath(SCRATCH_FOLDER), ...aliasNames(299)];
+
+    // http.max_initial_line_length is 4kb and static: the client encodes the
+    // commas of 300 names into about 7.8 KB of URL, refused before any lookup
+    const failure = await rejectionOf(esClient.search({ index: names, ignore_unavailable: true }));
+
+    expect(failure.status).toBe(400);
+    expect(JSON.stringify(failure.body)).toContain('An HTTP line is larger than 4096 bytes.');
+
+    // The service's read over as many folders sends the list in an _msearch
+    // header, so the same library is served
+    const unindexed = Array.from({ length: 299 }, (_unused, index) => `${SCRATCH_FOLDER}-unindexed-${index}`);
+    const page = await searchVideosWithTotal('', 'date-desc', [SCRATCH_FOLDER, ...unindexed]);
+    expect(page.videos.map((item) => item.baseName)).toEqual(['20240101_linia']);
+    expect(page.total).toBe(1);
+  });
+
+  it('answers _msearch with one response per search', async () => {
+    await indexOneVideo('20240101_wielokrotne', 'Wielokrotne');
+    const alias = getIndexNameFromFolderPath(SCRATCH_FOLDER);
+
+    const response = await esClient.msearch({
+      searches: [
+        // 300 names, 299 of which nothing holds: ignore_unavailable skips them
+        { index: [alias, ...aliasNames(299)], ignore_unavailable: true },
+        { query: { match_all: {} } },
+        // A page past the result window fails its own search, not the request
+        { index: alias, ignore_unavailable: true },
+        { query: { match_all: {} }, from: 9990, size: 20 },
+      ],
+    });
+
+    expect(response.responses).toHaveLength(2);
+    const [served, refused] = response.responses;
+    expect(served?.status).toBe(200);
+    expect(served && 'hits' in served ? served.hits.total : undefined).toEqual({ value: 1, relation: 'eq' });
+    expect(refused?.status).toBe(400);
+    expect(refused && 'error' in refused ? refused.error.type : undefined).toBe('search_phase_execution_exception');
   });
 
   it('matches nothing for a term on a subfield the mapping does not declare', async () => {

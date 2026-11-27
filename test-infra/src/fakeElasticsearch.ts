@@ -51,12 +51,24 @@ import type { AddressInfo } from 'node:net';
  *   on a field that is not a keyword ("answers a query shape it does not model
  *   with a 500 that names it"). An index with no documents never runs its
  *   query, so there the refusal waits for the first document.
+ * - `http.max_initial_line_length`: a request whose first line passes 4096
+ *   bytes gets the cluster's 400 before any index is read ("refuses a request
+ *   line past 4 KB the way Elasticsearch does"). An alias list in a _search
+ *   URL crosses it at 156 folders, which is why the service searches through
+ *   _msearch.
+ * - `_msearch` answers each header and body pair with its own response and
+ *   `status`, and a refused search fails its own item inside a 200 ("answers
+ *   _msearch with one response per search"). A header other than the one the
+ *   service sends, an index list with ignore_unavailable true, answers 500
+ *   ("refuses an _msearch header it does not model with a 500 that names
+ *   it").
  *
- * Search still implements only the query shapes the service sends
- * (match_all, multi_match over SEARCH_FIELDS, bool must/filter/should, term on
- * keyword fields, ids, uploadDate/viewCount/likeCount sorts, highlight
- * fragments with the service's control chars). Everything else the real-ES CI
- * integration suite covers against an actual cluster.
+ * Search, over a _search URL or an _msearch pair, still implements only the
+ * query shapes the service sends (match_all, multi_match over SEARCH_FIELDS,
+ * bool must/filter/should, term on keyword fields, ids,
+ * uploadDate/viewCount/likeCount sorts, highlight fragments with the service's
+ * control chars). Everything else the real-ES CI integration suite covers
+ * against an actual cluster.
  */
 
 interface DocumentEntry {
@@ -114,6 +126,69 @@ const ASCII_FOLD_SPECIALS: Record<string, string> = {
  * follow the constant the code under test derives its paging from.
  */
 const RESULT_WINDOW = 10_000;
+
+/**
+ * The cluster's default `http.max_initial_line_length`, 4kb, which is a static
+ * setting. Hardcoded for the reason RESULT_WINDOW is.
+ */
+const MAX_INITIAL_LINE_LENGTH = 4096;
+
+/** The 400 body a cluster answers a request line past that length with */
+function tooLongLineError(): Record<string, unknown> {
+  const cause = {
+    type: 'too_long_http_line_exception',
+    reason: `An HTTP line is larger than ${MAX_INITIAL_LINE_LENGTH} bytes.`,
+  };
+  return { error: { root_cause: [cause], ...cause }, status: 400 };
+}
+
+/** One search of an _msearch body: its header line and its body line */
+interface MsearchPair {
+  header: Record<string, unknown>;
+  body: SearchBody;
+}
+
+/** The msearch header keys the fake models: the ones the service sends */
+const MSEARCH_HEADER_KEYS = new Set(['index', 'ignore_unavailable']);
+
+/** An _msearch NDJSON body, read into its header and body pairs */
+function msearchPairs(rawBody: string): MsearchPair[] {
+  const lines = rawBody.split('\n').filter((line) => line.trim().length > 0);
+  if (lines.length % 2 !== 0) {
+    throw new Error('an _msearch body needs a body line after every header line');
+  }
+  const pairs: MsearchPair[] = [];
+  for (let i = 0; i < lines.length; i += 2) {
+    pairs.push({
+      header: JSON.parse(lines[i] ?? '{}') as Record<string, unknown>,
+      body: JSON.parse(lines[i + 1] ?? '{}') as SearchBody,
+    });
+  }
+  return pairs;
+}
+
+/**
+ * The names one msearch header targets. Only the header the service sends is
+ * modelled: an index name or a list of them, with ignore_unavailable true, so
+ * a name nothing holds is skipped the way a cluster skips it. Without an index
+ * a cluster searches every index, without ignore_unavailable it fails on a
+ * missing name, and any other key may route or score the search differently,
+ * so each of those is refused rather than guessed.
+ */
+function msearchTargets(header: Record<string, unknown>): string[] {
+  const unmodelled = Object.keys(header).find((key) => !MSEARCH_HEADER_KEYS.has(key));
+  if (unmodelled !== undefined) {
+    throw new Error(`the msearch header key ${unmodelled} is not modelled`);
+  }
+  const names = typeof header.index === 'string' ? header.index.split(',') : header.index;
+  if (!Array.isArray(names) || names.length === 0 || names.some((name) => typeof name !== 'string' || !name.trim())) {
+    throw new Error('an msearch header without an index is not modelled');
+  }
+  if (header.ignore_unavailable !== true) {
+    throw new Error('an msearch header without ignore_unavailable: true is not modelled');
+  }
+  return names as string[];
+}
 
 /** The 400 body a real cluster answers a page past the window with */
 function resultWindowError(target: string, requested: number): Record<string, unknown> {
@@ -310,9 +385,9 @@ function holdsTerm(text: string, term: string, budget: number): boolean {
   return termsOf(text).some((token) => withinEditDistance(token, term, budget));
 }
 
-function readJsonBody(req: IncomingMessage, rawBody: string): unknown {
+function readJsonBody(req: IncomingMessage, rawBody: string, pathname: string): unknown {
   if (req.headers['content-type']?.includes('ndjson')) {
-    return rawBody;
+    return pathname === '/_msearch' ? msearchPairs(rawBody) : rawBody;
   }
   if (!rawBody) {
     return {};
@@ -341,23 +416,37 @@ export interface FakeEsRequest {
   method: string;
   /** pathname plus query string, as received */
   path: string;
-  /** Parsed JSON body when the request carried one */
+  /** Parsed JSON body when the request carried one; an _msearch body as its header and body pairs */
   body?: unknown;
+}
+
+/** One search the fake ran, whether a _search URL or an _msearch pair asked for it */
+export interface FakeEsSearch {
+  /** The index or alias names the search targeted, in request order */
+  index: string[];
+  /** The search body as received: query, sort, paging, highlight, aggregations */
+  body: Record<string, unknown>;
 }
 
 export class FakeElasticsearch {
   private readonly indices = new Map<string, IndexEntry>();
   private readonly aliases = new Map<string, string>();
   private readonly requests: FakeEsRequest[] = [];
+  private readonly searches: FakeEsSearch[] = [];
   private readonly faults: Array<{ match: string | RegExp; status: number }> = [];
   private readonly holds: Array<{ match: string | RegExp; arrive: () => void; released: Promise<void> }> = [];
   private readonly releases = new Set<() => void>();
   private server: Server | null = null;
   private port: number | null = null;
 
-  /** Every request the app sent, in order (assertions on search bodies) */
+  /** Every request the app sent, in order */
   get requestLog(): FakeEsRequest[] {
     return [...this.requests];
+  }
+
+  /** Every search the fake ran, in order, a refused page included (assertions on search bodies) */
+  get searchLog(): FakeEsSearch[] {
+    return [...this.searches];
   }
 
   /** Answer requests whose path contains the substring with this status */
@@ -413,12 +502,10 @@ export class FakeElasticsearch {
     return this.indices.get(this.aliases.get(name) ?? name);
   }
 
-  private resolveTargets(target: string): IndexEntry[] {
+  /** The physical indices behind index, alias and wildcard names, in that order */
+  private resolveTargets(names: readonly string[]): IndexEntry[] {
     const entries: IndexEntry[] = [];
-    for (const name of target
-      .split(',')
-      .map((part) => part.trim())
-      .filter(Boolean)) {
+    for (const name of names.map((part) => part.trim()).filter(Boolean)) {
       if (name.includes('*')) {
         const pattern = new RegExp(`^${name.replace(/\*/g, '.*')}$`);
         for (const [indexName, entry] of this.indices) {
@@ -496,7 +583,7 @@ export class FakeElasticsearch {
     const rawBody = Buffer.concat(chunks).toString('utf-8');
 
     try {
-      const body = readJsonBody(req, rawBody);
+      const body = readJsonBody(req, rawBody, url.pathname);
       const [path, suffix] = splitPath(url.pathname);
       const name = suffix !== undefined ? decodeURIComponent(path) : decodeURIComponent(url.pathname.slice(1));
 
@@ -505,6 +592,13 @@ export class FakeElasticsearch {
         path: url.pathname + url.search,
         ...(body === undefined ? {} : { body }),
       });
+
+      // Netty refuses the line before Elasticsearch routes anything, so no
+      // hold or fault applies to it either
+      if (Buffer.byteLength(`${req.method} ${req.url} HTTP/${req.httpVersion}`) > MAX_INITIAL_LINE_LENGTH) {
+        this.json(res, 400, tooLongLineError());
+        return;
+      }
 
       const target = url.pathname + url.search;
       const hold = this.holds.find((entry) =>
@@ -559,6 +653,10 @@ export class FakeElasticsearch {
       return true;
     }
     if (this.handleDataRoutes(req, res, url, suffix, body)) {
+      return true;
+    }
+    if (url.pathname === '/_msearch') {
+      this.msearch(res, body as MsearchPair[]);
       return true;
     }
     if (suffix === '_search') {
@@ -805,7 +903,8 @@ export class FakeElasticsearch {
   }
 
   private count(res: ServerResponse, target: string): void {
-    this.json(res, 200, { count: this.resolveTargets(target).reduce((sum, entry) => sum + entry.documents.size, 0) });
+    const entries = this.resolveTargets(target.split(','));
+    this.json(res, 200, { count: entries.reduce((sum, entry) => sum + entry.documents.size, 0) });
   }
 
   /** PUT /:index/_doc/:id — index one document through an index or alias */
@@ -827,7 +926,7 @@ export class FakeElasticsearch {
   private deleteByQuery(res: ServerResponse, target: string, body: unknown): void {
     const query = (body ?? {}) as { query?: Record<string, unknown> };
     let deleted = 0;
-    for (const entry of this.resolveTargets(target)) {
+    for (const entry of this.resolveTargets(target.split(','))) {
       if (query.query === undefined) {
         deleted += entry.documents.size;
         entry.documents.clear();
@@ -843,14 +942,37 @@ export class FakeElasticsearch {
     this.json(res, 200, { deleted });
   }
 
+  /** POST /:target/_search: the target names come from the URL, comma-separated */
   private search(res: ServerResponse, target: string, body: SearchBody): void {
+    const answer = this.runSearch(target.split(','), body);
+    this.json(res, answer.status, answer.body);
+  }
+
+  /**
+   * POST /_msearch: one answer per header and body pair, under `responses`. A
+   * search the cluster refuses fails its own item, `{ error, status }`, while
+   * the request itself answers 200, which is how a cluster answers too.
+   */
+  private msearch(res: ServerResponse, pairs: unknown): void {
+    if (!Array.isArray(pairs)) {
+      throw new Error('an _msearch body has to be NDJSON');
+    }
+    const responses = (pairs as MsearchPair[]).map(({ header, body }) => {
+      const answer = this.runSearch(msearchTargets(header), body);
+      return { ...answer.body, status: answer.status };
+    });
+    this.json(res, 200, { took: 0, responses });
+  }
+
+  /** One search over the named indices and aliases, as the status and body a cluster answers */
+  private runSearch(names: string[], body: SearchBody): { status: number; body: Record<string, unknown> } {
+    this.searches.push({ index: names, body: body as Record<string, unknown> });
     const from = body.from ?? 0;
     const size = body.size ?? 10;
     if (from + size > RESULT_WINDOW) {
-      this.json(res, 400, resultWindowError(target, from + size));
-      return;
+      return { status: 400, body: resultWindowError(names.join(','), from + size) };
     }
-    const sources = this.resolveTargets(target).flatMap((entry) => [...entry.documents.values()]);
+    const sources = this.resolveTargets(names).flatMap((entry) => [...entry.documents.values()]);
     const matches = sources.filter((doc) => this.matches(doc, body.query ?? {}));
     const scored = matches
       .map((doc) => ({ doc, score: this.score(doc, body.query ?? {}) }))
@@ -860,22 +982,25 @@ export class FakeElasticsearch {
       body._source && typeof body._source === 'object' ? (body._source.excludes ?? []) : [],
     );
 
-    this.json(res, 200, {
-      took: 0,
-      hits: {
-        total: { value: scored.length, relation: 'eq' },
-        hits: page.map(({ doc, score }) => ({
-          _id: doc.id,
-          _score: score,
-          _source: Object.fromEntries(Object.entries(doc.source).filter(([key]) => !excludes.has(key))),
-          ...this.highlight(doc, body),
-        })),
+    return {
+      status: 200,
+      body: {
+        took: 0,
+        hits: {
+          total: { value: scored.length, relation: 'eq' },
+          hits: page.map(({ doc, score }) => ({
+            _id: doc.id,
+            _score: score,
+            _source: Object.fromEntries(Object.entries(doc.source).filter(([key]) => !excludes.has(key))),
+            ...this.highlight(doc, body),
+          })),
+        },
+        ...this.aggregations(
+          scored.map(({ doc }) => doc),
+          body,
+        ),
       },
-      ...this.aggregations(
-        scored.map(({ doc }) => doc),
-        body,
-      ),
-    });
+    };
   }
 
   /** Minimal terms aggregations over the matched documents (channel facets) */
