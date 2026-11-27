@@ -74,7 +74,9 @@ const INDEX_ANALYSIS_VERSION = 1;
 
 /** What the current version brings over the one before, for the boot warning */
 const INDEX_ANALYSIS_CHANGES =
-  'long view counts, English possessives cut to their word, auto-captions read once per line and videos without a thumbnail';
+  'long view counts, English possessives cut to their word, auto-captions read once per line, ' +
+  'videos without a thumbnail, capped comment text, info.json files past the string limit indexed ' +
+  'from their head and no captions taken from a sibling video';
 
 const INDEX_MAPPINGS = {
   _meta: { analysis_version: INDEX_ANALYSIS_VERSION },

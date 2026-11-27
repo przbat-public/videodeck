@@ -627,10 +627,12 @@ describe('videoScanner', () => {
 
     it('keeps a full batch plus one capped document under the cluster request limit', async () => {
       // A batch flushes once it passes REINDEX_BATCH_BYTES, so the largest
-      // request is a batch just under that plus the heaviest document a video
-      // can make: every text field at its cap, three UTF-8 bytes per character.
-      // Elasticsearch refuses a request past http.max_content_length (100 MiB)
-      // with a 413, which failed the whole folder's reindex.
+      // request is a batch just under that plus one more document, here with
+      // its comments and its transcript at their caps, at three UTF-8 bytes per
+      // character. That holds for text without C0 control characters or lone
+      // surrogates, which JSON writes as six-byte escapes. Elasticsearch
+      // refuses a request past http.max_content_length (100 MiB) with a 413,
+      // which failed the whole folder's reindex.
       const clusterRequestLimitBytes = 100 * 1024 * 1024;
       const comment = 'x'.repeat(MAX_COMMENTS_CHARS);
       const infoJson = JSON.stringify({

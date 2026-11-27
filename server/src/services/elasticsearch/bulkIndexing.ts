@@ -10,12 +10,15 @@ export type VideoDocument = Omit<VideoListItem, 'comments'> & {
 };
 
 /**
- * Most characters of comment text one document stores. Comments were the one
- * text field without a cap: a video with hundreds of thousands of them made a
- * document past the 100 MB a cluster accepts per request, so even a batch of
- * one failed with a 413, and with it the folder's whole reindex. At three
- * UTF-8 bytes per character, a batch just under REINDEX_BATCH_BYTES plus one
- * document at every cap stays under that limit.
+ * Most characters of comment text one document stores. A video with hundreds
+ * of thousands of comments made a document past the 100 MB a cluster accepts
+ * per request, so even a batch of one failed with a 413, and with it the
+ * folder's whole reindex. At three UTF-8 bytes per character, a batch just
+ * under REINDEX_BATCH_BYTES plus one document with its comments and its
+ * transcript at their caps stays under that limit. The three bytes hold for
+ * text without C0 control characters or lone surrogates, which JSON writes as
+ * six-byte `\uXXXX` escapes. The title and the description have no cap, and
+ * YouTube keeps both short.
  */
 export const MAX_COMMENTS_CHARS = 10_000_000;
 
