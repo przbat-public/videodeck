@@ -324,6 +324,8 @@ export class FakeElasticsearch {
   private readonly aliases = new Map<string, string>();
   private readonly requests: FakeEsRequest[] = [];
   private readonly faults: Array<{ match: string | RegExp; status: number }> = [];
+  private readonly holds: Array<{ match: string | RegExp; arrive: () => void; released: Promise<void> }> = [];
+  private readonly releases = new Set<() => void>();
   private server: Server | null = null;
   private port: number | null = null;
 
@@ -339,6 +341,35 @@ export class FakeElasticsearch {
 
   clearFailures(): void {
     this.faults.length = 0;
+  }
+
+  /**
+   * Hold the requests whose path matches until `release` runs, so a test can
+   * act while one step of a longer flow waits (a reindex's bulk write).
+   * `reached` settles when the first such request arrives. `stop` releases
+   * every hold, so a failed assertion cannot leave a request hanging.
+   */
+  holdRequestsMatching(match: string | RegExp): { reached: Promise<void>; release: () => void } {
+    let arrive: () => void = () => undefined;
+    let open: () => void = () => undefined;
+    const reached = new Promise<void>((resolve) => {
+      arrive = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const hold = { match, arrive, released };
+    this.holds.push(hold);
+    const release = (): void => {
+      this.releases.delete(release);
+      const index = this.holds.indexOf(hold);
+      if (index !== -1) {
+        this.holds.splice(index, 1);
+      }
+      open();
+    };
+    this.releases.add(release);
+    return { reached, release };
   }
 
   /** The physical index an alias currently points at, if any */
@@ -397,6 +428,9 @@ export class FakeElasticsearch {
 
   /** Stop listening: the next client call fails like a stopped container. */
   async stop(): Promise<void> {
+    for (const release of [...this.releases]) {
+      release();
+    }
     const server = this.server;
     this.server = null;
     if (!server) {
@@ -447,6 +481,13 @@ export class FakeElasticsearch {
       });
 
       const target = url.pathname + url.search;
+      const hold = this.holds.find((entry) =>
+        typeof entry.match === 'string' ? target.includes(entry.match) : entry.match.test(target),
+      );
+      if (hold) {
+        hold.arrive();
+        await hold.released;
+      }
       const fault = this.faults.find((entry) =>
         typeof entry.match === 'string' ? target.includes(entry.match) : entry.match.test(target),
       );

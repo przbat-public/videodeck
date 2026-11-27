@@ -64,6 +64,39 @@ export function isReindexRunning(): boolean {
   return reindexStatus.running;
 }
 
+// ---------------------------------------------------------------------------
+// Writes during a folder reindex
+// ---------------------------------------------------------------------------
+
+/**
+ * Folder reindexes in flight, each settling once its new index version is
+ * promoted or discarded. Until then the folder alias points at the version
+ * the promotion deletes, so a document written through it would be lost.
+ */
+const reindexesInFlight = new Map<string, Promise<void>>();
+
+/** Incremental writes in flight per folder, which a reindex lets land before it lists the folder */
+const writesInFlight = new Map<string, Set<Promise<number>>>();
+
+/** The reindex of this folder in flight, settling once its version is swapped in or dropped */
+export function folderReindexInFlight(folderPath: string): Promise<void> | undefined {
+  return reindexesInFlight.get(folderPath);
+}
+
+/** Keep a write in the folder's set until it settles; it never rejects, failures are logged */
+function trackWrite(folderPath: string, write: Promise<number>): void {
+  const writes = writesInFlight.get(folderPath) ?? new Set<Promise<number>>();
+  writesInFlight.set(folderPath, writes);
+  writes.add(write);
+  const settled = (): void => {
+    writes.delete(write);
+    if (writes.size === 0 && writesInFlight.get(folderPath) === writes) {
+      writesInFlight.delete(folderPath);
+    }
+  };
+  void write.then(settled, settled);
+}
+
 function recordError(message: string): void {
   reindexStatus.lastError = message;
   if (reindexStatus.errors.length < MAX_STATUS_ERRORS) {
@@ -265,11 +298,38 @@ export async function buildVideoItem(
 // ---------------------------------------------------------------------------
 
 /**
- * Rebuild the folder's index from disk. Documents go into a fresh physical
- * index; the alias is switched only when everything was written, so search
- * keeps serving the previous version meanwhile.
+ * Rebuild the folder's index from disk, holding the folder's incremental
+ * writes until the new version is swapped in or dropped (see
+ * indexVideosFromDisk).
  */
 async function scanFolder(folderPath: string): Promise<void> {
+  let settle: () => void = () => undefined;
+  reindexesInFlight.set(
+    folderPath,
+    new Promise<void>((resolve) => {
+      settle = resolve;
+    }),
+  );
+  try {
+    // On a folder with no alias yet, a write in flight creates and promotes a
+    // version of its own, and that promotion deletes every other version, the
+    // one this reindex writes included. With an alias the wait is harmless:
+    // a write only starts once its files are on disk, so the listing below
+    // includes them anyway.
+    await Promise.allSettled(writesInFlight.get(folderPath) ?? []);
+    await buildFolderVersion(folderPath);
+  } finally {
+    reindexesInFlight.delete(folderPath);
+    settle();
+  }
+}
+
+/**
+ * Documents go into a fresh physical index; the alias is switched only when
+ * everything was written, so search keeps serving the previous version
+ * meanwhile.
+ */
+async function buildFolderVersion(folderPath: string): Promise<void> {
   const visibleFiles = await listVisibleFiles(folderPath);
   const baseNames = visibleFiles
     .filter((file) => file.endsWith('.info.json'))
@@ -423,11 +483,26 @@ export async function refreshVideosCache(options: { onlyMissing?: boolean } = {}
  * Index (or re-index) videos of one folder by base name, through the folder
  * alias. Failures are logged, never thrown — this runs after downloads and
  * must not fail them. Returns how many documents were written.
+ *
+ * While the folder is being reindexed the write waits for the new version:
+ * through the alias now, it would land in the version the swap deletes.
  */
 export async function indexVideosFromDisk(folderPath: string, baseNames: string[]): Promise<number> {
   if (baseNames.length === 0) {
     return 0;
   }
+  const reindex = reindexesInFlight.get(folderPath);
+  if (reindex) {
+    await reindex;
+    return indexVideosFromDisk(folderPath, baseNames);
+  }
+  // Registered before the first await, so a reindex that starts later sees it
+  const write = writeVideosFromDisk(folderPath, baseNames);
+  trackWrite(folderPath, write);
+  return write;
+}
+
+async function writeVideosFromDisk(folderPath: string, baseNames: string[]): Promise<number> {
   let indexed = 0;
   let visibleFiles: string[];
   try {

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Downloads finished mid-reindex stay searchable.** Their job wrote each
+  video through the alias into the outgoing index, which the swap was going
+  to drop, so it disappeared from search until another full reindex. On a
+  folder getting its first index, that write even deleted the version under
+  construction and failed that folder's reindex. Such writes are held until
+  the new version is live, and the job itself ends right away
 - **A backlog of thousands of jobs no longer stalls the server.** Every start,
   finish or cancel rescanned the whole queue once per waiting job, which
   blocked the event loop for about a second at 6,000 jobs. Scheduling now

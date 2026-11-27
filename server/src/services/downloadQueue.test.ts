@@ -21,14 +21,18 @@ import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 import { loadIndex, refreshIndex } from './folderIndex';
 import { commitStagedRefresh, removeStaging, stagedCommentsInterrupted, sweepStagingDirs } from './refreshStaging';
 import { readUnavailable, recordUnavailable } from './unavailableVideos';
-import { indexVideosFromDisk } from './videoScanner';
+import { folderReindexInFlight, indexVideosFromDisk } from './videoScanner';
 import { buildFormatSelector, buildYtDlpArgs, escapeOutputTemplate, PROGRESS_TEMPLATE } from './ytdlp';
 
 vi.mock('./folderIndex', async () => ({
   ...(await vi.importActual<typeof import('./folderIndex')>('./folderIndex')),
   refreshIndex: vi.fn(),
 }));
+// Stubs the scanner: these tests are about the post-job hook, its verdict and
+// its retries. The scanner's own wait for a reindex in flight is tested in
+// videoScanner.test.ts and in the deep server suite.
 vi.mock('./videoScanner', () => ({
+  folderReindexInFlight: vi.fn(),
   indexVideosFromDisk: vi.fn(),
 }));
 vi.mock('../utils/fsUtils', async () => ({
@@ -60,6 +64,7 @@ beforeAll(async () => {
 
 const mockedRefreshIndex = refreshIndex as MockedFunction<typeof refreshIndex>;
 const mockedIndexVideosFromDisk = indexVideosFromDisk as MockedFunction<typeof indexVideosFromDisk>;
+const mockedFolderReindexInFlight = folderReindexInFlight as MockedFunction<typeof folderReindexInFlight>;
 const mockedRemovePartialDownloads = removePartialDownloads as MockedFunction<typeof removePartialDownloads>;
 const mockedWriteTextAtomic = writeTextAtomic as MockedFunction<typeof writeTextAtomic>;
 const mockedCommitStagedRefresh = commitStagedRefresh as MockedFunction<typeof commitStagedRefresh>;
@@ -331,6 +336,64 @@ describe('indexChangedVideos', () => {
       expect(mockedIndexVideosFromDisk.mock.calls.length).toBe(callsBefore + 1);
       const retried = mockedIndexVideosFromDisk.mock.calls.at(-1)?.[1] ?? [];
       expect([...retried].sort()).toEqual(['20250101_A', '20250101_B']);
+    } finally {
+      vi.useRealTimers();
+      clearIndexRetries();
+    }
+  });
+
+  const changedNewVideo = () =>
+    mockedRefreshIndex.mockResolvedValue({
+      index: {
+        ...indexFile([]),
+        builtAt: 'x',
+        entries: { abc: indexEntry({ baseName: '20250101_New', videoFile: '20250101_New.mp4' }) },
+      },
+      changed: ['abc'],
+      removed: [],
+    });
+
+  it('hands the changed videos to a reindex of the folder in flight without holding the job', async () => {
+    // The job is done once the hook returns, and a running download holds its
+    // folder: the videos wait for the reindex, the job does not
+    let finishReindex: () => void = () => undefined;
+    mockedFolderReindexInFlight.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishReindex = () => resolve();
+      }),
+    );
+    changedNewVideo();
+    mockedIndexVideosFromDisk.mockResolvedValue(1);
+
+    let returned = false;
+    const hook = indexChangedVideos(job).then(() => {
+      returned = true;
+    });
+    try {
+      await vi.waitFor(() => expect(returned, 'the hook returns while the reindex still runs').toBe(true));
+      expect(mockedFolderReindexInFlight).toHaveBeenCalledWith(job.folderPath);
+      expect(mockedIndexVideosFromDisk).not.toHaveBeenCalled();
+    } finally {
+      finishReindex();
+      await hook;
+    }
+
+    await vi.waitFor(() => expect(mockedIndexVideosFromDisk).toHaveBeenCalledWith(job.folderPath, ['20250101_New']));
+  });
+
+  it('retries a batch that waited for a reindex when it comes up short', async () => {
+    vi.useFakeTimers();
+    try {
+      mockedFolderReindexInFlight.mockReturnValueOnce(Promise.resolve());
+      changedNewVideo();
+      mockedIndexVideosFromDisk.mockResolvedValue(0);
+
+      await indexChangedVideos(job);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockedIndexVideosFromDisk).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(mockedIndexVideosFromDisk).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
       clearIndexRetries();

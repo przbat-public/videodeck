@@ -11,7 +11,7 @@
         "id": "happy-path",
         "label": "Happy path",
         "focus": ["queued", "running", "done"],
-        "note": "A job waits for a slot, downloads and finishes indexed."
+        "note": "A job waits for a slot, downloads, then hands its videos to search."
       },
       {
         "id": "pause-resume",
@@ -66,7 +66,7 @@
       "id": "done",
       "type": "success",
       "label": "Done",
-      "sublabel": "downloaded and indexed",
+      "sublabel": "downloaded, sent to search",
       "lane": "main",
       "col": 4,
       "step": "03",
@@ -152,7 +152,7 @@
       "title": "Happy path",
       "items": [
         "Queued jobs persist across restarts and resume as queued after a reboot",
-        "A running job downloads with yt-dlp, then indexes the new files"
+        "A running job downloads with yt-dlp, then indexes the new files, or hands them to a reindex of the folder that is running"
       ]
     },
     {
