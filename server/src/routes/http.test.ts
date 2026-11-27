@@ -254,7 +254,9 @@ describe('createApp auth wiring', () => {
   });
 
   it('claims nothing about writes when the cluster does not say', async () => {
-    // A user without the monitor privilege cannot read the blocks
+    // A role that grants the ping (cluster:monitor/main) and not
+    // cluster:monitor/state cannot read the blocks. Without monitor, which
+    // grants both, the ping fails first and the cluster reads as down.
     mockedCheckWrites.mockResolvedValue('unknown');
 
     const health = await request(createApp()).get('/health');

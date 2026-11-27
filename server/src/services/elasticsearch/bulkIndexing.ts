@@ -193,7 +193,7 @@ export async function bulkIndexDocuments(
       throw new Error(`Bulk indexing failed for all ${documents.length} videos in ${indexName}`);
     }
     const failedIds = failed.map((item) => item.index?._id).filter((id): id is string => typeof id === 'string');
-    logger.error(`${failed.length} videos failed to index in ${indexName} (skipped):`, failedIds.slice(0, 5));
+    logger.error(`${failed.length} videos failed to index in ${indexName} (refused):`, failedIds.slice(0, 5));
     if (refresh) {
       await esClient.indices.refresh({ index: indexName });
     }

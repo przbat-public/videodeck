@@ -295,11 +295,14 @@ function stopsWrites(blocks: Record<string, z.infer<typeof ClusterBlockSchema>> 
  * then on search works while every write answers 429. A block at the write
  * level on the cluster, or on one of the library's indices, is `refused`.
  *
- * `unknown` when the cluster does not say. Reading its state needs the monitor
- * privilege, and a cluster that withholds it answers 403 on every probe, which
- * is a setting rather than news. Any other failure, or an answer of a shape
- * this does not read, logs once per window. Either way the probe never reports
- * a block it did not see.
+ * `unknown` when the cluster does not say. Reading its state needs
+ * cluster:monitor/state. The ping before it needs cluster:monitor/main, and
+ * the monitor privilege grants both, so a user without monitor never gets
+ * here: the ping fails and the cluster reads as down. Only a role that grants
+ * the ping and not the state answers 403 on every probe, which is a setting
+ * rather than news. Any other failure, or an answer of a shape this does not
+ * read, logs once per window. Either way the probe never reports a block it
+ * did not see.
  */
 export async function checkElasticsearchWrites(): Promise<ElasticsearchWrites> {
   try {

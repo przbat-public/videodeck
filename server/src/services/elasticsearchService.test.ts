@@ -657,8 +657,10 @@ describe('elasticsearchService', () => {
     });
 
     it('leaves the answer unknown, and quiet, when the cluster withholds its state', async () => {
-      // A user without the monitor privilege gets a 403 on every probe: a
-      // setting to document, not a failure to log each time
+      // A role that grants the ping (cluster:monitor/main) and not
+      // cluster:monitor/state gets a 403 on every probe: a setting to
+      // document, not a failure to log each time. Without monitor, which
+      // grants both, the ping fails first and the cluster reads as down.
       const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
       mockClient.cluster.state.mockRejectedValue(
         Object.assign(new Error('security_exception'), { name: 'ResponseError', meta: { statusCode: 403 } }),
@@ -1191,6 +1193,18 @@ describe('elasticsearchService', () => {
       await expect(
         bulkIndexDocuments('x', [...sameVideoTwice(), toDocument(video({ videoId: 'other' }))], false),
       ).resolves.toEqual({ indexed: 1, skipped: 2 });
+    });
+
+    it('logs them as refused, since the reindex status keeps skipped for unreadable files', async () => {
+      const error = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+      mockClient.bulk.mockResolvedValue({
+        errors: true,
+        items: [refusedItem('a'), { index: { _id: 'b', status: 201 } }],
+      });
+
+      await bulkIndexDocuments('x', [toDocument(video({ videoId: 'a' })), toDocument(video({ videoId: 'b' }))], false);
+
+      expect(error).toHaveBeenCalledWith('1 videos failed to index in x (refused):', ['a']);
     });
   });
 
