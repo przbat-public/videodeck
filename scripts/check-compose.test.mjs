@@ -102,6 +102,35 @@ function nginxLocation(match) {
   return null;
 }
 
+/**
+ * What one `location <match>` block sets for every request it serves: its
+ * body with the blocks nested in it cut out, because a directive inside an
+ * `if` applies only to the requests that branch takes. Null when the
+ * template has no such location.
+ *
+ * @param {string} match
+ */
+function nginxLocationOwn(match) {
+  const block = nginxLocation(match);
+  if (block === null) {
+    return null;
+  }
+  // `${API_TOKEN}` names a variable, not a block: `$API_TOKEN` to the scan
+  const body = block.slice(block.indexOf('{') + 1, -1).replace(/\$\{(\w+)\}/g, '$$$1');
+  let depth = 0;
+  let own = '';
+  for (const char of body) {
+    if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+    } else if (depth === 0) {
+      own += char;
+    }
+  }
+  return own;
+}
+
 test('every compose service carries a restart policy', () => {
   const services = composeServices();
   // A parse that found nothing would make the assertion below vacuous
@@ -177,11 +206,12 @@ test('every compose service caps its log', () => {
 });
 
 test('the proxy leaves API requests out of its access log', () => {
-  const api = nginxLocation('/api/');
+  const api = nginxLocationOwn('/api/');
   assert.ok(api, 'client/nginx.conf.template has no `location /api/` block');
   // The server logs every API request already, without the query string a
-  // line of nginx's would carry
-  assert.match(api, /^\s*access_log\s+off;/m, 'location /api/ must turn access_log off');
+  // line of nginx's would carry. Read from the location's own directives:
+  // inside the cross-site `if` it would cover the 403s alone.
+  assert.match(api, /^\s*access_log\s+off;/m, 'location /api/ must turn access_log off for every request it proxies');
 });
 
 test('the documented Elasticsearch docker run caps its log like the compose stack', () => {
@@ -216,23 +246,45 @@ test('the documented Elasticsearch docker run caps its log like the compose stac
 });
 
 /**
- * Every HEALTHCHECK instruction of a Dockerfile, continuation lines joined.
+ * The instructions of a Dockerfile, continuation lines joined.
+ *
+ * @param {string} dockerfile
+ */
+function dockerfileLines(dockerfile) {
+  return dockerfile.replace(/\\\n\s*/g, ' ').split('\n');
+}
+
+/**
+ * Every HEALTHCHECK instruction of a Dockerfile, in every stage: the parser
+ * reads them all before the first step runs.
  *
  * @param {string} dockerfile
  */
 function healthchecksOf(dockerfile) {
-  const joined = dockerfile.replace(/\\\n\s*/g, ' ');
-  return joined.split('\n').filter((line) => /^HEALTHCHECK\s/.test(line));
+  return dockerfileLines(dockerfile).filter((line) => /^HEALTHCHECK\s/.test(line));
 }
 
 /**
- * The HEALTHCHECK instruction of a Dockerfile with its continuation lines
- * joined, or null when the image has none.
+ * The HEALTHCHECK the image carries, or null when it carries none. Docker
+ * keeps the last one of the final stage, so a later `HEALTHCHECK NONE` turns
+ * an earlier probe off. A HEALTHCHECK of the build stage never reaches the
+ * image: both final stages start from a public base, not from it.
  *
  * @param {string} dockerfile
  */
 function healthcheckOf(dockerfile) {
-  return healthchecksOf(dockerfile)[0] ?? null;
+  const lines = dockerfileLines(dockerfile);
+  let finalStage = 0;
+  for (const [index, line] of lines.entries()) {
+    if (/^FROM\s/.test(line)) {
+      finalStage = index;
+    }
+  }
+  const last = lines
+    .slice(finalStage)
+    .filter((line) => /^HEALTHCHECK\s/.test(line))
+    .at(-1);
+  return last === undefined || /^HEALTHCHECK\s+NONE\b/.test(last) ? null : last;
 }
 
 /**
@@ -282,7 +334,7 @@ test('both images probe their liveness path, never a readiness one', () => {
   // /health and /api/health answer 503 while Elasticsearch is down, and the
   // server is alive then: its banner says so. /health/live asks the process.
   const server = healthcheckOf(SERVER_DOCKERFILE);
-  assert.ok(server, 'server/Dockerfile has no HEALTHCHECK');
+  assert.ok(server, 'the server image carries no HEALTHCHECK: none in the final stage, or HEALTHCHECK NONE last');
   assert.match(
     server,
     /'http:\/\/127\.0\.0\.1:'.*'\/health\/live'/,
@@ -291,13 +343,15 @@ test('both images probe their liveness path, never a readiness one', () => {
   // The client answers its own probe, so a server outage leaves the UI that
   // reports it healthy
   const client = healthcheckOf(CLIENT_DOCKERFILE);
-  assert.ok(client, 'client/Dockerfile has no HEALTHCHECK');
+  assert.ok(client, 'the client image carries no HEALTHCHECK: none in the final stage, or HEALTHCHECK NONE last');
   assert.match(
     client,
     /http:\/\/127\.0\.0\.1\/health\/live\b/,
     'the client HEALTHCHECK must ask nginx for /health/live',
   );
-  const probe = nginxLocation('= /health/live');
+  // The location's own directives: inside an `if` they would cover only the
+  // requests that branch takes
+  const probe = nginxLocationOwn('= /health/live');
   assert.ok(probe, 'client/nginx.conf.template has no `location = /health/live` for the probe');
   assert.match(probe, /^\s*return\s+200\b/m, 'the probe location must answer by itself, without the upstream');
   assert.match(probe, /^\s*access_log\s+off;/m, 'the probe location must stay out of the access log');

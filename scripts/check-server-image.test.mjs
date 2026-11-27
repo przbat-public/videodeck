@@ -62,12 +62,18 @@ test('the runtime install holds the server production closure only', () => {
 });
 
 test('yt-dlp comes with the pinned extras the folder options need', () => {
-  const extras = /^ARG YTDLP_EXTRAS=(\S+)\s*$/m.exec(DOCKERFILE)?.[1]?.split(',') ?? [];
+  // Read from the runtime stage: set in the build stage, the ARG does not
+  // reach the pip line below, `yt-dlp[]` reads as a bare yt-dlp, and pip
+  // installs it without a word
+  const extras = runtimeArg('YTDLP_EXTRAS')?.split(',') ?? [];
   // pin: the default dependencies at fixed versions, yt-dlp-ejs among them;
   // pin-curl-cffi: what --impersonate chrome loads; pin-deno: the runtime the
   // challenge scripts run in, which yt-dlp finds without a flag
   for (const extra of ['pin', 'pin-curl-cffi', 'pin-deno']) {
-    assert.ok(extras.includes(extra), `ARG YTDLP_EXTRAS in server/Dockerfile must include ${extra}`);
+    assert.ok(
+      extras.includes(extra),
+      `ARG YTDLP_EXTRAS in the runtime stage of server/Dockerfile must include ${extra}`,
+    );
   }
   const pip = runtimeLines().find((line) => /\bpip install\b/.test(line)) ?? '';
   assert.match(
