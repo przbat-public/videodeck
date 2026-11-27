@@ -1053,15 +1053,6 @@ describe('folder router', () => {
   });
 
   describe('queue endpoints', () => {
-    afterEach(() => {
-      // The tests here install their own `readFile` answer (a catalog, a
-      // record, a refusing disk) and the automock keeps it for the next test
-      // in the file: without this reset the enqueue tests decide each other's
-      // outcome, which is how a recorded failure once leaked into the URL
-      // canonicalization test.
-      mockedFs.readFile.mockReset();
-    });
-
     it('validates enqueue input', async () => {
       expect(
         (await request(app).post('/api/folder/queue').send({ folderPath: '/x', type: 'download', videos: [] })).status,
@@ -2010,6 +2001,8 @@ describe('folder state endpoints', () => {
       mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
       mockedFs.stat.mockResolvedValue({ isDirectory: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);
       mockedFs.readdir.mockResolvedValue(['archive.txt', 'config.json'] as never);
+      // The archive the listing above names, with the line a rebuild would drop
+      mockedFs.readFile.mockResolvedValue('youtube aaaaaaaaaaa\n');
       mockedLoadIndex.mockResolvedValue(indexFile([]));
 
       const response = await request(app)
@@ -2018,6 +2011,8 @@ describe('folder state endpoints', () => {
 
       expect(response.status).toBe(409);
       expect(String(response.body.error)).toMatch(/unmounted/);
+      // The atomic writer renames its temp file over archive.txt last
+      expect(mockedFs.rename).not.toHaveBeenCalled();
     });
   });
 

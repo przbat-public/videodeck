@@ -53,7 +53,9 @@ const mockClient = {
   count: vi.fn(),
   ping: vi.fn(),
   deleteByQuery: vi.fn(),
-  close: vi.fn().mockResolvedValue(undefined),
+  // The implementation goes into vi.fn itself: the per-test mock reset keeps
+  // it, and resetElasticsearchClient chains .catch on what close returns
+  close: vi.fn(() => Promise.resolve()),
 };
 
 vi.mock('@elastic/elasticsearch', () => ({
