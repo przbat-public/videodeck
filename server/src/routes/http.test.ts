@@ -6,21 +6,28 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib, { type Gunzip, gzipSync } from 'node:zlib';
 import type { HealthResponse } from '@videodeck/shared/api';
+import { HealthResponseSchema } from '@videodeck/shared/schemas';
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import type { Test } from 'supertest';
 import request from 'supertest';
 import type { MockedFunction } from 'vitest';
 import { createApp } from '../app';
-import { checkElasticsearchConnection, getVideoByFilePath } from '../services/elasticsearchService';
+import {
+  checkElasticsearchConnection,
+  checkElasticsearchWrites,
+  getVideoByFilePath,
+} from '../services/elasticsearchService';
 import { type Authorizer, createAuthMiddleware, createAuthorizer, isAllowedCorsOrigin } from './http';
 
 vi.mock('../services/elasticsearchService', () => ({
   checkElasticsearchConnection: vi.fn(),
+  checkElasticsearchWrites: vi.fn(),
   getVideoByFilePath: vi.fn(),
 }));
 
 const mockedCheckElasticsearch = checkElasticsearchConnection as MockedFunction<typeof checkElasticsearchConnection>;
+const mockedCheckWrites = checkElasticsearchWrites as MockedFunction<typeof checkElasticsearchWrites>;
 
 // config.ts validates VIDEOS_FOLDER_PATH at import time
 process.env.VIDEOS_FOLDER_PATH = '/test/videos';
@@ -178,6 +185,7 @@ describe('createApp auth wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedCheckElasticsearch.mockResolvedValue(true);
+    mockedCheckWrites.mockResolvedValue('accepted');
   });
 
   it('guards /api when a token is configured and keeps /health public', async () => {
@@ -214,6 +222,46 @@ describe('createApp auth wiring', () => {
 
     expect(health.status).toBe(503);
     expect(health.body).toEqual({ status: 'degraded', elasticsearch: 'down', revision: expect.any(Number) });
+    // There is no cluster to ask for its blocks
+    expect(mockedCheckWrites).not.toHaveBeenCalled();
+  });
+
+  it('reports refused writes with a 200 while the cluster still answers', async () => {
+    // A read-only index serves search and refuses every write. A 503 would
+    // raise the outage banner over a search that works.
+    mockedCheckWrites.mockResolvedValue('refused');
+
+    const health = await request(createApp()).get('/api/health');
+
+    expect(health.status).toBe(200);
+    expect(health.body).toEqual({
+      status: 'ok',
+      elasticsearch: 'ok',
+      revision: expect.any(Number),
+      writes: 'refused',
+    });
+    expect(HealthResponseSchema.parse(health.body)).toEqual(health.body);
+  });
+
+  it('claims nothing about writes when the cluster does not say', async () => {
+    // A user without the monitor privilege cannot read the blocks
+    mockedCheckWrites.mockResolvedValue('unknown');
+
+    const health = await request(createApp()).get('/health');
+
+    expect(health.status).toBe(200);
+    expect(health.body).toEqual({ status: 'ok', elasticsearch: 'ok', revision: expect.any(Number) });
+  });
+
+  it('probes again while writes are refused, so their return shows at once', async () => {
+    // Like an outage, a refusal is not cached: the banner's retry would
+    // otherwise show it for the whole TTL after the disk was freed
+    mockedCheckWrites.mockResolvedValueOnce('refused').mockResolvedValueOnce('accepted');
+    const app = createApp();
+
+    expect((await request(app).get('/health')).body).toMatchObject({ writes: 'refused' });
+    expect((await request(app).get('/health')).body).not.toHaveProperty('writes');
+    expect(mockedCheckElasticsearch).toHaveBeenCalledTimes(2);
   });
 
   it('reports the library revision and moves it when the library changes', async () => {
@@ -297,6 +345,8 @@ describe('createApp auth wiring', () => {
     await request(app).get('/health');
 
     expect(mockedCheckElasticsearch).toHaveBeenCalledTimes(1);
+    // The blocks are part of the cached answer, not one more call per probe
+    expect(mockedCheckWrites).toHaveBeenCalledTimes(1);
   });
 
   it('stamps every response with an X-Request-Id', async () => {

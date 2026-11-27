@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { estypes } from '@elastic/elasticsearch';
 import type { RecreateIndicesStatus } from '@videodeck/shared/api';
+import { z } from 'zod';
 import { getVideosFolderPaths } from '../../config';
 import { logger } from '../../utils/logger';
-import { LogThrottle } from '../../utils/logThrottle';
+import { describeError, LogThrottle } from '../../utils/logThrottle';
 import { runPool } from '../../utils/runPool';
 import { isElasticsearchUnavailable } from '../elasticsearchErrors';
 import { getElasticsearchClient, getProbeClient, noteElasticsearchUnavailable } from './connection';
@@ -257,6 +258,65 @@ export async function listCachedFolders(folderPaths: string[]): Promise<CachedFo
     );
   }
   return { folders, elasticsearchUp: unavailable === 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Write blocks
+// ---------------------------------------------------------------------------
+
+/** What the cluster's blocks say about writes into the library's indices */
+export type ElasticsearchWrites = 'accepted' | 'refused' | 'unknown';
+
+/** One block as the cluster state lists it: the operations it stops are what the check reads */
+const ClusterBlockSchema = z.object({ levels: z.array(z.string()) });
+
+/** GET /_cluster/state/blocks: the blocks on the whole cluster, and those per index */
+const ClusterBlocksSchema = z.object({
+  blocks: z
+    .object({
+      global: z.record(z.string(), ClusterBlockSchema).optional(),
+      indices: z.record(z.string(), z.record(z.string(), ClusterBlockSchema)).optional(),
+    })
+    .optional(),
+});
+
+/** One line per window for a cluster whose blocks cannot be read */
+export const writeBlockLogThrottle = new LogThrottle(30_000);
+
+/** Whether one of the blocks stops writes */
+function stopsWrites(blocks: Record<string, z.infer<typeof ClusterBlockSchema>> | undefined): boolean {
+  return Object.values(blocks ?? {}).some((block) => block.levels.includes('write'));
+}
+
+/**
+ * Whether the cluster takes writes into the library. A ping only proves that
+ * it answers: the flood-stage disk watermark puts
+ * index.blocks.read_only_allow_delete on every index of a full node, and from
+ * then on search works while every write answers 429. A block at the write
+ * level on the cluster, or on one of the library's indices, is `refused`.
+ *
+ * `unknown` when the cluster does not say. Reading its state needs the monitor
+ * privilege, and a cluster that withholds it answers 403 on every probe, which
+ * is a setting rather than news. Any other failure, or an answer of a shape
+ * this does not read, logs once per window. Either way the probe never reports
+ * a block it did not see.
+ */
+export async function checkElasticsearchWrites(): Promise<ElasticsearchWrites> {
+  try {
+    const { blocks } = ClusterBlocksSchema.parse(await getProbeClient().cluster.state({ metric: 'blocks' }));
+    const libraryIndexBlocked = Object.entries(blocks?.indices ?? {}).some(
+      ([index, indexBlocks]) => index.startsWith(`${INDEX_PREFIX}_`) && stopsWrites(indexBlocks),
+    );
+    return libraryIndexBlocked || stopsWrites(blocks?.global) ? 'refused' : 'accepted';
+  } catch (error) {
+    const statusCode = (error as { meta?: { statusCode?: unknown } } | undefined)?.meta?.statusCode;
+    if (statusCode !== 403 && writeBlockLogThrottle.shouldLog()) {
+      logger.warn(
+        `Cannot read the write blocks of the cluster: ${describeError(error)} (further failures log once per 30s)`,
+      );
+    }
+    return 'unknown';
+  }
 }
 
 /**

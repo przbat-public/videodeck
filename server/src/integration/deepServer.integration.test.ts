@@ -892,6 +892,39 @@ describe('deep server integration (real app, fake external world)', () => {
     }
   });
 
+  it('reports a cluster that answers but refuses writes', async () => {
+    // The flood-stage disk watermark puts index.blocks.read_only_allow_delete
+    // on every index of a full node. A ping still answers and search still
+    // works, so the probe read that cluster as healthy while every download
+    // missed search.
+    const folderPath = await env.seedFolder('writes-refused', videoFiles('readonly001', 'Film tylko do odczytu'));
+    env.setFolders('writes-refused');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+    const { getIndexNameFromFolderPath } = await import('../services/elasticsearchService.js');
+    const alias = getIndexNameFromFolderPath(folderPath);
+    const health = async () => (await env.agent.get('/api/health').expect(200)).body as Record<string, unknown>;
+
+    env.fakeEs.blockWrites(alias);
+    try {
+      // A healthy answer from before the block may still be cached for 5 s
+      const refused = await waitFor(health, (body) => (body as Record<string, unknown>).writes === 'refused');
+      expect(refused).toMatchObject({ status: 'ok', elasticsearch: 'ok', writes: 'refused' });
+
+      const search = await env.agent.get('/api/videos/search?q=odczytu').expect(200);
+      expect((search.body as { videos: Array<{ title: string }> }).videos.map((video) => video.title)).toEqual([
+        'Film tylko do odczytu',
+      ]);
+    } finally {
+      env.fakeEs.unblockWrites(alias);
+    }
+    // No probe after the block lifts, on purpose: a healthy answer is cached
+    // for 5 s, and the outage test, which the nightly may run next, needs the
+    // probe to see a cluster stop at once. A refusal is never served from the
+    // cache, so the next probe runs whatever comes next; http.test.ts pins that
+    // it then answers without the refusal.
+  }, 30_000);
+
   it('reports an unreachable Elasticsearch and recovers when it comes back', async () => {
     const firstFolder = await env.seedFolder('es-down-a', {
       ...videoFiles('esdown00001', 'Film bez Elasticsearch'),

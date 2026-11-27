@@ -9,20 +9,29 @@ import { Button } from './ui/Button';
  * into its own "something went wrong". The retry asks `/health` right away, and
  * the banner clears itself as soon as Elasticsearch answers again.
  *
+ * A cluster that answers but refuses writes, as it does on a nearly full disk,
+ * gets the same strip with its own message: search works, and new videos do
+ * not reach it. An outage outranks that message, since nothing works then.
+ *
  * This is the only component that polls: the pages and the menu read the same
  * state from the store.
  */
 export function ElasticsearchBanner(): JSX.Element | null {
   const { t } = useTranslation();
-  const { elasticsearch, recheck } = useServerHealth();
+  const { elasticsearch, writesRefused, recheck } = useServerHealth();
 
-  if (elasticsearch !== 'down') {
+  let message: string;
+  if (elasticsearch === 'down') {
+    message = t('health.elasticsearchDown');
+  } else if (writesRefused) {
+    message = t('health.elasticsearchReadOnly');
+  } else {
     return null;
   }
 
   return (
     <div className="health-banner" role="status">
-      <span className="health-banner-text">{t('health.elasticsearchDown')}</span>
+      <span className="health-banner-text">{message}</span>
       <Button size="small" onClick={() => void recheck()}>
         {t('health.recheck')}
       </Button>

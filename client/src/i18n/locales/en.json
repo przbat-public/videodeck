@@ -295,6 +295,7 @@
   },
   "health": {
     "elasticsearchDown": "Elasticsearch is not responding. Search and indexing are off; downloads and the video list still work.",
+    "elasticsearchReadOnly": "Elasticsearch accepts reads only, usually because its disk is nearly full. Search works, but new downloads will not reach the results until it accepts writes again.",
     "recheck": "Check again"
   },
   "theme": {

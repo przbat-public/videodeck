@@ -481,6 +481,96 @@ describe('FakeElasticsearch controls', () => {
     expect(body.items[1]?.index.status).toBe(404);
   });
 
+  /** The blocks section of the cluster state, as the health probe reads it */
+  const clusterBlocks = async (): Promise<unknown> => {
+    const response = await fetch(`${baseUrl}/_cluster/state/blocks`);
+    expect(response.status).toBe(200);
+    return ((await response.json()) as { blocks: unknown }).blocks;
+  };
+
+  it('lists a write block the way Elasticsearch does, and refuses writes into the index it blocks', async () => {
+    // index.blocks.read_only_allow_delete, the block the flood-stage disk
+    // watermark puts on every index of a full node: search goes on, every
+    // write into the index answers 429, and the cluster state is where the
+    // block shows. A ping finds nothing wrong with such a cluster.
+    expect(await clusterBlocks()).toEqual({});
+
+    fake.blockWrites('videos_alias');
+    try {
+      // Listed under the physical index, the name an alias resolves to
+      expect(await clusterBlocks()).toEqual({
+        indices: {
+          videos_x: {
+            '12': {
+              description: 'disk usage exceeded flood-stage watermark, index has read-only-allow-delete block',
+              retryable: false,
+              levels: ['write', 'metadata_write'],
+            },
+          },
+        },
+      });
+
+      const response = await bulk([{ index: { _index: 'videos_alias', _id: 'blocked' } }, { title: 'Refused' }]);
+      const body = (await response.json()) as {
+        errors: boolean;
+        items: Array<{ index: { status: number; error?: { type: string; reason: string } } }>;
+      };
+      expect(body.errors).toBe(true);
+      expect(body.items[0]?.index).toMatchObject({
+        status: 429,
+        error: {
+          type: 'cluster_block_exception',
+          reason: expect.stringContaining('index [videos_x] blocked by: [TOO_MANY_REQUESTS/12/'),
+        },
+      });
+      const single = await putDocument('blocked-single', { title: 'Refused too' });
+      expect(single.status).toBe(429);
+      expect(JSON.stringify(await single.json())).toContain('cluster_block_exception');
+
+      // Reads are not blocked, and nothing the writes carried was stored
+      const read = await search();
+      expect(read.status).toBe(200);
+      expect(((await read.json()) as { hits: { total: { value: number } } }).hits.total.value).toBe(0);
+    } finally {
+      fake.unblockWrites('videos_alias');
+    }
+
+    expect(await clusterBlocks()).toEqual({});
+    expect((await putDocument('unblocked', { title: 'Stored' })).status).toBe(201);
+  });
+
+  it('answers a cluster state request it does not model with a 500 that names it', async () => {
+    // The health probe asks for the blocks metric alone, with no parameter. A
+    // different metric would carry sections the fake does not have, and a
+    // parameter such as local could change which node answers.
+    const metadata = await fetch(`${baseUrl}/_cluster/state/metadata`);
+    expect(metadata.status).toBe(500);
+    expect(await metadata.json()).toEqual({
+      error: expect.stringContaining('the cluster request /_cluster/state/metadata is not modelled'),
+    });
+
+    const local = await fetch(`${baseUrl}/_cluster/state/blocks?local=true`);
+    expect(local.status).toBe(500);
+    expect(await local.json()).toEqual({
+      error: expect.stringContaining('the cluster request /_cluster/state/blocks?local=true is not modelled'),
+    });
+
+    // A block on a name the fake does not hold is a mistake in the test
+    expect(() => fake.blockWrites('videos_missing')).toThrow('videos_missing');
+  });
+
+  it('drops the write block of an index it deletes, as the cluster does', async () => {
+    // The block lives in the index settings, and read_only_allow_delete
+    // allows the delete that frees the disk
+    await fetch(`${baseUrl}/videos_blocked_scratch`, { method: 'PUT' });
+    fake.blockWrites('videos_blocked_scratch');
+
+    const deleted = await fetch(`${baseUrl}/videos_blocked_scratch`, { method: 'DELETE' });
+
+    expect(deleted.status).toBe(200);
+    expect(await clusterBlocks()).toEqual({});
+  });
+
   /** One document in the fixture index, refreshed so the next search sees it */
   const putDocument = (id: string, source: Record<string, unknown>) =>
     fetch(`${baseUrl}/videos_x/_doc/${id}?refresh=true`, {

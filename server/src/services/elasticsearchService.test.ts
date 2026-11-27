@@ -4,12 +4,14 @@ import { metricsRegistry } from '../metricsRegistry';
 import { at } from '../test-utils';
 import { logger } from '../utils/logger';
 import { MAX_COMMENTS_CHARS } from './elasticsearch/bulkIndexing';
+import { writeBlockLogThrottle } from './elasticsearch/indexLifecycle';
 import { isElasticsearchUnavailable } from './elasticsearchErrors';
 import {
   buildIndexVersionName,
   bulkIndexDocuments,
   bulkIndexVideos,
   checkElasticsearchConnection,
+  checkElasticsearchWrites,
   clearElasticsearchOutage,
   createIndex,
   createIndexVersion,
@@ -52,6 +54,9 @@ const mockClient = {
     updateAliases: vi.fn(),
     delete: vi.fn(),
     refresh: vi.fn(),
+  },
+  cluster: {
+    state: vi.fn(),
   },
   bulk: vi.fn(),
   index: vi.fn(),
@@ -602,6 +607,78 @@ describe('elasticsearchService', () => {
       expect(await checkElasticsearchConnection()).toBe(true);
       getElasticsearchClient();
       expect(Client.mock.calls.length).toBe(baseline + 1);
+    });
+  });
+
+  describe('checkElasticsearchWrites', () => {
+    /** A block as the cluster state lists it; its levels are what the check reads */
+    const block = (...levels: string[]) => ({ description: 'a block', retryable: false, levels });
+
+    beforeEach(() => {
+      writeBlockLogThrottle.reset();
+    });
+
+    it('takes writes while the cluster lists no block, asking for the blocks alone', async () => {
+      mockClient.cluster.state.mockResolvedValue({ cluster_name: 'docker-cluster', blocks: {} });
+
+      await expect(checkElasticsearchWrites()).resolves.toBe('accepted');
+      expect(mockClient.cluster.state).toHaveBeenCalledWith({ metric: 'blocks' });
+    });
+
+    it('refuses writes while a library index carries a write block', async () => {
+      // index.blocks.read_only_allow_delete, which the flood-stage disk
+      // watermark puts on every index of a full node: a ping still answers
+      mockClient.cluster.state.mockResolvedValue({
+        blocks: { indices: { [`${ALIAS_A}_20250101000000000`]: { '12': block('write', 'metadata_write') } } },
+      });
+
+      await expect(checkElasticsearchWrites()).resolves.toBe('refused');
+    });
+
+    it('refuses writes while the whole cluster carries a write block', async () => {
+      // cluster.blocks.read_only, or a cluster that lost its master
+      mockClient.cluster.state.mockResolvedValue({ blocks: { global: { '6': block('write', 'metadata_write') } } });
+
+      await expect(checkElasticsearchWrites()).resolves.toBe('refused');
+    });
+
+    it('takes writes past a block that stops none, and past one on an index outside the library', async () => {
+      mockClient.cluster.state.mockResolvedValue({
+        blocks: {
+          global: { '1': block('metadata_write') },
+          indices: {
+            '.kibana_1': { '8': block('write') },
+            [`${ALIAS_A}_20250101000000000`]: { '9': block('metadata_read', 'metadata_write') },
+          },
+        },
+      });
+
+      await expect(checkElasticsearchWrites()).resolves.toBe('accepted');
+    });
+
+    it('leaves the answer unknown, and quiet, when the cluster withholds its state', async () => {
+      // A user without the monitor privilege gets a 403 on every probe: a
+      // setting to document, not a failure to log each time
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+      mockClient.cluster.state.mockRejectedValue(
+        Object.assign(new Error('security_exception'), { name: 'ResponseError', meta: { statusCode: 403 } }),
+      );
+
+      await expect(checkElasticsearchWrites()).resolves.toBe('unknown');
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('leaves the answer unknown on any other failure, and warns once per window', async () => {
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+      // An answer of a shape the check does not read claims nothing either
+      mockClient.cluster.state.mockResolvedValueOnce({ blocks: { global: { '6': { levels: 'write' } } } });
+      await expect(checkElasticsearchWrites()).resolves.toBe('unknown');
+
+      mockClient.cluster.state.mockRejectedValueOnce(new Error('socket hang up'));
+      await expect(checkElasticsearchWrites()).resolves.toBe('unknown');
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Cannot read the write blocks of the cluster'));
     });
   });
 

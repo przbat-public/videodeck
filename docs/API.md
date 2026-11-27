@@ -7,7 +7,7 @@ on-disk yt-dlp file layout and the per-channel `config.json` options.
 
 ### GET /health (public)
 
-Readiness probe: pings Elasticsearch and returns `200 { status: 'ok', elasticsearch: 'ok' }`, and when ES does not respond: `503 { status: 'degraded', elasticsearch: 'down' }`. The Chrome extension uses it in its "Test connection" (pl: „Test połączenia") button. The ping result is cached for 5 s, so frequent polling does not burden ES.
+Readiness probe: pings Elasticsearch and returns `200 { status: 'ok', elasticsearch: 'ok' }`, and when ES does not respond: `503 { status: 'degraded', elasticsearch: 'down' }`. The Chrome extension uses it in its "Test connection" (pl: „Test połączenia") button. A cluster that answers but refuses writes still gets a `200`, with `writes: 'refused'` added. That means a block at the write level on the cluster or on a `videos_*` index, such as the `index.blocks.read_only_allow_delete` the flood-stage disk watermark puts on the indices of a full node: search keeps working, new videos do not reach it, and the UI shows a read-only banner. The blocks come from `GET /_cluster/state/blocks`, which needs the `monitor` cluster privilege; without it the field never appears. A healthy answer is cached for 5 s, so frequent polling does not burden ES, while one that is down or refuses writes is checked again on every probe.
 
 ### GET /health/live (public)
 

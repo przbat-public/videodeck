@@ -8,6 +8,7 @@ import { logger } from '../utils/logger';
 import {
   buildIndexVersionName,
   bulkIndexDocuments,
+  checkElasticsearchWrites,
   createIndexVersion,
   deleteAllVideosFromFolder,
   deleteIndex,
@@ -65,6 +66,11 @@ interface SearchErrorBody {
     failed_shards: Array<{ reason: { type: string } }>;
   };
   status: number;
+}
+
+/** The blocks section of the cluster state, the part GET /_cluster/state/blocks answers with */
+interface ClusterBlocksBody {
+  blocks: { indices?: Record<string, Record<string, unknown>> };
 }
 
 /** Alias-shaped names nothing holds, as many as the folders of a large library */
@@ -527,6 +533,57 @@ describeIntegration('Elasticsearch integration', () => {
     await promoteIndexVersion(SCRATCH_FOLDER, indexName);
     const results = await searchVideos('', 'date-desc', [SCRATCH_FOLDER]);
     expect(results.map((item) => item.baseName)).toEqual(['20240101_dobry']);
+  });
+
+  it('lists a write block the way Elasticsearch does, and refuses writes into the index it blocks', async () => {
+    // index.blocks.read_only_allow_delete, the block the flood-stage disk
+    // watermark puts on every index of a full node, set here by hand. The
+    // fake lists and refuses it the same way, and the health probe reads it.
+    const indexName = await indexOneVideo('20240101_przed', 'Przed blokadą');
+    const alias = getIndexNameFromFolderPath(SCRATCH_FOLDER);
+    const blocksOf = async (): Promise<ClusterBlocksBody> =>
+      (await esClient.cluster.state({ metric: 'blocks' })) as ClusterBlocksBody;
+
+    await esClient.indices.putSettings({ index: indexName, settings: { 'index.blocks.read_only_allow_delete': true } });
+    try {
+      expect((await blocksOf()).blocks.indices?.[indexName]).toEqual({
+        '12': {
+          description: 'disk usage exceeded flood-stage watermark, index has read-only-allow-delete block',
+          retryable: false,
+          levels: ['write', 'metadata_write'],
+        },
+      });
+
+      const response = await esClient.bulk({
+        operations: [{ index: { _index: alias, _id: 'blocked' } }, toDocument(video('20240102_po', 'Po blokadzie'))],
+      });
+      expect(response.errors).toBe(true);
+      expect(response.items[0]?.index).toMatchObject({ status: 429, error: { type: 'cluster_block_exception' } });
+      expect(response.items[0]?.index?.error?.reason).toContain(
+        `index [${indexName}] blocked by: [TOO_MANY_REQUESTS/12/`,
+      );
+      const single = await rejectionOf(
+        esClient.index({ index: alias, id: 'blocked-single', document: toDocument(video('20240103_jeden', 'Jeden')) }),
+      );
+      expect(single.status).toBe(429);
+      expect(JSON.stringify(single.body)).toContain('cluster_block_exception');
+
+      // Reads go on, and the probe reads the block a ping cannot see
+      expect((await searchVideos('', 'date-desc', [SCRATCH_FOLDER])).map((item) => item.baseName)).toEqual([
+        '20240101_przed',
+      ]);
+      await expect(checkElasticsearchWrites()).resolves.toBe('refused');
+    } finally {
+      await esClient.indices.putSettings({
+        index: indexName,
+        settings: { 'index.blocks.read_only_allow_delete': null },
+      });
+    }
+
+    expect((await blocksOf()).blocks.indices?.[indexName]).toBeUndefined();
+    // A developer cluster with a blocked library index of its own answers
+    // 'refused' here, and truthfully so
+    await expect(checkElasticsearchWrites()).resolves.toBe('accepted');
   });
 
   it('stores a count past int32 in a long field and refuses it in an integer one', async () => {
