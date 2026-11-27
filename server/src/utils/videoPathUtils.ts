@@ -27,8 +27,9 @@ export async function validateVideosFolder(): Promise<void> {
   const folderPaths = getVideosFolderPaths();
 
   // Glob entries that matched nothing yield an empty list (a drive that is
-  // not mounted) — that is a valid state to boot in: the folders appear as
-  // soon as the drive comes back (the list is re-scanned every few seconds).
+  // not mounted), and that is a valid state to boot in: the folders appear
+  // once the drive comes back, because the list follows watch events on the
+  // directories that decide it, plus a check every minute (libraryWatch.ts).
   if (folderPaths.length === 0) {
     logger.warn(
       'No video folders found — search, downloads and reindexing stay unavailable until a configured drive is mounted.',

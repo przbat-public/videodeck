@@ -97,8 +97,22 @@ function readOrigin(req: Request): string {
   return typeof origin === 'string' ? origin : '';
 }
 
+/** What the guard for /api answers a request: let it through, or refuse it with this status and body */
+export type AuthDecision = { allowed: true } | { allowed: false; status: 401 | 403; body: ApiError };
+
+/** The guard's decision for one request, taken from its headers alone */
+export type Authorizer = (req: Request) => AuthDecision;
+
+const ALLOWED: AuthDecision = { allowed: true };
+
+function refuse(status: 401 | 403, error: string, message: string): AuthDecision {
+  return { allowed: false, status, body: { error, message } };
+}
+
 /**
- * Guard for /api.
+ * The decision of the guard for /api. createAuthMiddleware answers with it,
+ * and the rate limit asks it before a media read may skip the count (app.ts),
+ * so the two cannot disagree on which requests get through.
  *
  * Browser requests are judged by the `Sec-Fetch-Site` marker first, in every
  * mode:
@@ -118,45 +132,47 @@ function readOrigin(req: Request): string {
  * Without a token the API stays open for non-browser clients and for the local
  * web client.
  */
-export function createAuthMiddleware(
+export function createAuthorizer(
   token: string | undefined,
   requireToken = false,
   options: AuthMiddlewareOptions = {},
-): (req: Request, res: Response, next: NextFunction) => void {
+): Authorizer {
   const extraOrigins = options.extraOrigins ?? [];
-  return (req, res, next) => {
+  return (req) => {
     const site = req.headers['sec-fetch-site'];
     if (site === 'cross-site') {
-      res.status(403).json({
-        error: 'Forbidden',
-        message: 'Cross-site requests are not allowed.',
-      });
-      return;
+      return refuse(403, 'Forbidden', 'Cross-site requests are not allowed.');
     }
     if (site === 'same-site' && !isAllowedCorsOrigin(readOrigin(req), extraOrigins, options.extensionOrigins)) {
-      res.status(403).json({
-        error: 'Forbidden',
-        message: 'Requests from another origin on this host are not allowed. List yours in CORS_ORIGINS.',
-      });
-      return;
+      return refuse(
+        403,
+        'Forbidden',
+        'Requests from another origin on this host are not allowed. List yours in CORS_ORIGINS.',
+      );
     }
 
     if (token) {
       const header = req.headers.authorization;
       const provided = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
-      if (!tokenMatches(provided, token)) {
-        res.status(401).json({ error: 'Unauthorized', message: 'Missing or invalid API token' });
-        return;
-      }
-      next();
-      return;
+      return tokenMatches(provided, token) ? ALLOWED : refuse(401, 'Unauthorized', 'Missing or invalid API token');
     }
 
     if (requireToken) {
-      res.status(401).json({ error: 'Unauthorized', message: 'REQUIRE_API_TOKEN is set and API_TOKEN is missing' });
-      return;
+      return refuse(401, 'Unauthorized', 'REQUIRE_API_TOKEN is set and API_TOKEN is missing');
     }
 
-    next();
+    return ALLOWED;
+  };
+}
+
+/** Guard for /api: passes on what `authorize` allows and answers its refusal otherwise */
+export function createAuthMiddleware(authorize: Authorizer): (req: Request, res: Response, next: NextFunction) => void {
+  return (req, res, next) => {
+    const decision = authorize(req);
+    if (decision.allowed) {
+      next();
+      return;
+    }
+    res.status(decision.status).json(decision.body);
   };
 }

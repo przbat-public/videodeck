@@ -1,11 +1,15 @@
+import { constants as bufferConstants } from 'node:buffer';
+import { createReadStream, type Stats } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { listVisibleFiles as sharedListVisibleFiles, writeJsonAtomic } from '../utils/fsUtils';
+import { type InfoJsonFlags, scanInfoJsonFlags } from '../utils/infoJsonFlags';
 import { logger } from '../utils/logger';
 import { runPool } from '../utils/runPool';
 import { createSingleFlight } from '../utils/singleFlight';
 import { findThumbnailFile } from '../utils/thumbnails';
 import { isSafeVideoStem } from '../utils/videoStem';
+import { findSubtitleFiles } from '../utils/vttUtils';
 
 /**
  * Per-folder index of downloaded videos.
@@ -37,6 +41,16 @@ export const INDEX_VERSION = 2;
 const INFO_SUFFIX = '.info.json';
 const VIDEO_EXTENSIONS = ['.mp4', '.mkv'];
 const ID_HEAD_BYTES = 8 * 1024;
+/** Read size of the comment flag scan, which ends at the first comment, written after the metadata */
+const INFO_SCAN_CHUNK_BYTES = 64 * 1024;
+/**
+ * The largest info.json parsed whole. Past V8's longest string (536,870,888
+ * code units on Node 24) readFile cannot return the file at all, and a UTF-8
+ * file never decodes to more code units than it has bytes. Past it only the
+ * head is parsed, for the id and the title yt-dlp writes first; the comment
+ * flags of the index come from a scan, which has no such limit.
+ */
+export const MAX_INFO_JSON_BYTES = bufferConstants.MAX_STRING_LENGTH;
 /** How many info.json files are inspected at once when (re)building the index */
 const INDEX_REBUILD_CONCURRENCY = 8;
 
@@ -120,7 +134,7 @@ export function extractTitleFromHead(head: string): string | null {
   }
 }
 
-interface VideoHead {
+export interface VideoHead {
   id: string;
   title?: string;
 }
@@ -129,8 +143,15 @@ function toVideoHead(id: string, title: unknown): VideoHead {
   return typeof title === 'string' ? { id, title } : { id };
 }
 
-async function readVideoHead(infoPath: string): Promise<VideoHead | null> {
+/**
+ * The id and the title of a video from the head of its info.json, with a full
+ * parse as the fallback for a file whose id is not the first key. Null when
+ * neither finds an id, or when the fallback would have to read a file past
+ * MAX_INFO_JSON_BYTES.
+ */
+export async function readVideoHead(infoPath: string): Promise<VideoHead | null> {
   const handle = await fs.open(infoPath, 'r');
+  let size: number;
   try {
     const buffer = Buffer.alloc(ID_HEAD_BYTES);
     const { bytesRead } = await handle.read(buffer, 0, ID_HEAD_BYTES, 0);
@@ -139,11 +160,15 @@ async function readVideoHead(infoPath: string): Promise<VideoHead | null> {
     if (fromHead) {
       return toVideoHead(fromHead, extractTitleFromHead(head));
     }
+    size = (await handle.stat()).size;
   } finally {
     await handle.close();
   }
+  if (size > MAX_INFO_JSON_BYTES) {
+    return null;
+  }
 
-  // Fallback: full parse (rare — e.g. reformatted files)
+  // Fallback: full parse (rare, e.g. reformatted files)
   try {
     const parsed: unknown = JSON.parse(await fs.readFile(infoPath, 'utf-8'));
     if (typeof parsed !== 'object' || parsed === null || !('id' in parsed)) {
@@ -180,17 +205,15 @@ function toIndexEntry(head: VideoHead, baseName: string, files: EntryFiles, info
 const SUBTITLE_LANG_RE = /\.([A-Za-z][A-Za-z0-9_-]*)\.vtt$/;
 
 /**
- * The subtitle languages of one video, sorted. A file whose name is the stem
- * plus `.vtt` alone belongs to the video but names no language, so it is left
- * out: the badges report languages, not a file count.
+ * The subtitle languages of one video, sorted, from its subtitles by the rule
+ * the search index uses (utils/vttUtils.ts), so a sibling video's captions stay
+ * off it. A file whose name is the stem plus `.vtt` alone belongs to the video
+ * but names no language, so it is left out: the badges report languages, not a
+ * file count.
  */
 function subtitleLangsOf(baseName: string, files: Set<string>): string[] {
-  const prefix = `${baseName}.`;
   const langs = new Set<string>();
-  for (const file of files) {
-    if (!file.startsWith(prefix) || !file.endsWith('.vtt')) {
-      continue;
-    }
+  for (const file of findSubtitleFiles(baseName, files)) {
     const match = SUBTITLE_LANG_RE.exec(file.slice(baseName.length));
     if (match?.[1] !== undefined) {
       langs.add(match[1]);
@@ -201,22 +224,16 @@ function subtitleLangsOf(baseName: string, files: Set<string>): string[] {
 
 /**
  * Whether the info.json carries comments, and whether it counts as a
- * description source. Both come from the same read: the file is already open
- * for its id, and comments are what make it large: a channel with comments on
- * averages over a megabyte per video, most of it the comment list.
+ * description source. Comments are what make the file large: a channel with
+ * comments on averages over a megabyte per video, most of it the comment
+ * list, which yt-dlp writes last. So the file is scanned rather than parsed
+ * (utils/infoJsonFlags.ts), up to the first comment once the description is
+ * known, and a file of any size, one past the longest string included, costs
+ * one read chunk of memory.
  */
-async function readInfoExtras(infoPath: string): Promise<{ hasComments: boolean; hasDescription: boolean }> {
+async function readInfoExtras(infoPath: string): Promise<InfoJsonFlags> {
   try {
-    const parsed: unknown = JSON.parse(await fs.readFile(infoPath, 'utf-8'));
-    if (typeof parsed !== 'object' || parsed === null) {
-      return { hasComments: false, hasDescription: false };
-    }
-    const record = parsed as Record<string, unknown>;
-    const comments = record.comments;
-    return {
-      hasComments: Array.isArray(comments) && comments.length > 0,
-      hasDescription: typeof record.description === 'string' && record.description.trim().length > 0,
-    };
+    return await scanInfoJsonFlags(createReadStream(infoPath, { highWaterMark: INFO_SCAN_CHUNK_BYTES }));
   } catch {
     // An unreadable info.json is not a folder index failure: the video is
     // still indexed from its head, it just reports no comments and no
@@ -230,17 +247,17 @@ function hasThumbnailOf(baseName: string, files: Set<string>): boolean {
   return findThumbnailFile(baseName, files) !== undefined;
 }
 
-/** Everything the index records about the files of one video */
+/** Everything the index records about the files of one video, whose info.json the caller has just statted */
 async function collectEntryFiles(
   folderPath: string,
   baseName: string,
   files: Set<string>,
   videoFile: string,
+  infoStats: Stats,
 ): Promise<EntryFiles> {
   const infoPath = path.join(folderPath, `${baseName}${INFO_SUFFIX}`);
-  const [videoStats, infoStats, extras] = await Promise.all([
+  const [videoStats, extras] = await Promise.all([
     statOrNull(path.join(folderPath, videoFile)),
-    statOrNull(infoPath),
     readInfoExtras(infoPath),
   ]);
   return {
@@ -250,7 +267,7 @@ async function collectEntryFiles(
     hasDescription: extras.hasDescription || files.has(`${baseName}.description`),
     hasThumbnail: hasThumbnailOf(baseName, files),
     videoBytes: videoStats?.size ?? 0,
-    infoBytes: infoStats?.size ?? 0,
+    infoBytes: infoStats.size,
   };
 }
 
@@ -276,7 +293,7 @@ async function listVisibleFiles(folderPath: string): Promise<Set<string>> {
 }
 
 /** fs.stat result, or null when the file vanished mid-scan */
-async function statOrNull(filePath: string): Promise<import('node:fs').Stats | null> {
+async function statOrNull(filePath: string): Promise<Stats | null> {
   try {
     return await fs.stat(filePath);
   } catch {
@@ -381,6 +398,42 @@ async function saveIndex(folderPath: string, index: FolderIndex): Promise<void> 
 }
 
 /**
+ * The tail of each folder's chain of index writes, by resolved path. Every
+ * write of the index (a rebuild, a job's refresh, a collection read adding
+ * the videos it has never seen) reads or lists the folder and saves what it
+ * saw, so two at once let the later save drop what the earlier one added.
+ * In the chain they run one after the other. A folder leaves the map once its
+ * chain is idle.
+ */
+const writeChains = new Map<string, Promise<void>>();
+
+/**
+ * Run an index write of the folder once the writes queued before it have
+ * settled, failed ones included. A write must not call an exported function
+ * of this module that loads or saves the index of the same folder: it would
+ * wait for itself. That includes the readers. loadIndex, and
+ * getDownloadStatuses and findEntryByVideoId through it, queue a rebuild in
+ * the chain whenever the index is missing, corrupt or outdated, so the wait
+ * shows only on such a folder. Inside the chain, read with readIndexFile and
+ * rebuild with scanAndSave.
+ */
+function inWriteChain<T>(folderPath: string, write: () => Promise<T>): Promise<T> {
+  const key = path.resolve(folderPath);
+  const run = (writeChains.get(key) ?? Promise.resolve()).then(write);
+  const tail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  writeChains.set(key, tail);
+  void tail.then(() => {
+    if (writeChains.get(key) === tail) {
+      writeChains.delete(key);
+    }
+  });
+  return run;
+}
+
+/**
  * Read ids recorded in yt-dlp's archive.txt (`<extractor> <id>` per line).
  */
 export async function readArchiveIds(folderPath: string): Promise<Set<string>> {
@@ -442,14 +495,22 @@ async function needsLeadingNewline(filePath: string): Promise<string> {
  * archive from such a scan dropped those lines silently, and the next channel
  * download fetched those videos again. Removing lines is the reconcile
  * endpoint's job, behind its guard and with a report (archive.ts).
+ *
+ * The scan runs in the folder's write chain, after the writes queued before it.
  */
 export async function rebuildIndex(folderPath: string): Promise<FolderIndex> {
+  return inWriteChain(folderPath, () => scanAndSave(folderPath));
+}
+
+/** The rebuild itself, for a caller already running in the folder's write chain */
+async function scanAndSave(folderPath: string): Promise<FolderIndex> {
   const files = await listVisibleFiles(folderPath);
   const entries: Record<string, FolderIndexEntry> = {};
 
   const infoFiles = [...files].filter((file) => file.endsWith(INFO_SUFFIX));
-  // Reading the id head and stat of every info.json is I/O-bound; a small
-  // pool finishes the folder scan several times faster than one by one.
+  // Every info.json costs its id head, a stat and a scan up to its first
+  // comment, all I/O-bound; a small pool finishes the folder scan several
+  // times faster than one by one.
   await runPool(infoFiles, INDEX_REBUILD_CONCURRENCY, async (file) => {
     const baseName = file.slice(0, -INFO_SUFFIX.length);
     const videoFile = findVideoFile(baseName, files);
@@ -463,7 +524,7 @@ export async function rebuildIndex(folderPath: string): Promise<FolderIndex> {
         return;
       }
       const stats = await fs.stat(infoPath);
-      const entryFiles = await collectEntryFiles(folderPath, baseName, files, videoFile);
+      const entryFiles = await collectEntryFiles(folderPath, baseName, files, videoFile, stats);
       entries[head.id] = toIndexEntry(head, baseName, entryFiles, stats.mtime);
     } catch (error) {
       logger.error(`folderIndex: skipping ${infoPath}:`, error);
@@ -487,13 +548,19 @@ const readerRebuilds = createSingleFlight<string, FolderIndex>();
  * from getting the same lines appended once per reader. Only readers share:
  * the post-job refresh and the rebuild endpoint run their own scan, so a job
  * never joins one that listed the folder before its files landed.
+ *
+ * The readers' rebuild runs in the folder's write chain and reads the index
+ * again first, so readers that found none while a write was in flight take
+ * what that write saved instead of scanning the folder a second time.
  */
 export async function loadIndex(folderPath: string): Promise<FolderIndex> {
   const existing = await readIndexFile(folderPath);
   if (existing) {
     return existing;
   }
-  return readerRebuilds.run(path.resolve(folderPath), () => rebuildIndex(folderPath));
+  return readerRebuilds.run(path.resolve(folderPath), () =>
+    inWriteChain(folderPath, async () => (await readIndexFile(folderPath)) ?? scanAndSave(folderPath)),
+  );
 }
 
 export interface RefreshResult {
@@ -543,13 +610,18 @@ export async function indexUntrackedVideos(folderPath: string): Promise<RefreshR
 /** Decides whether an info.json (by file stem and mtime) is re-read into the index */
 type EntryFilter = (baseName: string, mtimeMs: number) => boolean;
 
-async function refreshEntries(
+/** A read, change and save of the index, in the folder's write chain so no other write lands in between */
+function refreshEntries(folderPath: string, filterFor: (index: FolderIndex) => EntryFilter): Promise<RefreshResult> {
+  return inWriteChain(folderPath, () => applyRefresh(folderPath, filterFor));
+}
+
+async function applyRefresh(
   folderPath: string,
   filterFor: (index: FolderIndex) => EntryFilter,
 ): Promise<RefreshResult> {
   const existing = await readIndexFile(folderPath);
   if (!existing) {
-    const index = await rebuildIndex(folderPath);
+    const index = await scanAndSave(folderPath);
     return { index, changed: Object.keys(index.entries), removed: [] };
   }
 
@@ -598,7 +670,7 @@ async function collectChangedEntries(
       // The sidecars of a video change with its download, so the per-file facts
       // are re-read whenever the info.json is: a subtitle fetched by a repair
       // job has to show up without a full rebuild.
-      const entryFiles = await collectEntryFiles(folderPath, baseName, files, videoFile);
+      const entryFiles = await collectEntryFiles(folderPath, baseName, files, videoFile, stats);
       existing.entries[head.id] = toIndexEntry(head, baseName, entryFiles, stats.mtime);
       changed.push(head.id);
     } catch (error) {

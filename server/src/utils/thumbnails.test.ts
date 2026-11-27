@@ -1,4 +1,5 @@
-import { findThumbnailFile } from './thumbnails';
+import path from 'node:path';
+import { findThumbnailFile, thumbnailContentType } from './thumbnails';
 
 describe('findThumbnailFile', () => {
   it('takes the plain sidecar, .webp first, whatever the listing order or the case', () => {
@@ -40,5 +41,17 @@ describe('findThumbnailFile', () => {
 
   it('reads any iterable of names, the folder index passes a set', () => {
     expect(findThumbnailFile('X', new Set(['X.mp4', 'X.jpg']))).toBe('X.jpg');
+  });
+});
+
+describe('thumbnailContentType', () => {
+  it('types each thumbnail format in any case, numbered sizes too, and nothing else', () => {
+    expect(thumbnailContentType('.webp')).toBe('image/webp');
+    expect(thumbnailContentType('.JPG')).toBe('image/jpeg');
+    expect(thumbnailContentType('.jpeg')).toBe('image/jpeg');
+    expect(thumbnailContentType(path.extname('X.mp4_4.PNG'))).toBe('image/png');
+    expect(thumbnailContentType('.mp4')).toBeUndefined();
+    expect(thumbnailContentType('.vtt')).toBeUndefined();
+    expect(thumbnailContentType('')).toBeUndefined();
   });
 });

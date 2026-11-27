@@ -2,6 +2,7 @@ import { extractYtDlpProgress, isYtDlpProgressLine } from '@videodeck/shared/pro
 import { extractYoutubeVideoId, toWatchUrl } from '@videodeck/shared/youtube';
 import fc from 'fast-check';
 import { extractTextFromVttSubtitles } from './services/summaryService';
+import { findVideoFiles, groupFilesByStemPrefix } from './services/videoScanner';
 import { runPool } from './utils/runPool';
 import { stripVttCueSettings } from './utils/vttUtils';
 
@@ -171,6 +172,62 @@ describe('runPool', () => {
           expect([...seen].sort((a, b) => a - b)).toEqual([...items].sort((a, b) => a - b));
         },
       ),
+    );
+  });
+});
+
+describe('groupFilesByStemPrefix', () => {
+  /**
+   * What the sidecar rules look at: media in either case, images of each kind
+   * and size, subtitles, other metadata and a name that is the stem alone. The
+   * `.5` names make the sibling video `<stem>.5`, as "Part 1.5" is beside
+   * "Part 1": its metadata, its media, and a thumbnail and subtitles that read
+   * like a size and languages of the stem.
+   */
+  const SIDECARS = [
+    '.info.json',
+    '.mp4',
+    '.MP4',
+    '.mkv',
+    '.webp',
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.WEBP',
+    '.mp4_4.webp',
+    '.2.jpg',
+    '.vtt',
+    '.en.vtt',
+    '.pl.vtt',
+    '.description',
+    '',
+    '.5.info.json',
+    '.5.mp4',
+    '.5.webp',
+    '.5.vtt',
+    '.5.en.vtt',
+  ];
+
+  /** A few stems, dots in them included, and a shuffled part of their sidecars as the folder listing */
+  const folderArb = fc.uniqueArray(fc.stringMatching(/^[aB.]{1,3}$/), { minLength: 1, maxLength: 4 }).chain((stems) =>
+    fc.record({
+      stems: fc.constant(stems),
+      listing: fc.shuffledSubarray(stems.flatMap((stem) => SIDECARS.map((sidecar) => `${stem}${sidecar}`))),
+    }),
+  );
+
+  it("gives findVideoFiles the answer of the whole listing from a stem's group alone", () => {
+    // A rule that reads another stem's sibling differs only in a listing that
+    // keeps that sibling's files and drops the stem's own, which the default
+    // 100 runs missed in about three seeds of ten; 500 take some 40 ms
+    fc.assert(
+      fc.property(folderArb, ({ stems, listing }) => {
+        const groups = groupFilesByStemPrefix(listing);
+        for (const stem of [...stems, ...stems.map((each) => `${each}.5`)]) {
+          expect(findVideoFiles(stem, groups.get(stem) ?? [])).toEqual(findVideoFiles(stem, listing));
+        }
+      }),
+      { numRuns: 500 },
     );
   });
 });

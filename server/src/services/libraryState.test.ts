@@ -21,11 +21,13 @@ import {
  * revision it carries, and the watcher that keeps both honest while the app
  * runs.
  *
- * Every test works on temp directories it creates, and none of them talks to
- * inotify: the watch factory is injected, so an event is a call the test makes
- * and the clock is a fake one it advances. What is left to the platform is
- * real event coalescing and error delivery, neither of which the service
- * relies on (the reconcile decides, the backstop covers a dropped event).
+ * Every test works on temp directories it creates, and all but one leave
+ * inotify alone: the watch factory is injected, so an event is a call the test
+ * makes and the clock is a fake one it advances. The exception spies on the
+ * real `fs.watch` only to see which directories the default factory arms and
+ * how, and delivers no event. What is left to the platform is real event
+ * coalescing and error delivery, neither of which the service relies on (the
+ * reconcile decides, the backstop covers a dropped event).
  */
 
 /** Put an environment variable back the way this file found it */
@@ -81,14 +83,19 @@ interface FakeWatch {
   readonly deps: LibraryWatchDeps;
   /** Deliver one change event to every armed watcher */
   emit(): void;
+  /** Deliver one change event in `dir`, which only a watch armed on `dir` itself sees */
+  emitIn(dir: string): void;
 }
 
 /**
  * Stand-in for `fs.watch`. It models the two things the service depends on,
  * which directory was armed and which callback belongs to it, plus the refusal
- * a missing ancestor produces. Whether the kernel coalesces two writes into
- * one event is not modelled, because the debounce and the reconcile make that
- * irrelevant.
+ * a missing ancestor produces. A watch is plain, like the one the service
+ * opens: `emitIn` reaches the watch armed on that very directory and nothing
+ * above it, and throws when there is none, the way a change below an armed
+ * directory never reaches `fs.watch` without `recursive`. Whether the kernel
+ * coalesces two writes into one event is not modelled, because the debounce
+ * and the reconcile make that irrelevant.
  */
 function fakeWatch(options: { failFor?: (dir: string) => boolean } = {}): FakeWatch {
   const callbacks = new Map<string, () => void>();
@@ -117,7 +124,19 @@ function fakeWatch(options: { failFor?: (dir: string) => boolean } = {}): FakeWa
         onChange();
       }
     },
+    emitIn: (dir) => {
+      const onChange = callbacks.get(dir);
+      if (onChange === undefined) {
+        throw new Error(`no watch is armed on ${dir}, so a change there goes unseen`);
+      }
+      onChange();
+    },
   };
+}
+
+/** Whether `fs.watch` options ask for a recursive watch */
+function isRecursiveWatch(options: unknown): boolean {
+  return typeof options === 'object' && options !== null && 'recursive' in options && options.recursive === true;
 }
 
 /** Metric value, read the way elasticsearchService.test.ts reads its gauge */
@@ -397,6 +416,62 @@ describe('libraryState', () => {
     const literalAway = fakeWatch();
     startLibraryWatch(literalAway.deps);
     expect(literalAway.watched).toEqual([base]);
+  });
+
+  it('arms one plain watch per directory that decides the folder list', () => {
+    for (const drive of ['disk-a', 'disk-b']) {
+      const channel = makeChannelFolder(path.join(base, drive), 'kanal');
+      for (let index = 0; index < 50; index += 1) {
+        fs.writeFileSync(path.join(channel, `video-${index}.info.json`), '{}');
+      }
+    }
+    process.env.VIDEOS_FOLDER_PATH = `${base}/*/*`;
+    const watch = vi.spyOn(fs, 'watch');
+
+    startLibraryWatch();
+
+    // A recursive watch also hears every write a download makes in a channel
+    // folder, and off macOS Node builds it from one watch per file it holds.
+    // The volume directory and each drive on it decide the list; the channel
+    // folders below them are never armed.
+    expect(watch.mock.calls.filter(([, options]) => isRecursiveWatch(options))).toEqual([]);
+    expect(watch.mock.calls.map(([dir]) => String(dir)).sort()).toEqual([
+      base,
+      path.join(base, 'disk-a'),
+      path.join(base, 'disk-b'),
+    ]);
+  });
+
+  it("sees a channel folder created on a mounted drive through that drive's watch", async () => {
+    vi.useFakeTimers();
+    const diskA = path.join(base, 'disk-a');
+    const channelA = makeChannelFolder(diskA, 'kanal-a');
+    process.env.VIDEOS_FOLDER_PATH = `${base}/*/*`;
+    const fake = fakeWatch();
+    startLibraryWatch(fake.deps);
+    const changes = libraryChangeLog();
+
+    // The new folder is an entry of the drive, so only the drive's own watch
+    // hears it: nothing reaches the watch on the directory above
+    const channelB = makeChannelFolder(diskA, 'kanal-b');
+    const changed = changes.next();
+    fake.emitIn(diskA);
+    await vi.advanceTimersByTimeAsync(LIBRARY_WATCH_DEBOUNCE_MS);
+    await changed;
+
+    expect(getLibrarySnapshot().folders).toEqual([channelA, channelB]);
+  });
+
+  it('watches a literal root from the directory it sits in', () => {
+    const channelA = makeChannelFolder(base, 'kanal-a');
+    process.env.VIDEOS_FOLDER_PATH = channelA;
+    const fake = fakeWatch();
+
+    startLibraryWatch(fake.deps);
+
+    // The folder appears, leaves or is renamed in its parent; a watch on the
+    // folder itself would hear every write a download makes in it
+    expect(fake.watched).toEqual([base]);
   });
 
   it('re-arms the watcher on the new roots when the environment changes', async () => {

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { entry } from '../test-utils';
+import { DESCRIPTION_PROBE_BYTES } from '../utils/infoJsonFlags';
 import { logger } from '../utils/logger';
 import {
   ARCHIVE_FILE,
@@ -17,6 +18,32 @@ import {
   rebuildIndex,
   refreshIndex,
 } from './folderIndex';
+
+/** An info.json shaped like yt-dlp's: the metadata and formats first, the comment list last */
+function ytDlpInfo(id: string, commentCount: number): string {
+  const formats = Array.from({ length: 30 }, (_unused, n) => ({
+    format_id: String(n),
+    url: `https://rr1---sn.googlevideo.com/videoplayback?id=${id}&itag=${n}&sig=${'s'.repeat(1500)}`,
+    ext: 'mp4',
+    width: 1920,
+    height: 1080,
+  }));
+  return JSON.stringify({
+    id,
+    title: `Video ${id}`,
+    formats,
+    description: 'A description with "quotes", a \\ backslash and a comments: [ decoy',
+    automatic_captions: { en: [{ ext: 'vtt', url: 'https://www.youtube.com/api/timedtext?lang=en' }] },
+    comment_count: commentCount,
+    comments: Array.from({ length: commentCount }, (_unused, n) => ({
+      id: `Ugx-${n}`,
+      parent: 'root',
+      text: `Comment number ${n}: ${'z'.repeat(360)}`,
+      author: `@viewer${n}`,
+      like_count: n,
+    })),
+  });
+}
 
 async function writeVideo(
   dir: string,
@@ -137,6 +164,42 @@ describe('folderIndex', () => {
       expect(entry(index.entries, 'id-bare').videoBytes).toBe(Buffer.byteLength('video-bytes'));
     });
 
+    describe('subtitle languages', () => {
+      it('never counts the captions of a sibling video whose stem extends the entry', async () => {
+        // "Part 1.5" keeps its dot in an older <upload_date>_<title> name, so
+        // its captions start with the stem of "Part 1", whose badges showed
+        // languages it does not have
+        await writeVideo(dir, '20240101_Part_1', 'id-part-1');
+        await writeVideo(dir, '20240101_Part_1.5', 'id-part-1-5');
+        await fs.writeFile(path.join(dir, '20240101_Part_1.en.vtt'), 'subs', 'utf-8');
+        await fs.writeFile(path.join(dir, '20240101_Part_1.5.pl.vtt'), 'subs', 'utf-8');
+        await fs.writeFile(path.join(dir, '20240101_Part_1.5.de.vtt'), 'subs', 'utf-8');
+
+        const index = await rebuildIndex(dir);
+
+        expect(entry(index.entries, 'id-part-1').subtitleLangs).toEqual(['en']);
+        expect(entry(index.entries, 'id-part-1-5').subtitleLangs).toEqual(['de', 'pl']);
+      });
+    });
+
+    it('answers the comment and description flags without parsing the info.json', async () => {
+      // Two booleans cost a parse of the whole file, comments and all, for
+      // every video of a rebuild: eight at once per folder, eight folders at
+      // once behind the console
+      await writeVideo(dir, '20240101_Heavy', 'id-heavy', { infoPrefix: ytDlpInfo('id-heavy', 4000) });
+      await writeVideo(dir, '20240102_Quiet', 'id-quiet', {
+        infoPrefix: JSON.stringify({ id: 'id-quiet', title: 'Quiet', description: 'Only in the info.json' }),
+      });
+      const parse = vi.spyOn(JSON, 'parse');
+
+      const index = await rebuildIndex(dir);
+
+      expect(entry(index.entries, 'id-heavy')).toMatchObject({ hasComments: true, hasDescription: true });
+      expect(entry(index.entries, 'id-quiet')).toMatchObject({ hasComments: false, hasDescription: true });
+      const longestParsed = Math.max(...parse.mock.calls.map(([text]) => String(text).length));
+      expect(longestParsed).toBeLessThanOrEqual(DESCRIPTION_PROBE_BYTES + 2);
+    });
+
     it('writes the index file and adds the videos it found to archive.txt', async () => {
       await writeVideo(dir, '20240101_First', 'id-first');
       await fs.writeFile(path.join(dir, ARCHIVE_FILE), 'youtube stale-id\n', 'utf-8');
@@ -188,6 +251,29 @@ describe('folderIndex', () => {
       expect(Object.keys(index.entries)).toEqual(['id-reordered']);
     });
 
+    it('counts the comments of an info.json past the string limit, which it cannot parse', async () => {
+      // Past V8's longest string the parse fails, and the entry said no
+      // comments: the console then offered a comment repair for the very
+      // file that holds them, and that repair keeps a file this size as it is
+      await writeVideo(dir, '20240101_Huge', 'id-huge');
+      const realStat = fs.stat;
+      vi.spyOn(fs, 'stat').mockImplementation(async (file) => {
+        const stats = await realStat(file);
+        return String(file).endsWith('.info.json') ? Object.assign(stats, { size: 600 * 1024 * 1024 }) : stats;
+      });
+      const realReadFile = fs.readFile;
+      vi.spyOn(fs, 'readFile').mockImplementation(async (file, options) => {
+        if (String(file).endsWith('.info.json')) {
+          throw new RangeError('Invalid string length');
+        }
+        return realReadFile(file, options);
+      });
+
+      const index = await rebuildIndex(dir);
+
+      expect(entry(index.entries, 'id-huge').hasComments).toBe(true);
+    });
+
     it('skips unreadable info.json files without failing', async () => {
       await writeVideo(dir, '20240101_Good', 'id-good');
       await writeVideo(dir, '20240102_Broken', 'ignored', { infoPrefix: '{not json' });
@@ -211,11 +297,10 @@ describe('folderIndex', () => {
       await writeVideo(dir, '20240102_Second', 'id-second');
 
       // A folder without an index gets rebuilt by whoever asks first, and more
-      // than one rebuild can run at once (the rebuild endpoint next to a
-      // reader). They all write the index through a temp file, so a shared
-      // temp name makes the slower writer rename a path the faster one has
-      // already moved. archive.txt is appended instead, and a line two
-      // rebuilds both added is one id to every reader of the archive.
+      // than one rebuild can be asked for at once (the rebuild endpoint next
+      // to a reader). They run in turn in the folder's write chain, each
+      // writing the index through a temp file of its own, and archive.txt is
+      // appended rather than rewritten, so every id ends up in it once.
       const readers = await Promise.all(Array.from({ length: 5 }, () => rebuildIndex(dir)));
 
       for (const index of readers) {
@@ -238,6 +323,211 @@ describe('folderIndex', () => {
       }
       const archive = await fs.readFile(path.join(dir, ARCHIVE_FILE), 'utf-8');
       expect(archive).toBe('youtube id-first\nyoutube id-second\n');
+    });
+  });
+
+  describe('writes to one folder', () => {
+    const HOUR_MS = 60 * 60 * 1000;
+
+    /** A video whose info.json was last written `agedMs` ago */
+    async function writeAgedVideo(baseName: string, id: string, agedMs: number): Promise<void> {
+      await writeVideo(dir, baseName, id);
+      const then = new Date(Date.now() - agedMs);
+      await fs.utimes(path.join(dir, `${baseName}.info.json`), then, then);
+    }
+
+    /** Holds the first open of an info.json, the head read of a scan, until release() */
+    function holdFirstInfoOpen(): { reached: Promise<void>; release: () => void; opens: () => number } {
+      const realOpen = fs.open;
+      let release: () => void = () => undefined;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let signalReached: () => void = () => undefined;
+      const reached = new Promise<void>((resolve) => {
+        signalReached = resolve;
+      });
+      let opens = 0;
+      vi.spyOn(fs, 'open').mockImplementation(async (file, flags, mode) => {
+        if (String(file).endsWith('.info.json')) {
+          opens += 1;
+          if (opens === 1) {
+            signalReached();
+            await released;
+          }
+        }
+        return realOpen(file, flags, mode);
+      });
+      return { reached, release, opens: () => opens };
+    }
+
+    /** The reads of the index file started so far, each settling whether it found the file or not */
+    function recordIndexReads(): () => Promise<unknown>[] {
+      const realReadFile = fs.readFile;
+      const reads: Promise<unknown>[] = [];
+      vi.spyOn(fs, 'readFile').mockImplementation((file, options) => {
+        const result = realReadFile(file, options);
+        if (String(file).endsWith(INDEX_FILE)) {
+          reads.push(result.catch(() => undefined));
+        }
+        return result;
+      });
+      return () => [...reads];
+    }
+
+    /** One spy on fs.open; each hold() parks the first open of that video's info.json, a write's head read, until release() */
+    function gateInfoOpens(): { hold: (baseName: string) => { reached: Promise<void>; release: () => void } } {
+      const realOpen = fs.open;
+      const holds = new Map<string, { signalReached: () => void; released: Promise<void> }>();
+      vi.spyOn(fs, 'open').mockImplementation(async (file, flags, mode) => {
+        const name = path.basename(String(file));
+        const hold = holds.get(name);
+        if (hold) {
+          holds.delete(name);
+          hold.signalReached();
+          await hold.released;
+        }
+        return realOpen(file, flags, mode);
+      });
+      return {
+        hold(baseName) {
+          let release: () => void = () => undefined;
+          const released = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          let signalReached: () => void = () => undefined;
+          const reached = new Promise<void>((resolve) => {
+            signalReached = resolve;
+          });
+          holds.set(`${baseName}.info.json`, { signalReached, released });
+          return { reached, release };
+        },
+      };
+    }
+
+    const storedIds = async (): Promise<string[]> => Object.keys((await loadIndex(dir)).entries).sort();
+
+    it('keeps the video a job refresh adds while a reader rebuild is still scanning', async () => {
+      await writeAgedVideo('20240101_First', 'id-first', HOUR_MS);
+      const held = holdFirstInfoOpen();
+      const indexReads = recordIndexReads();
+
+      // A reader finds no index and rebuilds it from a listing taken before
+      // the job's files landed; the job's refresh found no index either and
+      // rebuilt it too, and whichever saved last decided what the folder held
+      const reader = loadIndex(dir);
+      await held.reached;
+      await writeVideo(dir, '20240102_Second', 'id-second');
+      const refresh = refreshIndex(dir, Date.now() - 1000);
+      await Promise.all(indexReads());
+      held.release();
+      const [, refreshed] = await Promise.all([reader, refresh]);
+
+      expect(refreshed.changed).toEqual(['id-second']);
+      expect(await storedIds()).toEqual(['id-first', 'id-second']);
+    });
+
+    it('keeps both videos when a collection read and a job refresh index the folder at once', async () => {
+      await writeAgedVideo('20240101_First', 'id-first', HOUR_MS);
+      await rebuildIndex(dir);
+      // Moved in from another folder: an old mtime, and never indexed
+      await writeAgedVideo('20230101_MovedIn', 'id-moved', 24 * HOUR_MS);
+      const held = holdFirstInfoOpen();
+      const indexReads = recordIndexReads();
+
+      // Each read the index, added its own video and saved: the later save
+      // dropped the other one's
+      const collectionRead = indexUntrackedVideos(dir);
+      await held.reached;
+      await writeVideo(dir, '20240102_Second', 'id-second');
+      const refresh = refreshIndex(dir, Date.now() - 1000);
+      await Promise.all(indexReads());
+      held.release();
+      await Promise.all([collectionRead, refresh]);
+
+      expect(await storedIds()).toEqual(['id-first', 'id-moved', 'id-second']);
+    });
+
+    it('keeps a third write waiting for the second, which still runs after the first has settled', async () => {
+      await writeAgedVideo('20240101_First', 'id-first', HOUR_MS);
+      await rebuildIndex(dir);
+      await writeAgedVideo('20230101_MovedA', 'id-moved-a', 24 * HOUR_MS);
+      const gate = gateInfoOpens();
+      const firstHeld = gate.hold('20230101_MovedA');
+      const secondHeld = gate.hold('20240102_Second');
+      const indexReads = recordIndexReads();
+
+      // The first write leaving must not end the chain the second one runs in:
+      // a third write would start beside it, and the later save drops the
+      // other one's video
+      const collectionRead = indexUntrackedVideos(dir);
+      await firstHeld.reached;
+      await writeVideo(dir, '20240102_Second', 'id-second');
+      const refresh = refreshIndex(dir, Date.now() - 1000);
+      firstHeld.release();
+      await collectionRead;
+      await secondHeld.reached;
+      await writeAgedVideo('20230102_MovedC', 'id-moved-c', 24 * HOUR_MS);
+      const readsBefore = indexReads().length;
+      const nextCollectionRead = indexUntrackedVideos(dir);
+      for (let turn = 0; turn < 3; turn += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      expect(indexReads()).toHaveLength(readsBefore);
+      secondHeld.release();
+      await Promise.all([refresh, nextCollectionRead]);
+
+      expect(await storedIds()).toEqual(['id-first', 'id-moved-a', 'id-moved-c', 'id-second']);
+    });
+
+    it('keeps both videos when the collection read names the folder with a trailing slash', async () => {
+      await writeAgedVideo('20240101_First', 'id-first', HOUR_MS);
+      await rebuildIndex(dir);
+      await writeAgedVideo('20230101_MovedIn', 'id-moved', 24 * HOUR_MS);
+      const held = holdFirstInfoOpen();
+      const indexReads = recordIndexReads();
+
+      // The console's folder list passes a library root as configured, a
+      // trailing slash included, where a job gets the normalized path: both
+      // spellings have to share one chain
+      const collectionRead = indexUntrackedVideos(`${dir}/`);
+      await held.reached;
+      await writeVideo(dir, '20240102_Second', 'id-second');
+      const refresh = refreshIndex(dir, Date.now() - 1000);
+      await Promise.all(indexReads());
+      held.release();
+      await Promise.all([collectionRead, refresh]);
+
+      expect(await storedIds()).toEqual(['id-first', 'id-moved', 'id-second']);
+    });
+
+    it('lets a reader that finds no index wait for a rebuild in flight instead of scanning again', async () => {
+      await writeVideo(dir, '20240101_First', 'id-first');
+      await writeVideo(dir, '20240102_Second', 'id-second');
+      const held = holdFirstInfoOpen();
+      const indexReads = recordIndexReads();
+
+      const rebuild = rebuildIndex(dir);
+      await held.reached;
+      const reader = loadIndex(dir);
+      await Promise.all(indexReads());
+      held.release();
+      const [, read] = await Promise.all([rebuild, reader]);
+
+      expect(Object.keys(read.entries).sort()).toEqual(['id-first', 'id-second']);
+      // One scan opens each of the two heads once
+      expect(held.opens()).toBe(2);
+    });
+
+    it('runs the next index write after one that failed', async () => {
+      await writeVideo(dir, '20240101_First', 'id-first');
+      vi.spyOn(fs, 'rename').mockRejectedValueOnce(
+        Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }),
+      );
+
+      await expect(rebuildIndex(dir)).rejects.toThrow('EACCES');
+
+      expect(await storedIds()).toEqual(['id-first']);
     });
   });
 

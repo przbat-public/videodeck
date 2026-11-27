@@ -1,7 +1,11 @@
+import type { Stats } from 'node:fs';
+import type { FileHandle } from 'node:fs/promises';
 import * as fs from 'node:fs/promises';
 import type { Mock, Mocked } from 'vitest';
 import * as config from '../config';
 import { at } from '../test-utils';
+import { logger } from '../utils/logger';
+import { MAX_COMMENTS_CHARS } from './elasticsearch/bulkIndexing';
 import type { VideoDocument } from './elasticsearchService';
 import * as elasticsearchService from './elasticsearchService';
 import {
@@ -71,6 +75,23 @@ function rollingAutoCaptions(lines: string[]): string {
   return cues.join('\n');
 }
 
+/** Past V8's longest string (536,870,888 code units on Node 24), so the file cannot be read as one */
+const PAST_STRING_LIMIT_BYTES = 600 * 1024 * 1024;
+
+/** A FileHandle stand-in for a file of `size` bytes that starts with `head` */
+function fakeHandle(head: string, size: number): FileHandle {
+  const bytes = Buffer.from(head, 'utf-8');
+  const handle = {
+    read: async (buffer: Buffer, offset: number, length: number, position: number) => ({
+      bytesRead: bytes.copy(buffer, offset, position, position + length),
+      buffer,
+    }),
+    stat: async () => ({ size }),
+    close: async () => undefined,
+  };
+  return handle as unknown as FileHandle;
+}
+
 function mockFolder(files: string[], infoJson: Record<string, unknown> = { title: 'Test Video 1' }) {
   mockedConfig.getVideosFolderPaths.mockReturnValue([FOLDER]);
   readdirMock.mockResolvedValue(files);
@@ -92,6 +113,8 @@ describe('videoScanner', () => {
     mockedEs.fromDocument.mockImplementation(realEs.fromDocument);
     mockedEs.estimateDocumentBytes.mockImplementation(realEs.estimateDocumentBytes);
     mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
+    // An info.json of an ordinary size, read whole
+    mockedFs.stat.mockResolvedValue({ size: 1024 } as Stats);
     mockedEs.checkElasticsearchConnection.mockResolvedValue(true);
     mockedEs.createIndexVersion.mockResolvedValue(NEW_INDEX);
     mockedEs.bulkIndexDocuments.mockImplementation(async (_index, documents) => ({
@@ -172,6 +195,35 @@ describe('videoScanner', () => {
       // back instead of staying empty (which used to 404 on every visit).
       expect(found.subtitleFile).toBe('20231201_X.pl.vtt');
       expect(found.subtitleFiles).toEqual(['20231201_X.pl.vtt']);
+    });
+
+    it('never takes the subtitles of a sibling video whose stem extends this one', () => {
+      // Older names are <upload_date>_<title> and keep a title's dot, so
+      // "Part 1.5" is the video 20240101_Part_1.5 beside "Part 1", and every
+      // caption of it starts with the stem of the other one. Indexed as Part
+      // 1's, they made a search for words spoken in Part 1.5 return Part 1.
+      const listing = [
+        '20240101_Part_1.info.json',
+        '20240101_Part_1.mp4',
+        '20240101_Part_1.webp',
+        '20240101_Part_1.5.info.json',
+        '20240101_Part_1.5.mp4',
+        '20240101_Part_1.5.webp',
+        '20240101_Part_1.5.pl.vtt',
+        '20240101_Part_1.5.en.vtt',
+        '20240101_Part_1.5.vtt',
+      ];
+
+      const first = findVideoFiles('20240101_Part_1', listing);
+      expect(first.subtitleFiles).toEqual([]);
+      expect(first.subtitleFile).toBeUndefined();
+      const sibling = findVideoFiles('20240101_Part_1.5', listing);
+      expect(sibling.subtitleFiles).toEqual([
+        '20240101_Part_1.5.pl.vtt',
+        '20240101_Part_1.5.en.vtt',
+        '20240101_Part_1.5.vtt',
+      ]);
+      expect(sibling.subtitleFile).toBe('20240101_Part_1.5.en.vtt');
     });
 
     it('accepts the numbered thumbnail variants yt-dlp writes for every size', () => {
@@ -357,6 +409,20 @@ describe('videoScanner', () => {
       expect(result.video.subtitlePath).toBeUndefined();
     });
 
+    it('takes the title and the description from fulltitle when the info.json has neither', async () => {
+      // The details view shows the indexed fields, so this fallback is the only one
+      mockedFs.readFile.mockResolvedValue(JSON.stringify({ id: 'abcdefghijk', fulltitle: 'Full Title Only' }));
+
+      const result = await buildVideoItem(FOLDER, '20231201_TestVideo1', [
+        '20231201_TestVideo1.info.json',
+        '20231201_TestVideo1.mp4',
+      ]);
+
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') return;
+      expect(result.video).toMatchObject({ title: 'Full Title Only', description: 'Full Title Only' });
+    });
+
     it('leaves the id out of a title derived from a stem that ends in it', async () => {
       // Downloads name their files <date>_<title>_<id>; an id can hold `_` and
       // `-`, so it is matched as the whole suffix, never by splitting
@@ -435,6 +501,41 @@ describe('videoScanner', () => {
         status: 'skipped',
         reason: expect.stringContaining('missing video file'),
       });
+      expect(mockedFs.readFile).not.toHaveBeenCalled();
+    });
+
+    it('indexes a video whose info.json is past the string limit, from its head and without comments', async () => {
+      // readFile fails on such a file the way Node does, and the video left
+      // search; its head still names the id and the title yt-dlp writes first
+      const stem = '20231201_Huge_video_hugeVideo01';
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+      mockedFs.stat.mockResolvedValue({ size: PAST_STRING_LIMIT_BYTES } as Stats);
+      mockedFs.readFile.mockRejectedValue(new RangeError('Invalid string length'));
+      mockedFs.open.mockResolvedValue(
+        fakeHandle('{"id": "hugeVideo01", "title": "Huge video", "formats": [', PAST_STRING_LIMIT_BYTES),
+      );
+
+      const result = await buildVideoItem(FOLDER, stem, [`${stem}.info.json`, `${stem}.mp4`]);
+
+      expect(result).toMatchObject({
+        status: 'ok',
+        video: { videoId: 'hugeVideo01', title: 'Huge video', uploadDate: '20231201', comments: [] },
+      });
+      expect(mockedFs.readFile).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips a video whose info.json is past the string limit and names no id in its head, unread', async () => {
+      const stem = '20231201_Huge_video';
+      mockedFs.stat.mockResolvedValue({ size: PAST_STRING_LIMIT_BYTES } as Stats);
+      mockedFs.readFile.mockRejectedValue(new RangeError('Invalid string length'));
+      mockedFs.open.mockResolvedValue(
+        fakeHandle('{"title": "Huge video", "id": "late", "formats": [', PAST_STRING_LIMIT_BYTES),
+      );
+
+      const result = await buildVideoItem(FOLDER, stem, [`${stem}.info.json`, `${stem}.mp4`]);
+
+      expect(result).toEqual({ status: 'skipped', reason: expect.stringContaining('too large to read') });
       expect(mockedFs.readFile).not.toHaveBeenCalled();
     });
 
@@ -524,6 +625,34 @@ describe('videoScanner', () => {
       expect(getReindexStatus().indexed).toBe(6);
     });
 
+    it('keeps a full batch plus one capped document under the cluster request limit', async () => {
+      // A batch flushes once it passes REINDEX_BATCH_BYTES, so the largest
+      // request is a batch just under that plus one more document, here with
+      // its comments and its transcript at their caps, at three UTF-8 bytes per
+      // character. That holds for text without C0 control characters or lone
+      // surrogates, which JSON writes as six-byte escapes. Elasticsearch
+      // refuses a request past http.max_content_length (100 MiB) with a 413,
+      // which failed the whole folder's reindex.
+      const clusterRequestLimitBytes = 100 * 1024 * 1024;
+      const comment = 'x'.repeat(MAX_COMMENTS_CHARS);
+      const infoJson = JSON.stringify({
+        title: 'Heavy',
+        comments: [1, 2, 3].map((n) => ({ id: String(n), text: comment })),
+      });
+      const vtt = `WEBVTT\n\n00:00:01.000 --> 00:00:04.000\n${'y'.repeat(MAX_TRANSCRIPT_CHARS + 1)}`;
+      mockFolder(['a.info.json', 'a.mp4', 'a.en.vtt']);
+      mockedFs.readFile.mockImplementation(async (filePath: unknown) =>
+        String(filePath).endsWith('.vtt') ? vtt : infoJson,
+      );
+
+      await loadVideosCache();
+
+      const document = at(bulkIndexedVideos(), 0);
+      expect(document.transcriptText).toHaveLength(MAX_TRANSCRIPT_CHARS);
+      const worstRequestBytes = (REINDEX_BATCH_BYTES + realEs.estimateDocumentBytes(document)) * 3;
+      expect(worstRequestBytes).toBeLessThan(clusterRequestLimitBytes);
+    });
+
     it('promotes only after the last batch was written', async () => {
       const order: string[] = [];
       mockedEs.bulkIndexDocuments.mockImplementation(async (_index, documents) => {
@@ -538,6 +667,27 @@ describe('videoScanner', () => {
       await loadVideosCache();
 
       expect(order).toEqual(['bulk', 'promote']);
+    });
+
+    it('keeps a reindex linear in the size of the folder', async () => {
+      // Every stem's sidecars were looked up in the whole listing, so a full
+      // reindex cost the square of the folder: seconds at a few thousand videos
+      const REINDEX_SCAN_BUDGET_MS = 1_000;
+      const sidecars = ['.info.json', '.mp4', '.webp', '.description', '.en.vtt', '.pl.vtt'];
+      const stems = Array.from({ length: 1_500 }, (_unused, n) => `2024${String(n).padStart(4, '0')}_Video_${n}`);
+      mockFolder(stems.flatMap((stem) => sidecars.map((sidecar) => `${stem}${sidecar}`)));
+      mockedFs.readFile.mockImplementation(async (filePath: unknown) =>
+        String(filePath).endsWith('.vtt')
+          ? 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nA line'
+          : JSON.stringify({ title: 'Video' }),
+      );
+
+      const started = performance.now();
+      await loadVideosCache();
+      const elapsed = performance.now() - started;
+
+      expect(getReindexStatus()).toMatchObject({ indexed: 1_500, skipped: 0 });
+      expect(elapsed).toBeLessThan(REINDEX_SCAN_BUDGET_MS);
     });
 
     it('splits large folders into batches', async () => {

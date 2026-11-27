@@ -1,4 +1,4 @@
-import { stripVttCueSettings, vttLanguage } from './vttUtils';
+import { findSubtitleFiles, stripVttCueSettings, vttLanguage } from './vttUtils';
 
 /** A realistic yt-dlp auto-caption file: settings on cues, tags, plain text */
 const YTDLP_VTT = `WEBVTT
@@ -67,5 +67,38 @@ describe('vttLanguage', () => {
   it('returns undefined without a language suffix', () => {
     expect(vttLanguage('20260906_Some_Title.vtt')).toBeUndefined();
     expect(vttLanguage('20260906_Some_Title.mp4')).toBeUndefined();
+  });
+});
+
+describe('findSubtitleFiles', () => {
+  it("takes the stem's own captions in listing order, the plain one without a language too", () => {
+    expect(
+      findSubtitleFiles('X', ['X.mp4', 'X.pl.vtt', 'X.vtt', 'X.en-US.vtt', 'X.en.srt', 'XY.en.vtt', 'Other.en.vtt']),
+    ).toEqual(['X.pl.vtt', 'X.vtt', 'X.en-US.vtt']);
+  });
+
+  it('never takes the captions of a sibling video whose stem extends this one', () => {
+    // No language code holds a dot, so X.5.en.vtt is the sibling X.5's
+    expect(findSubtitleFiles('X', ['X.mp4', 'X.5.info.json', 'X.5.en.vtt', 'X.5.vtt'])).toEqual([]);
+    // A sibling with media and no info.json is a video all the same, in any case
+    expect(findSubtitleFiles('X', ['X.en.vtt', 'X.5.vtt', 'X.5.MKV'])).toEqual(['X.en.vtt']);
+    // Any part can make one, as "Version 2.0 beta" beside "Version 2" does
+    expect(findSubtitleFiles('V_2', ['V_2.en.vtt', 'V_2.0_beta.info.json', 'V_2.0_beta.vtt'])).toEqual(['V_2.en.vtt']);
+    // An image alone makes no video, so the part reads as a language
+    expect(findSubtitleFiles('X', ['X.5.vtt', 'X.5.webp'])).toEqual(['X.5.vtt']);
+  });
+
+  it('keeps its own captions beside a twin video whose title ends in their language', () => {
+    // "Talk" and "Talk.en" from one day: yt-dlp never writes a plain track, so
+    // Talk.en.vtt is Talk's English one, while Talk.en.en.vtt is the twin's
+    const listing = ['Talk.info.json', 'Talk.mp4', 'Talk.en.vtt', 'Talk.en.info.json', 'Talk.en.mp4', 'Talk.en.en.vtt'];
+    expect(findSubtitleFiles('Talk', listing)).toEqual(['Talk.en.vtt']);
+    expect(findSubtitleFiles('Allegro', ['Allegro.mp4', 'Allegro.pl.vtt', 'Allegro.pl.mkv'])).toEqual([
+      'Allegro.pl.vtt',
+    ]);
+  });
+
+  it('reads any iterable of names, the folder index passes a set', () => {
+    expect(findSubtitleFiles('X', new Set(['X.mp4', 'X.en.vtt']))).toEqual(['X.en.vtt']);
   });
 });
