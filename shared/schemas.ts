@@ -168,7 +168,6 @@ export const VideoDetailsSchema = z.object({
   title: z.string(),
   description: z.string(),
   uploadDate: z.string(),
-  duration: z.string(),
   viewCount: z.number(),
   likeCount: z.number(),
   channelName: z.string(),

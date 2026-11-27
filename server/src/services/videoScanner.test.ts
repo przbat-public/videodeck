@@ -358,6 +358,20 @@ describe('videoScanner', () => {
       expect(result.video.subtitlePath).toBeUndefined();
     });
 
+    it('takes the title and the description from fulltitle when the info.json has neither', async () => {
+      // The details view shows the indexed fields, so this fallback is the only one
+      mockedFs.readFile.mockResolvedValue(JSON.stringify({ id: 'abcdefghijk', fulltitle: 'Full Title Only' }));
+
+      const result = await buildVideoItem(FOLDER, '20231201_TestVideo1', [
+        '20231201_TestVideo1.info.json',
+        '20231201_TestVideo1.mp4',
+      ]);
+
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') return;
+      expect(result.video).toMatchObject({ title: 'Full Title Only', description: 'Full Title Only' });
+    });
+
     it('leaves the id out of a title derived from a stem that ends in it', async () => {
       // Downloads name their files <date>_<title>_<id>; an id can hold `_` and
       // `-`, so it is matched as the whole suffix, never by splitting

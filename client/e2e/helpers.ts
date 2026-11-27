@@ -160,7 +160,6 @@ export async function mockApi(page: Page, handlers: MockApiHandlers = {}): Promi
         title: 'Szczegóły filmu',
         description: 'Opis testowy',
         uploadDate: '20240615',
-        duration: '10:30',
         viewCount: 1234,
         likeCount: 56,
         channelName: 'Kanał E2E',

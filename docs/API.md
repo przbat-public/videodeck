@@ -181,7 +181,7 @@ Serves video files (.mp4) and thumbnails (.webp).
 
 ### GET /api/videos/:baseName/details
 
-Returns detailed information about a video together with its comments.
+Returns detailed information about a video together with its comments. The title, description, date, counts and channel come from the video's document in the index, the same values search shows, so an `info.json` edited outside the app shows its new values once its folder is indexed again. Only the comments are read from `info.json`: the first 50 come here, and `commentCount` says how many there are in all.
 
 **Parameters:**
 
@@ -195,7 +195,6 @@ Returns detailed information about a video together with its comments.
     "title": "Video title",
     "description": "Full description...",
     "uploadDate": "20231201",
-    "duration": "10:30",
     "viewCount": 1000,
     "likeCount": 50,
     "channelName": "Channel name",

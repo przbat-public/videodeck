@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
-import type { CommentWithReplies, ReindexStatus, VideoComment, VideoListItem } from '@videodeck/shared/api';
+import type { CommentWithReplies, ReindexStatus, VideoListItem } from '@videodeck/shared/api';
 import {
   ChannelsResponseSchema,
   CommentsResponseSchema,
@@ -29,8 +29,6 @@ import {
 import { getFolderPathsForCategory, listCategories, listChannelFolders } from '../services/folderConfig';
 import { generateSummary, SummaryUnavailableError } from '../services/summaryService';
 import { getReindexStatus, getVideos, isReindexRunning, refreshVideosCache } from '../services/videoScanner';
-import type { VideoInfoJson } from '../types';
-import { buildCommentTree } from '../utils/commentTreeUtils';
 import { getVideoFilePath } from '../utils/videoPathUtils';
 import { resetIndexMaintenanceState } from './videos/indexMaintenance';
 
@@ -41,7 +39,6 @@ vi.mock('../utils/videoPathUtils', async () => ({
   ...(await vi.importActual<typeof import('../utils/videoPathUtils')>('../utils/videoPathUtils')),
   getVideoFilePath: vi.fn(),
 }));
-vi.mock('../utils/commentTreeUtils');
 vi.mock('node:fs/promises');
 vi.mock('../services/elasticsearchService');
 vi.mock('../services/folderConfig');
@@ -56,7 +53,6 @@ vi.mock('../config', async () => ({
 
 const mockedGetVideos = getVideos as MockedFunction<typeof getVideos>;
 const mockedGetVideoFilePath = getVideoFilePath as MockedFunction<typeof getVideoFilePath>;
-const mockedBuildCommentTree = buildCommentTree as MockedFunction<typeof buildCommentTree>;
 const mockedFs = fs as Mocked<typeof fs>;
 const mockedRefreshVideosCache = refreshVideosCache as MockedFunction<typeof refreshVideosCache>;
 const mockedGetReindexStatus = getReindexStatus as MockedFunction<typeof getReindexStatus>;
@@ -995,30 +991,20 @@ describe('videos router', () => {
   });
 
   describe('GET /api/videos/:identifier/details', () => {
+    /** The index document findVideo answers with, every field the details show filled in */
     const mockVideo: VideoListItem = {
       baseName: '20231201_TestVideo',
       videoId: 'testVideoId', // 11 characters to match YouTube ID pattern
-      title: 'Test Video',
-      description: 'A test video',
+      title: 'Test Video Title',
+      description: 'Test Description',
       videoPath: '20231201_TestVideo.mp4',
       thumbnailPath: '20231201_TestVideo.webp',
       folderPath: '/test/videos',
-      comments: [],
+      uploadDate: '20231201',
+      viewCount: 1000,
+      likeCount: 50,
+      channelName: 'Test Channel',
       subtitlePath: '20231201_TestVideo.vtt',
-    };
-
-    const mockInfoJson: VideoInfoJson = {
-      title: 'Test Video Title',
-      fulltitle: 'Test Video Full Title',
-      description: 'Test Description',
-      upload_date: '20231201',
-      duration_string: '10:30',
-      view_count: 1000,
-      like_count: 50,
-      channel: 'Test Channel',
-      uploader: 'Test Uploader',
-      comment_count: 5,
-      comments: [],
     };
 
     beforeEach(() => {
@@ -1029,13 +1015,32 @@ describe('videos router', () => {
       mockedLoadCommentTree.mockResolvedValue([]);
     });
 
+    it('builds the details from the index document without opening the info.json', async () => {
+      mockedGetVideoByBaseName.mockResolvedValue({
+        ...mockVideo,
+        title: 'Test Video',
+        description: 'A test video',
+      });
+
+      const response = await request(app).get(`/api/videos/${mockVideo.baseName}/details`);
+
+      expect(response.status).toBe(200);
+      expect(VideoDetailsResponseSchema.parse(response.body).details).toMatchObject({
+        title: 'Test Video',
+        description: 'A test video',
+        uploadDate: '20231201',
+        viewCount: 1000,
+        likeCount: 50,
+        channelName: 'Test Channel',
+      });
+      expect(mockedFs.readFile).not.toHaveBeenCalled();
+      expect(mockedFs.access).not.toHaveBeenCalled();
+    });
+
     it('should return video details (by baseName)', async () => {
       const baseName = '20231201_TestVideo';
-      const infoJsonPath = path.join(mockVideo.folderPath, `${baseName}.info.json`);
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
-      mockedBuildCommentTree.mockReturnValue([]);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
 
@@ -1044,7 +1049,6 @@ describe('videos router', () => {
         title: 'Test Video Title',
         description: 'Test Description',
         uploadDate: '20231201',
-        duration: '10:30',
         viewCount: 1000,
         likeCount: 50,
         channelName: 'Test Channel',
@@ -1056,17 +1060,13 @@ describe('videos router', () => {
         subtitlePath: mockVideo.subtitlePath,
       });
       expect(mockedGetVideoByBaseName).toHaveBeenCalledWith(baseName);
-      expect(mockedFs.readFile).toHaveBeenCalledWith(infoJsonPath, 'utf-8');
       expect(mockedLoadCommentTree).toHaveBeenCalledWith(mockVideo.folderPath, baseName);
     });
 
     it('should return video details (by videoId)', async () => {
       const videoId = 'testVideoId'; // 11 characters to match YouTube ID pattern
-      const infoJsonPath = path.join(mockVideo.folderPath, `${mockVideo.baseName}.info.json`);
 
       mockedGetVideoByVideoId.mockResolvedValue(mockVideo);
-      mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
-      mockedBuildCommentTree.mockReturnValue([]);
 
       const response = await request(app).get(`/api/videos/${videoId}/details`);
 
@@ -1075,7 +1075,6 @@ describe('videos router', () => {
         title: 'Test Video Title',
         description: 'Test Description',
         uploadDate: '20231201',
-        duration: '10:30',
         viewCount: 1000,
         likeCount: 50,
         channelName: 'Test Channel',
@@ -1087,7 +1086,6 @@ describe('videos router', () => {
         subtitlePath: mockVideo.subtitlePath,
       });
       expect(mockedGetVideoByVideoId).toHaveBeenCalledWith(videoId);
-      expect(mockedFs.readFile).toHaveBeenCalledWith(infoJsonPath, 'utf-8');
       expect(mockedLoadCommentTree).toHaveBeenCalledWith(mockVideo.folderPath, mockVideo.baseName);
     });
 
@@ -1099,7 +1097,6 @@ describe('videos router', () => {
       })) as CommentWithReplies[];
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
       mockedLoadCommentTree.mockResolvedValue(many);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
@@ -1140,14 +1137,12 @@ describe('videos router', () => {
       const baseName = '20231201_TestVideo';
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.readFile.mockResolvedValue(JSON.stringify(mockInfoJson));
       mockedFs.readdir.mockResolvedValue([
         '20231201_TestVideo.pl.vtt',
         '20231201_TestVideo.en.vtt',
         '20231201_OtherVideo.en.vtt',
         '20231201_TestVideo.en.json',
       ] as never);
-      mockedBuildCommentTree.mockReturnValue([]);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
 
@@ -1158,75 +1153,13 @@ describe('videos router', () => {
       ]);
     });
 
-    it('should use fulltitle when title is not available', async () => {
-      const baseName = '20231201_TestVideo';
-      const infoJsonWithoutTitle: VideoInfoJson = {
-        fulltitle: 'Full Title Only',
-        description: 'Test Description',
-      };
-
-      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithoutTitle));
-      mockedBuildCommentTree.mockReturnValue([]);
-
-      const response = await request(app).get(`/api/videos/${baseName}/details`);
-
-      expect(response.status).toBe(200);
-      expect(response.body.details.title).toBe('Full Title Only');
-      expect(response.body.details.description).toBe('Test Description');
-    });
-
-    it('should use uploader when channel is not available', async () => {
-      const baseName = '20231201_TestVideo';
-      const infoJsonWithoutChannel: VideoInfoJson = {
-        title: 'Test Video',
-        uploader: 'Test Uploader',
-      };
-
-      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithoutChannel));
-      mockedBuildCommentTree.mockReturnValue([]);
-
-      const response = await request(app).get(`/api/videos/${baseName}/details`);
-
-      expect(response.status).toBe(200);
-      expect(response.body.details.channelName).toBe('Test Uploader');
-    });
-
-    it('should use duration_string or format numeric duration as clock time', async () => {
-      const baseName = '20231201_TestVideo';
-      const infoJsonWithNumericDuration: VideoInfoJson = {
-        title: 'Test Video',
-        duration: 630, // 10:30 in seconds
-      };
-
-      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithNumericDuration));
-      mockedBuildCommentTree.mockReturnValue([]);
-
-      const response = await request(app).get(`/api/videos/${baseName}/details`);
-
-      expect(response.status).toBe(200);
-      expect(response.body.details.duration).toBe('10:30');
-    });
-
     it('should build comment tree from comments', async () => {
       const baseName = '20231201_TestVideo';
-      const mockComments: VideoComment[] = [
-        { id: '1', text: 'Comment 1', parent: 'root' },
-        { id: '2', text: 'Comment 2', parent: '1' },
-      ];
       const mockTree: CommentWithReplies[] = [
         { id: '1', text: 'Comment 1', replies: [{ id: '2', text: 'Comment 2' }] },
       ];
 
-      const infoJsonWithComments: VideoInfoJson = {
-        title: 'Test Video',
-        comments: mockComments,
-      };
-
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithComments));
       mockedLoadCommentTree.mockResolvedValue(mockTree);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
@@ -1253,7 +1186,8 @@ describe('videos router', () => {
       const baseName = '20231201_TestVideo';
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.access.mockRejectedValue(new Error('File not found'));
+      // The comment store answers null for an info.json that is not there
+      mockedLoadCommentTree.mockResolvedValue(null);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
 
@@ -1265,7 +1199,7 @@ describe('videos router', () => {
       const baseName = '20231201_TestVideo';
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.readFile.mockResolvedValue('invalid json content');
+      mockedLoadCommentTree.mockRejectedValue(new SyntaxError('Unexpected token i in JSON at position 0'));
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
 
@@ -1281,7 +1215,7 @@ describe('videos router', () => {
       const error = new Error('Permission denied');
 
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.readFile.mockRejectedValue(error);
+      mockedLoadCommentTree.mockRejectedValue(error);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
 
@@ -1307,16 +1241,9 @@ describe('videos router', () => {
 
     it('should use comments.length as fallback for commentCount', async () => {
       const baseName = '20231201_TestVideo';
-      const mockComments: VideoComment[] = [{ id: '1', text: 'Comment 1' }];
       const mockTree: CommentWithReplies[] = [{ id: '1', text: 'Comment 1' }];
 
-      const infoJsonWithoutCommentCount: VideoInfoJson = {
-        title: 'Test Video',
-        comments: mockComments,
-      };
-
       mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.readFile.mockResolvedValue(JSON.stringify(infoJsonWithoutCommentCount));
       mockedLoadCommentTree.mockResolvedValue(mockTree);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
@@ -1327,27 +1254,27 @@ describe('videos router', () => {
 
     it('should handle missing optional fields gracefully', async () => {
       const baseName = '20231201_TestVideo';
-      const minimalInfoJson: VideoInfoJson = {
-        title: 'Minimal Video',
-      };
+      // A document holds only what its info.json had: here no description,
+      // date, counts, channel or media path
+      const minimalVideo: VideoListItem = { baseName, title: 'Minimal Video', folderPath: '/test/videos' };
 
-      mockedGetVideoByBaseName.mockResolvedValue(mockVideo);
-      mockedFs.readFile.mockResolvedValue(JSON.stringify(minimalInfoJson));
-      mockedBuildCommentTree.mockReturnValue([]);
+      mockedGetVideoByBaseName.mockResolvedValue(minimalVideo);
 
       const response = await request(app).get(`/api/videos/${baseName}/details`);
 
       expect(response.status).toBe(200);
-      expect(response.body.details).toMatchObject({
+      expect(VideoDetailsResponseSchema.parse(response.body).details).toEqual({
         title: 'Minimal Video',
-        description: 'Minimal Video',
+        description: '',
         uploadDate: '',
-        duration: '',
         viewCount: 0,
         likeCount: 0,
         channelName: '',
         comments: [],
         commentCount: 0,
+        videoPath: '',
+        subtitles: [],
+        folderPath: '/test/videos',
       });
     });
   });
