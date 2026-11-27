@@ -29,7 +29,8 @@ or the whole repo against the videodeck threat model. Pair with
    no new fetch or shell path.
 3. Grep the diff for tokens, URLs, file paths and flag strings.
 4. Check dependencies: lockfile diff reviewed, one package per change,
-   holds respected (typescript, zod, react-window).
+   holds respected (`.github/dependabot.yml`, explained in CONTRIBUTING.md:
+   typescript and @types/node majors, jsdom minor and patch releases).
 5. Check the fix matches the vulnerability, not the symptom.
 
 ## Output format
