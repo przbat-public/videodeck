@@ -77,6 +77,19 @@ function remember(key: string, entry: CacheEntry): void {
 }
 
 /**
+ * The text of an info.json and its length in bytes, from one read. The tree
+ * is weighed by those bytes, not by the stat taken before: an update or a
+ * comment repair can rename a new file into place in between, and a small
+ * file grown to hundreds of megabytes would be booked at its old size.
+ * Nothing holds the buffer once this returns, so the parse holds only the
+ * text, as it did when readFile decoded the file itself.
+ */
+async function readInfoJson(filePath: string): Promise<{ text: string; byteLength: number }> {
+  const content = await fs.readFile(filePath);
+  return { text: content.toString('utf-8'), byteLength: content.byteLength };
+}
+
+/**
  * The top-level comment tree of a video, or null when its info.json does
  * not exist. Other read errors propagate (the caller maps them to 500).
  */
@@ -114,9 +127,10 @@ export async function loadCommentTree(folderPath: string, baseName: string): Pro
     // Containment check: the info.json must resolve inside the folder even if
     // a symlink tries to redirect the read elsewhere on the disk.
     const realPath = await resolveContainedPath(folderPath, `${baseName}.info.json`);
-    const infoJson = JSON.parse(await fs.readFile(realPath, 'utf-8')) as VideoInfoJson;
+    const { text, byteLength } = await readInfoJson(realPath);
+    const infoJson = JSON.parse(text) as VideoInfoJson;
     const tree = buildCommentTree(infoJson.comments || []);
-    remember(key, { mtimeMs, weight: size * TREE_HEAP_BYTES_PER_FILE_BYTE, tree });
+    remember(key, { mtimeMs, weight: byteLength * TREE_HEAP_BYTES_PER_FILE_BYTE, tree });
     return tree;
   });
 }

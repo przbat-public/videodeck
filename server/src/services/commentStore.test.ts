@@ -194,6 +194,36 @@ describe('loadCommentTree', () => {
     expect(readFile).toHaveBeenCalledTimes(1);
   });
 
+  it('weighs a tree by the file it parsed when a refresh swaps that file in after the stat', async () => {
+    // An update or a comment repair renames a new info.json over the live one,
+    // and the rename can land between the stat and the read: a small file
+    // grown to hundreds of megabytes was then booked at its old size
+    const size = await writeVideo('a');
+    await writeVideo('b');
+    await writeVideo('c');
+    heapLimitFitting(2.5, size);
+    await loadCommentTree(dir, 'b');
+    await loadCommentTree(dir, 'c');
+    const realStat = fs.stat;
+    vi.spyOn(fs, 'stat').mockImplementationOnce(async (file, options) => {
+      const stats = await realStat(file, options);
+      const comments = [{ id: 'a', text: 'x'.repeat(10 * size) }];
+      await fs.writeFile(path.join(dir, 'a.info.json'), JSON.stringify({ comments }), 'utf-8');
+      return stats;
+    });
+    const swapped = await loadCommentTree(dir, 'a');
+    expect(swapped?.[0]?.text).toHaveLength(10 * size);
+    const readFile = vi.spyOn(fs, 'readFile');
+
+    // The large tree alone passes the budget of two and a half small ones, so
+    // neither small tree stays beside it. Booked at the stat's size, a would
+    // have pushed out only b, the tree read longest ago
+    await loadCommentTree(dir, 'c');
+    expect(readFile).toHaveBeenCalledTimes(1);
+    await loadCommentTree(dir, 'b');
+    expect(readFile).toHaveBeenCalledTimes(2);
+  });
+
   it('counts nothing against the budget once the cache is invalidated', async () => {
     const size = await writeVideo('a');
     await writeVideo('b');
