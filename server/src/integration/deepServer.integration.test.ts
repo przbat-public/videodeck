@@ -350,12 +350,43 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(channels.body.channels).toContain('Kanał biblioteki');
   });
 
+  it('indexes videos past 2,147,483,647 views and sorts them by value', async () => {
+    // Real counts, not hand edits: the biggest music videos are past three
+    // billion views. The integer mapping refused each such video, and a folder
+    // holding nothing else failed its whole bulk write.
+    await env.seedFolder('views-billions', {
+      ...videoFiles('views000003', 'Trzy miliardy', { view_count: 3_000_000_000 }),
+      ...videoFiles('views000999', 'Dziewięćset', { view_count: 999 }),
+    });
+    await env.seedFolder(
+      'views-seven-billion',
+      videoFiles('views000007', 'Siedem miliardów', { view_count: 7_000_000_000 }),
+    );
+    env.setFolders('views-billions', 'views-seven-billion');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const status = await env.agent.get('/api/videos/refreshCache/status').expect(200);
+    expect(status.body).toMatchObject({ indexed: 3, skipped: 0, errors: [] });
+
+    // By value across both folders: compared as text, 999 came first
+    const ranked = await env.agent.get('/api/videos/search?sort=views-desc').expect(200);
+    expect((ranked.body.videos as Array<{ title: string }>).map((video) => video.title)).toEqual([
+      'Siedem miliardów',
+      'Trzy miliardy',
+      'Dziewięćset',
+    ]);
+
+    const details = await env.agent.get('/api/videos/views000003/details').expect(200);
+    expect(details.body.details.viewCount).toBe(3_000_000_000);
+  });
+
   it('reports the document the cluster refused and still indexes the rest of the batch', async () => {
     // The bug class a journey could not see: a per-item bulk failure used to
     // be invisible here, so one refused document either vanished from search
-    // without a word or was counted as indexed. A digit string past int32
+    // without a word or was counted as indexed. A digit string past int64
     // survives toDocument's coercion as a number, and the viewCount mapping
-    // (integer) refuses it while its siblings in the same batch land.
+    // (long) refuses it while its siblings in the same batch land.
     await env.seedFolder('bulk-partial', {
       ...videoFiles('bulk00000001', 'Film dobry'),
       ...videoFiles('bulk00000002', 'Film z ogromna liczba wyswietlen', { view_count: '99999999999999999999' }),

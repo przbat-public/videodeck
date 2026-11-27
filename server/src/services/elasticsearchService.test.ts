@@ -37,6 +37,7 @@ import {
   searchVideosWithTotal,
   sweepOrphanIndexVersions,
   toDocument,
+  warnOnLegacyMappings,
 } from './elasticsearchService';
 
 const mockClient = {
@@ -46,6 +47,7 @@ const mockClient = {
     exists: vi.fn(),
     existsAlias: vi.fn(),
     getAlias: vi.fn(),
+    getMapping: vi.fn(),
     updateAliases: vi.fn(),
     delete: vi.fn(),
     refresh: vi.fn(),
@@ -236,6 +238,9 @@ describe('elasticsearchService', () => {
       expect(request.settings.analysis.analyzer.polish_folded.filter).toEqual(['lowercase', 'asciifolding']);
       // A bare keyword: the exact lookup by file name is all that reads it
       expect(request.mappings.properties.baseName).toEqual({ type: 'keyword' });
+      // Views pass int32 on the biggest videos; likes stay far below it
+      expect(request.mappings.properties.viewCount).toEqual({ type: 'long' });
+      expect(request.mappings.properties.likeCount).toEqual({ type: 'integer' });
       expect(request.mappings.properties).not.toHaveProperty('comments');
       expect(request.settings.index).not.toHaveProperty('mapping');
       expect(mockClient.indices.updateAliases).not.toHaveBeenCalled();
@@ -275,6 +280,43 @@ describe('elasticsearchService', () => {
 
       const deleted = mockClient.indices.delete.mock.calls.map(([request]) => request.index);
       expect(deleted).toEqual([orphanFromBefore]);
+    });
+  });
+
+  describe('warnOnLegacyMappings', () => {
+    /** The mapping FOLDER_A's index answers with, under the physical name behind its alias */
+    const folderMapping = (properties: Record<string, unknown>) =>
+      mockClient.indices.getMapping.mockResolvedValue({
+        [`${ALIAS_A}_20250101000000000`]: { mappings: { properties } },
+      });
+
+    it('asks for a full reindex of a folder whose index stores views as integer', async () => {
+      // An onlyMissing run or a disk swap keeps such an index, and it goes on
+      // refusing every video past 2,147,483,647 views until a full reindex
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
+        /* silence the expected warning */
+      });
+      folderMapping({ title: { type: 'text', analyzer: 'polish_folded' }, viewCount: { type: 'integer' } });
+
+      await warnOnLegacyMappings([FOLDER_A]);
+
+      expect(mockClient.indices.getMapping).toHaveBeenCalledWith({ index: ALIAS_A, ignore_unavailable: true });
+      expect(warn).toHaveBeenCalledTimes(1);
+      const line = String(warn.mock.calls[0]?.[0]);
+      expect(line).toContain(`Folder ${FOLDER_A}`);
+      expect(line).toContain('viewCount as integer');
+      expect(line).toContain('POST /api/videos/refreshCache without onlyMissing');
+    });
+
+    it('says nothing about an index built with the current mapping', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
+        /* a warning here fails the test below */
+      });
+      folderMapping({ title: { type: 'text', analyzer: 'polish_folded' }, viewCount: { type: 'long' } });
+
+      await warnOnLegacyMappings([FOLDER_A]);
+
+      expect(warn).not.toHaveBeenCalled();
     });
   });
 
@@ -1011,7 +1053,8 @@ describe('elasticsearchService', () => {
       // The file name is no search field: new stems are one token under the
       // standard tokenizer, and a foreign-named file's words outscored titles
       expect(SEARCH_FIELDS.filter((field) => field.startsWith('baseName'))).toEqual([]);
-      expect(request.sort).toEqual([{ viewCount: { order: 'desc', missing: '_last' } }]);
+      // As long, so a folder still indexed with integer views sorts with the others
+      expect(request.sort).toEqual([{ viewCount: { order: 'desc', missing: '_last', numeric_type: 'long' } }]);
       expect(request.from).toBe(0);
       expect(request.size).toBe(100);
       expect(request._source).toEqual({

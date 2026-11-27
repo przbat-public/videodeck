@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Videos with billions of views get indexed.** View counts were mapped as
+  32-bit integers, so the cluster turned away anything past 2,147,483,647,
+  and a folder of nothing but such hits lost its whole reindex. They are
+  stored as `long` now, and sorting by views spans old and new folders; a
+  folder indexed earlier keeps refusing them until it is rebuilt in full
 - **An abandoned search stops on the cluster too.** Typing a new phrase
   aborted the browser's request, but the server kept waiting on
   Elasticsearch, which went on scoring and highlighting a page nobody would

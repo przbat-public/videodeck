@@ -5,6 +5,7 @@ import { Client } from '@elastic/elasticsearch';
 import type { VideoListItem } from '@videodeck/shared/api';
 import { ELASTICSEARCH_URL, invalidateVideosFolderCache } from '../config';
 import {
+  buildIndexVersionName,
   bulkIndexDocuments,
   createIndexVersion,
   deleteAllVideosFromFolder,
@@ -46,8 +47,8 @@ const SCRATCH_FOLDER = '/integration-scratch-folder';
 const SECOND_SCRATCH_FOLDER = '/integration-scratch-folder-two';
 
 /**
- * A count past int32. A digit string survives `toDocument`'s coercion as this
- * number, so a hand-edited info.json puts it on the wire, and the `integer`
+ * A count past int64. A digit string survives `toDocument`'s coercion as this
+ * number, so a hand-edited info.json puts it on the wire, and the `long`
  * mapping refuses it.
  */
 const OUT_OF_RANGE_VIEW_COUNT = 100_000_000_000_000_000_000;
@@ -485,6 +486,72 @@ describeIntegration('Elasticsearch integration', () => {
     await promoteIndexVersion(SCRATCH_FOLDER, indexName);
     const results = await searchVideos('', 'date-desc', [SCRATCH_FOLDER]);
     expect(results.map((item) => item.baseName)).toEqual(['20240101_dobry']);
+  });
+
+  it('stores a count past int32 in a long field and refuses it in an integer one', async () => {
+    // The service's own mapping: views are long, likes integer. 2^63 - 1024 is
+    // the last double below Long.MAX_VALUE, and 2^63 the first one past it.
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    const documents = [
+      { ...toDocument(video('20240101_trzy', 'Trzy miliardy')), viewCount: 3_000_000_000 },
+      { ...toDocument(video('20240102_polubienia', 'Za dużo polubień')), likeCount: 3_000_000_000 },
+      { ...toDocument(video('20240103_krawedz', 'Na krawędzi')), viewCount: 2 ** 63 - 1024 },
+      { ...toDocument(video('20240104_poza', 'Za krawędzią')), viewCount: 2 ** 63 },
+    ];
+
+    const response = await esClient.bulk({
+      operations: documents.flatMap((document) => [{ index: { _index: indexName, _id: document.baseName } }, document]),
+    });
+
+    expect(response.items.map(({ index }) => index?.error?.type ?? index?.status)).toEqual([
+      201,
+      'document_parsing_exception',
+      201,
+      'document_parsing_exception',
+    ]);
+    expect(response.items[1]?.index?.error?.reason).toContain('failed to parse field [likeCount] of type [integer]');
+    expect(response.items[3]?.index?.error?.reason).toContain('failed to parse field [viewCount] of type [long]');
+  });
+
+  it('sorts counts by value across an integer and a long index', async () => {
+    // A library mid-upgrade: the second folder still has the index it got while
+    // views were integer, the first one a current index with long views
+    const legacy = buildIndexVersionName(SECOND_SCRATCH_FOLDER);
+    await esClient.indices.create({ index: legacy, mappings: { properties: { viewCount: { type: 'integer' } } } });
+    await bulkIndexDocuments(
+      legacy,
+      [
+        toDocument({ ...video('20240101_stary', 'Stary'), folderPath: SECOND_SCRATCH_FOLDER, viewCount: 999 }),
+        toDocument({ ...video('20240102_bez', 'Bez licznika'), folderPath: SECOND_SCRATCH_FOLDER }),
+      ],
+      false,
+    );
+    await promoteIndexVersion(SECOND_SCRATCH_FOLDER, legacy);
+    const current = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      current,
+      [
+        toDocument({ ...video('20240103_trzy', 'Trzy miliardy'), viewCount: 3_000_000_000 }),
+        toDocument({ ...video('20240104_siedem', 'Siedem miliardów'), viewCount: 7_000_000_000 }),
+      ],
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, current);
+
+    const baseNamesFor = async (sort: 'views-desc' | 'views-asc') =>
+      (await searchVideos('', sort, [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER])).map((item) => item.baseName);
+    expect(await baseNamesFor('views-desc')).toEqual([
+      '20240104_siedem',
+      '20240103_trzy',
+      '20240101_stary',
+      '20240102_bez',
+    ]);
+    expect(await baseNamesFor('views-asc')).toEqual([
+      '20240101_stary',
+      '20240103_trzy',
+      '20240104_siedem',
+      '20240102_bez',
+    ]);
   });
 
   it('finds a video by its video or thumbnail file name, and nothing for a name no video holds', async () => {

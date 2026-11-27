@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { estypes } from '@elastic/elasticsearch';
 import type { RecreateIndicesStatus } from '@videodeck/shared/api';
 import { getVideosFolderPaths } from '../../config';
 import { logger } from '../../utils/logger';
@@ -71,7 +72,9 @@ const INDEX_MAPPINGS = {
     subtitlePath: { type: 'keyword' },
     folderPath: { type: 'keyword' },
     uploadDate: { type: 'keyword' },
-    viewCount: { type: 'integer' },
+    // Past int32: the biggest music videos have more than three billion views,
+    // which an integer field refused. Likes stay far below that.
+    viewCount: { type: 'long' },
     likeCount: { type: 'integer' },
     channelName: {
       type: 'text',
@@ -498,23 +501,41 @@ async function deleteIndexBestEffort(index: string): Promise<void> {
 }
 
 /**
- * Log a warning for indices whose mapping predates the current analyzer
- * (they keep the old `standard` search behavior until a manual reindex).
+ * How an index built under an older mapping differs from the current one, one
+ * reason per changed property; empty for an index built with the current one.
+ */
+function legacyMappingReasons(mappings: estypes.MappingTypeMapping | undefined): string[] {
+  const properties = mappings?.properties ?? {};
+  const analyzer = (properties.title as { analyzer?: string } | undefined)?.analyzer;
+  const reasons: string[] = [];
+  if (analyzer !== undefined && analyzer !== SEARCH_ANALYZER) {
+    reasons.push(`title uses the "${analyzer}" analyzer, not "${SEARCH_ANALYZER}"`);
+  }
+  if (properties.viewCount?.type === 'integer') {
+    reasons.push('viewCount as integer refuses every video past 2,147,483,647 views');
+  }
+  return reasons;
+}
+
+/**
+ * Log a warning for every folder whose index was built under an older mapping.
+ * A reindex with `onlyMissing` skips such a folder and a disk swap brings its
+ * index back as it was, so the old behavior stays until a full reindex.
  */
 export async function warnOnLegacyMappings(folderPaths: string[] = getVideosFolderPaths()): Promise<void> {
   for (const folderPath of folderPaths) {
     try {
       const alias = getIndexNameFromFolderPath(folderPath);
       const mapping = await getProbeClient().indices.getMapping({ index: alias, ignore_unavailable: true });
-      const indexMapping = mapping[Object.keys(mapping)[0] ?? ''];
-      const analyzer = (indexMapping?.mappings?.properties?.title as { analyzer?: string } | undefined)?.analyzer;
-      if (analyzer !== undefined && analyzer !== SEARCH_ANALYZER) {
+      const reasons = legacyMappingReasons(mapping[Object.keys(mapping)[0] ?? '']?.mappings);
+      if (reasons.length > 0) {
         logger.warn(
-          `Folder ${folderPath}: index mapping uses analyzer "${analyzer}" — reindex to switch to "${SEARCH_ANALYZER}"`,
+          `Folder ${folderPath}: its index predates the current mapping (${reasons.join('; ')}). ` +
+            'Run a full reindex: POST /api/videos/refreshCache without onlyMissing',
         );
       }
     } catch {
-      // ES down at boot — the warning is cosmetic, nothing to do here
+      // ES down at boot: the warning is cosmetic, nothing to do here
     }
   }
 }
