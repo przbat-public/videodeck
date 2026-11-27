@@ -176,6 +176,8 @@ export class DownloadQueue extends EventEmitter {
   private readonly hungJobs = new Map<string, true>();
   /** Staged runs whose commit failed: the reason their job ends as an error */
   private readonly commitFailures = new Map<string, string>();
+  /** Jobs a shutdown cancelled, which the state file keeps for the next boot */
+  private readonly interruptedByShutdown = new Set<string>();
   /** Files a job announced with `[download] Destination:` (partial-sweep input) */
   private readonly jobFiles = new Map<string, Set<string>>();
   /** Chunk tail a job has not terminated with a newline yet (destination lines can be split) */
@@ -213,7 +215,7 @@ export class DownloadQueue extends EventEmitter {
    * The snapshot holds the whole queue, so transitions are coalesced: a burst
    * (a 6,000-job cancelAll, a queue draining, a retry storm) writes once per
    * window instead of once per event, and a snapshot identical to the last one
-   * written is skipped. `whenPersisted()` forces a pending write out for the
+   * queued is skipped. `whenPersisted()` forces a pending write out for the
    * callers that must not lose a reboot race.
    *
    * Writes are chained: atomic renames race when they run in parallel, and an
@@ -223,8 +225,16 @@ export class DownloadQueue extends EventEmitter {
   private persistChain: Promise<void> = Promise.resolve();
   /** Pending coalesced write; the snapshot is taken when the timer fires */
   private persistTimer: NodeJS.Timeout | undefined;
-  /** Payload of the last write that landed, so an unchanged snapshot is not rewritten */
-  private lastPersistedText = '';
+  /**
+   * Payload of the last snapshot handed to the write chain, so an unchanged
+   * one is not written twice. It is set before the write is chained, not
+   * after it lands: the chain runs in order, so the file ends up holding the
+   * last snapshot queued, and that is what a new one must be compared with.
+   * Comparing with the last write that had landed skipped a cancel whose
+   * snapshot matched the file as it was before an in-flight write, and the
+   * cancelled job came back after the next restart.
+   */
+  private lastQueuedText = '';
 
   private persistState(): void {
     if (!this.stateFile || this.shuttingDown || this.persistTimer !== undefined) {
@@ -250,16 +260,19 @@ export class DownloadQueue extends EventEmitter {
     }
     const jobs = Array.from(this.jobs.values()).filter(isActive).map(toPersistedJob);
     const text = JSON.stringify({ paused: this.paused, jobs });
-    if (text === this.lastPersistedText) {
+    if (text === this.lastQueuedText) {
       return; // a transition the file does not record (a retry, a fresh log line)
     }
+    this.lastQueuedText = text;
     this.persistChain = this.persistChain
       .catch(() => undefined)
       .then(() => writeTextAtomic(stateFile, text))
-      .then(() => {
-        this.lastPersistedText = text;
-      })
       .catch((error: unknown) => {
+        // A snapshot that never landed must be written again next time, unless
+        // a newer one has been queued since (that one carries the state)
+        if (this.lastQueuedText === text) {
+          this.lastQueuedText = '';
+        }
         logger.warn(`Cannot persist queue state: ${error instanceof Error ? error.message : String(error)}`);
       });
   }
@@ -279,6 +292,21 @@ export class DownloadQueue extends EventEmitter {
       }
     }
     return this.persistChain;
+  }
+
+  /**
+   * Process exit, whatever caused it: kill every tracked process group at
+   * once. The children are detached, so they outlive the server. yt-dlp dies
+   * at its next write into the closed pipe, but an ffmpeg merge runs on, and
+   * the restored job would merge the same file next to it and leave a broken
+   * mp4 the archive then records as done. Synchronous on purpose: an 'exit'
+   * listener cannot await anything. A SIGKILL or an OOM kill of the server
+   * itself stays with the supervisor (Docker and systemd end the whole tree).
+   */
+  killAllProcessesNow(): void {
+    for (const child of this.processes.values()) {
+      killProcessGroup(child, 'SIGKILL');
+    }
   }
 
   /** Resolve once every process is gone (or the timeout passes) */
@@ -407,12 +435,26 @@ export class DownloadQueue extends EventEmitter {
       clearTimeout(timer);
       this.retryTimers.delete(job.id);
     }
+    // No live process, so no close handler will ever clean up after this one:
+    // a job in its retry backoff, one the paused queue put back as queued
+    // after its backoff, or one waiting for its post-job hook
+    const noCloseHandler = !this.processes.has(job.id);
     job.status = 'cancelled';
     job.finishedAt = new Date().toISOString();
     this.attempts.delete(job.id);
     this.emitJob(job);
     // A running job is killed; the 'close' handler then sweeps its partial files
     killProcessGroup(this.processes.get(job.id), 'SIGTERM');
+    if (noCloseHandler) {
+      // Only a job that announced files has any to sweep: a queued job that
+      // never ran has none, and a 6,000-job cancelAll must not list the folder
+      // once per job
+      if (this.sweepsAfterCancel(job) && this.jobFiles.has(job.id)) {
+        void this.sweepPartialDownloads(job);
+      } else {
+        this.forgetJobOutput(job);
+      }
+    }
   }
 
   /**
@@ -452,6 +494,13 @@ export class DownloadQueue extends EventEmitter {
   async stopForShutdown(): Promise<void> {
     await this.whenPersisted();
     this.shuttingDown = true;
+    // The jobs the state file keeps for the next boot: their partial files
+    // are what that boot resumes from
+    for (const job of this.jobs.values()) {
+      if (isActive(job)) {
+        this.interruptedByShutdown.add(job.id);
+      }
+    }
     this.cancelAll();
     // The snapshot computed above is already on the chain; awaiting it again
     // hands the caller a promise that settles only once the file holds the
@@ -479,6 +528,7 @@ export class DownloadQueue extends EventEmitter {
     this.hungJobs.clear();
     this.jobFiles.clear();
     this.commitFailures.clear();
+    this.interruptedByShutdown.clear();
     this.logRemainder.clear();
     this.attempts.clear();
     this.jobs.clear();
@@ -627,9 +677,29 @@ export class DownloadQueue extends EventEmitter {
    */
   private async sweepPartialDownloads(job: QueueJob): Promise<void> {
     const destinations = Array.from(this.jobFiles.get(job.id) ?? []);
+    this.forgetJobOutput(job);
+    try {
+      await removePartialDownloads(job.folderPath, destinations);
+    } catch (error) {
+      logger.warn(`downloadQueue: could not sweep the partial files of job ${job.id}: ${describeError(error)}`);
+    }
+  }
+
+  /** Drop what the queue kept of a job's output: the files it announced, its partial log line */
+  private forgetJobOutput(job: QueueJob): void {
     this.jobFiles.delete(job.id);
     this.logRemainder.delete(job.id);
-    await removePartialDownloads(job.folderPath, destinations);
+  }
+
+  /**
+   * Whether a cancelled job's partial files go: only a download leaves any,
+   * and a job the shutdown interrupted keeps them, because the state file
+   * still lists it and the next boot resumes the download with -c from those
+   * very files. A job the user cancelled is gone from the state file, so its
+   * files go even when its process happens to exit during the shutdown.
+   */
+  private sweepsAfterCancel(job: QueueJob): boolean {
+    return job.type === 'download' && !this.interruptedByShutdown.has(job.id);
   }
 
   /**
@@ -715,10 +785,11 @@ export class DownloadQueue extends EventEmitter {
       this.retryUnlessStopped(job, code);
       return;
     }
-    // With -i, yt-dlp exits 0 even for extractor errors (members-only,
-    // private, removed), so the log decides, whatever the exit code. Videos
-    // that can never succeed (those, a full disk, geo-block, bot wall, age
-    // gate) skip the retry backoff entirely: waiting would only waste time.
+    // A video that can never succeed (members-only, private, removed, a full
+    // disk, geo-block, bot wall, age gate) skips the retry backoff entirely:
+    // waiting would only waste time. yt-dlp reports those as ERROR: lines and
+    // exits 1 (-i only lets it move on to the next URL), so on exit 0 the check
+    // finds nothing, which is right: a notice is not a failure.
     const permanent = detectPermanentFailure(job.log);
     if (permanent) {
       this.appendLog(job, permanent.description);
@@ -756,9 +827,10 @@ export class DownloadQueue extends EventEmitter {
    * staged run leaves the live files as they were; only its directory goes.
    */
   private async closeStoppedJob(job: QueueJob): Promise<void> {
-    if (job.status === 'cancelled' && job.type === 'download') {
+    if (job.status === 'cancelled' && this.sweepsAfterCancel(job)) {
       await this.sweepPartialDownloads(job);
     }
+    this.forgetJobOutput(job);
     if (usesStaging(job)) {
       await this.discardStaging(job);
     }
@@ -940,6 +1012,15 @@ export class DownloadQueue extends EventEmitter {
     }
     job.exitCode = code;
     job.finishedAt = new Date().toISOString();
+    if (status === 'error') {
+      // The finished list keeps a job for an hour and a restart drops it: the
+      // server log is where an overnight batch's failures can still be read
+      const lastError = [...job.log].reverse().find((line) => line.startsWith('ERROR:'));
+      logger.warn(
+        `Job ${job.id} (${job.type} ${job.videoId} in ${job.folderPath}) failed: ${error ?? 'unknown'}` +
+          (lastError === undefined ? '' : `; ${lastError}`),
+      );
+    }
     this.attempts.delete(job.id);
     this.jobFiles.delete(job.id);
     this.logRemainder.delete(job.id);

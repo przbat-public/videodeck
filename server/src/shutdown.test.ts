@@ -207,4 +207,21 @@ describe('installShutdownHandlers', () => {
     remove();
     expect(process.listenerCount('SIGTERM')).toBe(0);
   });
+
+  it('kills the job processes on any exit, not only on a signal', () => {
+    // An uncaught error skips the graceful path, and a detached ffmpeg merge
+    // would outlive the server and race the restored job on the same file
+    const killProcessesNow = vi.fn();
+    const before = process.listenerCount('exit');
+    const remove = installShutdownHandlers(
+      { server: { close: vi.fn() }, cancelJobs: vi.fn(), exit: vi.fn(), killProcessesNow },
+      ['SIGTERM'],
+    );
+
+    expect(process.listenerCount('exit')).toBe(before + 1);
+    process.listeners('exit').at(-1)?.(0);
+    expect(killProcessesNow).toHaveBeenCalledTimes(1);
+    remove();
+    expect(process.listenerCount('exit')).toBe(before);
+  });
 });

@@ -336,6 +336,9 @@ describe('deep server integration (real app, fake external world)', () => {
 
     const job = (await waitForJobStatus(folderPath, 'aaaaaaaaaaa', 'done')) as QueueJob;
     expect(job.progress).toBe(100);
+    // The media landed, so the job is not flagged: the verdict used to read
+    // the index from before the job, which never listed a new download
+    expect(job.incomplete).toBeUndefined();
 
     // The fake yt-dlp wrote the video, sidecars and the archive entry
     expect(existsSync(`${folderPath}/20260101_Fake video aaaaaaaaaaa.mp4`)).toBe(true);

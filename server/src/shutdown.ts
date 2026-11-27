@@ -14,6 +14,11 @@ export interface ShutdownOptions {
   /** Closes the library watcher (an open fs.watch handle keeps the loop alive) */
   stopLibraryWatch?: () => void;
   exit?: (code: number) => void;
+  /**
+   * Kills the job processes synchronously on any process exit, the ones the
+   * graceful path never sees included (an uncaught error, a process.exit)
+   */
+  killProcessesNow?: () => void;
   /** How long to wait for open connections before forcing an exit */
   forceExitMs?: number;
 }
@@ -58,9 +63,16 @@ export function installShutdownHandlers(
   for (const signal of signals) {
     process.on(signal, handler);
   }
+  const onExit = options.killProcessesNow;
+  if (onExit) {
+    process.on('exit', onExit);
+  }
   return () => {
     for (const signal of signals) {
       process.removeListener(signal, handler);
+    }
+    if (onExit) {
+      process.removeListener('exit', onExit);
     }
   };
 }
