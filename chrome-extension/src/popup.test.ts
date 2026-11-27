@@ -16,10 +16,19 @@ import type { ActiveDownloadSummary, PopupConfig, RuntimeMessage } from './lib/m
 
 // Under jsdom, Vite rewrites `new URL(..., import.meta.url)` to an http URL
 // that fileURLToPath rejects, so the page is found through import.meta.dirname.
-// The script tag is dropped: each case imports the popup module itself.
-const POPUP_BODY = (
-  /<body>([\s\S]*)<\/body>/.exec(readFileSync(path.join(import.meta.dirname, '..', 'popup.html'), 'utf-8'))?.[1] ?? ''
-).replace(/<script[^>]*><\/script>/g, '');
+// The script tag is dropped: each case imports the popup module itself. The
+// page goes through the DOM parser rather than a pattern, since a pattern that
+// strips tags is the shape of a sanitizer that misses `</script >` and the like.
+const POPUP_BODY = (() => {
+  const page = new DOMParser().parseFromString(
+    readFileSync(path.join(import.meta.dirname, '..', 'popup.html'), 'utf-8'),
+    'text/html',
+  );
+  for (const script of page.querySelectorAll('script')) {
+    script.remove();
+  }
+  return page.body.innerHTML;
+})();
 
 type WorkerListener = (message: RuntimeMessage) => void;
 
