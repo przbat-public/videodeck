@@ -9,13 +9,44 @@ export type VideoDocument = Omit<VideoListItem, 'comments'> & {
   commentsText?: string;
 };
 
+/**
+ * Most characters of comment text one document stores. Comments were the one
+ * text field without a cap: a video with hundreds of thousands of them made a
+ * document past the 100 MB a cluster accepts per request, so even a batch of
+ * one failed with a 413, and with it the folder's whole reindex. At three
+ * UTF-8 bytes per character, a batch just under REINDEX_BATCH_BYTES plus one
+ * document at every cap stays under that limit.
+ */
+export const MAX_COMMENTS_CHARS = 10_000_000;
+
+/**
+ * The comment texts joined by newlines, whole comments only, as many as fit
+ * in MAX_COMMENTS_CHARS. It stops at the first one that would pass the cap, so
+ * what search keeps is the start of the list the info.json holds, never a
+ * sample of it.
+ */
+function commentsTextOf(comments: VideoListItem['comments']): string {
+  const kept: string[] = [];
+  let length = 0;
+  for (const { text } of comments ?? []) {
+    if (typeof text !== 'string' || text.length === 0) {
+      continue;
+    }
+    // The newline in front of every comment but the first counts too
+    const lengthWithText = length + (kept.length > 0 ? 1 : 0) + text.length;
+    if (lengthWithText > MAX_COMMENTS_CHARS) {
+      break;
+    }
+    kept.push(text);
+    length = lengthWithText;
+  }
+  return kept.join('\n');
+}
+
 /** Convert a scanned video into the stored document */
 export function toDocument(video: VideoListItem): VideoDocument {
   const { comments, ...rest } = video;
-  const commentsText = (comments ?? [])
-    .map((comment) => comment.text)
-    .filter((text): text is string => typeof text === 'string' && text.length > 0)
-    .join('\n');
+  const commentsText = commentsTextOf(comments);
   const document: VideoDocument = commentsText.length > 0 ? { ...rest, commentsText } : rest;
   // yt-dlp writes counts as numbers, but a hand-edited info.json can carry
   // strings: one such document used to fail the whole bulk (a mapping

@@ -83,7 +83,7 @@ Every folder has an **alias** `videos_<sha256(folderPath)[:16]>` in Elasticsearc
 
 Thanks to this, search works the whole time on the old index version, and an interrupted reindex (error, server restart) does not leave an empty index. At most an orphaned `videos_<hash>_<timestamp>` index remains, which is removed at the next successful reindex of that folder. Videos with the same `videoId` (duplicates on disk) go into a single document.
 
-Comments are **not** stored in ES as objects. Only one text field, `commentsText`, which search runs over. The `GET /api/videos/:id/details` endpoint reads the full comment tree from `info.json`. The `commentsText` field is not returned in search results.
+Comments are **not** stored in ES as objects. Only one text field, `commentsText`, which search runs over. It keeps whole comments, from the first one `info.json` lists, up to 10,000,000 characters: a video with a few hundred thousand comments made a document larger than the 100 MB a request may carry, so its later comments are left out of search. The `GET /api/videos/:id/details` endpoint reads the full comment tree from `info.json`. The `commentsText` field is not returned in search results.
 
 After every download-queue job (`download`/`update`), the changed videos are indexed incrementally, so a new video is visible in search without a full reindex. A job that finishes while its own folder is being reindexed hands its videos to that reindex instead: they become searchable once the new version is swapped in. If the server stops before that swap, the next full reindex brings them in.
 

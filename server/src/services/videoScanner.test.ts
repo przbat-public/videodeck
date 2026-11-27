@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import type { Mock, Mocked } from 'vitest';
 import * as config from '../config';
 import { at } from '../test-utils';
+import { MAX_COMMENTS_CHARS } from './elasticsearch/bulkIndexing';
 import type { VideoDocument } from './elasticsearchService';
 import * as elasticsearchService from './elasticsearchService';
 import {
@@ -522,6 +523,32 @@ describe('videoScanner', () => {
       const sizes = mockedEs.bulkIndexDocuments.mock.calls.map(([, documents]) => documents.length);
       expect(sizes).toEqual([3, 3]);
       expect(getReindexStatus().indexed).toBe(6);
+    });
+
+    it('keeps a full batch plus one capped document under the cluster request limit', async () => {
+      // A batch flushes once it passes REINDEX_BATCH_BYTES, so the largest
+      // request is a batch just under that plus the heaviest document a video
+      // can make: every text field at its cap, three UTF-8 bytes per character.
+      // Elasticsearch refuses a request past http.max_content_length (100 MiB)
+      // with a 413, which failed the whole folder's reindex.
+      const clusterRequestLimitBytes = 100 * 1024 * 1024;
+      const comment = 'x'.repeat(MAX_COMMENTS_CHARS);
+      const infoJson = JSON.stringify({
+        title: 'Heavy',
+        comments: [1, 2, 3].map((n) => ({ id: String(n), text: comment })),
+      });
+      const vtt = `WEBVTT\n\n00:00:01.000 --> 00:00:04.000\n${'y'.repeat(MAX_TRANSCRIPT_CHARS + 1)}`;
+      mockFolder(['a.info.json', 'a.mp4', 'a.en.vtt']);
+      mockedFs.readFile.mockImplementation(async (filePath: unknown) =>
+        String(filePath).endsWith('.vtt') ? vtt : infoJson,
+      );
+
+      await loadVideosCache();
+
+      const document = at(bulkIndexedVideos(), 0);
+      expect(document.transcriptText).toHaveLength(MAX_TRANSCRIPT_CHARS);
+      const worstRequestBytes = (REINDEX_BATCH_BYTES + realEs.estimateDocumentBytes(document)) * 3;
+      expect(worstRequestBytes).toBeLessThan(clusterRequestLimitBytes);
     });
 
     it('promotes only after the last batch was written', async () => {
