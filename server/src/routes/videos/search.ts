@@ -21,6 +21,17 @@ import { parseNonNegativeInt, parseOffset, parseSortOption } from './helpers';
 // The category is read from each folder's config.json and narrows the search
 // to that category's folders; an unknown category matches no folder at all.
 export const search: RouteHandler<NoParams, SearchResponse> = async (req, res) => {
+  // A new phrase aborts the browser's previous fetch, and the search behind it
+  // should stop too. The response's close is the moment the client left: the
+  // request's fires as soon as its body has been read. Registered before the
+  // first await, so a client gone during the category lookup counts as well.
+  const clientGone = new AbortController();
+  res.on('close', () => {
+    if (!res.writableFinished) {
+      clientGone.abort();
+    }
+  });
+
   const query = readString(req.query.q);
   const sort = parseSortOption(req.query.sort);
   const category = readString(req.query.category)?.trim();
@@ -28,12 +39,20 @@ export const search: RouteHandler<NoParams, SearchResponse> = async (req, res) =
   const limit = parseNonNegativeInt(readString(req.query.limit), SEARCH_DEFAULT_LIMIT);
   const channel = readString(req.query.channel)?.trim() || undefined;
 
-  const folderPaths = category ? await getFolderPathsForCategory(category) : undefined;
-
-  const options = stripUndefined<SearchOptions>({ offset, limit, channel });
-  const { videos, total: totalCount } = await getVideos(query, sort, folderPaths, options);
-
-  res.json({ videos, totalCount });
+  try {
+    const folderPaths = category ? await getFolderPathsForCategory(category) : undefined;
+    const options = stripUndefined<SearchOptions>({ offset, limit, channel, signal: clientGone.signal });
+    const { videos, total: totalCount } = await getVideos(query, sort, folderPaths, options);
+    res.json({ videos, totalCount });
+  } catch (error) {
+    // Nobody is left to answer, and the transport's RequestAbortedError reads
+    // as an unreachable cluster: handed on, it would arm the fail-fast window
+    // and refuse every reader's next search for five seconds
+    if (clientGone.signal.aborted) {
+      return;
+    }
+    throw error;
+  }
 };
 
 // GET /api/videos/categories

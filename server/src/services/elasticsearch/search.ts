@@ -52,10 +52,14 @@ async function searchAliases<TDocument>(
   index: string[],
   body: estypes.SearchSearchRequestBody,
   header: SearchHeader = {},
+  signal?: AbortSignal,
 ): Promise<estypes.MsearchMultiSearchItem<TDocument>> {
-  const response = await getElasticsearchClient().msearch<TDocument>({
-    searches: [{ index, ignore_unavailable: true, ...header }, body],
-  });
+  const response = await getElasticsearchClient().msearch<TDocument>(
+    { searches: [{ index, ignore_unavailable: true, ...header }, body] },
+    // An aborted signal makes the transport drop the connection, and the
+    // cluster cancels a search whose connection closed
+    signal ? { signal } : undefined,
+  );
   return unwrapSearchResponse(response.responses[0]);
 }
 
@@ -129,6 +133,8 @@ export interface SearchOptions {
   limit?: number;
   /** Exact channel filter (matches channelName.keyword) */
   channel?: string;
+  /** Aborts the Elasticsearch request, e.g. once the HTTP client that asked went away */
+  signal?: AbortSignal;
 }
 
 /** Control chars wrapping highlight fragments — never occur in user content */
@@ -245,6 +251,7 @@ export async function searchVideosWithTotal(
     // short of that folder's hits with nothing to say so. A red shard is still
     // the 503 it was; anything else is a logged 500.
     { allow_partial_search_results: false },
+    options.signal,
   );
 
   const videos = response.hits.hits.map((hit) => {

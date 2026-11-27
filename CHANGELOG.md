@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An abandoned search stops on the cluster too.** Typing a new phrase
+  aborted the browser's request, but the server kept waiting on
+  Elasticsearch, which went on scoring and highlighting a page nobody would
+  read. The server now drops its own request once the client disconnects,
+  and Elasticsearch cancels the search along with it
 - **One huge comment section no longer empties its folder from a search.**
   Past a million characters the highlighter failed the shard holding that
   video, so its neighbours vanished from the page while the total still

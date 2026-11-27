@@ -731,6 +731,29 @@ describe('FakeElasticsearch controls', () => {
     }
   });
 
+  it('settles abandoned once a held request loses its client, and not before', async () => {
+    const hold = fake.holdRequestsMatching('/_cluster/health');
+    try {
+      let abandoned = false;
+      void hold.abandoned.then(() => {
+        abandoned = true;
+      });
+      const controller = new AbortController();
+      const held = fetch(`${baseUrl}/_cluster/health`, { signal: controller.signal }).catch((error: unknown) => error);
+      await hold.reached;
+      // Still waiting for its answer, which is not the same as gone
+      expect(abandoned).toBe(false);
+
+      controller.abort();
+
+      await vi.waitFor(() => expect(abandoned, 'the closed connection settles abandoned').toBe(true));
+      const failure = await held;
+      expect(failure instanceof Error ? failure.name : failure).toBe('AbortError');
+    } finally {
+      hold.release();
+    }
+  });
+
   it('answers every held request when it stops, so a failed test cannot hang its teardown', async () => {
     const own = new FakeElasticsearch();
     const ownUrl = await own.start();

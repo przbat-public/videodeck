@@ -491,6 +491,16 @@ export interface FakeEsRequest {
   body?: unknown;
 }
 
+/** What holdRequestsMatching hands back */
+export interface HeldRequests {
+  /** Settles when the first matching request arrives */
+  reached: Promise<void>;
+  /** Settles when a held request's connection closes before the fake answered it */
+  abandoned: Promise<void>;
+  /** Answer the held requests, and stop holding new ones */
+  release: () => void;
+}
+
 /** One search the fake ran, whether a _search URL or an _msearch pair asked for it */
 export interface FakeEsSearch {
   /** The index or alias names the search targeted, in request order */
@@ -505,7 +515,12 @@ export class FakeElasticsearch {
   private readonly requests: FakeEsRequest[] = [];
   private readonly searches: FakeEsSearch[] = [];
   private readonly faults: Array<{ match: string | RegExp; status: number }> = [];
-  private readonly holds: Array<{ match: string | RegExp; arrive: () => void; released: Promise<void> }> = [];
+  private readonly holds: Array<{
+    match: string | RegExp;
+    arrive: () => void;
+    abandon: () => void;
+    released: Promise<void>;
+  }> = [];
   private readonly releases = new Set<() => void>();
   private server: Server | null = null;
   private port: number | null = null;
@@ -532,19 +547,25 @@ export class FakeElasticsearch {
   /**
    * Hold the requests whose path matches until `release` runs, so a test can
    * act while one step of a longer flow waits (a reindex's bulk write).
-   * `reached` settles when the first such request arrives. `stop` releases
-   * every hold, so a failed assertion cannot leave a request hanging.
+   * `reached` settles when the first such request arrives, and `abandoned`
+   * when a held request's connection closes before the fake answered it, the
+   * way a cluster sees a client that gave up. `stop` releases every hold, so a
+   * failed assertion cannot leave a request hanging.
    */
-  holdRequestsMatching(match: string | RegExp): { reached: Promise<void>; release: () => void } {
+  holdRequestsMatching(match: string | RegExp): HeldRequests {
     let arrive: () => void = () => undefined;
+    let abandon: () => void = () => undefined;
     let open: () => void = () => undefined;
     const reached = new Promise<void>((resolve) => {
       arrive = resolve;
     });
+    const abandoned = new Promise<void>((resolve) => {
+      abandon = resolve;
+    });
     const released = new Promise<void>((resolve) => {
       open = resolve;
     });
-    const hold = { match, arrive, released };
+    const hold = { match, arrive, abandon, released };
     this.holds.push(hold);
     const release = (): void => {
       this.releases.delete(release);
@@ -555,7 +576,7 @@ export class FakeElasticsearch {
       open();
     };
     this.releases.add(release);
-    return { reached, release };
+    return { reached, abandoned, release };
   }
 
   /** The physical index an alias currently points at, if any */
@@ -676,6 +697,13 @@ export class FakeElasticsearch {
         typeof entry.match === 'string' ? target.includes(entry.match) : entry.match.test(target),
       );
       if (hold) {
+        // The response's close, not the request's: the request closes once its
+        // body is read, the response when the client drops the connection
+        res.once('close', () => {
+          if (!res.writableFinished) {
+            hold.abandon();
+          }
+        });
         hold.arrive();
         await hold.released;
       }

@@ -1220,6 +1220,19 @@ describe('elasticsearchService', () => {
       expect(sentSearch(1).body.highlight).toBeUndefined();
     });
 
+    it('hands the abort signal to the transport, and no transport options without one', async () => {
+      const controller = new AbortController();
+
+      await searchVideosWithTotal('robot', 'date-desc', undefined, { signal: controller.signal });
+      await searchVideosWithTotal('robot');
+
+      // The transport drops the connection on abort, which is what makes the
+      // cluster cancel the search; the signal never leaks into the request
+      expect(at(mockClient.msearch.mock.calls, 0)[1]).toEqual({ signal: controller.signal });
+      expect(sentSearch(0).body).not.toHaveProperty('signal');
+      expect(at(mockClient.msearch.mock.calls, 1)[1]).toBeUndefined();
+    });
+
     it('caps what the highlighter analyzes and refuses a page a shard failed', async () => {
       await searchVideos('robot');
 

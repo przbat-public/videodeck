@@ -140,6 +140,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -155,6 +156,7 @@ describe('videos router', () => {
         offset: 0,
         limit: 100,
         channel: 'Jordan B Peterson',
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -231,6 +233,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -244,6 +247,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith('test', 'views-desc', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -256,6 +260,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith('test', 'relevance', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -267,6 +272,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
         offset: 200,
         limit: 25,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -278,6 +284,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -288,12 +295,14 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
 
       await request(app).get('/api/videos/search?q=test&sort=views-desc&sort=likes-asc');
       expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -308,6 +317,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -345,6 +355,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', ['/test/videos'], {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
       expect(response.body.totalCount).toBe(12);
     });
@@ -360,6 +371,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', [], {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -372,6 +384,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
   });
