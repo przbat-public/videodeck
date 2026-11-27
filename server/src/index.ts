@@ -13,7 +13,7 @@ import {
   warnOnLegacyMappings,
 } from './services/elasticsearchService';
 import { startLibraryWatch, stopLibraryWatch } from './services/libraryState';
-import { getYtDlpVersion } from './services/ytdlp';
+import { getYtDlpVersion, resolveYtDlpCommand } from './services/ytdlp';
 import { installShutdownHandlers } from './shutdown';
 import { logger } from './utils/logger';
 import { closeAllSseStreams } from './utils/sseRegistry';
@@ -48,7 +48,14 @@ async function startServer() {
     if (ytDlpVersion !== null) {
       logger.info(`yt-dlp version: ${ytDlpVersion}`);
     } else {
-      logger.warn('yt-dlp not found (yt-dlp --version failed) — downloads will fail until it is installed');
+      // The command that failed, and the variable that named it: with
+      // YTDLP_PATH set, a typo there would read as a missing install.
+      const command = resolveYtDlpCommand();
+      logger.warn(
+        process.env.YTDLP_PATH === undefined
+          ? `yt-dlp not found (${command} --version failed): downloads will fail until it is installed`
+          : `yt-dlp not found (${command} --version failed): check YTDLP_PATH, since downloads will fail until it names a working yt-dlp`,
+      );
     }
 
     const apiToken = getApiToken();
