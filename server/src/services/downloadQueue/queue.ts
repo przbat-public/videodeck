@@ -7,7 +7,15 @@ import type { DownloadOptions, JobStatus, JobType, QueueJob, QueueListJob, Queue
 import { extractYtDlpProgress, isYtDlpProgressLine } from '@videodeck/shared/progress';
 import { removePartialDownloads, writeTextAtomic } from '../../utils/fsUtils';
 import { logger } from '../../utils/logger';
+import { describeError } from '../../utils/logThrottle';
 import { stripUndefined } from '../../utils/objectUtils';
+import {
+  commitStagedRefresh,
+  removeStaging,
+  stagedCommentsInterrupted,
+  sweepStagingDirs,
+  usesStaging,
+} from '../refreshStaging';
 import { clearUnavailable, recordUnavailable } from '../unavailableVideos';
 import { buildYtDlpArgs } from '../ytdlp';
 import { detectPermanentFailure } from '../ytdlpFailures';
@@ -26,11 +34,11 @@ import { killProcessGroup } from './watchdog';
  *    video whose title changed on YouTube is never downloaded twice. At most
  *    `maxConcurrent` at a time and only one per folder, because every
  *    download appends to that folder's archive.txt.
- *  - `update`: metadata-only refresh (`--skip-download`) written under the
- *    *existing* file stem, so info.json / subtitles / thumbnail are overwritten
- *    in place instead of creating a second set of files under a new title.
- *    At most `maxConcurrentUpdates` at a time, any number per folder: each
- *    one touches only its own files.
+ *  - `update`: metadata-only refresh (`--skip-download`) of the *existing*
+ *    file stem, so no second set of files appears under a new title. It is
+ *    staged in `.videodeck-staging/<jobId>/` and merged into the archive by
+ *    refreshStaging.ts, never written over it. At most `maxConcurrentUpdates`
+ *    at a time, any number per folder: each one touches only its own files.
  *
  * The hook that runs after a job rewrites the folder index, so hooks run one
  * at a time per folder whatever the number of yt-dlp processes.
@@ -166,6 +174,8 @@ export class DownloadQueue extends EventEmitter {
   private readonly lastOutputAt = new Map<string, number>();
   /** Jobs killed by the watchdog (retried as transient failures) */
   private readonly hungJobs = new Map<string, true>();
+  /** Staged runs whose commit failed: the reason their job ends as an error */
+  private readonly commitFailures = new Map<string, string>();
   /** Files a job announced with `[download] Destination:` (partial-sweep input) */
   private readonly jobFiles = new Map<string, Set<string>>();
   /** Chunk tail a job has not terminated with a newline yet (destination lines can be split) */
@@ -468,6 +478,7 @@ export class DownloadQueue extends EventEmitter {
     this.lastOutputAt.clear();
     this.hungJobs.clear();
     this.jobFiles.clear();
+    this.commitFailures.clear();
     this.logRemainder.clear();
     this.attempts.clear();
     this.jobs.clear();
@@ -691,55 +702,172 @@ export class DownloadQueue extends EventEmitter {
     const hung = this.hungJobs.has(job.id);
     this.hungJobs.delete(job.id);
     if (job.status !== 'running') {
-      // Already cancelled or failed via 'error'. A cancelled download was
-      // killed mid-write: sweep the temporary files yt-dlp left for THIS job,
-      // and only then let the next job in the folder start — the sweep must
-      // never run next to a download that is writing its own partial file.
-      if (job.status === 'cancelled' && job.type === 'download') {
-        await this.sweepPartialDownloads(job);
-      }
-      this.pump();
+      await this.closeStoppedJob(job);
       return;
     }
     if (hung) {
       // The watchdog killed a stalled process: retry like any transient
       // failure (yt-dlp resumes partial files with -c), bounded by attempts.
       this.appendLog(job, 'yt-dlp process was killed by the watchdog');
-      this.retryOrFail(job, code);
-      return;
-    }
-    if (code === 0) {
-      // With -i, yt-dlp exits 0 even for extractor errors (members-only,
-      // private, removed) — detect them from the log so such videos are
-      // never marked as downloaded.
-      const permanent = detectPermanentFailure(job.log);
-      if (permanent) {
-        this.appendLog(job, permanent.description);
-        this.finish(job, 'error', permanent.code, code);
-        return;
+      if (usesStaging(job)) {
+        await this.discardStaging(job);
       }
-      job.progress = 100;
-      void this.runAfterJob(job).then(() => {
-        // A cancel during the hook already recorded the job as cancelled;
-        // overwriting it with 'done' would hide the user's action.
-        if (job.status === 'running') {
-          this.finish(job, 'done', undefined, code);
-        }
-      });
+      this.retryUnlessStopped(job, code);
       return;
     }
-
-    // Videos that can never succeed (members-only, private, removed, full
-    // disk, geo-block, bot wall, age gate) skip the retry backoff entirely —
-    // waiting would only waste time.
+    // With -i, yt-dlp exits 0 even for extractor errors (members-only,
+    // private, removed), so the log decides, whatever the exit code. Videos
+    // that can never succeed (those, a full disk, geo-block, bot wall, age
+    // gate) skip the retry backoff entirely: waiting would only waste time.
     const permanent = detectPermanentFailure(job.log);
     if (permanent) {
       this.appendLog(job, permanent.description);
-      this.finish(job, 'error', permanent.code, code);
+      if (usesStaging(job)) {
+        await this.discardStaging(job);
+      }
+      if (job.status === 'running') {
+        this.finish(job, 'error', permanent.code, code);
+      }
       return;
     }
+    if (code === 0) {
+      this.completeRun(job, code);
+      return;
+    }
+    if (usesStaging(job) && (await this.commentsCutShort(job))) {
+      // A retry would fetch the comments from page 1 again and stop at the
+      // same refused page, so the run would never land. The union by id makes
+      // the comments that did arrive safe to merge.
+      this.appendLog(job, 'YouTube refused a later comment page: merging the comments that arrived, without a retry');
+      this.completeRun(job, code);
+      return;
+    }
+    if (usesStaging(job)) {
+      await this.discardStaging(job);
+    }
+    this.retryUnlessStopped(job, code);
+  }
 
-    this.retryOrFail(job, code);
+  /**
+   * The process of a job that was already cancelled or failed has exited. A
+   * cancelled download was killed mid-write: sweep the temporary files yt-dlp
+   * left for THIS job, and only then let the next job in the folder start (the
+   * sweep must never run next to a download writing its own partial file). A
+   * staged run leaves the live files as they were; only its directory goes.
+   */
+  private async closeStoppedJob(job: QueueJob): Promise<void> {
+    if (job.status === 'cancelled' && job.type === 'download') {
+      await this.sweepPartialDownloads(job);
+    }
+    if (usesStaging(job)) {
+      await this.discardStaging(job);
+    }
+    this.pump();
+  }
+
+  /** Hand a run that ended well to the post-job hook, then finish the job */
+  private completeRun(job: QueueJob, code: number | null): void {
+    job.progress = 100;
+    void this.runAfterJob(job).then(() => {
+      const failure = this.commitFailures.get(job.id);
+      this.commitFailures.delete(job.id);
+      // A cancel during the hook already recorded the job as cancelled;
+      // overwriting it with 'done' would hide the user's action.
+      if (job.status !== 'running') {
+        return;
+      }
+      if (failure === undefined) {
+        this.finish(job, 'done', undefined, code);
+      } else {
+        this.finish(job, 'error', failure, code);
+      }
+    });
+  }
+
+  /** Retry, unless a cancel landed while the run's leftovers were being removed */
+  private retryUnlessStopped(job: QueueJob, code: number | null): void {
+    if (job.status === 'running') {
+      this.retryOrFail(job, code);
+    }
+  }
+
+  /** Whether a staged run that exited non-zero is a comment extraction YouTube cut short */
+  private async commentsCutShort(job: QueueJob): Promise<boolean> {
+    if (!usesStaging(job) || job.baseName === undefined) {
+      return false;
+    }
+    return stagedCommentsInterrupted(job.folderPath, job.id, job.baseName);
+  }
+
+  /** The ids of every job still queued or running, whose staging must stay */
+  private activeJobIds(): Set<string> {
+    const ids = new Set<string>();
+    for (const job of this.jobs.values()) {
+      if (isActive(job)) {
+        ids.add(job.id);
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Remove a staged run's directory, and the leftovers of runs this process no
+   * longer has. Callers check `usesStaging` first, and only call this once the
+   * job's process is gone: removing a directory yt-dlp still writes into would
+   * leave one it re-creates and nobody removes. The check sits at the call
+   * sites because the close path has to stay synchronous for the jobs that
+   * write in place (awaiting anything yields a tick, and the snapshot of a
+   * burst of failing downloads relies on each finish landing with its 'close').
+   */
+  private async discardStaging(job: QueueJob): Promise<void> {
+    await removeStaging(job.folderPath, job.id, this.activeJobIds()).catch((error: unknown) => {
+      logger.warn(`downloadQueue: could not remove the staging directory of job ${job.id}: ${describeError(error)}`);
+    });
+  }
+
+  /**
+   * Move a staged run into the archive (refreshStaging.ts has the rules). A
+   * commit that fails turns the job into an error with the reason; the index
+   * refresh still runs for whatever landed.
+   */
+  private async commitStaging(job: QueueJob): Promise<void> {
+    try {
+      if (job.baseName === undefined) {
+        return;
+      }
+      const report = await commitStagedRefresh({
+        folderPath: job.folderPath,
+        jobId: job.id,
+        stem: job.baseName,
+        videoId: job.videoId,
+        requestsHumanSubtitles: !(job.options?.extraArgs ?? []).includes('--no-write-subs'),
+      });
+      for (const note of report.notes) {
+        this.appendLog(job, note);
+      }
+    } catch (error) {
+      const reason = `could not apply the refreshed files: ${describeError(error)}`;
+      this.appendLog(job, reason);
+      this.commitFailures.set(job.id, reason);
+    } finally {
+      await this.discardStaging(job);
+    }
+  }
+
+  /**
+   * What runs after a run that ended well: a staged run is committed first
+   * (unless the job was cancelled while it waited for its turn, in which case
+   * nothing of it reaches the archive), then the post-job hook.
+   */
+  private async afterRun(job: QueueJob): Promise<void> {
+    if (usesStaging(job)) {
+      if (job.status !== 'running') {
+        await this.discardStaging(job);
+        return;
+      }
+      await this.commitStaging(job);
+    }
+    await this.afterJob(job);
   }
 
   /** Retry a failed yt-dlp run with jittered backoff, or fail when attempts run out */
@@ -790,7 +918,7 @@ export class DownloadQueue extends EventEmitter {
   private runAfterJob(job: QueueJob): Promise<void> {
     const previous = this.folderHooks.get(job.folderPath) ?? Promise.resolve();
     const current = previous
-      .then(() => this.afterJob(job))
+      .then(() => this.afterRun(job))
       .catch((error: unknown) => {
         logger.error(`downloadQueue: afterJob failed for ${job.videoId}:`, error);
       })
@@ -933,31 +1061,44 @@ export const downloadQueue = new DownloadQueue({
  * come back as `queued` — the download archive dedups anything that finished
  * in the meantime and updates are idempotent re-scans. Returns how many jobs
  * were restored, or 0 when there is no state file.
+ *
+ * First it sweeps the staging directories of `libraryFolders` and of the
+ * restored jobs' folders: a staged run the previous process left behind
+ * belongs to nobody, and no job runs yet to own one.
  */
 export async function restoreQueueState(
   queue: DownloadQueue = downloadQueue,
   stateFile: string = QUEUE_STATE_FILE,
+  libraryFolders: readonly string[] = [],
 ): Promise<number> {
+  const requests = await readPersistedRequests(queue, stateFile);
+  // Before any job runs: a staged run the previous process left behind
+  // belongs to nobody (a restored job gets a new id and stages afresh)
+  await sweepStagingDirs([...new Set([...libraryFolders, ...requests.map((request) => request.folderPath)])]);
+  if (requests.length > 0) {
+    queue.enqueue(requests);
+  }
+  return requests.length;
+}
+
+/** The jobs a previous run persisted, and its paused flag applied to the queue */
+async function readPersistedRequests(queue: DownloadQueue, stateFile: string): Promise<EnqueueRequest[]> {
   let raw: string;
   try {
     raw = await fs.readFile(stateFile, 'utf-8');
   } catch {
-    return 0;
+    return [];
   }
   try {
     const state = JSON.parse(raw) as { paused?: unknown; jobs?: unknown };
     if (state.paused === true) {
       queue.setPaused(true);
     }
-    const requests = Array.isArray(state.jobs)
+    return Array.isArray(state.jobs)
       ? state.jobs.map(toEnqueueRequest).filter((request): request is EnqueueRequest => request !== null)
       : [];
-    if (requests.length > 0) {
-      queue.enqueue(requests);
-    }
-    return requests.length;
   } catch (error) {
     logger.warn(`Cannot restore queue state: ${error instanceof Error ? error.message : String(error)}`);
-    return 0;
+    return [];
   }
 }

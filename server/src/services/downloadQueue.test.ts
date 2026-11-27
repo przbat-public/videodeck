@@ -17,7 +17,9 @@ import {
   readConcurrency,
   restoreQueueState,
 } from './downloadQueue';
+import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 import { refreshIndex } from './folderIndex';
+import { commitStagedRefresh, removeStaging, stagedCommentsInterrupted, sweepStagingDirs } from './refreshStaging';
 import { readUnavailable, recordUnavailable } from './unavailableVideos';
 import { indexVideosFromDisk } from './videoScanner';
 import { buildFormatSelector, buildYtDlpArgs, escapeOutputTemplate, PROGRESS_TEMPLATE } from './ytdlp';
@@ -33,6 +35,16 @@ vi.mock('../utils/fsUtils', async () => ({
   ...(await vi.importActual<typeof import('../utils/fsUtils')>('../utils/fsUtils')),
   removePartialDownloads: vi.fn(),
   writeTextAtomic: vi.fn(),
+}));
+// The staged-run file work has its own tests (refreshStaging.test.ts) and the
+// journeys run it for real; here it is instant, so the queue's own timing is
+// what these tests observe.
+vi.mock('./refreshStaging', async () => ({
+  ...(await vi.importActual<typeof import('./refreshStaging')>('./refreshStaging')),
+  commitStagedRefresh: vi.fn(),
+  removeStaging: vi.fn(),
+  stagedCommentsInterrupted: vi.fn(),
+  sweepStagingDirs: vi.fn(),
 }));
 
 /**
@@ -50,6 +62,19 @@ const mockedRefreshIndex = refreshIndex as MockedFunction<typeof refreshIndex>;
 const mockedIndexVideosFromDisk = indexVideosFromDisk as MockedFunction<typeof indexVideosFromDisk>;
 const mockedRemovePartialDownloads = removePartialDownloads as MockedFunction<typeof removePartialDownloads>;
 const mockedWriteTextAtomic = writeTextAtomic as MockedFunction<typeof writeTextAtomic>;
+const mockedCommitStagedRefresh = commitStagedRefresh as MockedFunction<typeof commitStagedRefresh>;
+const mockedRemoveStaging = removeStaging as MockedFunction<typeof removeStaging>;
+const mockedStagedCommentsInterrupted = stagedCommentsInterrupted as MockedFunction<typeof stagedCommentsInterrupted>;
+const mockedSweepStagingDirs = sweepStagingDirs as MockedFunction<typeof sweepStagingDirs>;
+
+beforeEach(() => {
+  // Implementations set per test, so a reset between tests cannot leave a
+  // mock that answers undefined where the queue awaits a report
+  mockedCommitStagedRefresh.mockResolvedValue({ committed: [], notes: [] });
+  mockedRemoveStaging.mockResolvedValue(undefined);
+  mockedStagedCommentsInterrupted.mockResolvedValue(false);
+  mockedSweepStagingDirs.mockResolvedValue(undefined);
+});
 
 class FakeProcess extends EventEmitter implements SpawnedProcess {
   stdout = new EventEmitter();
@@ -370,6 +395,7 @@ describe('buildYtDlpArgs', () => {
 
   it('builds a metadata-only update pinned to the existing file stem', () => {
     const args = buildYtDlpArgs({
+      id: 'job-1',
       type: 'update',
       videoUrl: 'https://yt/x',
       baseName: '20240101_Old_Title',
@@ -377,7 +403,9 @@ describe('buildYtDlpArgs', () => {
 
     expect(args).toContain('--skip-download');
     expect(args).toContain('--no-playlist');
-    expect(args[args.indexOf('-o') + 1]).toBe('20240101_Old_Title.%(ext)s');
+    // Into the job's staging directory: the refresh is merged into the
+    // archive afterwards, never written over it
+    expect(args[args.indexOf('-o') + 1]).toBe('.videodeck-staging/job-1/20240101_Old_Title.%(ext)s');
     expect(args).not.toContain('--download-archive');
     expect(args).not.toContain('--restrict-filenames');
     expect(args).toContain('--write-info-json');
@@ -387,8 +415,8 @@ describe('buildYtDlpArgs', () => {
 
   it('escapes percent signs in a literal stem', () => {
     expect(escapeOutputTemplate('100%_done')).toBe('100%%_done');
-    const args = buildYtDlpArgs({ type: 'update', videoUrl: 'u', baseName: '50%_off' });
-    expect(args[args.indexOf('-o') + 1]).toBe('50%%_off.%(ext)s');
+    const args = buildYtDlpArgs({ id: 'job-1', type: 'update', videoUrl: 'u', baseName: '50%_off' });
+    expect(args[args.indexOf('-o') + 1]).toBe('.videodeck-staging/job-1/50%%_off.%(ext)s');
   });
 
   it('rejects an update job without a baseName', () => {
@@ -440,7 +468,7 @@ describe('buildYtDlpArgs', () => {
 
   it('applies subtitle and comment options to update jobs too', () => {
     const options = { maxHeight: 720, subLangs: ['pl'], writeComments: false };
-    const args = buildYtDlpArgs({ type: 'update', videoUrl: 'u', baseName: 'x', options });
+    const args = buildYtDlpArgs({ id: 'job-1', type: 'update', videoUrl: 'u', baseName: 'x', options });
 
     expect(args[args.indexOf('--sub-lang') + 1]).toBe('pl');
     expect(args).not.toContain('--write-comments');
@@ -459,6 +487,7 @@ describe('buildYtDlpArgs', () => {
     expect(download.slice(-2)).toEqual(['--no-warnings', 'https://yt/x']);
 
     const update = buildYtDlpArgs({
+      id: 'job-1',
       type: 'update',
       videoUrl: 'https://yt/x',
       baseName: 'stem',
@@ -469,7 +498,7 @@ describe('buildYtDlpArgs', () => {
 
   it('adds file-access retries and the progress template to both job types', () => {
     const download = buildYtDlpArgs({ type: 'download', videoUrl: 'u' });
-    const update = buildYtDlpArgs({ type: 'update', videoUrl: 'u', baseName: 'x' });
+    const update = buildYtDlpArgs({ id: 'job-1', type: 'update', videoUrl: 'u', baseName: 'x' });
 
     for (const args of [download, update]) {
       expect(args[args.indexOf('--file-access-retries') + 1]).toBe('10');
@@ -578,7 +607,9 @@ describe('DownloadQueue', () => {
     queue.enqueue([request('a', { type: 'update', baseName: '20240101_A' })]);
 
     expect(spawned().args).toContain('--skip-download');
-    expect(spawned().args).toContain('20240101_A.%(ext)s');
+    expect(spawned().args).toContainEqual(
+      expect.stringMatching(/^\.videodeck-staging\/[\w-]+\/20240101_A\.%\(ext\)s$/),
+    );
   });
 
   it('runs at most one download per folder and respects the download limit', () => {
@@ -692,6 +723,166 @@ describe('DownloadQueue', () => {
         ['a', 'running'],
         ['b', 'queued'],
       ]);
+    });
+  });
+
+  describe('staged metadata runs', () => {
+    /** The one job of a fresh enqueue */
+    const only = (requests: EnqueueRequest[]): QueueJob => at(queue.enqueue(requests), 0);
+
+    it('commits a staged update before its post-job hook, then finishes it', async () => {
+      mockedCommitStagedRefresh.mockResolvedValue({ committed: [], notes: ['kept 3 archived comments'] });
+      const job = only([update('a')]);
+
+      spawned().process.exit(0);
+      await flush();
+
+      expect(mockedCommitStagedRefresh).toHaveBeenCalledWith({
+        folderPath: '/videos/channel-a',
+        jobId: job.id,
+        stem: '20240101_a',
+        videoId: 'a',
+        requestsHumanSubtitles: true,
+      });
+      expect(mockedCommitStagedRefresh.mock.invocationCallOrder[0]).toBeLessThan(
+        afterJob.mock.invocationCallOrder[0] ?? 0,
+      );
+      expect(queue.get(job.id)?.status).toBe('done');
+      expect(queue.get(job.id)?.log).toContain('kept 3 archived comments');
+    });
+
+    it('stages a comment repair, and leaves a sidecar repair and a download alone', async () => {
+      queue.enqueue([
+        request('c', { type: 'repair', baseName: '20240101_c', writeComments: true }),
+        request('s', { type: 'repair', baseName: '20240101_s', folderPath: '/videos/channel-b' }),
+        request('d', { folderPath: '/videos/channel-c' }),
+      ]);
+      for (const call of spawn.calls) {
+        call.process.exit(0);
+      }
+      await flush();
+
+      expect(mockedCommitStagedRefresh.mock.calls.map(([options]) => options.stem)).toEqual(['20240101_c']);
+    });
+
+    it('merges nothing for an update cancelled while it waited for its post-job hook', async () => {
+      // The first job's hook holds the folder's chain, so the second one
+      // waits with no process left; a cancel then has to keep its staged
+      // files out of the archive
+      let releaseFirst = (): void => undefined;
+      afterJob.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseFirst = resolve;
+          }),
+      );
+      const [, second] = queue.enqueue([update('a'), update('b')]);
+      spawned(0).process.exit(0);
+      await flush();
+      spawned(1).process.exit(0);
+      await flush();
+
+      queue.cancel(second?.id ?? '');
+      releaseFirst();
+      await flush();
+      await flush();
+
+      expect(mockedCommitStagedRefresh.mock.calls.map(([options]) => options.stem)).toEqual(['20240101_a']);
+      expect(mockedRemoveStaging).toHaveBeenCalledWith('/videos/channel-a', second?.id, expect.any(Set));
+      expect(queue.get(second?.id ?? '')?.status).toBe('cancelled');
+    });
+
+    it('discards a failed staged run before it retries, and never commits it', async () => {
+      queue = new DownloadQueue({ maxAttempts: 2, retryDelayMs: 1, spawnFn: spawn.spawnFn, afterJob });
+      const job = only([update('a')]);
+
+      spawned().process.exit(1);
+      await flush();
+
+      expect(mockedRemoveStaging).toHaveBeenCalledWith('/videos/channel-a', job.id, expect.any(Set));
+      expect(mockedCommitStagedRefresh).not.toHaveBeenCalled();
+      expect(queue.get(job.id)?.status).toBe('running');
+    });
+
+    it('keeps the staging of the other live jobs when one discards its own', async () => {
+      // The active set is what spares a concurrent staged run's directory
+      const [first, second] = queue.enqueue([update('a'), update('b')]);
+
+      spawned(0).process.exit(1);
+      await flush();
+
+      const [, jobId, active] = mockedRemoveStaging.mock.calls.at(-1) ?? [];
+      expect(jobId).toBe(first?.id);
+      expect(active?.has(second?.id ?? '')).toBe(true);
+    });
+
+    it('discards the staging of a staged run cancelled while it ran, once its process is gone', async () => {
+      const job = only([update('a')]);
+
+      queue.cancel(job.id);
+      expect(mockedRemoveStaging).not.toHaveBeenCalled();
+      await flush();
+
+      expect(mockedRemoveStaging).toHaveBeenCalledWith('/videos/channel-a', job.id, expect.any(Set));
+      expect(mockedCommitStagedRefresh).not.toHaveBeenCalled();
+    });
+
+    it('discards a staged run the watchdog killed before it retries', async () => {
+      vi.useFakeTimers();
+      try {
+        queue = new DownloadQueue({ idleTimeoutMs: 1000, maxAttempts: 2, spawnFn: spawn.spawnFn, afterJob });
+        const job = only([update('a')]);
+
+        await vi.advanceTimersByTimeAsync(1250);
+        await vi.advanceTimersByTimeAsync(100);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(mockedRemoveStaging).toHaveBeenCalledWith('/videos/channel-a', job.id, expect.any(Set));
+        expect(mockedCommitStagedRefresh).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('tells the commit when the folder turned human subtitle tracks off', async () => {
+      // --no-write-subs makes yt-dlp write machine captions under the name of
+      // a human track the archive holds
+      const options = { ...DEFAULT_DOWNLOAD_OPTIONS, extraArgs: ['--no-write-subs'] };
+      only([update('a', { options })]);
+
+      spawned().process.exit(0);
+      await flush();
+
+      expect(mockedCommitStagedRefresh).toHaveBeenCalledWith(
+        expect.objectContaining({ requestsHumanSubtitles: false }),
+      );
+    });
+
+    it('merges a comment refresh YouTube cut short, without a retry', async () => {
+      queue = new DownloadQueue({ maxAttempts: 3, retryDelayMs: 1, spawnFn: spawn.spawnFn, afterJob });
+      mockedStagedCommentsInterrupted.mockResolvedValue(true);
+      const job = only([request('a', { type: 'repair', baseName: '20240101_a', writeComments: true })]);
+
+      spawned().process.exit(1);
+      await flush();
+      await flush();
+
+      expect(mockedCommitStagedRefresh).toHaveBeenCalledTimes(1);
+      expect(queue.get(job.id)?.status).toBe('done');
+      expect(spawn.calls).toHaveLength(1);
+    });
+
+    it('fails the job when its staged files cannot be committed, and still runs the hook', async () => {
+      mockedCommitStagedRefresh.mockRejectedValue(new Error('ENOSPC: no space left on device'));
+      const job = only([update('a')]);
+
+      spawned().process.exit(0);
+      await flush();
+      await flush();
+
+      expect(queue.get(job.id)?.status).toBe('error');
+      expect(queue.get(job.id)?.error).toMatch(/could not apply the refreshed files: .*ENOSPC/);
+      expect(afterJob).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1770,6 +1961,23 @@ describe('queue state persistence', () => {
       ['b', 'update', 'queued'],
     ]);
     expect(spawn.spawnFn).not.toHaveBeenCalled();
+  });
+
+  it('sweeps the staging directories of the library and of the restored jobs before any job runs', async () => {
+    await fs.writeFile(
+      stateFile,
+      JSON.stringify({
+        jobs: [{ folderPath: '/videos/channel-a', videoId: 'b', type: 'update', baseName: '20240101_b' }],
+      }),
+    );
+    const spawn = createFakeSpawn();
+    const queue = new DownloadQueue({ spawnFn: spawn.spawnFn, afterJob: silentAfterJob(), stateFile, maxAttempts: 1 });
+    const enqueue = vi.spyOn(queue, 'enqueue');
+
+    await restoreQueueState(queue, stateFile, ['/videos/channel-a', '/videos/channel-b']);
+
+    expect(mockedSweepStagingDirs).toHaveBeenCalledWith(['/videos/channel-a', '/videos/channel-b']);
+    expect(mockedSweepStagingDirs.mock.invocationCallOrder[0]).toBeLessThan(enqueue.mock.invocationCallOrder[0] ?? 0);
   });
 
   it('returns 0 when the state file is missing or unparseable', async () => {

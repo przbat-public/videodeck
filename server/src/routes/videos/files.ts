@@ -126,9 +126,9 @@ export const serveFile: RouteHandler<{ filename: string }, never> = async (req, 
   if (ext === '.vtt') {
     // yt-dlp auto captions carry `align:start position:0%` on every cue,
     // pinning the text to the left edge — strip the settings so the browser
-    // centers the cues the way it does for plain WebVTT. Subtitles are
-    // re-downloaded in place on metadata updates — always revalidate, never
-    // serve a stale cue file.
+    // centers the cues the way it does for plain WebVTT. A metadata update
+    // can replace a subtitle under the same name (refreshStaging.ts moves a
+    // changed one in) — always revalidate, never serve a stale cue file.
     try {
       const vtt = await fs.readFile(realPath, 'utf-8');
       res.setHeader('Content-Type', 'text/vtt; charset=utf-8');

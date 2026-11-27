@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import type { DownloadOptions, JobType } from '@videodeck/shared/api';
 import { isSafeVideoStem } from '../utils/videoStem';
 import { assertExtraArgsAllowed, DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
+import { STAGING_DIR, usesStaging } from './refreshStaging';
 
 /**
  * Everything the server says to yt-dlp lives here, behind a small, testable
@@ -108,12 +109,30 @@ export function escapeOutputTemplate(literal: string): string {
 
 /** The pieces of a queue job the argument builder needs */
 export interface YtDlpJobSpec {
+  /** The queue job id: names the staging directory of an update or a comment repair */
+  id?: string | undefined;
   type: JobType;
   videoUrl: string;
   baseName?: string | undefined;
   options?: DownloadOptions | undefined;
   /** Repair jobs only: whether this run refreshes the comment section */
   writeComments?: boolean | undefined;
+}
+
+/**
+ * Where a metadata run writes. An update and a comment repair write into
+ * their own staging directory (refreshStaging.ts merges the result into the
+ * archive), a sidecar repair writes in place under --no-overwrites.
+ */
+function metadataOutput(job: YtDlpJobSpec, baseName: string): string {
+  const file = `${escapeOutputTemplate(baseName)}.%(ext)s`;
+  if (!usesStaging(job)) {
+    return file;
+  }
+  if (job.id === undefined || !/^[\w-]+$/.test(job.id)) {
+    throw new Error('refusing yt-dlp output template: a staged run needs a plain job id');
+  }
+  return `${STAGING_DIR}/${job.id}/${file}`;
 }
 
 export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
@@ -136,7 +155,7 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
       ...RUNTIME_ARGS,
       '--skip-download',
       '-o',
-      `${escapeOutputTemplate(job.baseName)}.%(ext)s`,
+      metadataOutput(job, job.baseName),
       ...buildMetadataArgs(options),
       job.videoUrl,
     ];
@@ -156,7 +175,9 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
     // left it gone while the job reported success). With the flag yt-dlp keeps
     // every file already there and writes only what is missing, which is what
     // a repair is for. A comment repair cannot take it: the old info.json
-    // would win, and the fresh comment list would be thrown away.
+    // would win, and the fresh comment list would be thrown away. It writes
+    // into its staging directory instead, and refreshStaging.ts merges the
+    // fresh comment list with the archived one.
     return [
       '--ignore-config',
       '-i',
@@ -166,7 +187,7 @@ export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
       '--skip-download',
       ...(job.writeComments === true ? [] : ['--no-overwrites']),
       '-o',
-      `${escapeOutputTemplate(job.baseName)}.%(ext)s`,
+      metadataOutput(job, job.baseName),
       ...buildMetadataArgs(options, job.writeComments ?? false),
       job.videoUrl,
     ];

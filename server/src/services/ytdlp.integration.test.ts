@@ -35,11 +35,32 @@ describeIntegration('yt-dlp integration', () => {
   });
 
   it('accepts the update argument template pinned to a stem', () => {
+    // A staged run: -o points into .videodeck-staging/<jobId>/
     const args = buildYtDlpArgs({
+      id: 'job-1',
       type: 'update',
       videoUrl: VIDEO_URL,
       baseName: 'stem',
       options: FAST_OPTIONS,
+    });
+
+    const result = spawnSync('yt-dlp', [...args, '--simulate'], {
+      encoding: 'utf-8',
+      timeout: 120_000,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(0);
+  });
+
+  it('accepts the comment repair argument template, staged like an update', () => {
+    const args = buildYtDlpArgs({
+      id: 'job-1',
+      type: 'repair',
+      videoUrl: VIDEO_URL,
+      baseName: 'stem',
+      options: FAST_OPTIONS,
+      writeComments: true,
     });
 
     const result = spawnSync('yt-dlp', [...args, '--simulate'], {
