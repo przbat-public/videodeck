@@ -166,6 +166,32 @@ Hello<c> there</c> friend`;
     expect(text).toContain('closer to finished form');
     expect(text).toContain('breadboard');
   });
+
+  it('keeps each line of a rolling auto-caption once', async () => {
+    // YouTube's automatic captions roll: a cue shows the previous line above
+    // the one being typed, and a 10 ms cue then holds the finished line alone,
+    // so each line said came out two or three times in a row
+    const realFs = (await vi.importActual<typeof import('fs/promises')>('fs/promises')) as typeof import('fs/promises');
+    const vtt = await realFs.readFile(`${__dirname}/../test/fixtures/ytdlp-real.vtt`, 'utf-8');
+
+    expect(extractTextFromVttSubtitles(vtt)).toBe(
+      "well here's the project in a little more closer to finished form it is off the breadboard",
+    );
+  });
+
+  it('keeps a line said again after another one', () => {
+    const vtt = `WEBVTT
+
+00:00:01.000 --> 00:00:02.000
+No.
+
+00:00:02.000 --> 00:00:03.000
+Yes.
+
+00:00:03.000 --> 00:00:04.000
+No.`;
+    expect(extractTextFromVttSubtitles(vtt)).toBe('No. Yes. No.');
+  });
 });
 
 describe('estimateTokenCount', () => {
@@ -280,11 +306,13 @@ describe('generateSummary', () => {
   });
 
   it('reports truncation for subtitle text over the token budget and persists the marker', async () => {
-    // The extracted text alone (timestamps stripped) is ~160k chars ≈ 40k
-    // estimated tokens, well over SUMMARY_MAX_INPUT_TOKENS
-    const longVtt = `WEBVTT\n\n${Array(4000)
-      .fill('00:00:01.000 --> 00:00:04.000\nSome spoken words that keep going on. ')
-      .join('\n')}`;
+    // The extracted text alone (timestamps stripped) is ~179k chars ≈ 45k
+    // estimated tokens, well over SUMMARY_MAX_INPUT_TOKENS. Every line differs:
+    // copies of one line would collapse into a single one
+    const longVtt = `WEBVTT\n\n${Array.from(
+      { length: 4000 },
+      (_unused, part) => `00:00:01.000 --> 00:00:04.000\nSpoken words, part ${part}, that keep going on. `,
+    ).join('\n')}`;
     mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
     mockedFs.readFile.mockResolvedValueOnce(longVtt as never);
     mockOpenAIInstance.chat.completions.create.mockResolvedValue(mockCompletion('Summary of a long video'));
@@ -329,6 +357,23 @@ This is a test subtitle`;
     expect(userContent).not.toContain('WEBVTT');
     const systemContent = createCall[0].messages[0].content as string;
     expect(systemContent).toContain('niezaufane');
+  });
+
+  it('hands the model each line of a rolling auto-caption once', async () => {
+    // The summary reads the text the index stores: tripled, a rolling track
+    // cost three times the tokens and ran past the input budget sooner
+    const realFs = (await vi.importActual<typeof import('fs/promises')>('fs/promises')) as typeof import('fs/promises');
+    const vtt = await realFs.readFile(`${__dirname}/../test/fixtures/ytdlp-real.vtt`, 'utf-8');
+    mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
+    mockedFs.readFile.mockResolvedValueOnce(vtt as never);
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue(mockCompletion('Summary'));
+
+    await generateSummary(INPUT);
+
+    const userContent = at(mockOpenAIInstance.chat.completions.create.mock.calls, 0)[0].messages[1].content as string;
+    expect(userContent).toContain(
+      "<subtitles>\nwell here's the project in a little more closer to finished form it is off the breadboard\n</subtitles>",
+    );
   });
 
   it('moves to the next model after honoring Retry-After on a 429', async () => {

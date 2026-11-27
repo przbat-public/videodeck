@@ -13,6 +13,7 @@ import {
   indexVideosFromDisk,
   isReindexRunning,
   loadVideosCache,
+  MAX_TRANSCRIPT_CHARS,
   REINDEX_BATCH_BYTES,
   REINDEX_BATCH_SIZE,
   refreshVideosCache,
@@ -46,6 +47,28 @@ const NEW_INDEX = 'videos_abc_20250101000000000';
 /** All documents passed to bulkIndexDocuments, in order */
 function bulkIndexedVideos(): VideoDocument[] {
   return mockedEs.bulkIndexDocuments.mock.calls.flatMap(([, documents]) => documents);
+}
+
+/** A cue time stamp, HH:MM:SS.mmm */
+function cueTime(ms: number): string {
+  return new Date(ms).toISOString().slice(11, 23);
+}
+
+/**
+ * A rolling auto-caption track, the way yt-dlp writes YouTube's automatic
+ * captions (test/fixtures/ytdlp-real.vtt): every line is typed in word by word
+ * under the line before it, then held alone in a 10 ms cue.
+ */
+function rollingAutoCaptions(lines: string[]): string {
+  const cues = ['WEBVTT', 'Kind: captions', 'Language: pl', ''];
+  for (const [n, line] of lines.entries()) {
+    const start = n * 3000;
+    const [first, ...rest] = line.split(' ');
+    const typed = `${first}${rest.map((word, w) => `<${cueTime(start + (w + 1) * 300)}><c> ${word}</c>`).join('')}`;
+    cues.push(`${cueTime(start)} --> ${cueTime(start + 2990)} align:start position:0%`, lines[n - 1] ?? ' ', typed, '');
+    cues.push(`${cueTime(start + 2990)} --> ${cueTime(start + 3000)} align:start position:0%`, line, ' ', '');
+  }
+  return cues.join('\n');
 }
 
 function mockFolder(files: string[], infoJson: Record<string, unknown> = { title: 'Test Video 1' }) {
@@ -282,6 +305,24 @@ describe('videoScanner', () => {
       if (result.status !== 'ok') return;
       expect(result.video.transcriptText).toBe('In English\n\nPo polsku');
       expect(result.video.subtitlePath).toBe('20231201_TestVideo1.en.vtt');
+    });
+
+    it('indexes a long auto-caption track whole, each line once', async () => {
+      // 1,500 lines, about 75 minutes of a rolling track: with every line
+      // tripled the transcript passed the cap and lost its lines from 956 on
+      const lines = Array.from({ length: 1500 }, (_unused, n) => `zdanie numer ${n} mowione do kamery`);
+      mockedFs.readFile.mockImplementation(async (filePath: unknown) =>
+        String(filePath).endsWith('.vtt')
+          ? rollingAutoCaptions(lines)
+          : JSON.stringify({ id: 'abcdefghijk', title: 'T' }),
+      );
+
+      const result = await buildVideoItem(FOLDER, '20231201_TestVideo1', files);
+
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') return;
+      expect(result.video.transcriptText).toBe(lines.join(' '));
+      expect(lines.join(' ').length).toBeLessThan(MAX_TRANSCRIPT_CHARS);
     });
 
     it('falls back to baseName date, uploader and a title derived from the file name', async () => {

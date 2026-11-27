@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Auto-captions are read once per line.** YouTube's rolling captions show
+  each line two or three times, and every copy went into the text, so the
+  100,000-character transcript cap kept only the first third or so of a long
+  video's speech, and summaries paid for each sentence thrice. A line
+  equal to the one before it is dropped now; one said again later stays.
+  Cached summaries are kept, and stored transcripts shrink when reindexed
 - **"World's" turns up for `world`.** The tokenizer keeps a possessive
   whole, two edits away from its word, while fuzzy matching lets a
   five-letter query differ by one, so titles like "Tesla's Cheapest Car"
