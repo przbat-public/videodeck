@@ -587,9 +587,9 @@ describe('rate limiting', () => {
     const app = createApp();
     const read = () => withBody(request(app).get('/api/videos/file/a.webp').query({ folder }));
 
-    // An img or a video element never sends a body. A GET that does goes
-    // through the JSON parser, whose failures reach the error log, so it pays
-    // like an API call
+    // An img or a video element never sends a body. A JSON-typed one goes
+    // through the parser, whose failures reach the error log, so a GET that
+    // declares any body pays like an API call
     for (let i = 0; i < 3; i += 1) {
       expect((await read()).status).toBe(200);
     }

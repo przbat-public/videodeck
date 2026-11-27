@@ -71,9 +71,10 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
  * budget is sized for. They skip the budget, so a long results page no longer
  * runs it out and blanks its own thumbnails. Only a read that names its folder
  * qualifies: without `?folder=` the route asks Elasticsearch where the file
- * lives, and that lookup stays on the budget. So does a read with a body, which
- * no img or video element sends: it goes through the JSON parser, and a broken
- * one ends in the error log. The limiter asks the auth decision on top of this
+ * lives, and that lookup stays on the budget. So does a read that declares a
+ * body, which no img or video element sends: a JSON-typed one goes through the
+ * parser, and a broken one ends in the error log, so any read with a body pays
+ * like an API call. The limiter asks the auth decision on top of this
  * (createApp), so a read the guard refuses counts too. There is no exemption
  * by address either, because behind the dev proxy, or any proxy on the same
  * host without TRUST_PROXY, every client is loopback. At the app level

@@ -179,7 +179,7 @@ Serves video files (`.mp4`), thumbnails (`.webp`, `.jpg`, `.jpeg` and `.png`, nu
 - `filename` - the file name (e.g. `video.mp4`, `thumbnail.webp`)
 - `folder` (optional, recommended) - the folder the file lives in; must be one of those configured in `VIDEOS_FOLDER_PATH` (otherwise 403). Without this parameter, the file is looked up by name in Elasticsearch. A GET that names its folder, carries no body and passes the auth does not count toward `RATE_LIMIT_MAX`, so a page of thumbnails and a playing video leave the request budget to the API calls. A read without `folder`, or one the auth refuses, still counts.
 
-**Caching:** `.mp4` videos and thumbnails get `public, max-age=31536000, immutable`, because no job of the app writes new bytes under a media or thumbnail name that already exists. A `.vtt` is `no-cache`, since a metadata update can replace it under the same name, and goes out with its cue settings stripped. Anything else (`.info.json`, `.description`, `.srt`) keeps the `no-store` of the rest of the API.
+**Caching:** `.mp4` videos and thumbnails get `public, max-age=31536000, immutable`, because no job of the app writes new bytes under a media or thumbnail name that already exists. The name is not a content address, though: a file replaced by hand, or deleted and downloaded or repaired again under its old name, stays stale in a browser that cached it until eviction or a hard reload. A `.vtt` is `no-cache`, since a metadata update can replace it under the same name, and goes out with its cue settings stripped. Anything else (`.info.json`, `.description`, `.srt`) keeps the `no-store` of the rest of the API.
 
 ### GET /api/videos/:baseName/details
 
