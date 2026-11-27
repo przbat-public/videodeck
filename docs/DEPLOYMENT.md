@@ -76,8 +76,10 @@ points at `http://<host>:3001`.
 docker compose pull && docker compose up -d --build
 ```
 
-After an upgrade, check the boot log for the "index mapping uses analyzer …"
-warning: a mapping change requires a reindex (`POST /api/videos/refreshCache`).
+After an upgrade, check the boot log for "its index predates the current
+mapping": each folder it names needs a full reindex, `POST
+/api/videos/refreshCache` without `onlyMissing` (a run with `onlyMissing`
+skips every folder that already has an index).
 Elasticsearch data is rebuildable at any time. The video folders are the
 store of record.
 

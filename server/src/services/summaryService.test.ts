@@ -307,7 +307,7 @@ describe('generateSummary', () => {
 
   it('reports truncation for subtitle text over the token budget and persists the marker', async () => {
     // The extracted text alone (timestamps stripped) is ~179k chars ≈ 45k
-    // estimated tokens, well over SUMMARY_MAX_INPUT_TOKENS. Every line differs:
+    // estimated tokens, well over gpt-4o's 25,000-token input budget. Every line differs:
     // copies of one line would collapse into a single one
     const longVtt = `WEBVTT\n\n${Array.from(
       { length: 4000 },

@@ -126,8 +126,12 @@ interface SearchBody {
 /**
  * Letters Lucene's ASCIIFoldingFilter folds to ASCII while Unicode NFD leaves
  * them alone. The real index analyzer is `standard` + lowercase +
- * asciifolding, so `ł` has to search as `l`; Polish needs that one, and the
- * rest of the table covers the usual European letters.
+ * asciifolding + the English possessive stemmer, so `ł` has to search as `l`;
+ * Polish needs that one, and the rest of the table covers the usual European
+ * letters. The fake does not run the possessive stemmer: splitting terms on
+ * the apostrophe stands in for it, so only the real-cluster suite can tell a
+ * possessive regression ("matches an English possessive through its base
+ * word").
  */
 const ASCII_FOLD_SPECIALS: Record<string, string> = {
   ß: 'ss',

@@ -21,6 +21,23 @@ describe('findThumbnailFile', () => {
     expect(findThumbnailFile('X', ['X.mp4', 'X.info.json', 'X.en.vtt', 'X.en.png', 'X.description'])).toBeUndefined();
   });
 
+  it('never takes the image of a sibling video whose stem looks like a size', () => {
+    // Restricted names keep a title's dot, so "Part 1.5" is a video of its own
+    // beside "Part 1", and its plain thumbnail reads like a numbered variant
+    const files = [
+      '20200101_Part_1.info.json',
+      '20200101_Part_1.mp4',
+      '20200101_Part_1.5.info.json',
+      '20200101_Part_1.5.mp4',
+      '20200101_Part_1.5.webp',
+    ];
+
+    expect(findThumbnailFile('20200101_Part_1', files)).toBeUndefined();
+    expect(findThumbnailFile('20200101_Part_1.5', files)).toBe('20200101_Part_1.5.webp');
+    // A sibling with media and no info.json is a video all the same
+    expect(findThumbnailFile('X', ['X.mp4', 'X.2.mkv', 'X.2.jpg'])).toBeUndefined();
+  });
+
   it('reads any iterable of names, the folder index passes a set', () => {
     expect(findThumbnailFile('X', new Set(['X.mp4', 'X.jpg']))).toBe('X.jpg');
   });

@@ -56,8 +56,9 @@ const SEARCH_ANALYZER = 'polish_folded';
 
 /**
  * Lucene's English possessive stemmer: strips a trailing 's, written with ',
- * ’ or ＇. It runs after asciifolding, which turns ‘ and the other quote marks
- * into ', so every spelling of the apostrophe reaches it as one it knows.
+ * ’ or ＇. It runs after asciifolding, which turns ‘ into ', so those four
+ * spellings reach it as one it knows. U+02BC (modifier letter apostrophe) is
+ * not among them: neither filter maps it, and it is rare in titles.
  */
 const POSSESSIVE_FILTER = 'english_possessive';
 

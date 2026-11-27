@@ -14,6 +14,7 @@ import {
   getIndexNameFromFolderPath,
   getIndexVersions,
   getVideoByFilePath,
+  listAllIndexVersions,
   listChannelsByFolder,
   promoteIndexVersion,
   SEARCH_FIELDS,
@@ -93,6 +94,14 @@ describeIntegration('Elasticsearch integration', () => {
   afterEach(async () => {
     await deleteIndex(SCRATCH_FOLDER);
     await deleteIndex(SECOND_SCRATCH_FOLDER);
+    // deleteIndex only reaches the versions behind an alias: a test that wrote
+    // into a version it never promoted would leave it on the cluster, which for
+    // a developer run is the one holding the real library
+    for (const folder of [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER]) {
+      for (const version of await listAllIndexVersions(folder)) {
+        await esClient.indices.delete({ index: version, ignore_unavailable: true });
+      }
+    }
   });
 
   /**

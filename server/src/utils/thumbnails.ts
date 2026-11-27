@@ -17,6 +17,51 @@ const PLAIN_EXTENSIONS = ['webp', 'jpg', 'jpeg', 'png'];
 const VARIANT = /^(?:[^.]*_)?(\d+)\.(?:webp|jpe?g|png)$/i;
 
 /**
+ * A name that makes `<stem>.<level>` a video of its own: its metadata or its
+ * media. Restricted names keep a title's dot, so "Part 1.5" is the video
+ * `<stem>.5` beside "Part 1", and its plain thumbnail reads like a numbered
+ * size of the other one. Both share the `<stem>.` prefix, so one pass sees them.
+ */
+const SIBLING_VIDEO = /^(\d+)\.(?:info\.json|mp4|mkv)$/i;
+
+/** What the names under `<stem>.` hold: the plain sidecar, the numbered sizes, the sibling videos */
+interface StemImages {
+  plain: { file: string; rank: number } | undefined;
+  variants: Array<{ file: string; level: number; bareLevel: string | undefined }>;
+  siblingLevels: Set<string>;
+}
+
+/** Record one name under `<stem>.`, where `rest` is what follows that prefix */
+function addName(found: StemImages, file: string, rest: string): void {
+  const rank = PLAIN_EXTENSIONS.indexOf(rest.toLowerCase());
+  if (rank !== -1) {
+    found.plain = found.plain === undefined || rank < found.plain.rank ? { file, rank } : found.plain;
+    return;
+  }
+  const sibling = SIBLING_VIDEO.exec(rest)?.[1];
+  if (sibling !== undefined) {
+    found.siblingLevels.add(sibling);
+    return;
+  }
+  const variant = VARIANT.exec(rest)?.[1];
+  if (variant !== undefined) {
+    // Only a bare `<level>.<ext>` can be a sibling's plain thumbnail
+    found.variants.push({ file, level: Number(variant), bareLevel: rest.includes('_') ? undefined : variant });
+  }
+}
+
+function scanStem(stem: string, files: Iterable<string>): StemImages {
+  const prefix = `${stem}.`;
+  const found: StemImages = { plain: undefined, variants: [], siblingLevels: new Set() };
+  for (const file of files) {
+    if (file.startsWith(prefix)) {
+      addName(found, file, file.slice(prefix.length));
+    }
+  }
+  return found;
+}
+
+/**
  * The thumbnail of the video with this stem among a folder's file names, or
  * undefined when it has none. A plain sidecar wins, `.webp` over `.jpg`,
  * `.jpeg` and `.png`; without one, the highest numbered variant does. That
@@ -24,23 +69,16 @@ const VARIANT = /^(?:[^.]*_)?(\d+)\.(?:webp|jpe?g|png)$/i;
  * in thumbnails: its only images are variants.
  */
 export function findThumbnailFile(stem: string, files: Iterable<string>): string | undefined {
-  const prefix = `${stem}.`;
-  let plain: { file: string; rank: number } | undefined;
-  let variant: { file: string; level: number } | undefined;
-  for (const file of files) {
-    if (!file.startsWith(prefix)) {
-      continue;
-    }
-    const rest = file.slice(prefix.length);
-    const rank = PLAIN_EXTENSIONS.indexOf(rest.toLowerCase());
-    if (rank !== -1) {
-      plain = plain === undefined || rank < plain.rank ? { file, rank } : plain;
-      continue;
-    }
-    const level = Number(VARIANT.exec(rest)?.[1] ?? Number.NaN);
-    if (!Number.isNaN(level) && (variant === undefined || level > variant.level)) {
-      variant = { file, level };
+  const { plain, variants, siblingLevels } = scanStem(stem, files);
+  if (plain !== undefined) {
+    return plain.file;
+  }
+  let best: { file: string; level: number } | undefined;
+  for (const variant of variants) {
+    const isSibling = variant.bareLevel !== undefined && siblingLevels.has(variant.bareLevel);
+    if (!isSibling && (best === undefined || variant.level > best.level)) {
+      best = variant;
     }
   }
-  return plain?.file ?? variant?.file;
+  return best?.file;
 }
