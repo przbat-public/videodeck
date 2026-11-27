@@ -2,11 +2,20 @@
  * Which file is the thumbnail of a video: one rule for the search index and
  * the folder console. The console used to count any image named after the
  * stem while the index took `.webp` and `.jpg` only, so a video the index
- * skipped for "missing thumbnail" showed no gap and offered no repair.
+ * skipped for "missing thumbnail" showed no gap and offered no repair. The
+ * file route takes its image types from here as well.
  */
 
+/** The image formats of a thumbnail, most preferred first, each with the content type it is served as */
+const THUMBNAIL_FORMATS = new Map([
+  ['webp', 'image/webp'],
+  ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['png', 'image/png'],
+]);
+
 /** Extensions of a plain sidecar (`<stem>.webp`), most preferred first, matched without case */
-const PLAIN_EXTENSIONS = ['webp', 'jpg', 'jpeg', 'png'];
+const PLAIN_EXTENSIONS = [...THUMBNAIL_FORMATS.keys()];
 
 /**
  * What follows `<stem>.` in a numbered variant, one per size as
@@ -81,4 +90,13 @@ export function findThumbnailFile(stem: string, files: Iterable<string>): string
     }
   }
   return best?.file;
+}
+
+/**
+ * The content type of a file in one of the thumbnail formats, by its extension
+ * as `path.extname` gives it (`.jpg`, any case), or undefined for any other
+ * file. A numbered size such as `<stem>.mp4_4.webp` ends in one of them too.
+ */
+export function thumbnailContentType(extension: string): string | undefined {
+  return THUMBNAIL_FORMATS.get(extension.replace(/^\./, '').toLowerCase());
 }

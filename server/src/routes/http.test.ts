@@ -435,6 +435,37 @@ describe('Host header guard (DNS rebinding)', () => {
   });
 });
 
+describe('file responses', () => {
+  // The real sendFile on real files: the unit suite's stand-in for it cannot
+  // show which Content-Type and Cache-Control reach the browser
+  it.each([
+    ['a.webp', 'image/webp'],
+    ['b.jpg', 'image/jpeg'],
+    ['c.jpeg', 'image/jpeg'],
+    ['d.png', 'image/png'],
+  ])('serves a %s thumbnail as %s with the thumbnail cache policy', async (name, contentType) => {
+    const folder = useTempLibrary(name);
+
+    const response = await request(createApp()).get(`/api/videos/file/${name}`).query({ folder });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toBe(contentType);
+    expect(response.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+  });
+
+  it.each(['e.info.json', 'e.description', 'e.en.srt'])(
+    'serves %s, which an update rewrites in place, under the no-store of the API',
+    async (name) => {
+      const folder = useTempLibrary(name);
+
+      const response = await request(createApp()).get(`/api/videos/file/${name}`).query({ folder });
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+    },
+  );
+});
+
 describe('rate limiting', () => {
   const originalMax = process.env.RATE_LIMIT_MAX;
   const originalWindow = process.env.RATE_LIMIT_WINDOW_MS;

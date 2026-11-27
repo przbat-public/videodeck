@@ -5,6 +5,7 @@ import type { Response } from 'express';
 import { getVideosFolderPaths } from '../../config';
 import { getVideoByFilePath } from '../../services/elasticsearchService';
 import { logger } from '../../utils/logger';
+import { thumbnailContentType } from '../../utils/thumbnails';
 import { getVideoFilePath, normalizeFolderPath } from '../../utils/videoPathUtils';
 import { stripVttCueSettings } from '../../utils/vttUtils';
 import type { RouteHandler } from '../http';
@@ -23,13 +24,18 @@ import type { RouteHandler } from '../http';
  * settings stripped.
  */
 
-/** Content type and cache headers for a served file extension */
+/**
+ * Content type and cache headers for a served file extension. Thumbnails come
+ * in every format the thumbnail rule accepts (utils/thumbnails.ts): a `.jpg`
+ * or `.png` the index points at used to go out as octet-stream, uncached.
+ */
 function fileContentType(ext: string): { contentType: string; immutable: boolean } {
   if (ext === '.mp4') {
     return { contentType: 'video/mp4', immutable: true };
   }
-  if (ext === '.webp') {
-    return { contentType: 'image/webp', immutable: true };
+  const thumbnailType = thumbnailContentType(ext);
+  if (thumbnailType !== undefined) {
+    return { contentType: thumbnailType, immutable: true };
   }
   if (ext === '.vtt') {
     return { contentType: 'text/vtt; charset=utf-8', immutable: false };
@@ -143,9 +149,15 @@ export const serveFile: RouteHandler<{ filename: string }, never> = async (req, 
   const { contentType, immutable } = fileContentType(ext);
   res.setHeader('Content-Type', contentType);
   if (immutable) {
-    // Videos and thumbnails are content-addressed by their yt-dlp file stem:
-    // a new version gets a new name, so the same URL always serves the same
-    // bytes.
+    // A year without revalidation, because no job of the app puts new bytes
+    // under a media or thumbnail name that already exists: a download writes
+    // a stem that is not there yet, an update or a comment repair never
+    // touches the media and keeps an archived thumbnail (commitThumbnail in
+    // refreshStaging.ts), and a sidecar repair runs with --no-overwrites. A
+    // missing file answers 404 under the API's no-store, so its absence is
+    // not cached either. The stem is no content address, though: a file
+    // replaced by hand, or deleted and repaired under its old name, stays
+    // stale in a browser that cached it, until eviction or a hard reload.
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   }
   res.sendFile(realPath);

@@ -648,16 +648,12 @@ describe('videos router', () => {
         this: express.Response,
         filePath: string,
       ) {
-        // Set content-type header that would normally be set
-        const ext = path.extname(filePath.toString()).toLowerCase();
-        if (ext === '.mp4') {
-          this.setHeader('Content-Type', 'video/mp4');
-        } else if (ext === '.webp') {
-          this.setHeader('Content-Type', 'image/webp');
-        } else if (ext === '.vtt') {
-          this.setHeader('Content-Type', 'text/vtt; charset=utf-8');
-        } else {
-          this.setHeader('Content-Type', 'application/octet-stream');
+        // Like the real send, keep a Content-Type the route already set and
+        // type the file by its extension only when it set none. A stand-in
+        // that always wrote its own let the type assertions below pass
+        // whatever the route sent.
+        if (this.getHeader('Content-Type') === undefined) {
+          this.type(path.extname(filePath));
         }
         // End the response to prevent hanging
         this.status(200).end();
