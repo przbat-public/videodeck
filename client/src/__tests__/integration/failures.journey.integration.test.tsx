@@ -81,14 +81,20 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
 
     // The fake yt-dlp fails each id immediately with the live error text;
     // the queue maps it to a machine-readable code and the row translates
-    // it — the raw stderr stays visible in the job log below.
-    await within(section).findByText('Ten film jest dostępny tylko dla członków kanału (members-only)', undefined, {
-      timeout: 30_000,
-    });
-    await within(section).findByText('Ten film jest prywatny');
-    await within(section).findByText('Ten film został usunięty lub jest niedostępny');
-    expect(await within(section).findAllByText('Błąd')).toHaveLength(3);
-    await within(section).findByText(/ERROR: \[youtube\] member99999/);
+    // it, while the raw stderr stays visible in the job log below. The jobs
+    // run two at a time and the page polls the queue every 1.5 s, so each
+    // row's error can land a poll after the one before it: every wait gets
+    // the same budget, where the second used to get the default second.
+    const settled = { timeout: 30_000 };
+    await within(section).findByText(
+      'Ten film jest dostępny tylko dla członków kanału (members-only)',
+      undefined,
+      settled,
+    );
+    await within(section).findByText('Ten film jest prywatny', undefined, settled);
+    await within(section).findByText('Ten film został usunięty lub jest niedostępny', undefined, settled);
+    await waitFor(() => expect(within(section).getAllByText('Błąd')).toHaveLength(3), settled);
+    await within(section).findByText(/ERROR: \[youtube\] member99999/, undefined, settled);
     // Errors keep the log, but never the running-state progress bar.
     expect(within(section).queryByRole('progressbar')).toBeNull();
 
