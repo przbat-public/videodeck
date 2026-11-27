@@ -501,10 +501,12 @@ describe('FakeElasticsearch controls', () => {
       expect(await clusterBlocks()).toEqual({
         indices: {
           videos_x: {
+            // The entry Elasticsearch 9.5 lists, down to its documentation link
             '12': {
-              description: 'disk usage exceeded flood-stage watermark, index has read-only-allow-delete block',
+              description:
+                'disk usage exceeded flood-stage watermark, index has read-only-allow-delete block; for more information, see https://www.elastic.co/docs/troubleshoot/elasticsearch/fix-watermark-errors?version=9.5',
               retryable: false,
-              levels: ['write', 'metadata_write'],
+              levels: ['write'],
             },
           },
         },

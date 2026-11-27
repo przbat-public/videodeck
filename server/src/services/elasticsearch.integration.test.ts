@@ -546,11 +546,15 @@ describeIntegration('Elasticsearch integration', () => {
 
     await esClient.indices.putSettings({ index: indexName, settings: { 'index.blocks.read_only_allow_delete': true } });
     try {
+      // Elasticsearch 9.5 lists the write level alone and ends the description
+      // with a documentation link for its own version, which the fake copies
       expect((await blocksOf()).blocks.indices?.[indexName]).toEqual({
         '12': {
-          description: 'disk usage exceeded flood-stage watermark, index has read-only-allow-delete block',
+          description: expect.stringMatching(
+            /^disk usage exceeded flood-stage watermark, index has read-only-allow-delete block/,
+          ),
           retryable: false,
-          levels: ['write', 'metadata_write'],
+          levels: ['write'],
         },
       });
 

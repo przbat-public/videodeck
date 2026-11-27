@@ -185,14 +185,17 @@ function tooLongLineError(): Record<string, unknown> {
 
 /**
  * The block index.blocks.read_only_allow_delete puts on an index, under its id
- * as the cluster state lists it. Hardcoded like RESULT_WINDOW: the fake has to
- * answer what a cluster answers, not what the code under test expects.
+ * as the cluster state of Elasticsearch 9.5 lists it: the write level alone,
+ * and a description that ends with a link to that version's docs. Hardcoded
+ * like RESULT_WINDOW: the fake has to answer what a cluster answers, not what
+ * the code under test expects.
  */
 const WRITE_BLOCK_ID = '12';
 const WRITE_BLOCK = {
-  description: 'disk usage exceeded flood-stage watermark, index has read-only-allow-delete block',
+  description:
+    'disk usage exceeded flood-stage watermark, index has read-only-allow-delete block; for more information, see https://www.elastic.co/docs/troubleshoot/elasticsearch/fix-watermark-errors?version=9.5',
   retryable: false,
-  levels: ['write', 'metadata_write'],
+  levels: ['write'],
 };
 
 /** The error a cluster answers a write into an index carrying that block with */

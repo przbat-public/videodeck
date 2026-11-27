@@ -629,7 +629,7 @@ describe('elasticsearchService', () => {
       // index.blocks.read_only_allow_delete, which the flood-stage disk
       // watermark puts on every index of a full node: a ping still answers
       mockClient.cluster.state.mockResolvedValue({
-        blocks: { indices: { [`${ALIAS_A}_20250101000000000`]: { '12': block('write', 'metadata_write') } } },
+        blocks: { indices: { [`${ALIAS_A}_20250101000000000`]: { '12': block('write') } } },
       });
 
       await expect(checkElasticsearchWrites()).resolves.toBe('refused');
