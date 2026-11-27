@@ -1,20 +1,23 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { Counter } from '@prometheus-io/client';
 import { metricsRegistry } from '../metricsRegistry';
 import { logger } from '../utils/logger';
 import { describeError, LogThrottle } from '../utils/logThrottle';
-import { hasGlobMagic, isDirectory } from './libraryScan';
+import { watchDirectoriesFor } from './libraryScan';
 
 /**
  * Noticing that the library moved, and asking for a new scan when it did.
  *
  * One watcher per process, created by `libraryState.ts` and re-armed every time
- * it publishes: the handles attach to the longest existing ancestor of each
- * configured root, so a glob over `/Volumes` is watched at `/Volumes` while a
- * drive is away, and every event is debounced into a single reconcile. Whether
- * the platform delivers anything at all is not assumed, which is what the
- * backstop timer is for.
+ * it publishes. Each handle is a plain watch on one directory whose entries
+ * decide the folder list (watchDirectoriesFor in libraryScan.ts): the volume
+ * directory a glob starts from, every drive a glob level matches below it, the
+ * parent of a literal root, or the longest existing ancestor of one of those
+ * while its drive is away. No channel folder is watched, so a running download
+ * raises no event, and every event is debounced into a single reconcile.
+ * Whether the platform delivers anything at all is not assumed, which is what
+ * the backstop timer is for; it also catches a directory that becomes a
+ * channel folder after it appeared, which no watched directory announces.
  *
  * Nothing here reads the snapshot: the caller hands over the roots to watch and
  * the function to call when something moved, which keeps this module free of a
@@ -28,7 +31,7 @@ export interface LibraryWatchHandle {
 
 /** Injectable collaborators: tests never depend on inotify or on a real clock */
 export interface LibraryWatchDeps {
-  /** Defaults to `fs.watch(dir, { recursive: true }, onChange)` */
+  /** Defaults to a plain `fs.watch(dir, onChange)`, which hears the entries of `dir` only */
   readonly watch?: (dir: string, onChange: () => void) => LibraryWatchHandle;
   readonly debounceMs?: number;
   readonly backstopMs?: number;
@@ -73,13 +76,15 @@ function reportWatchError(target: string, error: unknown): void {
 }
 
 /**
- * The real watcher. `recursive` is what makes one handle cover a whole drive:
- * a channel folder created two levels down still produces an event. Whether
- * the platform delivers anything at all is not assumed, which is what the
- * backstop is for.
+ * The real watcher, plain on purpose. A recursive one covered a whole drive
+ * from one handle, but it also heard every write of a running download, and
+ * off macOS Node builds it from one watch per file and lists the directory
+ * again, on the main thread, for every event in it: a channel folder with tens
+ * of thousands of files paid that on each write. Each directory that decides
+ * the list gets a handle of its own instead (watchTargets).
  */
 function defaultWatch(dir: string, onChange: () => void): LibraryWatchHandle {
-  const watcher = fs.watch(dir, { recursive: true }, () => onChange());
+  const watcher = fs.watch(dir, () => onChange());
   watcher.on('error', (error: unknown) => {
     reportWatchError(dir, error);
   });
@@ -90,31 +95,17 @@ function defaultWatch(dir: string, onChange: () => void): LibraryWatchHandle {
   };
 }
 
-function longestExistingAncestor(root: string): string | null {
-  let candidate = path.resolve(root);
-  while (true) {
-    if (!hasGlobMagic(candidate) && isDirectory(candidate)) {
-      return candidate;
-    }
-    const parent = path.dirname(candidate);
-    if (parent === candidate) {
-      return null;
-    }
-    candidate = parent;
-  }
-}
-
 /**
- * Directories worth watching for one set of roots: the longest existing
- * ancestor of each. A glob root over a volume path watches that volume, and a
- * root whose drive is away watches the parent that is still there.
+ * Directories worth watching for one set of roots: every directory whose
+ * entries decide what one of them resolves to, once each. A glob over a volume
+ * path watches that volume and each drive on it, and a root whose drive is away
+ * watches the parent that is still there.
  */
 function watchTargets(roots: readonly string[]): string[] {
   const targets = new Set<string>();
   for (const root of roots) {
-    const target = longestExistingAncestor(root);
-    if (target !== null) {
-      targets.add(target);
+    for (const directory of watchDirectoriesFor(root)) {
+      targets.add(directory);
     }
   }
   return [...targets].sort();
