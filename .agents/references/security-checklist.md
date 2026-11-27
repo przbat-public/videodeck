@@ -42,7 +42,9 @@ Pre-commit and pre-merge checks for any change. Pair with
 - [ ] `pnpm audit` clean or every finding triaged (reachable? patched?
   held with a note?)
 - [ ] Lockfile diff reviewed; one package per upgrade
-- [ ] Major-version holds respected (typescript, zod, react-window)
+- [ ] Dependency holds respected (`.github/dependabot.yml`, explained in
+  CONTRIBUTING.md: typescript and @types/node majors, jsdom minor and patch
+  releases)
 
 ## OWASP spot check
 

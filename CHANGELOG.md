@@ -312,6 +312,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refused with a message naming the argument, both by the API and when a
   hand-written `config.json` is read back
 
+### Removed
+
+- The weekly dependency report workflow. It never produced data, because the
+  runner had no pnpm to run, and OSV, the `pnpm audit` check and Dependabot
+  alerts cover what it set out to report
+
 ### Security
 
 - **One request can no longer take the server down.** body-parser 2.3.0 left
@@ -335,6 +341,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A freshly published package stays out of the lockfile for a day
   (`minimumReleaseAge: 1440`, strict), and Dependabot waits three days
   before it proposes one
+- GitHub's dependency graph reads the whole lockfile again. pnpm 12 put a
+  document about its own version first, GitHub reads only the first
+  document, and so Dependabot raised no alert for any of the 700 packages
+  behind it. `pmOnFail: ignore` keeps that document out
+- One `CI ok` check gathers every CI job, `pnpm audit` included. It fails
+  when a job failed, or was skipped although the change touched code, which
+  is what a failed change detection used to cause: every job behind it
+  skipped, and the pull request could still merge
 - **Closed a remote code execution path through `extraArgs`.** The old check
   was a list of forbidden flags, and yt-dlp's parser walks around such a list:
   `--alias` defines an arbitrary flag, short options cluster (`-ia` is two),
@@ -510,9 +524,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "clear finished" tracks jobs finished elsewhere, they report a failed
   request instead of silently staying disabled, and their error text is
   translated rather than English
-- The weekly dependency report runs `pnpm outdated` and `pnpm audit`; it used
-  to run the npm commands in a pnpm workspace, fail, and print "0 vulns" for
-  a check that never ran. A command that cannot answer now says so
 - Server request logs keep the request path and drop the query string, so
   folder paths and search phrases no longer end up in the log file
 - The paging integration journey waits for the appended page instead of
