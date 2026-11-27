@@ -410,8 +410,13 @@ const writeChains = new Map<string, Promise<void>>();
 
 /**
  * Run an index write of the folder once the writes queued before it have
- * settled, failed ones included. A write must not call an exported writer of
- * the same folder: it would wait for itself.
+ * settled, failed ones included. A write must not call an exported function
+ * of this module that loads or saves the index of the same folder: it would
+ * wait for itself. That includes the readers. loadIndex, and
+ * getDownloadStatuses and findEntryByVideoId through it, queue a rebuild in
+ * the chain whenever the index is missing, corrupt or outdated, so the wait
+ * shows only on such a folder. Inside the chain, read with readIndexFile and
+ * rebuild with scanAndSave.
  */
 function inWriteChain<T>(folderPath: string, write: () => Promise<T>): Promise<T> {
   const key = path.resolve(folderPath);

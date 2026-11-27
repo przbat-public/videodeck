@@ -357,6 +357,36 @@ describe('folderIndex', () => {
       return () => [...reads];
     }
 
+    /** One spy on fs.open; each hold() parks the first open of that video's info.json, a write's head read, until release() */
+    function gateInfoOpens(): { hold: (baseName: string) => { reached: Promise<void>; release: () => void } } {
+      const realOpen = fs.open;
+      const holds = new Map<string, { signalReached: () => void; released: Promise<void> }>();
+      vi.spyOn(fs, 'open').mockImplementation(async (file, flags, mode) => {
+        const name = path.basename(String(file));
+        const hold = holds.get(name);
+        if (hold) {
+          holds.delete(name);
+          hold.signalReached();
+          await hold.released;
+        }
+        return realOpen(file, flags, mode);
+      });
+      return {
+        hold(baseName) {
+          let release: () => void = () => undefined;
+          const released = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          let signalReached: () => void = () => undefined;
+          const reached = new Promise<void>((resolve) => {
+            signalReached = resolve;
+          });
+          holds.set(`${baseName}.info.json`, { signalReached, released });
+          return { reached, release };
+        },
+      };
+    }
+
     const storedIds = async (): Promise<string[]> => Object.keys((await loadIndex(dir)).entries).sort();
 
     it('keeps the video a job refresh adds while a reader rebuild is still scanning', async () => {
@@ -390,6 +420,59 @@ describe('folderIndex', () => {
       // Each read the index, added its own video and saved: the later save
       // dropped the other one's
       const collectionRead = indexUntrackedVideos(dir);
+      await held.reached;
+      await writeVideo(dir, '20240102_Second', 'id-second');
+      const refresh = refreshIndex(dir, Date.now() - 1000);
+      await Promise.all(indexReads());
+      held.release();
+      await Promise.all([collectionRead, refresh]);
+
+      expect(await storedIds()).toEqual(['id-first', 'id-moved', 'id-second']);
+    });
+
+    it('keeps a third write waiting for the second, which still runs after the first has settled', async () => {
+      await writeAgedVideo('20240101_First', 'id-first', HOUR_MS);
+      await rebuildIndex(dir);
+      await writeAgedVideo('20230101_MovedA', 'id-moved-a', 24 * HOUR_MS);
+      const gate = gateInfoOpens();
+      const firstHeld = gate.hold('20230101_MovedA');
+      const secondHeld = gate.hold('20240102_Second');
+      const indexReads = recordIndexReads();
+
+      // The first write leaving must not end the chain the second one runs in:
+      // a third write would start beside it, and the later save drops the
+      // other one's video
+      const collectionRead = indexUntrackedVideos(dir);
+      await firstHeld.reached;
+      await writeVideo(dir, '20240102_Second', 'id-second');
+      const refresh = refreshIndex(dir, Date.now() - 1000);
+      firstHeld.release();
+      await collectionRead;
+      await secondHeld.reached;
+      await writeAgedVideo('20230102_MovedC', 'id-moved-c', 24 * HOUR_MS);
+      const readsBefore = indexReads().length;
+      const nextCollectionRead = indexUntrackedVideos(dir);
+      for (let turn = 0; turn < 3; turn += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      expect(indexReads()).toHaveLength(readsBefore);
+      secondHeld.release();
+      await Promise.all([refresh, nextCollectionRead]);
+
+      expect(await storedIds()).toEqual(['id-first', 'id-moved-a', 'id-moved-c', 'id-second']);
+    });
+
+    it('keeps both videos when the collection read names the folder with a trailing slash', async () => {
+      await writeAgedVideo('20240101_First', 'id-first', HOUR_MS);
+      await rebuildIndex(dir);
+      await writeAgedVideo('20230101_MovedIn', 'id-moved', 24 * HOUR_MS);
+      const held = holdFirstInfoOpen();
+      const indexReads = recordIndexReads();
+
+      // The console's folder list passes a library root as configured, a
+      // trailing slash included, where a job gets the normalized path: both
+      // spellings have to share one chain
+      const collectionRead = indexUntrackedVideos(`${dir}/`);
       await held.reached;
       await writeVideo(dir, '20240102_Second', 'id-second');
       const refresh = refreshIndex(dir, Date.now() - 1000);
