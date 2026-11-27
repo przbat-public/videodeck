@@ -109,6 +109,8 @@ VIDEOS_FOLDER_PATH=/Volumes/MEDIA/folder1;/Volumes/MEDIA/folder2;/Volumes/MEDIA/
 ELASTICSEARCH_URL=http://localhost:9200
 ```
 
+A folder written out in full, as in these examples, has to exist when the server starts: a missing one stops the startup, and the message tells a typo from a drive that is not mounted.
+
 **Folders on removable drives**: instead of swapping lines each time you swap the drive, use a glob pattern. `*` matches one path segment, and a directory containing `config.json` or `*.info.json` is treated as a channel folder:
 
 ```

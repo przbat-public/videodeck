@@ -1,5 +1,8 @@
+import fs from 'node:fs';
 import os from 'node:os';
-import { getVideoFilePath, normalizeFolderPath, sanitizeFilename } from './videoPathUtils';
+import path from 'node:path';
+import { invalidateVideosFolderCache } from '../config';
+import { getVideoFilePath, normalizeFolderPath, sanitizeFilename, validateVideosFolder } from './videoPathUtils';
 
 describe('normalizeFolderPath', () => {
   const realHomedir = os.homedir();
@@ -105,5 +108,69 @@ describe('getVideoFilePath', () => {
   it('should strip traversal attempts instead of letting them escape', () => {
     expect(getVideoFilePath('../etc/passwd')).toBe('/videos/a/passwd');
     expect(() => getVideoFilePath('')).toThrow('Invalid filename: empty filename');
+  });
+});
+
+describe('validateVideosFolder', () => {
+  // process.env outlives a test file inside a vitest worker, so the value goes
+  // back the way this file found it (config.test.ts explains the neighbours).
+  const originalVideosFolderPath = process.env.VIDEOS_FOLDER_PATH;
+  let base: string;
+
+  beforeEach(() => {
+    base = fs.mkdtempSync(path.join(os.tmpdir(), 'video-validate-'));
+    fs.mkdirSync(path.join(base, 'MEDIA'));
+  });
+
+  afterEach(() => {
+    if (originalVideosFolderPath === undefined) {
+      delete process.env.VIDEOS_FOLDER_PATH;
+    } else {
+      process.env.VIDEOS_FOLDER_PATH = originalVideosFolderPath;
+    }
+    invalidateVideosFolderCache();
+    fs.rmSync(base, { recursive: true, force: true });
+  });
+
+  it('accepts a literal folder that exists', async () => {
+    process.env.VIDEOS_FOLDER_PATH = path.join(base, 'MEDIA');
+
+    await expect(validateVideosFolder()).resolves.toBeUndefined();
+  });
+
+  it('refuses a literal folder that does not exist and names the glob that boots without it', async () => {
+    // The drive is there and the channel folder is not: a typo, most likely
+    const media = path.join(base, 'MEDIA');
+    process.env.VIDEOS_FOLDER_PATH = path.join(media, 'missing');
+
+    const validation = validateVideosFolder();
+
+    await expect(validation).rejects.toThrow(`${path.join(media, 'missing')} does not exist, but ${media} does`);
+    await expect(validation).rejects.toThrow('check the spelling');
+    await expect(validation).rejects.toThrow(`${media}/*`);
+  });
+
+  it('says the drive looks unmounted when the parent is missing too', async () => {
+    const drive = path.join(base, 'NOT_MOUNTED');
+    process.env.VIDEOS_FOLDER_PATH = path.join(drive, 'channel');
+
+    const validation = validateVideosFolder();
+
+    await expect(validation).rejects.toThrow(
+      `${path.join(drive, 'channel')} does not exist, and neither does ${drive}`,
+    );
+    await expect(validation).rejects.toThrow('the drive looks unmounted');
+    await expect(validation).rejects.toThrow(`${drive}/*`);
+  });
+
+  it('boots when a glob matches nothing', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
+      /* silence the expected folder-miss warnings */
+    });
+    process.env.VIDEOS_FOLDER_PATH = `${path.join(base, 'NOT_MOUNTED')}/*`;
+
+    await expect(validateVideosFolder()).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('No video folders found'));
+    warn.mockRestore();
   });
 });

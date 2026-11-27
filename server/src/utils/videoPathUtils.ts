@@ -22,7 +22,57 @@ export function normalizeFolderPath(value: string): string {
   return normalized;
 }
 
-// Validate that all folders exist
+/** Whether anything exists at this path, a directory or not */
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await fs.stat(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The line for a folder that does not exist. Its parent tells the two usual
+ * causes apart: a parent that exists points at a typo in the last segment, and
+ * a parent that is missing as well at a drive that is not mounted.
+ */
+async function describeMissingFolder(folderPath: string): Promise<string> {
+  const parent = path.dirname(folderPath);
+  if (await pathExists(parent)) {
+    return `${folderPath} does not exist, but ${parent} does: check the spelling`;
+  }
+  return `${folderPath} does not exist, and neither does ${parent}: the drive looks unmounted`;
+}
+
+/**
+ * The lines for the folders that do not exist, none when every folder does,
+ * closed by one line on how to start without the drive. Only a folder written
+ * out in full can be missing here, because a glob expands to the folders that
+ * exist. The glob in that line is built from the first missing folder and
+ * offered as an example, not as a fix: it matches the sibling channel folders
+ * as well.
+ */
+async function describeMissingFolders(missing: readonly string[]): Promise<string[]> {
+  const [first] = missing;
+  if (first === undefined) {
+    return [];
+  }
+  const lines = await Promise.all(missing.map((folderPath) => describeMissingFolder(folderPath)));
+  const pattern = path.join(path.dirname(first), '*');
+  lines.push(
+    'A folder written out in full must exist at startup, while a glob that matches nothing ' +
+      `(for example ${pattern}) starts the server with a warning and picks the folders up once the drive is mounted.`,
+  );
+  return lines;
+}
+
+/**
+ * Validate that every configured folder exists. A missing one fails the boot on
+ * purpose, since it is often a typo that would otherwise pass for an empty
+ * library (docs/plans/library-state.md); the message says which of the two
+ * usual causes it looks like and how to start without the drive.
+ */
 export async function validateVideosFolder(): Promise<void> {
   const folderPaths = getVideosFolderPaths();
 
@@ -38,6 +88,7 @@ export async function validateVideosFolder(): Promise<void> {
   }
 
   const errors: string[] = [];
+  const missing: string[] = [];
 
   for (const folderPath of folderPaths) {
     try {
@@ -47,13 +98,14 @@ export async function validateVideosFolder(): Promise<void> {
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        errors.push(`${folderPath} does not exist`);
+        missing.push(folderPath);
       } else {
         errors.push(`Error accessing ${folderPath}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }
 
+  errors.push(...(await describeMissingFolders(missing)));
   if (errors.length > 0) {
     throw new Error(`VIDEOS_FOLDER_PATH validation failed:\n${errors.join('\n')}`);
   }
