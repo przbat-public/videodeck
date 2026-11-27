@@ -18,9 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stop matching a search
 - **Opening comment-heavy videos one after another no longer fills the
   server's memory.** The comment cache kept the last 50 parsed trees however
-  large they were. Each tree now weighs as much as its file, the cache holds
-  at most a quarter of the heap, and the tree read longest ago goes first.
-  Two views of one video that arrive together share a single parse
+  large they were. The cache now books each tree by the size of the file it
+  came from and keeps the trees within a quarter of the heap, which only the
+  one just parsed may pass; the tree read longest ago goes first. Two views
+  of one video that arrive together share a single parse
 - **A video page reads its `info.json` once.** The details route parsed the
   whole file for the title and counts, then the comment cache parsed it
   again. Those fields come from the index now, so a count written by hand as
@@ -45,9 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   thumbnail and every range the player fetched counted toward the 2,000
   requests per 10 minutes an IP may make, so a long session ran it out:
   thumbnails answered 429 and vanished, and the tab's own API calls were
-  refused next. A file read that names its folder, as the web UI always
-  does, is no longer counted; a read without one, which asks Elasticsearch
-  where the file lives, still is
+  refused next. A file read that names its folder and passes the auth, as
+  the web UI's reads do, is no longer counted. One the auth refuses, such as
+  a guess at the API token, still counts, and so does a read without the
+  folder, which asks Elasticsearch where the file lives
 - **`.jpg`, `.jpeg` and `.png` thumbnails load as images and stay cached.**
   The file route only knew `.webp`, so the rest went out as
   `application/octet-stream`, uncached, and came down again on every visit.
@@ -58,6 +60,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the directories that decide the folder list are watched now, such as
   `/Volumes` and the top of each drive. A folder that turns into a channel
   some time after it was created waits for the check that runs every minute
+- **A video no longer takes a sibling's subtitles.** An older
+  `<date>_<title>` name keeps a title's dot, so every caption of "Part 1.5"
+  started with the name of "Part 1", which indexed them as its transcript,
+  offered them as player tracks and counted their languages in the console.
+  A subtitle belongs to a video only as `<name>.vtt` or
+  `<name>.<language>.vtt` now, never when `<name>.<language>` is a video of
+  its own. The console's language badges follow after
+  `POST /api/folder/rebuild-index`
 - **Videos without a thumbnail show up in search.** The reindex dropped any
   video lacking a `.webp` or `.jpg` beside it, so a folder downloaded with
   `--no-write-thumbnail` stayed invisible, while the channel console counted
@@ -184,8 +194,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without `onlyMissing` (Refresh index, with "only missing" unchecked). An
   `onlyMissing` run or a drive swap keeps indices built earlier, which lack
   the billion-view counts, possessive matching, once-per-line auto-captions,
-  thumbnail-less videos, capped comment text and oversized `info.json` files
-  fixed above. New indices carry an analysis version in their mapping, and
+  thumbnail-less videos, capped comment text, oversized `info.json` files and
+  captions taken from a sibling video fixed above. New indices carry an analysis version in their mapping, and
   the boot log names each folder still behind
 - **`GET /api/videos/:id/details` no longer returns `duration`.** Nothing
   rendered it, and the index does not store it, so keeping it would have
