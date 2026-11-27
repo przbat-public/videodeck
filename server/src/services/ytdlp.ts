@@ -255,9 +255,10 @@ const MAX_STDOUT_BYTES = 64 * 1024 * 1024;
  * message that includes the stderr tail. No shell is involved (`spawn` takes
  * an argument array), so channel URLs cannot inject commands. A hung yt-dlp
  * is killed after `RUN_TIMEOUT_MS` and the collected stdout is capped at
- * `MAX_STDOUT_BYTES`.
+ * `MAX_STDOUT_BYTES`. Without a command it runs the binary YTDLP_PATH names,
+ * the one the download queue spawns.
  */
-export function runYtDlp(args: string[], cwd: string, options: { command?: string } = {}): Promise<string> {
+export function runYtDlp(args: string[], cwd: string, options: { command?: string | undefined } = {}): Promise<string> {
   const command = options.command ?? process.env.YTDLP_PATH ?? 'yt-dlp';
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd });
@@ -306,11 +307,14 @@ export function runYtDlp(args: string[], cwd: string, options: { command?: strin
 }
 
 /**
- * The installed yt-dlp version (`yt-dlp --version`), trimmed — or null when
- * the binary is missing or broken. Logged at startup: YouTube changes break
- * old yt-dlp releases regularly, so the version belongs in the boot log.
+ * The version of the yt-dlp binary the download queue spawns (`--version`,
+ * trimmed), or null when that binary is missing or broken. Without a command
+ * it asks the one YTDLP_PATH names, falling back to PATH like the queue does,
+ * so a typo in YTDLP_PATH shows at boot instead of PATH's version. Logged at
+ * startup: YouTube changes break old yt-dlp releases regularly, so the
+ * version belongs in the boot log.
  */
-export async function getYtDlpVersion(command = 'yt-dlp'): Promise<string | null> {
+export async function getYtDlpVersion(command?: string): Promise<string | null> {
   try {
     return (await runYtDlp(['--version'], process.cwd(), { command })).trim();
   } catch {

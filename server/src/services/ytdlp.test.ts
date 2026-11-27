@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 import { buildPlaylistArgs, buildYtDlpArgs, getYtDlpVersion } from './ytdlp';
 
@@ -163,5 +164,23 @@ describe('getYtDlpVersion', () => {
 
   it('returns null when the command does not exist', async () => {
     await expect(getYtDlpVersion('definitely-not-a-command-xyz')).resolves.toBeNull();
+  });
+
+  it('asks the binary YTDLP_PATH names when no command is given', async () => {
+    // The queue spawns YTDLP_PATH (downloadQueue/queue.ts), so the version in
+    // the boot log has to come from that binary and not from the one on PATH.
+    const original = process.env.YTDLP_PATH;
+    process.env.YTDLP_PATH = path.join(__dirname, '../../../scripts/fake-bin/yt-dlp');
+    try {
+      await expect(getYtDlpVersion()).resolves.toBe('2026.06.01-fake');
+    } finally {
+      // process.env outlives a test file inside a vitest worker, so the next
+      // file would inherit the fake binary without this.
+      if (original === undefined) {
+        delete process.env.YTDLP_PATH;
+      } else {
+        process.env.YTDLP_PATH = original;
+      }
+    }
   });
 });
