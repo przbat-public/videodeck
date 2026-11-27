@@ -1,23 +1,52 @@
 import { once } from 'node:events';
+import fs from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
 import zlib, { type Gunzip, gzipSync } from 'node:zlib';
 import type { HealthResponse } from '@videodeck/shared/api';
 import express from 'express';
 import request from 'supertest';
 import type { MockedFunction } from 'vitest';
 import { createApp } from '../app';
-import { checkElasticsearchConnection } from '../services/elasticsearchService';
+import { checkElasticsearchConnection, getVideoByFilePath } from '../services/elasticsearchService';
 import { createAuthMiddleware, isAllowedCorsOrigin } from './http';
 
 vi.mock('../services/elasticsearchService', () => ({
   checkElasticsearchConnection: vi.fn(),
+  getVideoByFilePath: vi.fn(),
 }));
 
 const mockedCheckElasticsearch = checkElasticsearchConnection as MockedFunction<typeof checkElasticsearchConnection>;
 
 // config.ts validates VIDEOS_FOLDER_PATH at import time
 process.env.VIDEOS_FOLDER_PATH = '/test/videos';
+
+/** Folders a test made its library, removed once it ends */
+const tempLibraries: string[] = [];
+
+/**
+ * A library of one real folder holding the named files, set as
+ * VIDEOS_FOLDER_PATH for the rest of the test. The file route reads the disk,
+ * so a test of what it answers needs files that exist.
+ */
+function useTempLibrary(...fileNames: string[]): string {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'http-test-library-'));
+  for (const name of fileNames) {
+    fs.writeFileSync(path.join(folder, name), `bytes of ${name}`);
+  }
+  tempLibraries.push(folder);
+  process.env.VIDEOS_FOLDER_PATH = folder;
+  return folder;
+}
+
+afterEach(() => {
+  process.env.VIDEOS_FOLDER_PATH = '/test/videos';
+  for (const folder of tempLibraries.splice(0)) {
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
+});
 
 describe('createAuthMiddleware', () => {
   function buildApp(token?: string): express.Express {
@@ -435,6 +464,58 @@ describe('rate limiting', () => {
     const limited = await request(app).get('/health/live');
     expect(limited.status).toBe(429);
     expect(limited.body).toEqual({ error: 'Too many requests' });
+  });
+
+  it('lets media reads through without spending the API budget', async () => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const folder = useTempLibrary('a.webp');
+    const app = createApp();
+
+    // A results page asks for one thumbnail per card and the player for range
+    // after range of one video, so a budget sized for the API ran out mid-page
+    for (let i = 0; i < 5; i += 1) {
+      expect((await request(app).get('/api/videos/file/a.webp').query({ folder })).status).toBe(200);
+    }
+
+    // The budget is still whole, and the same query on another path buys
+    // nothing: only the file route is exempt
+    for (let i = 0; i < 3; i += 1) {
+      expect((await request(app).get('/api/videos/refreshCache/status').query({ folder })).status).toBe(200);
+    }
+    const limited = await request(app).get('/api/videos/refreshCache/status').query({ folder });
+    expect(limited.status).toBe(429);
+  });
+
+  it('still counts a file read that asks Elasticsearch for its folder', async () => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    useTempLibrary('a.webp');
+    vi.mocked(getVideoByFilePath).mockResolvedValue(null);
+    const app = createApp();
+
+    // The shipped clients always name the folder; a read without one costs a
+    // lookup in the cluster, so it stays on the budget
+    for (let i = 0; i < 3; i += 1) {
+      expect((await request(app).get('/api/videos/file/a.webp')).status).toBe(404);
+    }
+    const limited = await request(app).get('/api/videos/file/a.webp');
+    expect(limited.status).toBe(429);
+  });
+
+  it('still counts a file request that is not a GET', async () => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const folder = useTempLibrary('a.webp');
+    const app = createApp();
+
+    // Express answers a HEAD from the GET route, but no page sends one: an
+    // image or a video element reads with GET
+    for (let i = 0; i < 3; i += 1) {
+      expect((await request(app).head('/api/videos/file/a.webp').query({ folder })).status).toBe(200);
+    }
+    const limited = await request(app).head('/api/videos/file/a.webp').query({ folder });
+    expect(limited.status).toBe(429);
   });
 });
 

@@ -66,6 +66,21 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
 }
 
 /**
+ * The browser's media reads: a thumbnail per result card and range after range
+ * while the player streams, far more requests than the API calls the request
+ * budget is sized for. They skip the budget, so a long results page no longer
+ * runs it out and blanks its own thumbnails. Only a read that names its folder
+ * qualifies: without `?folder=` the route asks Elasticsearch where the file
+ * lives, and that lookup stays on the budget. There is no exemption by address
+ * either, because behind the dev proxy, or any proxy on the same host without
+ * TRUST_PROXY, every client is loopback. At the app level `req.path` is the
+ * whole path, `/api` included.
+ */
+function isMediaRead(req: Request): boolean {
+  return req.method === 'GET' && req.path.startsWith('/api/videos/file/') && typeof req.query.folder === 'string';
+}
+
+/**
  * Host-header guard against DNS rebinding: a malicious domain can resolve to
  * 127.0.0.1, and the browser then sends its own Host header along — without
  * this check such a page could drive the local API like the real client.
@@ -169,6 +184,10 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
 
   // Broad-but-bounded rate limit: stops runaway scripts and the browser tab
   // from hammering the server; the queue poll (1.5 s) stays far below it.
+  // The file route stays behind it as well: a media read skips the count per
+  // request (isMediaRead), while a file read that asks Elasticsearch for its
+  // folder is still counted, which mounting the route ahead of the limiter
+  // would give up.
   app.use(
     rateLimit({
       windowMs: getRateLimitWindowMs(),
@@ -176,6 +195,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
       standardHeaders: true,
       legacyHeaders: false,
       message: { error: 'Too many requests' },
+      skip: isMediaRead,
     }),
   );
 

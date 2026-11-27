@@ -122,9 +122,11 @@ export function getExtensionOrigins(): string[] | undefined {
 }
 
 /**
- * Rate limit for the whole HTTP server (requests per window per IP).
- * Generous by default: the client polls the queue every 1.5 s while jobs
- * run. `RATE_LIMIT_MAX`/`RATE_LIMIT_WINDOW_MS` override.
+ * Rate limit for the HTTP server (requests per window per IP). Generous by
+ * default: the client polls the queue every 1.5 s while jobs run. A browser's
+ * media read, a GET of a file that names its folder, is not counted (isMediaRead
+ * in app.ts), so the budget covers the API calls alone.
+ * `RATE_LIMIT_MAX`/`RATE_LIMIT_WINDOW_MS` override.
  */
 export function getRateLimitMax(): number {
   const parsed = Number.parseInt(process.env.RATE_LIMIT_MAX ?? '', 10);
