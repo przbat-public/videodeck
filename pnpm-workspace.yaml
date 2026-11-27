@@ -11,7 +11,10 @@ allowBuilds:
   '@parcel/watcher': true
   unrs-resolver: true
 
-# pnpm 12 delays freshly published packages by 24h by default; the repo
-# updates often (Dependabot) and every PR already runs pnpm audit,
-# dependency-review and CodeQL, so the age gate is disabled here
-minimumReleaseAge: 0
+# A freshly published version stays out of the lockfile for a day: most
+# hijacked releases are caught and pulled inside that window, and no audit
+# can flag a package nobody has reported yet. pnpm 12 has the same default
+# but applies it leniently; a value written here is strict. Dependabot's
+# cooldown in .github/dependabot.yml waits at least as long, and
+# scripts/check-supply-chain.test.mjs keeps the two in step.
+minimumReleaseAge: 1440

@@ -19,6 +19,7 @@ import { getEvents } from './routes/events';
 import type { DownloadQueueLike } from './routes/folder';
 import { createFolderRouter } from './routes/folder';
 import { createAuthMiddleware, isAllowedCorsOrigin } from './routes/http';
+import { JSON_BODY_LIMIT_BYTES } from './routes/validation';
 import videosRouter from './routes/videos';
 import { isElasticsearchUnavailable } from './services/elasticsearchErrors';
 import { checkElasticsearchConnection, noteElasticsearchUnavailable } from './services/elasticsearchService';
@@ -26,13 +27,6 @@ import { getLibraryRevision } from './services/libraryState';
 import { readApiToken } from './utils/apiToken';
 import { logger } from './utils/logger';
 import { describeError, LogThrottle } from './utils/logThrottle';
-
-/**
- * Largest expected JSON body: bulk enqueue for a channel with thousands of
- * videos (`POST /api/folder/queue` with one `{ videoId }` per video).
- * body-parser's default of 100 kB is too small for that.
- */
-export const JSON_BODY_LIMIT = '1mb';
 
 /** How long a /health probe trusts the previous Elasticsearch check */
 const HEALTH_CACHE_TTL_MS = 5_000;
@@ -194,7 +188,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
       },
     }),
   );
-  app.use(express.json({ limit: JSON_BODY_LIMIT }));
+  app.use(express.json({ limit: JSON_BODY_LIMIT_BYTES }));
   app.use(requestLogger);
 
   // /health and /health/live stay public; /metrics and everything else are

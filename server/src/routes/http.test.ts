@@ -1,3 +1,7 @@
+import { once } from 'node:events';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
+import zlib, { type Gunzip, gzipSync } from 'node:zlib';
 import type { HealthResponse } from '@videodeck/shared/api';
 import express from 'express';
 import request from 'supertest';
@@ -431,5 +435,93 @@ describe('rate limiting', () => {
     const limited = await request(app).get('/health/live');
     expect(limited.status).toBe(429);
     expect(limited.body).toEqual({ error: 'Too many requests' });
+  });
+});
+
+describe('request body parsing', () => {
+  /**
+   * POST a gzip body, then bytes that arrive after the member already ended.
+   * The zero byte is the precondition: Node's gunzip takes it as padding that
+   * ends the decoded stream, so body-parser's read succeeds and the request
+   * moves on while the trailing bytes are still on their way. Without it the
+   * read itself fails and the answer is a plain 400.
+   */
+  function postGzipWithTrailingBytes(port: number): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port,
+          method: 'POST',
+          path: '/api/folder/queue',
+          headers: { 'Content-Type': 'application/json', 'Content-Encoding': 'gzip', 'Transfer-Encoding': 'chunked' },
+        },
+        (res) => {
+          res.resume();
+          resolve(res.statusCode ?? 0);
+        },
+      );
+      req.on('error', reject);
+      req.write(Buffer.concat([gzipSync('{}'), Buffer.from([0])]));
+      req.write('AAAA');
+      req.end();
+    });
+  }
+
+  /**
+   * Settles once the gzip decoder body-parser created is done: closed, or
+   * destroyed by an error that escaped. A decoder destroyed by an unhandled
+   * error never emits 'close' (the throw cuts that short), so the escape is
+   * the other way out. No error listener goes on the decoder: one (which
+   * `events.once` would add) would handle the very error this test is about.
+   */
+  function decoderSettled(decoder: Gunzip, escaped: Promise<unknown>): Promise<void> {
+    const closed = new Promise<void>((resolve) => {
+      if (decoder.closed) {
+        resolve();
+      } else {
+        decoder.once('close', () => resolve());
+      }
+    });
+    return Promise.race([closed, escaped.then(() => undefined)]);
+  }
+
+  // body-parser 2.3.0 left the gunzip stream piped after a successful read,
+  // with no error listener on it. The auth middleware still answered 401, and
+  // right after that the trailing bytes reached the decoder and its unhandled
+  // 'error' took the whole process down: express.json runs before auth, so
+  // no token was needed (GHSA-27r3-jxmh-p828).
+  it('survives bytes that trail a gzip body', async () => {
+    let escapedError: unknown;
+    let reportEscape: (error: unknown) => void = () => undefined;
+    const escaped = new Promise<unknown>((resolve) => {
+      reportEscape = resolve;
+    });
+    const onUncaught = (error: unknown): void => {
+      escapedError = error;
+      reportEscape(error);
+    };
+    process.on('uncaughtException', onUncaught);
+    const createGunzip = vi.spyOn(zlib, 'createGunzip');
+    const server = createApp({ apiToken: 'integration-token' }).listen(0, '127.0.0.1');
+    try {
+      await once(server, 'listening');
+      const { port } = server.address() as AddressInfo;
+
+      expect(await postGzipWithTrailingBytes(port)).toBe(401);
+      expect(createGunzip).toHaveBeenCalledOnce();
+      const decoder = createGunzip.mock.results[0]?.value as Gunzip;
+      await decoderSettled(decoder, escaped);
+
+      // A decoder destroyed by its own error reads as closed too, so the
+      // verdict is the error it carries, not the closed flag
+      expect(decoder.errored).toBeNull();
+      expect(escapedError).toBeUndefined();
+      expect((await request(server).get('/health/live')).status).toBe(200);
+    } finally {
+      createGunzip.mockRestore();
+      process.off('uncaughtException', onUncaught);
+      server.close();
+    }
   });
 });

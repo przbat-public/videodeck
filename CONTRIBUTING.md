@@ -8,7 +8,7 @@ tool for searching, browsing and managing YouTube videos downloaded with
 
 Prerequisites:
 
-- Node.js 24 (`.nvmrc` pins it, the `engines` fields enforce it) + corepack/pnpm 12.4.2 (`packageManager`)
+- Node.js 24, 24.22.3 or later (`.nvmrc` pins the line, Volta pins 24.22.3, the `engines` fields enforce the major) + corepack/pnpm 12.4.2 (`packageManager`)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) in `PATH` (downloads; the
   **nightly** channel is recommended: YouTube breaks old releases regularly)
 - Elasticsearch. Use the Docker command in the

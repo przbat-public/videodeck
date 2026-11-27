@@ -288,6 +288,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **One request can no longer take the server down.** body-parser 2.3.0 left
+  its gzip decoder attached after a successful read, so a compressed body
+  followed by a few stray bytes raised an error nothing caught. The auth
+  check still answered 401, and the process died right after: body parsing
+  runs before auth, so a request without a token was enough
+  (GHSA-27r3-jxmh-p828). The lockfile now resolves 2.4.0. The same refresh
+  clears every open advisory `pnpm audit` and OSV report (35 entries, 27
+  distinct), all within the declared version ranges
+- `POST /api/folder/queue` takes at most 40,330 videos per request. zod
+  4.6.6 checks that size before it walks the array; on 4.6.5 a 1 MB body of
+  bare numbers held about 280 MB of heap while zod built one issue per
+  element. The number is the 1 MB body limit divided by the smallest entry
+  the client sends, so no request the console can make reaches it first
+- Volta pins local development to Node 24.22.3. The Node 24.21.0 it
+  replaces bundles undici 7.29.1 behind the global `fetch` the OpenAI client
+  uses, and a hostile summary endpoint could crash the process through it.
+  Rebuild the Docker images to pick up the current `node:24-slim`. Running
+  the server on your own Node, outside Docker? Update it to 24.22.3 or later
+- A freshly published package stays out of the lockfile for a day
+  (`minimumReleaseAge: 1440`, strict), and Dependabot waits three days
+  before it proposes one
 - **Closed a remote code execution path through `extraArgs`.** The old check
   was a list of forbidden flags, and yt-dlp's parser walks around such a list:
   `--alias` defines an arbitrary flag, short options cluster (`-ia` is two),
