@@ -26,17 +26,28 @@ const PLAIN_EXTENSIONS = [...THUMBNAIL_FORMATS.keys()];
 const VARIANT = /^(?:[^.]*_)?(\d+)\.(?:webp|jpe?g|png)$/i;
 
 /**
- * A name that makes `<stem>.<level>` a video of its own: its metadata or its
+ * A name that makes `<stem>.<part>` a video of its own: its metadata or its
  * media. Restricted names keep a title's dot, so "Part 1.5" is the video
- * `<stem>.5` beside "Part 1", and its plain thumbnail reads like a numbered
- * size of the other one. Both share the `<stem>.` prefix, so one pass sees them.
+ * `<stem>.5` beside "Part 1". Read as Part 1's, its plain thumbnail looks like
+ * a numbered size and its plain subtitle like a language (utils/vttUtils.ts).
+ * Its names share the `<stem>.` prefix, so the same pass sees them.
  */
-const SIBLING_VIDEO = /^(\d+)\.(?:info\.json|mp4|mkv)$/i;
+const SIBLING_VIDEO = /^([^.]+)\.(?:info\.json|mp4|mkv)$/i;
+
+/**
+ * The part a sibling video adds to the stem when `rest`, what follows
+ * `<stem>.` in a file name, is that video's metadata or media: `5` for
+ * `5.info.json` or `5.MKV`, undefined for any other name.
+ */
+export function siblingVideoPart(rest: string): string | undefined {
+  return SIBLING_VIDEO.exec(rest)?.[1];
+}
 
 /** What the names under `<stem>.` hold: the plain sidecar, the numbered sizes, the sibling videos */
 interface StemImages {
   plain: { file: string; rank: number } | undefined;
   variants: Array<{ file: string; level: number; bareLevel: string | undefined }>;
+  /** The part of each sibling video; only a number can pass for a size */
   siblingLevels: Set<string>;
 }
 
@@ -47,7 +58,7 @@ function addName(found: StemImages, file: string, rest: string): void {
     found.plain = found.plain === undefined || rank < found.plain.rank ? { file, rank } : found.plain;
     return;
   }
-  const sibling = SIBLING_VIDEO.exec(rest)?.[1];
+  const sibling = siblingVideoPart(rest);
   if (sibling !== undefined) {
     found.siblingLevels.add(sibling);
     return;

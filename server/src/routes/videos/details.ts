@@ -10,7 +10,7 @@ import { COMMENTS_PAGE_SIZE } from '@videodeck/shared/schemas';
 import { loadCommentTree } from '../../services/commentStore';
 import { logger } from '../../utils/logger';
 import { stripUndefined } from '../../utils/objectUtils';
-import { vttLanguage } from '../../utils/vttUtils';
+import { findSubtitleFiles, vttLanguage } from '../../utils/vttUtils';
 import type { RouteHandler } from '../http';
 import { findVideo } from './helpers';
 
@@ -28,14 +28,13 @@ import { findVideo } from './helpers';
  */
 
 /**
- * VTT files of a video, sorted by name; [] when the folder is unreadable.
+ * VTT files of a video, by the rule the index uses (utils/vttUtils.ts), sorted
+ * by name; [] when the folder is unreadable.
  */
 async function listSubtitles(folderPath: string, baseName: string): Promise<SubtitleTrack[]> {
   try {
     const entries = (await fs.readdir(folderPath)) ?? [];
-    const prefix = `${baseName}.`;
-    return entries
-      .filter((file) => file.startsWith(prefix) && file.endsWith('.vtt'))
+    return findSubtitleFiles(baseName, entries)
       .map((file) => stripUndefined<SubtitleTrack>({ path: file, lang: vttLanguage(file) }))
       .sort((a, b) => a.path.localeCompare(b.path));
   } catch (error) {

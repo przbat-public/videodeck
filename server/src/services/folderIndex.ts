@@ -9,6 +9,7 @@ import { runPool } from '../utils/runPool';
 import { createSingleFlight } from '../utils/singleFlight';
 import { findThumbnailFile } from '../utils/thumbnails';
 import { isSafeVideoStem } from '../utils/videoStem';
+import { findSubtitleFiles } from '../utils/vttUtils';
 
 /**
  * Per-folder index of downloaded videos.
@@ -204,17 +205,15 @@ function toIndexEntry(head: VideoHead, baseName: string, files: EntryFiles, info
 const SUBTITLE_LANG_RE = /\.([A-Za-z][A-Za-z0-9_-]*)\.vtt$/;
 
 /**
- * The subtitle languages of one video, sorted. A file whose name is the stem
- * plus `.vtt` alone belongs to the video but names no language, so it is left
- * out: the badges report languages, not a file count.
+ * The subtitle languages of one video, sorted, from its subtitles by the rule
+ * the search index uses (utils/vttUtils.ts), so a sibling video's captions stay
+ * off it. A file whose name is the stem plus `.vtt` alone belongs to the video
+ * but names no language, so it is left out: the badges report languages, not a
+ * file count.
  */
 function subtitleLangsOf(baseName: string, files: Set<string>): string[] {
-  const prefix = `${baseName}.`;
   const langs = new Set<string>();
-  for (const file of files) {
-    if (!file.startsWith(prefix) || !file.endsWith('.vtt')) {
-      continue;
-    }
+  for (const file of findSubtitleFiles(baseName, files)) {
     const match = SUBTITLE_LANG_RE.exec(file.slice(baseName.length));
     if (match?.[1] !== undefined) {
       langs.add(match[1]);

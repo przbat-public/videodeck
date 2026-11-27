@@ -164,6 +164,24 @@ describe('folderIndex', () => {
       expect(entry(index.entries, 'id-bare').videoBytes).toBe(Buffer.byteLength('video-bytes'));
     });
 
+    describe('subtitle languages', () => {
+      it('never counts the captions of a sibling video whose stem extends the entry', async () => {
+        // "Part 1.5" keeps its dot in an older <upload_date>_<title> name, so
+        // its captions start with the stem of "Part 1", whose badges showed
+        // languages it does not have
+        await writeVideo(dir, '20240101_Part_1', 'id-part-1');
+        await writeVideo(dir, '20240101_Part_1.5', 'id-part-1-5');
+        await fs.writeFile(path.join(dir, '20240101_Part_1.en.vtt'), 'subs', 'utf-8');
+        await fs.writeFile(path.join(dir, '20240101_Part_1.5.pl.vtt'), 'subs', 'utf-8');
+        await fs.writeFile(path.join(dir, '20240101_Part_1.5.de.vtt'), 'subs', 'utf-8');
+
+        const index = await rebuildIndex(dir);
+
+        expect(entry(index.entries, 'id-part-1').subtitleLangs).toEqual(['en']);
+        expect(entry(index.entries, 'id-part-1-5').subtitleLangs).toEqual(['de', 'pl']);
+      });
+    });
+
     it('answers the comment and description flags without parsing the info.json', async () => {
       // Two booleans cost a parse of the whole file, comments and all, for
       // every video of a rebuild: eight at once per folder, eight folders at

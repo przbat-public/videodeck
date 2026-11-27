@@ -10,6 +10,7 @@ import { stripUndefined } from '../utils/objectUtils';
 import { runPool } from '../utils/runPool';
 import { findThumbnailFile } from '../utils/thumbnails';
 import { titleFromStem } from '../utils/videoStem';
+import { findSubtitleFiles } from '../utils/vttUtils';
 import type { SearchOptions, VideoDocument } from './elasticsearchService';
 import {
   bulkIndexDocuments,
@@ -145,27 +146,24 @@ function isVideoFile(file: string): boolean {
 export function findVideoFiles(baseName: string, visibleFiles: string[]): FolderFiles {
   const videoFile = visibleFiles.find((f) => isVideoFile(f) && getBaseName(f) === baseName);
   const thumbnailFile = findThumbnailFile(baseName, visibleFiles);
-
-  const isSubtitle = (f: string) =>
-    f.endsWith('.vtt') && (getBaseName(f) === baseName || getBaseName(f).startsWith(`${baseName}.`));
-  const subtitleFiles = visibleFiles.filter(isSubtitle);
+  const subtitleFiles = findSubtitleFiles(baseName, visibleFiles);
   // Prefer English for summaries; fall back to ANY subtitle language so a
   // Polish-only video is still summarizable (the old behavior 404'd on
   // every visit).
-  const subtitleFile =
-    visibleFiles.find((f) => f.endsWith('.en.vtt') && getBaseName(f) === `${baseName}.en`) ?? subtitleFiles[0];
+  const subtitleFile = subtitleFiles.find((f) => f === `${baseName}.en.vtt`) ?? subtitleFiles[0];
   return { videoFile, thumbnailFile, subtitleFile, subtitleFiles };
 }
 
 /**
  * A folder's file names by every stem they could belong to: each name goes
  * under each prefix that ends right before one of its dots, in listing order.
- * Every file findVideoFiles accepts for a stem starts with `${stem}.` (the
- * media, the subtitles and the thumbnail rule of utils/thumbnails.ts), so the
- * group of a stem holds all its candidates in the order the listing had them,
- * which is the order ties are broken in. Grouping by path.parse(name).name
- * would lose `.en.vtt` and `.mp4_4.webp`, and grouping at the first dot would
- * lose every stem with a dot in it.
+ * Every name that decides what findVideoFiles answers for a stem starts with
+ * `${stem}.` (the media, the subtitle rule of utils/vttUtils.ts and the
+ * thumbnail rule of utils/thumbnails.ts, the sibling videos those two look for
+ * included), so the group of a stem holds all its candidates in the order the
+ * listing had them, which is the order ties are broken in. Grouping by
+ * path.parse(name).name would lose `.en.vtt` and `.mp4_4.webp`, and grouping
+ * at the first dot would lose every stem with a dot in it.
  */
 export function groupFilesByStemPrefix(files: Iterable<string>): Map<string, string[]> {
   const groups = new Map<string, string[]>();

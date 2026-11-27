@@ -197,6 +197,35 @@ describe('videoScanner', () => {
       expect(found.subtitleFiles).toEqual(['20231201_X.pl.vtt']);
     });
 
+    it('never takes the subtitles of a sibling video whose stem extends this one', () => {
+      // Older names are <upload_date>_<title> and keep a title's dot, so
+      // "Part 1.5" is the video 20240101_Part_1.5 beside "Part 1", and every
+      // caption of it starts with the stem of the other one. Indexed as Part
+      // 1's, they made a search for words spoken in Part 1.5 return Part 1.
+      const listing = [
+        '20240101_Part_1.info.json',
+        '20240101_Part_1.mp4',
+        '20240101_Part_1.webp',
+        '20240101_Part_1.5.info.json',
+        '20240101_Part_1.5.mp4',
+        '20240101_Part_1.5.webp',
+        '20240101_Part_1.5.pl.vtt',
+        '20240101_Part_1.5.en.vtt',
+        '20240101_Part_1.5.vtt',
+      ];
+
+      const first = findVideoFiles('20240101_Part_1', listing);
+      expect(first.subtitleFiles).toEqual([]);
+      expect(first.subtitleFile).toBeUndefined();
+      const sibling = findVideoFiles('20240101_Part_1.5', listing);
+      expect(sibling.subtitleFiles).toEqual([
+        '20240101_Part_1.5.pl.vtt',
+        '20240101_Part_1.5.en.vtt',
+        '20240101_Part_1.5.vtt',
+      ]);
+      expect(sibling.subtitleFile).toBe('20240101_Part_1.5.en.vtt');
+    });
+
     it('accepts the numbered thumbnail variants yt-dlp writes for every size', () => {
       // `--write-all-thumbnails` names the variants `<video>.<level>.<ext>`, so
       // a channel downloaded that way used to lose EVERY video to the

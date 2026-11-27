@@ -1149,6 +1149,29 @@ describe('videos router', () => {
       ]);
     });
 
+    it('never offers the tracks of a sibling video whose stem extends this one', async () => {
+      // "Part 1.5" keeps its dot in an older <upload_date>_<title> name, so
+      // its captions start with the stem of "Part 1"
+      const baseName = '20240101_Part_1';
+
+      mockedGetVideoByBaseName.mockResolvedValue({ ...mockVideo, baseName, subtitlePath: `${baseName}.en.vtt` });
+      mockedFs.readdir.mockResolvedValue([
+        '20240101_Part_1.info.json',
+        '20240101_Part_1.mp4',
+        '20240101_Part_1.en.vtt',
+        '20240101_Part_1.5.info.json',
+        '20240101_Part_1.5.mp4',
+        '20240101_Part_1.5.pl.vtt',
+        '20240101_Part_1.5.en.vtt',
+        '20240101_Part_1.5.vtt',
+      ] as never);
+
+      const response = await request(app).get(`/api/videos/${baseName}/details`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.details.subtitles).toEqual([{ path: '20240101_Part_1.en.vtt', lang: 'en' }]);
+    });
+
     it('should build comment tree from comments', async () => {
       const baseName = '20231201_TestVideo';
       const mockTree: CommentWithReplies[] = [
