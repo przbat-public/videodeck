@@ -1,13 +1,14 @@
-import dotenv from 'dotenv';
 import { getLibrarySnapshot, parseLibraryRoots, resetLibraryState } from './services/libraryState';
 import { readApiToken } from './utils/apiToken';
 
-dotenv.config();
-
 /**
- * Every value is read lazily (per call), so importing this module never
- * throws and never pins env values: the server validates at startup and
- * tests can set/clear the environment freely.
+ * Every value but ELASTICSEARCH_URL is read lazily (per call), so importing
+ * this module never throws: the server validates at startup and tests can
+ * set/clear the environment freely. ELASTICSEARCH_URL is read once, when the
+ * module loads, so whatever points it elsewhere has to run first.
+ *
+ * This module does not load .env: the entry point (index.ts) does that before
+ * its first import, and a test that imports the app reads no .env at all.
  */
 
 export const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL || 'http://localhost:9200';

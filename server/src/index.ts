@@ -1,4 +1,7 @@
-import dotenv from 'dotenv';
+// .env first: config.ts and the download queue read some values once, when
+// they load, so the file has to be in process.env before any of them runs.
+// Only this entry point loads it; a test that imports the app reads none.
+import 'dotenv/config';
 import { createApp } from './app';
 import { startServing } from './boot';
 import { ELASTICSEARCH_URL, getApiToken, getHost, getVideosFolderPaths } from './config';
@@ -15,8 +18,6 @@ import { installShutdownHandlers } from './shutdown';
 import { logger } from './utils/logger';
 import { closeAllSseStreams } from './utils/sseRegistry';
 import { validateVideosFolder } from './utils/videoPathUtils';
-
-dotenv.config();
 
 // Fail fast on a misconfigured environment (typo'd names, bad numbers) —
 // validateEnv throws one error listing every problem.

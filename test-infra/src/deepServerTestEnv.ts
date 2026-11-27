@@ -153,10 +153,10 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
   // Both providers reach the same mock, so a test may switch with one variable.
   process.env.DEEPSEEK_BASE_URL = openaiUrl;
   // The DeepSeek key wins over the OpenAI one by design (that is the switch),
-  // so a key in the developer's own server/.env would move every suite onto
-  // DeepSeek. Empty, not deleted: dotenv.config() runs again when the app is
-  // imported below and would re-inject a deleted variable, while an empty value
-  // reads as "no key" and survives. A test that wants DeepSeek sets its own.
+  // so a key exported in the developer's shell would move every suite onto
+  // DeepSeek. An empty value reads as "no key", and no .env refills it: only
+  // the server entry point (index.ts) loads that file, and no suite imports
+  // it. A test that wants DeepSeek sets its own.
   process.env.DEEPSEEK_API_KEY = '';
   process.env.DEEPSEEK_MODEL = '';
   process.env.SUMMARY_PROVIDER = '';
