@@ -22,9 +22,19 @@ import type { AddressInfo } from 'node:net';
  * - the bulk `errors` flag, false only when every item landed ("reports
  *   errors: false when every bulk item succeeded", "reports errors: true when
  *   any bulk item failed"). The failing item in that scenario breaks the
- *   mapping: its count falls outside the int32 range an `integer` field
- *   accepts, which is what a real cluster answers with a per-item
- *   document_parsing_exception. Single-document writes are not range-checked.
+ *   mapping: its count falls outside the range its field type accepts, int32
+ *   for `integer` and int64 for `long`, which a real cluster answers with a
+ *   per-item document_parsing_exception ("stores a count past int32 in a long
+ *   field and refuses it in an integer one"). Single-document writes are not
+ *   range-checked.
+ * - a numeric sort compares numbers by value, across an integer and a long
+ *   index alike ("sorts counts by value across an integer and a long index").
+ *   The `numeric_type` the service's sort names is accepted and ignored: the
+ *   fake has no per-index sort types for it to reconcile.
+ * - a mapping read through an alias answers with the mapping the index was
+ *   created with, `_meta` included, where the boot check finds the analysis
+ *   version ("hands back the _meta an index was created with on a mapping
+ *   read"). Analysis settings are kept but never applied.
  * - a bulk item aimed at an index that does not exist answers 404 instead of
  *   auto-creating the index ("refuses a bulk item whose index does not
  *   exist"). The service always creates its index before writing, so the
@@ -116,8 +126,12 @@ interface SearchBody {
 /**
  * Letters Lucene's ASCIIFoldingFilter folds to ASCII while Unicode NFD leaves
  * them alone. The real index analyzer is `standard` + lowercase +
- * asciifolding, so `ł` has to search as `l`; Polish needs that one, and the
- * rest of the table covers the usual European letters.
+ * asciifolding + the English possessive stemmer, so `ł` has to search as `l`;
+ * Polish needs that one, and the rest of the table covers the usual European
+ * letters. The fake does not run the possessive stemmer: splitting terms on
+ * the apostrophe stands in for it, so only the real-cluster suite can tell a
+ * possessive regression ("matches an English possessive through its base
+ * word").
  */
 const ASCII_FOLD_SPECIALS: Record<string, string> = {
   ß: 'ss',
@@ -290,13 +304,17 @@ interface SearchAnswer {
 }
 
 /**
- * The range a mapped `integer` field accepts. A count past it is the one
+ * The range each mapped whole-number type accepts. A count past it is the one
  * per-item failure the service has to survive: `toDocument` normalises the
- * counts, so a hand-edited info.json reaches the cluster as a number the
- * mapping refuses.
+ * counts, so a hand-edited info.json reaches the cluster as a number its field
+ * refuses. The bounds are BigInts, so a long compares exactly: every double
+ * below 2^63 fits, and 2^63 itself, the first double past Long.MAX_VALUE, is
+ * refused like the cluster refuses it.
  */
-const INTEGER_MIN = -2_147_483_648;
-const INTEGER_MAX = 2_147_483_647;
+const WHOLE_NUMBER_RANGES: Record<string, { min: bigint; max: bigint } | undefined> = {
+  integer: { min: -(2n ** 31n), max: 2n ** 31n - 1n },
+  long: { min: -(2n ** 63n), max: 2n ** 63n - 1n },
+};
 
 /** One property of an index mapping: its type, plus the subfields it declares */
 interface MappingProperty {
@@ -326,40 +344,43 @@ function mappingProperties(mapping: Record<string, unknown>): Record<string, Map
   return stored?.properties ?? {};
 }
 
-/** Fields the index maps as `integer`, read from the mapping stored with it */
-function integerFieldsOf(entry: IndexEntry): string[] {
-  return Object.entries(mappingProperties(entry.mappings))
-    .filter(([, spec]) => spec?.type === 'integer')
-    .map(([field]) => field);
+/**
+ * The value as an exact whole number, or null when it is none. A digit string
+ * counts, coerced the way the cluster coerces it.
+ */
+function wholeNumberOf(value: unknown): bigint | null {
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    return BigInt(value);
+  }
+  return typeof value === 'string' && /^-?\d+$/.test(value) ? BigInt(value) : null;
 }
 
 /**
- * The per-item error a real cluster answers a document with when a mapped
- * `integer` field holds a value outside the int32 range. Digit strings are
- * coerced the way the cluster coerces them; everything else is refused.
- * Returns undefined when every mapped integer field is in range.
+ * The per-item error a real cluster answers a document with when a field the
+ * index maps as `integer` or `long` holds a value outside that type's range.
+ * Returns undefined when every such field is in range.
  */
-function integerRangeFailure(
+function numericRangeFailure(
   entry: IndexEntry,
   document: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
-  for (const field of integerFieldsOf(entry)) {
+  for (const [field, spec] of Object.entries(mappingProperties(entry.mappings))) {
+    const type = spec?.type ?? '';
+    const range = WHOLE_NUMBER_RANGES[type];
     const value = document[field];
-    if (value === undefined || value === null) {
+    if (range === undefined || value === undefined || value === null) {
       continue;
     }
-    const numeric = typeof value === 'string' && /^-?\d+$/.test(value) ? Number(value) : value;
-    const inRange =
-      typeof numeric === 'number' && Number.isInteger(numeric) && numeric >= INTEGER_MIN && numeric <= INTEGER_MAX;
-    if (inRange) {
+    const whole = wholeNumberOf(value);
+    if (whole !== null && whole >= range.min && whole <= range.max) {
       continue;
     }
     return {
       type: 'document_parsing_exception',
-      reason: `failed to parse field [${field}] of type [integer]`,
+      reason: `failed to parse field [${field}] of type [${type}]`,
       caused_by: {
         type: 'illegal_argument_exception',
-        reason: `Value [${String(value)}] is out of range for an integer`,
+        reason: `Value [${String(value)}] is out of range for ${type === 'integer' ? 'an integer' : 'a long'}`,
       },
     };
   }
@@ -996,7 +1017,7 @@ export class FakeElasticsearch {
         continue;
       }
       const id = op.index?._id ?? String(Math.random());
-      const failure = integerRangeFailure(entry, doc);
+      const failure = numericRangeFailure(entry, doc);
       if (failure) {
         errors = true;
         items.push({ index: { _index: op.index?._index, _id: id, status: 400, error: failure } });
@@ -1419,7 +1440,7 @@ export class FakeElasticsearch {
     if (bv === undefined) {
       return -1;
     }
-    const cmp = String(av) < String(bv) ? -1 : String(av) > String(bv) ? 1 : 0;
+    const cmp = compareValues(av, bv);
     return spec.order === 'asc' ? cmp : -cmp;
   }
 
@@ -1465,6 +1486,19 @@ function phraseTermsOf(query: unknown): string[] {
     return [...new Set([...(bool.must ?? []), ...(bool.should ?? [])].flatMap((clause) => phraseTermsOf(clause)))];
   }
   return [];
+}
+
+/**
+ * Two sort values in ascending order. Numbers compare by value, the way a
+ * cluster sorts a numeric field: compared as text, 999 ranked above
+ * 3000000000. Everything else, the keyword dates included, compares as text.
+ */
+function compareValues(left: unknown, right: unknown): number {
+  if (typeof left === 'number' && typeof right === 'number') {
+    return Math.sign(left - right);
+  }
+  const [a, b] = [String(left), String(right)];
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** The text with one occurrence of each query term wrapped in the highlight tags */

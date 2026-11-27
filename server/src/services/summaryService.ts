@@ -81,6 +81,12 @@ function stripInlineTimingTags(line: string): string {
  *
  * Built against real yt-dlp output, which carries a `Kind:`/`Language:`
  * header block and inline timing tags like `<00:00:03.360>`.
+ *
+ * YouTube's automatic captions roll: a cue shows the line before it above the
+ * one being typed, and a 10 ms cue then holds the finished line alone, so each
+ * line said appears up to three times in a row. A line equal to the one kept
+ * last is dropped, which leaves the spoken text once, while a line said again
+ * after another one stays. The index and the summaries read this same text.
  */
 export function extractTextFromVttSubtitles(vttContent: string): string {
   const lines = vttContent.split('\n');
@@ -101,13 +107,16 @@ export function extractTextFromVttSubtitles(vttContent: string): string {
       continue;
     }
 
-    // Actual subtitle text
-    textLines.push(stripInlineTimingTags(line));
+    // Actual subtitle text, its whitespace collapsed first: the timing tags
+    // leave runs of spaces, and a rolled-over copy of a line must compare equal
+    const text = stripInlineTimingTags(line).replace(/\s+/g, ' ').trim();
+    if (text.length > 0 && text !== textLines.at(-1)) {
+      textLines.push(text);
+    }
   }
 
-  // Join lines with spaces, removing excessive whitespace
-  // Multiple consecutive lines from same cue become one paragraph
-  return textLines.join(' ').replace(/\s+/g, ' ').trim();
+  // The lines of one cue and of consecutive cues run on as one paragraph
+  return textLines.join(' ');
 }
 
 /**

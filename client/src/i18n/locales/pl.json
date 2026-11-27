@@ -133,6 +133,7 @@
     "summaryTitle": "Streszczenie",
     "invalidId": "Nieprawidłowy identyfikator filmu",
     "summaryTruncated": "To streszczenie powstało na podstawie skróconych napisów — tekst źródłowy był zbyt długi dla modelu.",
+    "noThumbnail": "Brak miniatury",
     "play": "Odtwórz",
     "resumeFrom": "Wznów od {{time}}",
     "startFromBeginning": "Od początku"

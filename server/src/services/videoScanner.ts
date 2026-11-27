@@ -8,6 +8,7 @@ import { listVisibleFiles, resolveContainedPath } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/objectUtils';
 import { runPool } from '../utils/runPool';
+import { findThumbnailFile } from '../utils/thumbnails';
 import { titleFromStem } from '../utils/videoStem';
 import type { SearchOptions, VideoDocument } from './elasticsearchService';
 import {
@@ -124,6 +125,7 @@ function extractUploadDate(baseName: string): string | undefined {
 /** Sidecar files of one base name; `undefined` when the file is missing */
 export interface FolderFiles {
   videoFile: string | undefined;
+  /** By the rule the folder console counts with (utils/thumbnails.ts) */
   thumbnailFile: string | undefined;
   /** The English subtitle (summaries and the primary player track) */
   subtitleFile: string | undefined;
@@ -131,56 +133,16 @@ export interface FolderFiles {
   subtitleFiles: string[];
 }
 
-/**
- * Thumbnail extensions accepted as a sidecar.
- */
-const THUMBNAIL_EXTENSIONS = ['.webp', '.jpg'];
-
-/**
- * Numbered variant of one thumbnail, as `--write-all-thumbnails` names them:
- * `<base>.<any-token>_<level>.<ext>` (`20231201_X.mp4_4.webp`), the level
- * growing with the image size.
- */
-const THUMBNAIL_VARIANT = /^[^.]*_(\d+)\.(?:webp|jpg)$/i;
-
-/**
- * Thumbnail of one video. The plain sidecar (`<base>.webp`) wins; without one,
- * the highest numbered variant found is used. That second rule is what keeps a
- * channel downloaded with `--write-all-thumbnails` searchable at all: its only
- * images are variants, and every video of the channel used to be skipped as
- * "missing thumbnail".
- */
-function findThumbnailFile(baseName: string, visibleFiles: string[]): string | undefined {
-  const isImage = (file: string): boolean =>
-    THUMBNAIL_EXTENSIONS.some((extension) => file.toLowerCase().endsWith(extension));
-  const sidecar = visibleFiles.find((file) => isImage(file) && getBaseName(file) === baseName);
-  if (sidecar !== undefined) {
-    return sidecar;
-  }
-
-  const prefix = `${baseName}.`;
-  let best: { file: string; level: number } | undefined;
-  for (const file of visibleFiles) {
-    if (!file.startsWith(prefix)) {
-      continue;
-    }
-    const match = THUMBNAIL_VARIANT.exec(file.slice(prefix.length));
-    if (match === null) {
-      continue;
-    }
-    const level = Number(match[1]);
-    if (best === undefined || level > best.level) {
-      best = { file, level };
-    }
-  }
-  return best?.file;
+/** Whether the file is a video the index can point at */
+function isVideoFile(file: string): boolean {
+  return file.endsWith('.mp4') || file.endsWith('.mkv');
 }
 
 /**
  * Locate the sidecar files that belong to a base name.
  */
 export function findVideoFiles(baseName: string, visibleFiles: string[]): FolderFiles {
-  const videoFile = visibleFiles.find((f) => (f.endsWith('.mp4') || f.endsWith('.mkv')) && getBaseName(f) === baseName);
+  const videoFile = visibleFiles.find((f) => isVideoFile(f) && getBaseName(f) === baseName);
   const thumbnailFile = findThumbnailFile(baseName, visibleFiles);
 
   const isSubtitle = (f: string) =>
@@ -195,21 +157,6 @@ export function findVideoFiles(baseName: string, visibleFiles: string[]): Folder
 }
 
 export type BuildResult = { status: 'ok'; video: VideoListItem } | { status: 'skipped'; reason: string };
-
-/** Skip reason naming the required sidecar files that are missing */
-function missingFilesReason(
-  baseName: string,
-  videoFile: string | undefined,
-  thumbnailFile: string | undefined,
-): string {
-  const missing = [
-    !videoFile ? 'video file (.mp4 or .mkv)' : null,
-    !thumbnailFile ? 'thumbnail file (.webp or .jpg)' : null,
-  ]
-    .filter(Boolean)
-    .join(' and ');
-  return `${baseName}: missing ${missing}`;
-}
 
 /**
  * Searchable text of every subtitle file of the video (all languages), so
@@ -246,8 +193,10 @@ async function readTranscriptText(
 
 /**
  * Read `<baseName>.info.json` and build the document for it. Returns a
- * `skipped` result (with reason) when the video/thumbnail is missing or the
- * JSON is unreadable, so callers can count and log without throwing.
+ * `skipped` result (with reason) when the video file is missing or the JSON is
+ * unreadable, so callers can count and log without throwing. A thumbnail is
+ * no requirement: without one, `thumbnailPath` stays out of the document and
+ * the client draws a placeholder.
  */
 export async function buildVideoItem(
   folderPath: string,
@@ -256,8 +205,8 @@ export async function buildVideoItem(
 ): Promise<BuildResult> {
   const { videoFile, thumbnailFile, subtitleFile, subtitleFiles } = findVideoFiles(baseName, visibleFiles);
 
-  if (!videoFile || !thumbnailFile) {
-    return { status: 'skipped', reason: missingFilesReason(baseName, videoFile, thumbnailFile) };
+  if (!videoFile) {
+    return { status: 'skipped', reason: `${baseName}: missing video file (.mp4 or .mkv)` };
   }
 
   let infoJson: VideoInfoJson;
@@ -330,12 +279,21 @@ async function scanFolder(folderPath: string): Promise<void> {
  * Documents go into a fresh physical index; the alias is switched only when
  * everything was written, so search keeps serving the previous version
  * meanwhile.
+ *
+ * A folder whose videos were all there and none of which could be read, a
+ * drive failing its reads mid-run, keeps the version it has: promoting the
+ * empty one deleted it, and the folder vanished from search. A folder with no
+ * video files at all, empty or sidecars only, has nothing to read and still
+ * publishes its empty version.
  */
 async function buildFolderVersion(folderPath: string): Promise<void> {
   const visibleFiles = await listVisibleFiles(folderPath);
   const baseNames = visibleFiles
     .filter((file) => file.endsWith('.info.json'))
     .map((file) => file.replace(/\.info\.json$/, ''));
+  const videoStems = new Set(visibleFiles.filter(isVideoFile).map(getBaseName));
+  const candidates = baseNames.filter((baseName) => videoStems.has(baseName)).length;
+  let built = 0;
 
   reindexStatus.currentFolder = folderPath;
   reindexStatus.filesDone = 0;
@@ -375,6 +333,7 @@ async function buildFolderVersion(folderPath: string): Promise<void> {
     await runPool(baseNames, REINDEX_CONCURRENCY, async (baseName) => {
       const result = await buildVideoItem(folderPath, baseName, visibleFiles);
       if (result.status === 'ok') {
+        built += 1;
         const document = toDocument(result.video);
         batch.push(document);
         batchBytes += estimateDocumentBytes(document);
@@ -389,6 +348,9 @@ async function buildFolderVersion(folderPath: string): Promise<void> {
     });
     await flush();
 
+    if (candidates > 0 && built === 0) {
+      throw new Error(`none of its ${candidates} videos could be read, so the index it has stays`);
+    }
     await promoteIndexVersion(folderPath, indexName);
   } catch (error) {
     await discardIndexVersion(indexName).catch((discardError) => {

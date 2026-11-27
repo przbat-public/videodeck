@@ -71,7 +71,7 @@ State of the ongoing (or last) reindex.
 }
 ```
 
-`filesDone/filesTotal` refer to the current folder, `indexed/skipped` to the whole run. `errors` is the list of folders that failed to index (max. 20 entries), `lastError` the last error message, and `finishedAt` appears once finished.
+`filesDone/filesTotal` refer to the current folder, `indexed/skipped` to the whole run. `errors` is the list of folders that failed to index (max. 20 entries), `lastError` the last error message, and `finishedAt` appears once finished. A video needs its video file (`.mp4` or `.mkv`) and its `info.json`; one without a thumbnail is indexed all the same. When a folder holds videos and not one of them could be read, as on a drive failing its reads, the folder keeps the index it had and shows up in `errors`.
 
 #### How the reindex works
 
@@ -87,14 +87,19 @@ Comments are **not** stored in ES as objects. Only one text field, `commentsText
 
 After every download-queue job (`download`/`update`), the changed videos are indexed incrementally, so a new video is visible in search without a full reindex. A job that finishes while its own folder is being reindexed hands its videos to that reindex instead: they become searchable once the new version is swapped in. If the server stops before that swap, the next full reindex brings them in.
 
-**Changing the analyzer requires a reindex:** existing indexes keep the
-mappings from their creation time, so after an upgrade that changes text
-analysis (e.g. introducing `polish_folded`), call `POST /api/videos/refreshCache`.
-New indexes get the new analyzer, and the aliases switch atomically.
+**Changing the analysis requires a full reindex:** an index keeps the
+mapping, the analyzer chain and the documents it was built with, and both an
+`onlyMissing` run and a drive swap leave it in place. Every new index records
+the analysis version it was built under in its mapping
+(`_meta.analysis_version`, 1 at present), and at boot the server logs a
+warning for each folder whose index carries an older one, naming what a
+rebuild brings. After an upgrade that raises it, call
+`POST /api/videos/refreshCache` without `onlyMissing`: new indexes get the
+current analysis, and the aliases switch atomically.
 
 ### GET /api/videos/search
 
-Searches videos by phrase in the title (`title^3`), description (`^2`), subtitle transcript (`transcriptText^2`), and comments (`commentsText`). The file name is not searched: a video without a title takes one from its file name at indexing time. Text is analyzed with **diacritic folding** (custom `polish_folded` analyzer: `standard` + `lowercase` + `asciifolding`), so `srodek` finds `środek` without typing Polish characters. Polish stemming/stop words would require the `analysis-stempel` plugin (absent from the default Docker image), so the analyzer uses only built-in components. Transcripts and comments are search-only fields; they are never returned in responses. Match snippets are cut from the first 100,000 characters of a field, so a phrase found deeper into a long comment section still returns its video, only without a snippet.
+Searches videos by phrase in the title (`title^3`), description (`^2`), subtitle transcript (`transcriptText^2`), and comments (`commentsText`). The file name is not searched: a video without a title takes one from its file name at indexing time. Text is analyzed with **diacritic folding** (custom `polish_folded` analyzer: `standard` + `lowercase` + `asciifolding` + `english_possessive`), so `srodek` finds `środek` without typing Polish characters, and `world` finds "World's" because the trailing `'s` is stripped on both sides. Polish stemming/stop words would require the `analysis-stempel` plugin (absent from the default Docker image), so the analyzer uses only built-in components. Transcripts and comments are search-only fields; they are never returned in responses. Match snippets are cut from the first 100,000 characters of a field, so a phrase found deeper into a long comment section still returns its video, only without a snippet.
 
 **Query parameters:**
 
@@ -134,6 +139,8 @@ The client appends further pages with the "Show more" button while `videos.lengt
   ]
 }
 ```
+
+`thumbnailPath` is left out for a video with no thumbnail on disk, here and in the details, and the client draws a placeholder in its place. The thumbnail is the plain `<stem>.webp`, `.jpg`, `.jpeg` or `.png`, or else the highest numbered variant `--write-all-thumbnails` wrote; the folder console counts thumbnails by the same rule.
 
 ### GET /api/videos/categories
 

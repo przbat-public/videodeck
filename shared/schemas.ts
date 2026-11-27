@@ -125,7 +125,8 @@ export const VideoListItemSchema = z.object({
   // serves them from info.json instead.
   description: z.string().optional(),
   videoPath: z.string().optional(),
-  thumbnailPath: z.string(),
+  /** Absent for a video indexed without a thumbnail on disk; the card shows a placeholder */
+  thumbnailPath: z.string().optional(),
   folderPath: z.string(),
   uploadDate: z.string().optional(),
   viewCount: z.number().optional(),
@@ -174,7 +175,8 @@ export const VideoDetailsSchema = z.object({
   comments: z.array(CommentWithRepliesSchema),
   commentCount: z.number(),
   videoPath: z.string(),
-  thumbnailPath: z.string(),
+  /** Absent for a video without a thumbnail on disk; the player then has no poster */
+  thumbnailPath: z.string().optional(),
   /** Primary subtitle (first track found); kept for summaries */
   subtitlePath: z.string().optional(),
   /** Every subtitle file the folder holds for this video */

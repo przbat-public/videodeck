@@ -204,6 +204,21 @@
   object-fit: cover;
 }
 
+/* A video indexed without a thumbnail: the frame stays, an icon fills it */
+.video-thumbnail-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+}
+
+.video-thumbnail-placeholder-icon {
+  width: 3rem;
+  height: 3rem;
+}
+
 .play-overlay {
   position: absolute;
   top: 50%;

@@ -135,10 +135,12 @@ function buildSortOptions(sortOption: SortOption): estypes.SortCombinations[] {
       return [{ uploadDate: { order: 'desc', missing: '_last' } }];
     case 'date-asc':
       return [{ uploadDate: { order: 'asc', missing: '_last' } }];
+    // Views are long now, and an index built while they were integer stays
+    // until a full reindex: read both as long, so one sort spans every folder
     case 'views-desc':
-      return [{ viewCount: { order: 'desc', missing: '_last' } }];
+      return [{ viewCount: { order: 'desc', missing: '_last', numeric_type: 'long' } }];
     case 'views-asc':
-      return [{ viewCount: { order: 'asc', missing: '_last' } }];
+      return [{ viewCount: { order: 'asc', missing: '_last', numeric_type: 'long' } }];
     case 'likes-desc':
       return [{ likeCount: { order: 'desc', missing: '_last' } }];
     case 'likes-asc':

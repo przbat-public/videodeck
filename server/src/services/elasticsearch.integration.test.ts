@@ -4,7 +4,9 @@ import path from 'node:path';
 import { Client } from '@elastic/elasticsearch';
 import type { VideoListItem } from '@videodeck/shared/api';
 import { ELASTICSEARCH_URL, invalidateVideosFolderCache } from '../config';
+import { logger } from '../utils/logger';
 import {
+  buildIndexVersionName,
   bulkIndexDocuments,
   createIndexVersion,
   deleteAllVideosFromFolder,
@@ -12,12 +14,14 @@ import {
   getIndexNameFromFolderPath,
   getIndexVersions,
   getVideoByFilePath,
+  listAllIndexVersions,
   listChannelsByFolder,
   promoteIndexVersion,
   SEARCH_FIELDS,
   searchVideos,
   searchVideosWithTotal,
   toDocument,
+  warnOnLegacyMappings,
 } from './elasticsearchService';
 
 /**
@@ -46,8 +50,8 @@ const SCRATCH_FOLDER = '/integration-scratch-folder';
 const SECOND_SCRATCH_FOLDER = '/integration-scratch-folder-two';
 
 /**
- * A count past int32. A digit string survives `toDocument`'s coercion as this
- * number, so a hand-edited info.json puts it on the wire, and the `integer`
+ * A count past int64. A digit string survives `toDocument`'s coercion as this
+ * number, so a hand-edited info.json puts it on the wire, and the `long`
  * mapping refuses it.
  */
 const OUT_OF_RANGE_VIEW_COUNT = 100_000_000_000_000_000_000;
@@ -90,6 +94,14 @@ describeIntegration('Elasticsearch integration', () => {
   afterEach(async () => {
     await deleteIndex(SCRATCH_FOLDER);
     await deleteIndex(SECOND_SCRATCH_FOLDER);
+    // deleteIndex only reaches the versions behind an alias: a test that wrote
+    // into a version it never promoted would leave it on the cluster, which for
+    // a developer run is the one holding the real library
+    for (const folder of [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER]) {
+      for (const version of await listAllIndexVersions(folder)) {
+        await esClient.indices.delete({ index: version, ignore_unavailable: true });
+      }
+    }
   });
 
   /**
@@ -185,6 +197,26 @@ describeIntegration('Elasticsearch integration', () => {
     // No diacritics in the query — asciifolding makes it match
     const folded = await searchVideos('srodek', 'date-desc', [SCRATCH_FOLDER]);
     expect(folded.map((item) => item.baseName)).toContain('20240101_czyszczenie');
+  });
+
+  it('matches an English possessive through its base word', async () => {
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      indexName,
+      documentsOf([video('20240101_pizza', "World's Biggest Pizza"), video('20240102_tesla', 'Tesla’s Cheapest Car')]),
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, indexName);
+
+    // The standard tokenizer keeps each possessive in one token, two edits
+    // from a five-letter query that fuzziness AUTO allows one; asciifolding
+    // turns ‘ into the ' the stemmer knows
+    const analyzed = await esClient.indices.analyze({ index: indexName, field: 'title', text: 'World’s World‘s' });
+    expect(analyzed.tokens?.map((token) => token.token)).toEqual(['world', 'world']);
+    const baseNamesFor = async (q: string) =>
+      (await searchVideos(q, 'relevance', [SCRATCH_FOLDER])).map((item) => item.baseName);
+    expect(await baseNamesFor('world')).toEqual(['20240101_pizza']);
+    expect(await baseNamesFor('tesla')).toEqual(['20240102_tesla']);
   });
 
   it('matches any query term, tolerates a typo and ignores a substring that is not a token', async () => {
@@ -497,6 +529,72 @@ describeIntegration('Elasticsearch integration', () => {
     expect(results.map((item) => item.baseName)).toEqual(['20240101_dobry']);
   });
 
+  it('stores a count past int32 in a long field and refuses it in an integer one', async () => {
+    // The service's own mapping: views are long, likes integer. 2^63 - 1024 is
+    // the last double below Long.MAX_VALUE, and 2^63 the first one past it.
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    const documents = [
+      { ...toDocument(video('20240101_trzy', 'Trzy miliardy')), viewCount: 3_000_000_000 },
+      { ...toDocument(video('20240102_polubienia', 'Za dużo polubień')), likeCount: 3_000_000_000 },
+      { ...toDocument(video('20240103_krawedz', 'Na krawędzi')), viewCount: 2 ** 63 - 1024 },
+      { ...toDocument(video('20240104_poza', 'Za krawędzią')), viewCount: 2 ** 63 },
+    ];
+
+    const response = await esClient.bulk({
+      operations: documents.flatMap((document) => [{ index: { _index: indexName, _id: document.baseName } }, document]),
+    });
+
+    expect(response.items.map(({ index }) => index?.error?.type ?? index?.status)).toEqual([
+      201,
+      'document_parsing_exception',
+      201,
+      'document_parsing_exception',
+    ]);
+    expect(response.items[1]?.index?.error?.reason).toContain('failed to parse field [likeCount] of type [integer]');
+    expect(response.items[3]?.index?.error?.reason).toContain('failed to parse field [viewCount] of type [long]');
+  });
+
+  it('sorts counts by value across an integer and a long index', async () => {
+    // A library mid-upgrade: the second folder still has the index it got while
+    // views were integer, the first one a current index with long views
+    const legacy = buildIndexVersionName(SECOND_SCRATCH_FOLDER);
+    await esClient.indices.create({ index: legacy, mappings: { properties: { viewCount: { type: 'integer' } } } });
+    await bulkIndexDocuments(
+      legacy,
+      [
+        toDocument({ ...video('20240101_stary', 'Stary'), folderPath: SECOND_SCRATCH_FOLDER, viewCount: 999 }),
+        toDocument({ ...video('20240102_bez', 'Bez licznika'), folderPath: SECOND_SCRATCH_FOLDER }),
+      ],
+      false,
+    );
+    await promoteIndexVersion(SECOND_SCRATCH_FOLDER, legacy);
+    const current = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      current,
+      [
+        toDocument({ ...video('20240103_trzy', 'Trzy miliardy'), viewCount: 3_000_000_000 }),
+        toDocument({ ...video('20240104_siedem', 'Siedem miliardów'), viewCount: 7_000_000_000 }),
+      ],
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, current);
+
+    const baseNamesFor = async (sort: 'views-desc' | 'views-asc') =>
+      (await searchVideos('', sort, [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER])).map((item) => item.baseName);
+    expect(await baseNamesFor('views-desc')).toEqual([
+      '20240104_siedem',
+      '20240103_trzy',
+      '20240101_stary',
+      '20240102_bez',
+    ]);
+    expect(await baseNamesFor('views-asc')).toEqual([
+      '20240101_stary',
+      '20240103_trzy',
+      '20240104_siedem',
+      '20240102_bez',
+    ]);
+  });
+
   it('finds a video by its video or thumbnail file name, and nothing for a name no video holds', async () => {
     // getVideoByFilePath searches every configured folder, so the configuration
     // points at a directory of this test's own, as the channel test does
@@ -631,6 +729,25 @@ describeIntegration('Elasticsearch integration', () => {
     const [item] = response.responses;
     expect(item?.status).toBe(400);
     expect(item && 'error' in item ? item.error.type : undefined).toBe('search_phase_execution_exception');
+  });
+
+  it('hands back the _meta an index was created with on a mapping read', async () => {
+    const indexName = await indexOneVideo('20240101_wersja', 'Wersja analizy');
+
+    const mapping = await esClient.indices.getMapping({
+      index: getIndexNameFromFolderPath(SCRATCH_FOLDER),
+      ignore_unavailable: true,
+    });
+    expect(mapping[indexName]?.mappings._meta).toEqual({ analysis_version: 1 });
+
+    // So the boot check has nothing to say about a folder built under it
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    try {
+      await warnOnLegacyMappings([SCRATCH_FOLDER]);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('matches nothing for a term on a subfield the mapping does not declare', async () => {

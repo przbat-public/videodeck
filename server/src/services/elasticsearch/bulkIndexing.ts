@@ -18,8 +18,10 @@ export function toDocument(video: VideoListItem): VideoDocument {
     .join('\n');
   const document: VideoDocument = commentsText.length > 0 ? { ...rest, commentsText } : rest;
   // yt-dlp writes counts as numbers, but a hand-edited info.json can carry
-  // strings — one such document used to fail the whole bulk (mapping
-  // conflict with `integer`) and sink the entire folder's reindex.
+  // strings: one such document used to fail the whole bulk (a mapping
+  // conflict with the numeric field) and sink the entire folder's reindex.
+  // No clamp: a count past what the field holds (long for views, integer for
+  // likes) is the cluster's to refuse, one skipped item.
   const viewCount = coerceInteger(document.viewCount);
   if (viewCount !== undefined) {
     document.viewCount = viewCount;

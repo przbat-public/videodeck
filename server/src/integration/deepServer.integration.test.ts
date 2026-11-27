@@ -1,7 +1,13 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import type { QueueJob } from '@videodeck/shared/api';
-import { QueueJobResponseSchema, QueueListResponseSchema, QueueSummaryResponseSchema } from '@videodeck/shared/schemas';
+import {
+  QueueJobResponseSchema,
+  QueueListResponseSchema,
+  QueueSummaryResponseSchema,
+  SearchResponseSchema,
+  VideoDetailsResponseSchema,
+} from '@videodeck/shared/schemas';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import {
   createDeepServerTestEnv,
@@ -223,6 +229,30 @@ describe('deep server integration (real app, fake external world)', () => {
     }
   });
 
+  it('searches and opens a video that has no thumbnail', async () => {
+    // Downloaded with --no-write-thumbnail, or its image lost since: the media
+    // and the info.json are on disk, and search used to skip the video
+    const withoutThumbnail = Object.fromEntries(
+      Object.entries(videoFiles('nothumb0001', 'Bez miniatury')).filter(([name]) => !name.endsWith('.webp')),
+    );
+    await env.seedFolder('no-thumbnail', withoutThumbnail);
+    env.setFolders('no-thumbnail');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const search = await env.agent.get('/api/videos/search?q=miniatury').expect(200);
+    expect(search.body.totalCount).toBe(1);
+    // The shared contract the client parses pages with takes the item as it is
+    const [found] = SearchResponseSchema.parse(search.body).videos;
+    expect(found?.title).toBe('Bez miniatury');
+    expect(found).not.toHaveProperty('thumbnailPath');
+
+    const details = await env.agent.get('/api/videos/nothumb0001/details').expect(200);
+    const parsed = VideoDetailsResponseSchema.parse(details.body).details;
+    expect(parsed.videoPath).toBe('20260101_Bez miniatury.mp4');
+    expect(parsed).not.toHaveProperty('thumbnailPath');
+  });
+
   it('answers a search whose page crosses the result window with a short page, not a 500', async () => {
     await env.seedFolder('window', videoFiles('vid00000010', 'Okno wyników'));
     env.setFolders('window');
@@ -350,12 +380,43 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(channels.body.channels).toContain('Kanał biblioteki');
   });
 
+  it('indexes videos past 2,147,483,647 views and sorts them by value', async () => {
+    // Real counts, not hand edits: the biggest music videos are past three
+    // billion views. The integer mapping refused each such video, and a folder
+    // holding nothing else failed its whole bulk write.
+    await env.seedFolder('views-billions', {
+      ...videoFiles('views000003', 'Trzy miliardy', { view_count: 3_000_000_000 }),
+      ...videoFiles('views000999', 'Dziewięćset', { view_count: 999 }),
+    });
+    await env.seedFolder(
+      'views-seven-billion',
+      videoFiles('views000007', 'Siedem miliardów', { view_count: 7_000_000_000 }),
+    );
+    env.setFolders('views-billions', 'views-seven-billion');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const status = await env.agent.get('/api/videos/refreshCache/status').expect(200);
+    expect(status.body).toMatchObject({ indexed: 3, skipped: 0, errors: [] });
+
+    // By value across both folders: compared as text, 999 came first
+    const ranked = await env.agent.get('/api/videos/search?sort=views-desc').expect(200);
+    expect((ranked.body.videos as Array<{ title: string }>).map((video) => video.title)).toEqual([
+      'Siedem miliardów',
+      'Trzy miliardy',
+      'Dziewięćset',
+    ]);
+
+    const details = await env.agent.get('/api/videos/views000003/details').expect(200);
+    expect(details.body.details.viewCount).toBe(3_000_000_000);
+  });
+
   it('reports the document the cluster refused and still indexes the rest of the batch', async () => {
     // The bug class a journey could not see: a per-item bulk failure used to
     // be invisible here, so one refused document either vanished from search
-    // without a word or was counted as indexed. A digit string past int32
+    // without a word or was counted as indexed. A digit string past int64
     // survives toDocument's coercion as a number, and the viewCount mapping
-    // (integer) refuses it while its siblings in the same batch land.
+    // (long) refuses it while its siblings in the same batch land.
     await env.seedFolder('bulk-partial', {
       ...videoFiles('bulk00000001', 'Film dobry'),
       ...videoFiles('bulk00000002', 'Film z ogromna liczba wyswietlen', { view_count: '99999999999999999999' }),

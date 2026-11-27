@@ -110,6 +110,34 @@ describe('response shapes', () => {
     expect(parsed.details.subtitles).toEqual([{ path: 'v.en.vtt', lang: 'en' }]);
   });
 
+  it('accepts a search item and details without thumbnailPath', () => {
+    // A video downloaded without a thumbnail is indexed all the same, and the
+    // client parses whole pages: one such item used to fail the page
+    const search = {
+      videos: [{ baseName: 'a', title: 'Bez miniatury', videoPath: 'a.mp4', folderPath: '/videos/a' }],
+      totalCount: 1,
+    };
+    expect(SearchResponseSchema.parse(search)).toEqual(search);
+
+    const details = {
+      details: {
+        title: 'Bez miniatury',
+        description: '',
+        uploadDate: '20240101',
+        duration: '1:00',
+        viewCount: 0,
+        likeCount: 0,
+        channelName: 'C',
+        comments: [],
+        commentCount: 0,
+        videoPath: 'a.mp4',
+        subtitles: [],
+        folderPath: '/videos/a',
+      },
+    };
+    expect(VideoDetailsResponseSchema.parse(details)).toEqual(details);
+  });
+
   it('accepts a nested comment tree', () => {
     const tree = { id: 'c1', text: 'root', replies: [{ id: 'c2', text: 'child' }] };
     expect(CommentWithRepliesSchema.parse(tree)).toEqual(tree);

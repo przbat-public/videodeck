@@ -4,6 +4,7 @@ import { listVisibleFiles as sharedListVisibleFiles, writeJsonAtomic } from '../
 import { logger } from '../utils/logger';
 import { runPool } from '../utils/runPool';
 import { createSingleFlight } from '../utils/singleFlight';
+import { findThumbnailFile } from '../utils/thumbnails';
 import { isSafeVideoStem } from '../utils/videoStem';
 
 /**
@@ -54,7 +55,7 @@ export interface FolderIndexEntry {
   hasComments: boolean;
   /** Whether a `.description` sidecar sits next to the video */
   hasDescription: boolean;
-  /** Whether a thumbnail sidecar (`.webp`/`.jpg`) sits next to the video */
+  /** Whether a thumbnail sits next to the video, by the index's rule (utils/thumbnails.ts) */
   hasThumbnail: boolean;
   /** Size of the video file in bytes, for the detail panel (0 when unreadable) */
   videoBytes: number;
@@ -224,21 +225,9 @@ async function readInfoExtras(infoPath: string): Promise<{ hasComments: boolean;
   }
 }
 
-/** Thumbnail sidecars, plain or numbered (`<stem>.webp`, `<stem>.mp4_4.webp`) */
-const THUMBNAIL_EXTENSIONS = ['.webp', '.jpg', '.jpeg', '.png'];
-
-/** Whether any thumbnail sidecar of this stem is on disk */
+/** Whether this stem has a thumbnail on disk, by the rule the search index uses */
 function hasThumbnailOf(baseName: string, files: Set<string>): boolean {
-  if (THUMBNAIL_EXTENSIONS.some((ext) => files.has(`${baseName}${ext}`))) {
-    return true;
-  }
-  const prefix = `${baseName}.`;
-  for (const file of files) {
-    if (file.startsWith(prefix) && THUMBNAIL_EXTENSIONS.some((ext) => file.toLowerCase().endsWith(ext))) {
-      return true;
-    }
-  }
-  return false;
+  return findThumbnailFile(baseName, files) !== undefined;
 }
 
 /** Everything the index records about the files of one video */

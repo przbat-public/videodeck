@@ -15,9 +15,9 @@ describe('FakeElasticsearch controls', () => {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       // The mapping the range and term rules read, in the production shape: a
-      // real index maps the counts as integer, so a value outside int32 is
-      // refused per item, and the file names and the title's subfield as
-      // keyword, which a term query compares raw.
+      // real index maps views as long and likes as integer, so a count outside
+      // its type's range is refused per item, and the file names and the
+      // title's subfield as keyword, which a term query compares raw.
       body: JSON.stringify({
         settings: {},
         mappings: {
@@ -25,7 +25,8 @@ describe('FakeElasticsearch controls', () => {
             title: { type: 'text', fields: { keyword: { type: 'keyword' } } },
             videoPath: { type: 'keyword' },
             thumbnailPath: { type: 'keyword' },
-            viewCount: { type: 'integer' },
+            viewCount: { type: 'long' },
+            likeCount: { type: 'integer' },
           },
         },
       }),
@@ -271,6 +272,29 @@ describe('FakeElasticsearch controls', () => {
     expect(await hitsFor('kosmosu', 'title')).toBe(0);
   });
 
+  it('hands back the _meta an index was created with on a mapping read', async () => {
+    // The boot check reads the analysis version from there, through the alias
+    await fetch(`${baseUrl}/videos_meta`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        settings: {},
+        mappings: { _meta: { analysis_version: 1 }, properties: { viewCount: { type: 'long' } } },
+      }),
+    });
+    await fetch(`${baseUrl}/_aliases`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ actions: [{ add: { index: 'videos_meta', alias: 'videos_meta_alias' } }] }),
+    });
+
+    const response = await fetch(`${baseUrl}/videos_meta_alias/_mapping?ignore_unavailable=true`);
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, { mappings?: { _meta?: unknown } }>;
+    expect(body.videos_meta?.mappings?._meta).toEqual({ analysis_version: 1 });
+  });
+
   it('buckets a terms aggregation only on a field the index mapping declares', async () => {
     // The mapping the server writes: folderPath is a keyword, channelName is
     // text with a keyword subfield. A cluster buckets the first two names and
@@ -352,7 +376,7 @@ describe('FakeElasticsearch controls', () => {
     // The service decides per item off `errors`; a fake that always says false
     // lets a caller count a document the cluster refused as indexed. The
     // refusal here comes from the mapping, which is how a real cluster answers
-    // a hand-edited info.json whose count no longer fits an integer.
+    // a hand-edited info.json whose count no longer fits a long.
     const response = await bulk([
       { index: { _index: 'videos_x', _id: 'bulk-ok-2' } },
       { title: 'Stored', viewCount: 12 },
@@ -368,6 +392,76 @@ describe('FakeElasticsearch controls', () => {
     expect(body.items[0]?.index.status).toBe(201);
     expect(body.items[1]?.index.status).toBe(400);
     expect(body.items[1]?.index.error?.type).toBe('document_parsing_exception');
+  });
+
+  it('stores a count past int32 in a long field and refuses it in an integer one', async () => {
+    // Views are long and likes integer, as in the production mapping. A long
+    // holds what a double carries below 2^63 and refuses 2^63 itself, the
+    // first double past Long.MAX_VALUE.
+    const response = await bulk([
+      { index: { _index: 'videos_x', _id: 'range-views' } },
+      { title: 'Trzy miliardy', viewCount: 3_000_000_000 },
+      { index: { _index: 'videos_x', _id: 'range-likes' } },
+      { title: 'Za dużo polubień', likeCount: 3_000_000_000 },
+      { index: { _index: 'videos_x', _id: 'range-edge' } },
+      { title: 'Na krawędzi', viewCount: 2 ** 63 - 1024 },
+      { index: { _index: 'videos_x', _id: 'range-past' } },
+      { title: 'Za krawędzią', viewCount: 2 ** 63 },
+    ]);
+
+    const body = (await response.json()) as {
+      items: Array<{ index: { status: number; error?: { type: string; reason: string } } }>;
+    };
+    expect(body.items.map(({ index }) => index.error?.type ?? index.status)).toEqual([
+      201,
+      'document_parsing_exception',
+      201,
+      'document_parsing_exception',
+    ]);
+    expect(body.items[1]?.index.error?.reason).toContain('failed to parse field [likeCount] of type [integer]');
+    expect(body.items[3]?.index.error?.reason).toContain('failed to parse field [viewCount] of type [long]');
+  });
+
+  it('sorts counts by value across an integer and a long index', async () => {
+    // A library mid-upgrade: one folder indexed while views were integer, one
+    // after they became long. The service's sort names numeric_type long,
+    // which the fake accepts and has no use for, comparing numbers by value.
+    for (const [index, type] of [
+      ['videos_views_int', 'integer'],
+      ['videos_views_long', 'long'],
+    ]) {
+      await fetch(`${baseUrl}/${index}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ settings: {}, mappings: { properties: { viewCount: { type } } } }),
+      });
+    }
+    await bulk([
+      { index: { _index: 'videos_views_int', _id: 'views-999' } },
+      { viewCount: 999 },
+      { index: { _index: 'videos_views_int', _id: 'views-none' } },
+      { title: 'Bez licznika' },
+      { index: { _index: 'videos_views_long', _id: 'views-3e9' } },
+      { viewCount: 3_000_000_000 },
+      { index: { _index: 'videos_views_long', _id: 'views-7e9' } },
+      { viewCount: 7_000_000_000 },
+    ]);
+
+    const idsFor = async (order: 'asc' | 'desc') => {
+      const response = await fetch(`${baseUrl}/videos_views_int,videos_views_long/_search`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          query: { match_all: {} },
+          sort: [{ viewCount: { order, missing: '_last', numeric_type: 'long' } }],
+        }),
+      });
+      return ((await response.json()) as { hits: { hits: Array<{ _id: string }> } }).hits.hits.map((hit) => hit._id);
+    };
+
+    // Compared as text, '999' sorted above '7000000000'
+    expect(await idsFor('desc')).toEqual(['views-7e9', 'views-3e9', 'views-999', 'views-none']);
+    expect(await idsFor('asc')).toEqual(['views-999', 'views-3e9', 'views-7e9', 'views-none']);
   });
 
   it('refuses a bulk item whose index does not exist', async () => {
