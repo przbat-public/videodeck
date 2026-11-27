@@ -9,13 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A typed phrase ranks by relevance unless you pick a sort.** Results
-  stayed newest first, so a recent video sharing one common word with the
-  phrase in a single comment outranked the video the phrase named in its
-  title. With a phrase and no sort chosen, results now follow the score,
-  computed over the statistics of every folder at once; clearing the phrase
-  brings back newest first, and a sort you picked survives both. Old `?q=`
-  bookmarks open by relevance
 - **An abandoned search stops on the cluster too.** Typing a new phrase
   aborted the browser's request, but the server kept waiting on
   Elasticsearch, which went on scoring and highlighting a page nobody would
@@ -25,8 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Past a million characters the highlighter failed the shard holding that
   video, so its neighbours vanished from the page while the total still
   counted them, and searching that folder's category alone answered 500.
-  Snippets now come from the first 100,000 characters of a field, and a page
-  missing a shard is refused rather than served short
+  Snippets now come from the first 100,000 characters of a field. A folder
+  that cannot answer for another reason is left off the page as before, and
+  the server log now names it
 - **Libraries past 155 folders can search again.** Each read put every
   folder's alias into its URL, and from folder 156 on that request line
   outgrew the 4 KB Elasticsearch accepts, so searching, opening a video and
@@ -112,6 +106,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A typed phrase ranks by relevance unless you pick a sort.** Results
+  stayed newest first, so a recent video sharing one common word with the
+  phrase in a single comment outranked the video the phrase named in its
+  title. With a phrase and no sort chosen, results now follow the score,
+  computed over the statistics of every folder at once; clearing the phrase
+  brings back newest first, and a sort you picked survives both. Old `?q=`
+  bookmarks open by relevance
 - **Search ignores file names.** A stem yt-dlp writes is one token to the
   analyzer and never matched, while a file named by hand split into words
   that weighed more than its title. Titles carry those words; a video
@@ -142,10 +143,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Paste a YouTube link or id into search to check whether it is
-  archived.** A watch, share or Shorts link, or a bare 11-character id, is
-  looked up by id within the current filters: the video comes back, or an
-  empty list if the library lacks it. A plain word of that length matching
-  no archived id is searched as text
+  archived.** A watch, share or Shorts link is looked up by id within the
+  current filters: the video comes back, or an empty list if the library
+  lacks it. A bare 11-character id finds its video the same way, and one the
+  library lacks is searched as text, like any other word
 - **Videos YouTube will not hand over stop filling the queue with errors**: a
   `download` for a video the catalog reports as `subscriber_only` or
   `premium_only` is skipped before a job exists, and a failure that waiting

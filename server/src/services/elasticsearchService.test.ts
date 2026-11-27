@@ -2,6 +2,7 @@ import type { VideoListItem } from '@videodeck/shared/api';
 import type { Mock } from 'vitest';
 import { metricsRegistry } from '../metricsRegistry';
 import { at } from '../test-utils';
+import { logger } from '../utils/logger';
 import { isElasticsearchUnavailable } from './elasticsearchErrors';
 import {
   buildIndexVersionName,
@@ -995,11 +996,7 @@ describe('elasticsearchService', () => {
       const { header, body: request } = sentSearch();
       // The alias list rides in the _msearch header, never in the URL, whose
       // request line a cluster caps at 4 KB
-      expect(header).toEqual({
-        index: [ALIAS_A, ALIAS_B],
-        ignore_unavailable: true,
-        allow_partial_search_results: false,
-      });
+      expect(header).toEqual({ index: [ALIAS_A, ALIAS_B], ignore_unavailable: true });
       expect(at(mockClient.msearch.mock.calls, 0)[0]).not.toHaveProperty('index');
       expect(request).not.toHaveProperty('ignore_unavailable');
       expect(request.query).toEqual({
@@ -1300,17 +1297,49 @@ describe('elasticsearchService', () => {
       expect(at(mockClient.msearch.mock.calls, 1)[1]).toBeUndefined();
     });
 
-    it('caps what the highlighter analyzes and refuses a page a shard failed', async () => {
+    it('caps what the highlighter analyzes', async () => {
       await searchVideos('robot');
 
-      const { header, body } = sentSearch();
+      const { body } = sentSearch();
       // At or below the index's own limit (index.highlight.max_analyzed_offset,
       // 1,000,000 by default) a long field is truncated instead of failing the
       // fetch of its folder's shard
       expect(body.highlight.max_analyzed_offset).toBe(HIGHLIGHT_MAX_ANALYZED_CHARS);
       expect(HIGHLIGHT_MAX_ANALYZED_CHARS).toBeLessThanOrEqual(1_000_000);
-      // A failure that happens anyway fails the read rather than shortening it
-      expect(header.allow_partial_search_results).toBe(false);
+    });
+
+    it('serves a page without the folder that could not answer, and logs which one', async () => {
+      // A red index, a shard still recovering after a restart, or the old
+      // version a reindex deletes right after its swap: refusing the page would
+      // show the outage banner for the whole library while the cluster answers
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {
+        /* the warning is the assertion */
+      });
+      answerSearch({
+        _shards: {
+          total: 2,
+          successful: 1,
+          skipped: 0,
+          failed: 1,
+          failures: [
+            {
+              index: 'videos_b_20250101000000000',
+              shard: 0,
+              reason: { type: 'no_shard_available_action_exception', reason: 'no shard copy is active' },
+            },
+          ],
+        },
+        hits: { hits: [hit(toDocument(video()))], total: { value: 1, relation: 'eq' } },
+      });
+
+      const results = await searchVideos('robot');
+
+      expect(results).toHaveLength(1);
+      expect(sentSearch().header).not.toHaveProperty('allow_partial_search_results');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('without 1 of 2 folder shards'));
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('videos_b_20250101000000000: no_shard_available_action_exception'),
+      );
     });
 
     it('lists every channel name each folder carries, most frequent first', async () => {

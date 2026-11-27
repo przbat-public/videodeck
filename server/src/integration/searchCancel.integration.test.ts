@@ -15,6 +15,8 @@ import { createDeepServerTestEnv, videoFiles } from '@videodeck/test-infra/deepS
 const CANCEL_BUDGET_MS = 2_000;
 
 describe('search cancellation when the client disconnects', () => {
+  /** How long the seeded folder's reindex may take before the suite gives up */
+  const REINDEX_BUDGET_MS = 8_000;
   let env: DeepServerTestEnv;
 
   beforeAll(async () => {
@@ -22,13 +24,13 @@ describe('search cancellation when the client disconnects', () => {
     await env.seedFolder('search-cancel', videoFiles('cancel00001', 'Film do porzucenia'));
     env.setFolders('search-cancel');
     await env.agent.post('/api/videos/refreshCache').expect(202);
-    const deadline = Date.now() + 8_000;
-    while ((await env.agent.get('/api/videos/refreshCache/status').expect(200)).body.running !== false) {
-      if (Date.now() > deadline) {
-        throw new Error('the reindex of the seeded folder did not finish');
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
+    await vi.waitFor(
+      async () => {
+        const status = await env.agent.get('/api/videos/refreshCache/status').expect(200);
+        expect((status.body as { running: boolean }).running, 'the reindex of the seeded folder finished').toBe(false);
+      },
+      { timeout: REINDEX_BUDGET_MS, interval: 50 },
+    );
   });
 
   afterAll(async () => {

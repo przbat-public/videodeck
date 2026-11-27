@@ -4,6 +4,7 @@ import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULT_WINDOW } from '@videodeck/s
 import { defaultSortFor } from '@videodeck/shared/search';
 import { extractYoutubeVideoId, isYoutubeVideoId } from '@videodeck/shared/youtube';
 import { getVideosFolderPaths } from '../../config';
+import { logger } from '../../utils/logger';
 import { ElasticsearchUnavailableError } from '../elasticsearchErrors';
 import { fromDocument, type VideoDocument } from './bulkIndexing';
 import { assertElasticsearchReachable, getElasticsearchClient } from './connection';
@@ -82,6 +83,7 @@ function unwrapSearchResponse<TDocument>(
     throw new Error('Elasticsearch answered the search without a response');
   }
   if (!('error' in item)) {
+    warnOnPartialAnswer(item._shards);
     return item;
   }
   const rootCause = item.error.root_cause?.[0];
@@ -92,6 +94,31 @@ function unwrapSearchResponse<TDocument>(
     throw new ElasticsearchUnavailableError(`Elasticsearch could not run the search: ${reason}`);
   }
   throw new Error(`Elasticsearch refused the search: ${reason}`);
+}
+
+/** How many distinct shard failures one warning names */
+const MAX_LOGGED_SHARD_FAILURES = 5;
+
+/**
+ * A read that some folder could not answer comes back without that folder's
+ * hits: a red index, a shard still recovering after a restart, or the old
+ * version a reindex deletes right after its alias swap. Refusing the page
+ * would put the outage banner and the fail-fast window over the whole library
+ * while the cluster answers, so the page is served and the log names what is
+ * missing. The highlight cap keeps the one failure every page used to hit
+ * (a long comment field) from happening at all.
+ */
+function warnOnPartialAnswer(shards: estypes.ShardStatistics | undefined): void {
+  if (shards === undefined || shards.failed === 0) {
+    return;
+  }
+  const failures = [
+    ...new Set((shards.failures ?? []).map((failure) => `${failure.index ?? 'unknown index'}: ${failure.reason.type}`)),
+  ];
+  logger.warn(
+    `Elasticsearch answered a search without ${shards.failed} of ${shards.total} folder shards: ` +
+      (failures.slice(0, MAX_LOGGED_SHARD_FAILURES).join('; ') || 'no reason given'),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -186,19 +213,14 @@ function normalizePaging(options: SearchOptions): { from: number; size: number }
 /**
  * The _msearch header of a page search.
  *
- * A shard that fails anyway fails the page, where a 200 used to come back
- * short of that folder's hits with nothing to say so; a red shard is still
- * the 503 it was, anything else a logged 500. A phrase ranked by relevance is
- * scored with the term statistics of every folder at once (DFS): each folder
- * is an index of one shard, and statistics taken per shard scored a match in
- * a small folder far above the same match in a big one. That costs one more
- * round trip, so only a relevance page with a phrase asks for it.
+ * A phrase ranked by relevance is scored with the term statistics of every
+ * folder at once (DFS): each folder is an index of one shard, and statistics
+ * taken per shard scored a match in a small folder far above the same match in
+ * a big one. That costs one more round trip, so only a relevance page with a
+ * phrase asks for it. Partial pages stay allowed: see warnOnPartialAnswer.
  */
 function pageSearchHeader(hasQuery: boolean, sortOption: SortOption): SearchHeader {
-  return {
-    allow_partial_search_results: false,
-    ...(hasQuery && sortOption === 'relevance' ? { search_type: 'dfs_query_then_fetch' as const } : {}),
-  };
+  return hasQuery && sortOption === 'relevance' ? { search_type: 'dfs_query_then_fetch' } : {};
 }
 
 /**
