@@ -11,6 +11,7 @@ import { runPool } from '../utils/runPool';
 import { findThumbnailFile } from '../utils/thumbnails';
 import { titleFromStem } from '../utils/videoStem';
 import { findSubtitleFiles } from '../utils/vttUtils';
+import { isElasticsearchUnavailable } from './elasticsearchErrors';
 import type { SearchOptions, VideoDocument } from './elasticsearchService';
 import {
   bulkIndexDocuments,
@@ -20,6 +21,7 @@ import {
   estimateDocumentBytes,
   indexVideo,
   listCachedFolders,
+  noteElasticsearchUnavailable,
   promoteIndexVersion,
   searchVideosWithTotal,
   toDocument,
@@ -537,10 +539,27 @@ async function writeVideosFromDisk(folderPath: string, baseNames: string[]): Pro
       await indexVideo(result.video);
       indexed += 1;
     } catch (error) {
-      logger.error(`Failed to index ${baseName} from ${folderPath}:`, error);
+      logWriteFailure(folderPath, baseName, error);
     }
   }
   return indexed;
+}
+
+/**
+ * Log a video whose write failed. A cluster that cannot be reached is noted
+ * for the health probe as well: these writes run in the background, outside
+ * the request paths that note an outage, so elasticsearch_up stayed at 1 and
+ * the next healthy probe kept the client whose connections the outage had
+ * broken. That failure reads the same for every video of a batch, so it gets
+ * one line instead of a stack; any other failure keeps its whole error.
+ */
+function logWriteFailure(folderPath: string, baseName: string, error: unknown): void {
+  if (isElasticsearchUnavailable(error)) {
+    noteElasticsearchUnavailable();
+    logger.error(`Failed to index ${baseName} from ${folderPath}: ${describeError(error)}`);
+    return;
+  }
+  logger.error(`Failed to index ${baseName} from ${folderPath}:`, error);
 }
 
 export const getVideos = async (

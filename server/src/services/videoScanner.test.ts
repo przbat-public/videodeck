@@ -993,6 +993,40 @@ describe('videoScanner', () => {
       expect(mockedEs.indexVideo).toHaveBeenCalledTimes(1);
     });
 
+    it('tells the health probe about an unreachable cluster and logs the failure in one line', async () => {
+      // Only a request path used to note the outage, so a write that failed in
+      // the background left elasticsearch_up at 1, and the next healthy probe
+      // kept the long-lived client whose pool the outage had broken
+      mockFolder(['a.info.json', 'a.mp4', 'a.webp']);
+      const refused = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9200'), { name: 'ConnectionError' });
+      mockedEs.indexVideo.mockRejectedValueOnce(refused);
+      const errorLog = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+
+      const indexed = await indexVideosFromDisk(FOLDER, ['a']);
+
+      expect(indexed).toBe(0);
+      expect(mockedEs.noteElasticsearchUnavailable).toHaveBeenCalledTimes(1);
+      // The line, without the error object whose stack and wrapped causes
+      // printed a dozen lines per video
+      expect(errorLog).toHaveBeenCalledWith(`Failed to index a from ${FOLDER}: connect ECONNREFUSED 127.0.0.1:9200`);
+    });
+
+    it('keeps the whole error of a write the cluster answered', async () => {
+      mockFolder(['a.info.json', 'a.mp4', 'a.webp']);
+      const conflict = Object.assign(new Error('mapper_parsing_exception'), {
+        name: 'ResponseError',
+        meta: { statusCode: 400 },
+      });
+      mockedEs.indexVideo.mockRejectedValueOnce(conflict);
+      const errorLog = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+
+      const indexed = await indexVideosFromDisk(FOLDER, ['a']);
+
+      expect(indexed).toBe(0);
+      expect(mockedEs.noteElasticsearchUnavailable).not.toHaveBeenCalled();
+      expect(errorLog).toHaveBeenCalledWith(`Failed to index a from ${FOLDER}:`, conflict);
+    });
+
     it('returns 0 without touching disk for an empty list', async () => {
       const indexed = await indexVideosFromDisk(FOLDER, []);
 
