@@ -399,6 +399,37 @@ async function saveIndex(folderPath: string, index: FolderIndex): Promise<void> 
 }
 
 /**
+ * The tail of each folder's chain of index writes, by resolved path. Every
+ * write of the index (a rebuild, a job's refresh, a collection read adding
+ * the videos it has never seen) reads or lists the folder and saves what it
+ * saw, so two at once let the later save drop what the earlier one added.
+ * In the chain they run one after the other. A folder leaves the map once its
+ * chain is idle.
+ */
+const writeChains = new Map<string, Promise<void>>();
+
+/**
+ * Run an index write of the folder once the writes queued before it have
+ * settled, failed ones included. A write must not call an exported writer of
+ * the same folder: it would wait for itself.
+ */
+function inWriteChain<T>(folderPath: string, write: () => Promise<T>): Promise<T> {
+  const key = path.resolve(folderPath);
+  const run = (writeChains.get(key) ?? Promise.resolve()).then(write);
+  const tail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  writeChains.set(key, tail);
+  void tail.then(() => {
+    if (writeChains.get(key) === tail) {
+      writeChains.delete(key);
+    }
+  });
+  return run;
+}
+
+/**
  * Read ids recorded in yt-dlp's archive.txt (`<extractor> <id>` per line).
  */
 export async function readArchiveIds(folderPath: string): Promise<Set<string>> {
@@ -460,8 +491,15 @@ async function needsLeadingNewline(filePath: string): Promise<string> {
  * archive from such a scan dropped those lines silently, and the next channel
  * download fetched those videos again. Removing lines is the reconcile
  * endpoint's job, behind its guard and with a report (archive.ts).
+ *
+ * The scan runs in the folder's write chain, after the writes queued before it.
  */
 export async function rebuildIndex(folderPath: string): Promise<FolderIndex> {
+  return inWriteChain(folderPath, () => scanAndSave(folderPath));
+}
+
+/** The rebuild itself, for a caller already running in the folder's write chain */
+async function scanAndSave(folderPath: string): Promise<FolderIndex> {
   const files = await listVisibleFiles(folderPath);
   const entries: Record<string, FolderIndexEntry> = {};
 
@@ -506,13 +544,19 @@ const readerRebuilds = createSingleFlight<string, FolderIndex>();
  * from getting the same lines appended once per reader. Only readers share:
  * the post-job refresh and the rebuild endpoint run their own scan, so a job
  * never joins one that listed the folder before its files landed.
+ *
+ * The readers' rebuild runs in the folder's write chain and reads the index
+ * again first, so readers that found none while a write was in flight take
+ * what that write saved instead of scanning the folder a second time.
  */
 export async function loadIndex(folderPath: string): Promise<FolderIndex> {
   const existing = await readIndexFile(folderPath);
   if (existing) {
     return existing;
   }
-  return readerRebuilds.run(path.resolve(folderPath), () => rebuildIndex(folderPath));
+  return readerRebuilds.run(path.resolve(folderPath), () =>
+    inWriteChain(folderPath, async () => (await readIndexFile(folderPath)) ?? scanAndSave(folderPath)),
+  );
 }
 
 export interface RefreshResult {
@@ -562,13 +606,18 @@ export async function indexUntrackedVideos(folderPath: string): Promise<RefreshR
 /** Decides whether an info.json (by file stem and mtime) is re-read into the index */
 type EntryFilter = (baseName: string, mtimeMs: number) => boolean;
 
-async function refreshEntries(
+/** A read, change and save of the index, in the folder's write chain so no other write lands in between */
+function refreshEntries(folderPath: string, filterFor: (index: FolderIndex) => EntryFilter): Promise<RefreshResult> {
+  return inWriteChain(folderPath, () => applyRefresh(folderPath, filterFor));
+}
+
+async function applyRefresh(
   folderPath: string,
   filterFor: (index: FolderIndex) => EntryFilter,
 ): Promise<RefreshResult> {
   const existing = await readIndexFile(folderPath);
   if (!existing) {
-    const index = await rebuildIndex(folderPath);
+    const index = await scanAndSave(folderPath);
     return { index, changed: Object.keys(index.entries), removed: [] };
   }
 

@@ -279,11 +279,10 @@ describe('folderIndex', () => {
       await writeVideo(dir, '20240102_Second', 'id-second');
 
       // A folder without an index gets rebuilt by whoever asks first, and more
-      // than one rebuild can run at once (the rebuild endpoint next to a
-      // reader). They all write the index through a temp file, so a shared
-      // temp name makes the slower writer rename a path the faster one has
-      // already moved. archive.txt is appended instead, and a line two
-      // rebuilds both added is one id to every reader of the archive.
+      // than one rebuild can be asked for at once (the rebuild endpoint next
+      // to a reader). They run in turn in the folder's write chain, each
+      // writing the index through a temp file of its own, and archive.txt is
+      // appended rather than rewritten, so every id ends up in it once.
       const readers = await Promise.all(Array.from({ length: 5 }, () => rebuildIndex(dir)));
 
       for (const index of readers) {
@@ -306,6 +305,128 @@ describe('folderIndex', () => {
       }
       const archive = await fs.readFile(path.join(dir, ARCHIVE_FILE), 'utf-8');
       expect(archive).toBe('youtube id-first\nyoutube id-second\n');
+    });
+  });
+
+  describe('writes to one folder', () => {
+    const HOUR_MS = 60 * 60 * 1000;
+
+    /** A video whose info.json was last written `agedMs` ago */
+    async function writeAgedVideo(baseName: string, id: string, agedMs: number): Promise<void> {
+      await writeVideo(dir, baseName, id);
+      const then = new Date(Date.now() - agedMs);
+      await fs.utimes(path.join(dir, `${baseName}.info.json`), then, then);
+    }
+
+    /** Holds the first open of an info.json, the head read of a scan, until release() */
+    function holdFirstInfoOpen(): { reached: Promise<void>; release: () => void; opens: () => number } {
+      const realOpen = fs.open;
+      let release: () => void = () => undefined;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let signalReached: () => void = () => undefined;
+      const reached = new Promise<void>((resolve) => {
+        signalReached = resolve;
+      });
+      let opens = 0;
+      vi.spyOn(fs, 'open').mockImplementation(async (file, flags, mode) => {
+        if (String(file).endsWith('.info.json')) {
+          opens += 1;
+          if (opens === 1) {
+            signalReached();
+            await released;
+          }
+        }
+        return realOpen(file, flags, mode);
+      });
+      return { reached, release, opens: () => opens };
+    }
+
+    /** The reads of the index file started so far, each settling whether it found the file or not */
+    function recordIndexReads(): () => Promise<unknown>[] {
+      const realReadFile = fs.readFile;
+      const reads: Promise<unknown>[] = [];
+      vi.spyOn(fs, 'readFile').mockImplementation((file, options) => {
+        const result = realReadFile(file, options);
+        if (String(file).endsWith(INDEX_FILE)) {
+          reads.push(result.catch(() => undefined));
+        }
+        return result;
+      });
+      return () => [...reads];
+    }
+
+    const storedIds = async (): Promise<string[]> => Object.keys((await loadIndex(dir)).entries).sort();
+
+    it('keeps the video a job refresh adds while a reader rebuild is still scanning', async () => {
+      await writeAgedVideo('20240101_First', 'id-first', HOUR_MS);
+      const held = holdFirstInfoOpen();
+      const indexReads = recordIndexReads();
+
+      // A reader finds no index and rebuilds it from a listing taken before
+      // the job's files landed; the job's refresh found no index either and
+      // rebuilt it too, and whichever saved last decided what the folder held
+      const reader = loadIndex(dir);
+      await held.reached;
+      await writeVideo(dir, '20240102_Second', 'id-second');
+      const refresh = refreshIndex(dir, Date.now() - 1000);
+      await Promise.all(indexReads());
+      held.release();
+      const [, refreshed] = await Promise.all([reader, refresh]);
+
+      expect(refreshed.changed).toEqual(['id-second']);
+      expect(await storedIds()).toEqual(['id-first', 'id-second']);
+    });
+
+    it('keeps both videos when a collection read and a job refresh index the folder at once', async () => {
+      await writeAgedVideo('20240101_First', 'id-first', HOUR_MS);
+      await rebuildIndex(dir);
+      // Moved in from another folder: an old mtime, and never indexed
+      await writeAgedVideo('20230101_MovedIn', 'id-moved', 24 * HOUR_MS);
+      const held = holdFirstInfoOpen();
+      const indexReads = recordIndexReads();
+
+      // Each read the index, added its own video and saved: the later save
+      // dropped the other one's
+      const collectionRead = indexUntrackedVideos(dir);
+      await held.reached;
+      await writeVideo(dir, '20240102_Second', 'id-second');
+      const refresh = refreshIndex(dir, Date.now() - 1000);
+      await Promise.all(indexReads());
+      held.release();
+      await Promise.all([collectionRead, refresh]);
+
+      expect(await storedIds()).toEqual(['id-first', 'id-moved', 'id-second']);
+    });
+
+    it('lets a reader that finds no index wait for a rebuild in flight instead of scanning again', async () => {
+      await writeVideo(dir, '20240101_First', 'id-first');
+      await writeVideo(dir, '20240102_Second', 'id-second');
+      const held = holdFirstInfoOpen();
+      const indexReads = recordIndexReads();
+
+      const rebuild = rebuildIndex(dir);
+      await held.reached;
+      const reader = loadIndex(dir);
+      await Promise.all(indexReads());
+      held.release();
+      const [, read] = await Promise.all([rebuild, reader]);
+
+      expect(Object.keys(read.entries).sort()).toEqual(['id-first', 'id-second']);
+      // One scan opens each of the two heads once
+      expect(held.opens()).toBe(2);
+    });
+
+    it('runs the next index write after one that failed', async () => {
+      await writeVideo(dir, '20240101_First', 'id-first');
+      vi.spyOn(fs, 'rename').mockRejectedValueOnce(
+        Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }),
+      );
+
+      await expect(rebuildIndex(dir)).rejects.toThrow('EACCES');
+
+      expect(await storedIds()).toEqual(['id-first']);
     });
   });
 
