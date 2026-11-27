@@ -314,6 +314,24 @@ jobs:
           # yt-dlp, so a base-image bump that breaks either is caught here.
           test "$(docker run --rm videodeck-server:ci id -u)" = "1000"
           docker run --rm videodeck-server:ci yt-dlp --version
+          # yt-dlp carries what the folder options ask of it: curl_cffi for
+          # `impersonate: true`, yt-dlp-ejs and a JavaScript runtime for the
+          # challenges YouTube sets. No network needed: -v lists the libraries
+          # and runtimes it found and stops at the missing URL, while a missing
+          # curl_cffi stops it earlier, with a traceback.
+          out=$(docker run --rm --network none videodeck-server:ci yt-dlp --ignore-config --impersonate chrome -v 2>&1 || true)
+          grep -q 'You must provide at least one URL' <<<"$out" || { echo "::error::yt-dlp cannot impersonate chrome, curl_cffi is missing"; echo "$out"; exit 1; }
+          grep -q 'yt_dlp_ejs-' <<<"$out" || { echo "::error::yt-dlp-ejs is missing, so YouTube challenges go unsolved"; echo "$out"; exit 1; }
+          grep -q 'JS runtimes: deno-' <<<"$out" || { echo "::error::yt-dlp finds no JavaScript runtime"; echo "$out"; exit 1; }
+          # The runtime install is the server's production closure: express is
+          # in it, the client's packages and the test tooling are not. The
+          # negative check is an if: bash -e never stops on a `!` command.
+          docker run --rm videodeck-server:ci ls /app/node_modules/.pnpm > /tmp/server-packages.txt
+          grep -q '^express@' /tmp/server-packages.txt
+          if grep -E '^(react|react-dom|lucide-react|i18next|typescript|supertest)@' /tmp/server-packages.txt; then
+            echo "::error::the server image installs packages the server never loads (listed above)"
+            exit 1
+          fi
           # No Elasticsearch on purpose: the server answers 503 and reports the
           # cluster as down, which still proves the compiled entrypoint loaded
           # every workspace import from the production-only install. The token
