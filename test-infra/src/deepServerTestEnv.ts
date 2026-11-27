@@ -33,6 +33,13 @@ export const FAKE_YTDLP = path.join(REPO_ROOT, 'scripts/fake-bin/yt-dlp');
  */
 export const YTDLP_ARGV_LOG_NAME = '.fake-ytdlp-argv.jsonl';
 
+/**
+ * File the fake yt-dlp reads its titles from (`{ "<id>": "<title>" }`) when it
+ * exists in the folder a run starts from; a video it does not list is titled
+ * `Fake video <id>`. Seed it to download videos whose names would collide.
+ */
+export const YTDLP_TITLES_NAME = '.fake-ytdlp-titles.json';
+
 type AppModule = typeof import('../../server/src/app.js');
 type FolderRoutesModule = typeof import('../../server/src/routes/folder.js');
 type IndexMaintenanceModule = typeof import('../../server/src/routes/videos/indexMaintenance.js');
@@ -227,7 +234,12 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
   };
 }
 
-/** The sidecar files of one downloaded video, as the fake yt-dlp writes them */
+/**
+ * The files of one downloaded video, with the contents the fake yt-dlp
+ * writes, under a `<date>_<title>` stem: the way downloads were named before
+ * the id joined the name. Seeding the older stems keeps proving that they
+ * work next to new downloads, which end in `_<id>`.
+ */
 export function videoFiles(
   videoId: string,
   title: string,

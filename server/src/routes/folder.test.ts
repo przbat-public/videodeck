@@ -1538,6 +1538,34 @@ describe('folder router', () => {
       expect(activeSseStreamCount()).toBe(0);
     });
 
+    it('answers that a video the folder index holds is already downloaded, without a job', async () => {
+      // The extension cannot tell a downloaded video from a new one, and
+      // archive.txt is not the disk: with its line missing, the video was
+      // fetched again under a second file name
+      mockedFindEntry.mockResolvedValueOnce(
+        indexEntry({ baseName: '20240101_Film_aaaaaaaaaaa', videoFile: '20240101_Film_aaaaaaaaaaa.mp4' }),
+      );
+
+      const response = await startRequest(
+        request(app)
+          .post('/api/folder/download-video')
+          .send({ folderPath: FOLDER, videoUrl: 'https://www.youtube.com/watch?v=aaaaaaaaaaa' })
+          .buffer(true)
+          .parse(collectStream)
+          // Without the guard the stream waits for a job that never ends
+          .timeout({ response: 1000, deadline: 2000 }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(parseEvents(response.body as string)).toEqual([
+        { type: 'downloadStart' },
+        { type: 'downloadComplete', message: 'Already downloaded' },
+      ]);
+      expect(mockedFindEntry).toHaveBeenCalledWith(FOLDER, 'aaaaaaaaaaa');
+      expect(spawnCalls).toHaveLength(0);
+      expect(activeSseStreamCount()).toBe(0);
+    });
+
     it('strips playlist context from the URL before enqueueing', async () => {
       const pending = startRequest(
         request(app)

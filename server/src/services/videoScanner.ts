@@ -7,6 +7,7 @@ import { listVisibleFiles, resolveContainedPath } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { stripUndefined } from '../utils/objectUtils';
 import { runPool } from '../utils/runPool';
+import { titleFromStem } from '../utils/videoStem';
 import type { SearchOptions, VideoDocument } from './elasticsearchService';
 import {
   bulkIndexDocuments,
@@ -113,7 +114,7 @@ function getBaseName(filename: string): string {
 }
 
 /**
- * Extract upload date from baseName (format: YYYYMMDD_title)
+ * Upload date from the stem prefix (YYYYMMDD_title, or YYYYMMDD_title_id for newer downloads)
  */
 function extractUploadDate(baseName: string): string | undefined {
   return /^(\d{8})_/.exec(baseName)?.[1];
@@ -277,7 +278,7 @@ export async function buildVideoItem(
     video: stripUndefined<VideoListItem>({
       baseName,
       videoId: infoJson.id,
-      title: title || baseName.replace(/^\d{8}_/, '').replace(/_/g, ' '),
+      title: title || titleFromStem(baseName, infoJson.id),
       description: infoJson.description || title,
       videoPath: videoFile,
       thumbnailPath: thumbnailFile,

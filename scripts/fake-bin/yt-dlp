@@ -22,6 +22,10 @@
  * `--ignore-config` exits 3: the real binary would have loaded it. Everything
  * else is a strict no-op success.
  *
+ * With `.fake-ytdlp-titles.json` in the working directory (`{ "<id>": "<title>" }`),
+ * a video listed there gets that title instead of `Fake video <id>`: how a
+ * test makes two downloads whose names would collide.
+ *
  * With `.fake-ytdlp-argv.jsonl` present in the working directory, every
  * invocation appends its cwd and argv there as one JSON line, which is how
  * tests assert the arguments the queue built.
@@ -169,15 +173,24 @@ if (!id) {
 }
 failOnKnownError(id);
 
+const TITLES_NAME = '.fake-ytdlp-titles.json';
+const titlesPath = path.join(process.cwd(), TITLES_NAME);
+/** @type {Record<string, unknown>} */
+const titles = existsSync(titlesPath) ? JSON.parse(readFileSync(titlesPath, 'utf-8')) : {};
+const listedTitle = titles[id];
+const title = typeof listedTitle === 'string' ? listedTitle : `Fake video ${id}`;
+
 if (args.includes('--simulate')) {
   process.exit(0);
 }
 
-// -o template: downloads use %(upload_date)s_%(title)s.%(ext)s, a sidecar
-// repair uses <baseName>.%(ext)s with --skip-download, and an update or a
-// comment repair uses .videodeck-staging/<jobId>/<baseName>.%(ext)s, so
+// -o template: downloads use %(upload_date)s_%(title)s_%(id)s.%(ext)s, a
+// sidecar repair uses <baseName>.%(ext)s with --skip-download, and an update
+// or a comment repair uses .videodeck-staging/<jobId>/<baseName>.%(ext)s, so
 // `baseName` below can be that relative path. The fake writes the video as
-// <baseName>.mp4 and the sidecars as <baseName>.<sidecar>.
+// <baseName>.mp4 and the sidecars as <baseName>.<sidecar>. It does not apply
+// --restrict-filenames: its names keep the title's space, and since the title
+// holds the id, a download's stem carries the id twice.
 const outputArgIndex = args.indexOf('-o');
 const outputTemplate = outputArgIndex >= 0 ? args[outputArgIndex + 1] : '';
 const skipDownload = args.includes('--skip-download');
@@ -185,7 +198,8 @@ const baseName = skipDownload
   ? outputTemplate.replace(/\.%\(ext\)s$/, '')
   : outputTemplate
       .replace('%(upload_date)s', '20260101')
-      .replace('%(title)s', `Fake video ${id}`)
+      .replace('%(title)s', title)
+      .replace('%(id)s', id)
       .replace(/\.%\(ext\)s$/, '');
 if (!baseName) {
   console.error('fake-ytdlp: missing -o template');
@@ -259,7 +273,7 @@ if (writeInfoJson) {
     `${baseName}.info.json`,
     JSON.stringify({
       id,
-      title: `Fake video ${id}`,
+      title,
       upload_date: '20260101',
       duration: 42,
       view_count: 1234,

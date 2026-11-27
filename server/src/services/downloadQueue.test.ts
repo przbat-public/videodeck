@@ -8,6 +8,7 @@ import type { Mock, MockedFunction, MockInstance } from 'vitest';
 import { at, indexEntry, indexFile } from '../test-utils';
 import { removePartialDownloads, writeTextAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
+import { isSafeVideoStem } from '../utils/videoStem';
 import type { EnqueueRequest, SpawnedProcess } from './downloadQueue';
 import {
   clearIndexRetries,
@@ -22,7 +23,7 @@ import { loadIndex, refreshIndex } from './folderIndex';
 import { commitStagedRefresh, removeStaging, stagedCommentsInterrupted, sweepStagingDirs } from './refreshStaging';
 import { readUnavailable, recordUnavailable } from './unavailableVideos';
 import { folderReindexInFlight, indexVideosFromDisk } from './videoScanner';
-import { buildFormatSelector, buildYtDlpArgs, escapeOutputTemplate, PROGRESS_TEMPLATE } from './ytdlp';
+import { buildFormatSelector, buildYtDlpArgs, escapeOutputTemplate, OUTPUT_TEMPLATE, PROGRESS_TEMPLATE } from './ytdlp';
 
 vi.mock('./folderIndex', async () => ({
   ...(await vi.importActual<typeof import('./folderIndex')>('./folderIndex')),
@@ -556,13 +557,30 @@ describe('indexChangedVideos', () => {
 });
 
 describe('buildYtDlpArgs', () => {
+  it('leaves 179 characters for the title under the stem cap', () => {
+    // The names are ASCII (--restrict-filenames), so the app's own stem cap is
+    // the limit: a longer stem is dropped by the index and refused at spawn
+    const stem = (titleLength: number) =>
+      OUTPUT_TEMPLATE.replace('%(upload_date)s', '20260101')
+        .replace('%(title)s', 'a'.repeat(titleLength))
+        .replace('%(id)s', '-abc_def_gh')
+        .replace('.%(ext)s', '');
+
+    expect(isSafeVideoStem(stem(179))).toBe(true);
+    expect(isSafeVideoStem(stem(180))).toBe(false);
+  });
+
   it('builds a full download with the archive file and restricted names', () => {
     const args = buildYtDlpArgs({ type: 'download', videoUrl: 'https://yt/x' });
 
     expect(args).toContain('--download-archive');
     expect(args[args.indexOf('--download-archive') + 1]).toBe('archive.txt');
     expect(args).toContain('--restrict-filenames');
-    expect(args[args.indexOf('-o') + 1]).toBe('%(upload_date)s_%(title)s.%(ext)s');
+    // The id ends the name: two videos of one day whose titles sanitize alike
+    // shared a stem, and the second rewrote the first one's metadata
+    expect(args[args.indexOf('-o') + 1]).toBe('%(upload_date)s_%(title)s_%(id)s.%(ext)s');
+    // Trimming cuts a name from its end, the id first
+    expect(args).not.toContain('--trim-filenames');
     expect(args).toContain('--no-playlist');
     expect(args).toContain('--write-info-json');
     expect(args).toContain('--write-comments');

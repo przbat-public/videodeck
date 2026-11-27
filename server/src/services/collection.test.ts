@@ -64,4 +64,19 @@ describe('readCollection', () => {
 
     expect(videos.map((video) => video.title)).toEqual(['Home built SMD Reflow Oven']);
   });
+
+  it('leaves the id out of a title made from a stem that ends in it', async () => {
+    const baseName = '20130526_Home_built_Dube38fpLtc';
+    await writeVideo(dir, baseName, { id: 'Dube38fpLtc', title: 'ignored' });
+    const legacyIndex = {
+      ...indexFile([]),
+      builtAt: '2026-01-01T00:00:00.000Z',
+      entries: { Dube38fpLtc: indexEntry({ baseName, videoFile: `${baseName}.mp4` }) },
+    };
+    await fs.writeFile(path.join(dir, INDEX_FILE), JSON.stringify(legacyIndex), 'utf-8');
+
+    const { videos } = await readCollection(dir);
+
+    expect(videos.map((video) => video.title)).toEqual(['Home built']);
+  });
 });
