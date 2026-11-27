@@ -616,6 +616,98 @@ describe('FakeElasticsearch controls', () => {
     expect(await matchesFor('ksztaltdokument', 'title')).toBe(1);
   });
 
+  /**
+   * Two single-shard indices, the way two folders are: one holds a video whose
+   * comments run past index.highlight.max_analyzed_offset (1,000,000
+   * characters) next to a light video, the other a light video of its own.
+   * Every title holds "film". Created on first use and kept, like videos_agg.
+   */
+  const seedHighlightIndices = async () => {
+    for (const index of ['videos_hl_heavy', 'videos_hl_other']) {
+      await fetch(`${baseUrl}/${index}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ settings: {}, mappings: {} }),
+      });
+    }
+    await bulk([
+      { index: { _index: 'videos_hl_heavy', _id: 'hl-heavy' } },
+      { title: 'Film z komentarzami', commentsText: 'komentarz '.repeat(110_000) },
+      { index: { _index: 'videos_hl_heavy', _id: 'hl-light' } },
+      { title: 'Film bez komentarzy' },
+      { index: { _index: 'videos_hl_other', _id: 'hl-other' } },
+      { title: 'Film z innego folderu' },
+    ]);
+  };
+
+  /** A typed search that highlights the comments, as the service's page search does */
+  const highlightBody = (highlight: Record<string, unknown> = {}) => ({
+    query: { multi_match: { query: 'film', fields: ['title', 'commentsText'] } },
+    track_total_hits: true,
+    highlight: { fields: { commentsText: { fragment_size: 160, number_of_fragments: 1 } }, ...highlight },
+  });
+
+  const highlightSearch = (index: string, highlight: Record<string, unknown> = {}, params = '') =>
+    fetch(`${baseUrl}/${index}/_search${params}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(highlightBody(highlight)),
+    });
+
+  interface ShardedAnswer {
+    _shards: { total: number; successful: number; failed: number; failures?: unknown[] };
+    hits: { total: unknown; hits: Array<{ _id: string }> };
+  }
+
+  it('fails the shard of a hit whose highlighted field passes the analyzed-offset limit, unless the request caps it', async () => {
+    await seedHighlightIndices();
+
+    // Both folders: the heavy one's shard fails in the fetch phase, so its two
+    // hits count in the total and are missing from the page of a 200 answer
+    const partial = await highlightSearch('videos_hl_heavy,videos_hl_other');
+    expect(partial.status).toBe(200);
+    const body = (await partial.json()) as ShardedAnswer;
+    expect(body._shards).toMatchObject({ total: 2, successful: 1, failed: 1 });
+    expect(JSON.stringify(body._shards.failures)).toContain('max_analyzed_offset');
+    expect(body.hits.total).toEqual({ value: 3, relation: 'eq' });
+    expect(body.hits.hits.map((hit) => hit._id)).toEqual(['hl-other']);
+
+    // The heavy folder alone is one shard, so the same failure fails the search
+    const single = await highlightSearch('videos_hl_heavy');
+    expect(single.status).toBe(400);
+    expect(((await single.json()) as { error: unknown }).error).toMatchObject({
+      type: 'search_phase_execution_exception',
+      reason: 'all shards failed',
+    });
+
+    // A request cap at or below the index limit truncates the field instead
+    const capped = (await (
+      await highlightSearch('videos_hl_heavy,videos_hl_other', { max_analyzed_offset: 100_000 })
+    ).json()) as ShardedAnswer;
+    expect(capped._shards).toMatchObject({ total: 2, successful: 2, failed: 0 });
+    expect(capped.hits.hits.map((hit) => hit._id).sort()).toEqual(['hl-heavy', 'hl-light', 'hl-other']);
+  });
+
+  it('refuses a page with a failed shard when partial results are not allowed', async () => {
+    await seedHighlightIndices();
+
+    // The short page above becomes a 400 once partial results are refused
+    const refused = await highlightSearch('videos_hl_heavy,videos_hl_other', {}, '?allow_partial_search_results=false');
+    expect(refused.status).toBe(400);
+    expect(((await refused.json()) as { error: { type: string } }).error.type).toBe('search_phase_execution_exception');
+
+    // The same flag in an _msearch header fails that search's item instead
+    const response = await msearch([
+      { index: ['videos_hl_heavy', 'videos_hl_other'], ignore_unavailable: true, allow_partial_search_results: false },
+      highlightBody(),
+    ]);
+    expect(response.status).toBe(200);
+    const [item] = ((await response.json()) as { responses: Array<{ status: number; error?: { type: string } }> })
+      .responses;
+    expect(item?.status).toBe(400);
+    expect(item?.error?.type).toBe('search_phase_execution_exception');
+  });
+
   it('holds a matching request until it is released, and serves the others meanwhile', async () => {
     const hold = fake.holdRequestsMatching('/_bulk');
     try {

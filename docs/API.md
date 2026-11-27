@@ -94,7 +94,7 @@ New indexes get the new analyzer, and the aliases switch atomically.
 
 ### GET /api/videos/search
 
-Searches videos by phrase in the file name (`baseName.text^4`), title (`^3`), description (`^2`), subtitle transcript (`transcriptText^2`), and comments (`commentsText`). Text is analyzed with **diacritic folding** (custom `polish_folded` analyzer: `standard` + `lowercase` + `asciifolding`), so `srodek` finds `środek` without typing Polish characters. Polish stemming/stop words would require the `analysis-stempel` plugin (absent from the default Docker image), so the analyzer uses only built-in components. Transcripts and comments are search-only fields; they are never returned in responses.
+Searches videos by phrase in the file name (`baseName.text^4`), title (`^3`), description (`^2`), subtitle transcript (`transcriptText^2`), and comments (`commentsText`). Text is analyzed with **diacritic folding** (custom `polish_folded` analyzer: `standard` + `lowercase` + `asciifolding`), so `srodek` finds `środek` without typing Polish characters. Polish stemming/stop words would require the `analysis-stempel` plugin (absent from the default Docker image), so the analyzer uses only built-in components. Transcripts and comments are search-only fields; they are never returned in responses. Match snippets are cut from the first 100,000 characters of a field, so a phrase found deeper into a long comment section still returns its video, only without a snippet.
 
 **Query parameters:**
 

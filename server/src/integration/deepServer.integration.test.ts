@@ -259,6 +259,38 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(lastBody?.size).toBe(0);
   });
 
+  it('serves every folder of a typed search when one video carries more comment text than the highlighter analyzes', async () => {
+    // One comment of 1,100,000 characters, past the 1,000,000 a cluster's
+    // highlighter analyzes by default: that hit failed the fetch of its
+    // folder's whole shard, so the folder's videos left the page
+    const heavyComment = { id: 'Ugx-heavy', author: 'Viewer', text: 'komentarz '.repeat(110_000), like_count: 0 };
+    await env.seedFolder('highlight-heavy', {
+      ...videoFiles('heavy000001', 'Film z komentarzami', { comments: [heavyComment] }),
+      ...videoFiles('heavy000002', 'Film bez komentarzy'),
+      'config.json': folderConfig('https://www.youtube.com/@heavy', 'heavy'),
+    });
+    await env.seedFolder('highlight-light', {
+      ...videoFiles('light000001', 'Film z innego folderu'),
+      'config.json': folderConfig('https://www.youtube.com/@light', 'light'),
+    });
+    env.setFolders('highlight-heavy', 'highlight-light');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const both = await env.agent.get('/api/videos/search?q=film').expect(200);
+    expect(both.body.totalCount).toBe(3);
+    expect((both.body.videos as Array<{ title: string }>).map((video) => video.title).sort()).toEqual([
+      'Film bez komentarzy',
+      'Film z innego folderu',
+      'Film z komentarzami',
+    ]);
+
+    // The heavy folder alone is one shard, where the same failure was a 500
+    const heavy = await env.agent.get('/api/videos/search?q=film&category=heavy').expect(200);
+    expect(heavy.body.totalCount).toBe(2);
+    expect(heavy.body.videos).toHaveLength(2);
+  });
+
   it('searches, opens and lists channels across 300 configured folders', async () => {
     const folderPath = await env.seedFolder('library-300', {
       ...videoFiles('lib300video', 'Film z dużej biblioteki', { channel: 'Kanał biblioteki' }),

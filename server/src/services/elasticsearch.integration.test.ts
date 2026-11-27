@@ -41,6 +41,8 @@ const runIntegration = process.env.RUN_ES_INTEGRATION === '1';
 const describeIntegration = runIntegration ? describe : describe.skip;
 
 const SCRATCH_FOLDER = '/integration-scratch-folder';
+/** A second folder, so one search spans two single-shard indices */
+const SECOND_SCRATCH_FOLDER = '/integration-scratch-folder-two';
 
 /**
  * A count past int32. A digit string survives `toDocument`'s coercion as this
@@ -86,6 +88,7 @@ describeIntegration('Elasticsearch integration', () => {
 
   afterEach(async () => {
     await deleteIndex(SCRATCH_FOLDER);
+    await deleteIndex(SECOND_SCRATCH_FOLDER);
   });
 
   /**
@@ -122,6 +125,47 @@ describeIntegration('Elasticsearch integration', () => {
       throw error;
     }
     throw new Error('the cluster served a request it was expected to refuse');
+  }
+
+  /**
+   * The first folder holds a video whose comments run past
+   * index.highlight.max_analyzed_offset (1,000,000 characters) next to a light
+   * one, the second a light video of its own. Every title holds "film".
+   */
+  async function seedHighlightFolders(): Promise<{ heavy: string; other: string }> {
+    const heavy = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      heavy,
+      [
+        { ...toDocument(video('20240103_ciezki', 'Film z komentarzami')), commentsText: 'komentarz '.repeat(110_000) },
+        toDocument(video('20240101_lekki', 'Film bez komentarzy')),
+      ],
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, heavy);
+    const other = await createIndexVersion(SECOND_SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      other,
+      [toDocument({ ...video('20240102_inny', 'Film z innego folderu'), folderPath: SECOND_SCRATCH_FOLDER })],
+      false,
+    );
+    await promoteIndexVersion(SECOND_SCRATCH_FOLDER, other);
+    return {
+      heavy: getIndexNameFromFolderPath(SCRATCH_FOLDER),
+      other: getIndexNameFromFolderPath(SECOND_SCRATCH_FOLDER),
+    };
+  }
+
+  /** A typed search that highlights the comments, as the service's page search does */
+  function highlightBody(maxAnalyzedOffset?: number) {
+    return {
+      query: { multi_match: { query: 'film', fields: ['title', 'commentsText'] } },
+      track_total_hits: true,
+      highlight: {
+        fields: { commentsText: { fragment_size: 160, number_of_fragments: 1 } },
+        ...(maxAnalyzedOffset === undefined ? {} : { max_analyzed_offset: maxAnalyzedOffset }),
+      },
+    };
   }
 
   /** One document behind the folder alias, so a search really has an index */
@@ -263,6 +307,23 @@ describeIntegration('Elasticsearch integration', () => {
     expect(await getIndexVersions(SCRATCH_FOLDER)).toEqual([v1]);
     const results = await searchVideos('', 'date-desc', [SCRATCH_FOLDER]);
     expect(results.map((item) => item.baseName)).toEqual(['20240101_kept']);
+  });
+
+  it('serves every folder of a typed search when one video carries more comment text than the highlighter analyzes', async () => {
+    await seedHighlightFolders();
+
+    // The deep suite's scenario on a cluster: the service caps the highlighter,
+    // so neither the two-folder page nor the heavy folder alone loses a hit
+    const page = await searchVideosWithTotal('film', 'date-desc', [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER]);
+    expect(page.total).toBe(3);
+    expect(page.videos.map((item) => item.baseName).sort()).toEqual([
+      '20240101_lekki',
+      '20240102_inny',
+      '20240103_ciezki',
+    ]);
+
+    const single = await searchVideosWithTotal('film', 'date-desc', [SCRATCH_FOLDER]);
+    expect(single.videos.map((item) => item.baseName).sort()).toEqual(['20240101_lekki', '20240103_ciezki']);
   });
 
   // The scenarios below are the twins of the fake's own tests: the same
@@ -413,6 +474,56 @@ describeIntegration('Elasticsearch integration', () => {
     expect(served && 'hits' in served ? served.hits.total : undefined).toEqual({ value: 1, relation: 'eq' });
     expect(refused?.status).toBe(400);
     expect(refused && 'error' in refused ? refused.error.type : undefined).toBe('search_phase_execution_exception');
+  });
+
+  it('fails the shard of a hit whose highlighted field passes the analyzed-offset limit, unless the request caps it', async () => {
+    const { heavy, other } = await seedHighlightFolders();
+
+    // Both folders: the heavy one's shard fails in the fetch phase, so its two
+    // hits count in the total and are missing from the page of a 200 answer
+    const partial = await esClient.search({ index: [heavy, other], ...highlightBody() });
+    expect(partial._shards).toMatchObject({ total: 2, successful: 1, failed: 1 });
+    expect(JSON.stringify(partial._shards.failures)).toContain('max_analyzed_offset');
+    expect(partial.hits.total).toEqual({ value: 3, relation: 'eq' });
+    expect(partial.hits.hits.map((hit) => hit._id)).toEqual(['20240102_inny']);
+
+    // The heavy folder alone is one shard, so the same failure fails the search
+    const single = await rejectionOf(esClient.search({ index: heavy, ...highlightBody() }));
+    expect(single.status).toBe(400);
+    expect(single.body).toMatchObject({
+      error: { type: 'search_phase_execution_exception', reason: 'all shards failed' },
+    });
+
+    // A request cap at or below the index limit truncates the field instead
+    const capped = await esClient.search({ index: [heavy, other], ...highlightBody(100_000) });
+    expect(capped._shards).toMatchObject({ total: 2, successful: 2, failed: 0 });
+    expect(capped.hits.hits.map((hit) => hit._id).sort()).toEqual([
+      '20240101_lekki',
+      '20240102_inny',
+      '20240103_ciezki',
+    ]);
+  });
+
+  it('refuses a page with a failed shard when partial results are not allowed', async () => {
+    const { heavy, other } = await seedHighlightFolders();
+
+    // The short page above becomes a 400 once partial results are refused
+    const refused = await rejectionOf(
+      esClient.search({ index: [heavy, other], allow_partial_search_results: false, ...highlightBody() }),
+    );
+    expect(refused.status).toBe(400);
+    expect(refused.body).toMatchObject({ error: { type: 'search_phase_execution_exception' } });
+
+    // The same flag in an _msearch header fails that search's item instead
+    const response = await esClient.msearch({
+      searches: [
+        { index: [heavy, other], ignore_unavailable: true, allow_partial_search_results: false },
+        highlightBody(),
+      ],
+    });
+    const [item] = response.responses;
+    expect(item?.status).toBe(400);
+    expect(item && 'error' in item ? item.error.type : undefined).toBe('search_phase_execution_exception');
   });
 
   it('matches nothing for a term on a subfield the mapping does not declare', async () => {

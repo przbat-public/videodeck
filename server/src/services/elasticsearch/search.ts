@@ -51,12 +51,16 @@ function getIndexPattern(folderPaths: string[] = getVideosFolderPaths()): string
 async function searchAliases<TDocument>(
   index: string[],
   body: estypes.SearchSearchRequestBody,
+  header: SearchHeader = {},
 ): Promise<estypes.MsearchMultiSearchItem<TDocument>> {
   const response = await getElasticsearchClient().msearch<TDocument>({
-    searches: [{ index, ignore_unavailable: true }, body],
+    searches: [{ index, ignore_unavailable: true, ...header }, body],
   });
   return unwrapSearchResponse(response.responses[0]);
 }
+
+/** The _msearch header settings a read may add to its alias list */
+type SearchHeader = Omit<estypes.MsearchMultisearchHeader, 'index' | 'ignore_unavailable'>;
 
 /**
  * The answer of a one-search _msearch. A search the cluster could not run
@@ -132,6 +136,18 @@ const HIGHLIGHT_OPEN = '\u0001';
 const HIGHLIGHT_CLOSE = '\u0002';
 
 /**
+ * How many characters of one field the highlighter reads. Uncapped, a field
+ * past the index's `index.highlight.max_analyzed_offset` (1,000,000 by
+ * default) failed the fetch of its whole shard, so one video with an enormous
+ * comment section took its folder's other hits off the page, or failed the
+ * search when that folder was all it covered. A cap at or below the index
+ * limit truncates instead: a match further in still returns the video, only
+ * without a snippet. 100,000 matches the transcript cap and bounds what one
+ * hit costs to analyze again.
+ */
+export const HIGHLIGHT_MAX_ANALYZED_CHARS = 100_000;
+
+/**
  * Page start and size for one search, kept inside Elasticsearch's result
  * window. The cluster rejects `from + size > index.max_result_window` with a
  * 400 (search_phase_execution_exception), which reached the user as a 500 on
@@ -191,33 +207,45 @@ export async function searchVideosWithTotal(
   }
 
   // commentsText is search-only; it would dominate the payload otherwise
-  const response = await searchAliases<VideoDocument>(getIndexPattern(folderPaths), {
-    query:
-      filters.length > 0 ? { bool: { must: [mustQuery], filter: filters } } : hasQuery ? mustQuery : { match_all: {} },
-    sort: buildSortOptions(sortOption),
-    from,
-    size,
-    track_total_hits: true,
-    _source: {
-      excludes: [...SEARCH_ONLY_SOURCE_FIELDS, ...SEARCH_EXCLUDED_SOURCE_FIELDS],
-    },
-    // Fragments wrap matches in control chars the client turns into <mark>s;
-    // never HTML from the server into dangerouslySetInnerHTML.
-    ...(hasQuery
-      ? {
-          highlight: {
-            fields: {
-              title: { number_of_fragments: 0 },
-              description: { fragment_size: 160, number_of_fragments: 1 },
-              commentsText: { fragment_size: 160, number_of_fragments: 1 },
-              transcriptText: { fragment_size: 160, number_of_fragments: 1 },
+  const response = await searchAliases<VideoDocument>(
+    getIndexPattern(folderPaths),
+    {
+      query:
+        filters.length > 0
+          ? { bool: { must: [mustQuery], filter: filters } }
+          : hasQuery
+            ? mustQuery
+            : { match_all: {} },
+      sort: buildSortOptions(sortOption),
+      from,
+      size,
+      track_total_hits: true,
+      _source: {
+        excludes: [...SEARCH_ONLY_SOURCE_FIELDS, ...SEARCH_EXCLUDED_SOURCE_FIELDS],
+      },
+      // Fragments wrap matches in control chars the client turns into <mark>s;
+      // never HTML from the server into dangerouslySetInnerHTML.
+      ...(hasQuery
+        ? {
+            highlight: {
+              fields: {
+                title: { number_of_fragments: 0 },
+                description: { fragment_size: 160, number_of_fragments: 1 },
+                commentsText: { fragment_size: 160, number_of_fragments: 1 },
+                transcriptText: { fragment_size: 160, number_of_fragments: 1 },
+              },
+              max_analyzed_offset: HIGHLIGHT_MAX_ANALYZED_CHARS,
+              pre_tags: [HIGHLIGHT_OPEN],
+              post_tags: [HIGHLIGHT_CLOSE],
             },
-            pre_tags: [HIGHLIGHT_OPEN],
-            post_tags: [HIGHLIGHT_CLOSE],
-          },
-        }
-      : {}),
-  });
+          }
+        : {}),
+    },
+    // A shard that fails anyway fails the page, where a 200 used to come back
+    // short of that folder's hits with nothing to say so. A red shard is still
+    // the 503 it was; anything else is a logged 500.
+    { allow_partial_search_results: false },
+  );
 
   const videos = response.hits.hits.map((hit) => {
     if (!hit._source) {

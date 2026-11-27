@@ -22,6 +22,7 @@ import {
   getVideoByBaseName,
   getVideoByFilePath,
   getVideoByVideoId,
+  HIGHLIGHT_MAX_ANALYZED_CHARS,
   indexCacheLogThrottle,
   indexVideo,
   listCachedFolders,
@@ -992,7 +993,11 @@ describe('elasticsearchService', () => {
       const { header, body: request } = sentSearch();
       // The alias list rides in the _msearch header, never in the URL, whose
       // request line a cluster caps at 4 KB
-      expect(header).toEqual({ index: [ALIAS_A, ALIAS_B], ignore_unavailable: true });
+      expect(header).toEqual({
+        index: [ALIAS_A, ALIAS_B],
+        ignore_unavailable: true,
+        allow_partial_search_results: false,
+      });
       expect(at(mockClient.msearch.mock.calls, 0)[0]).not.toHaveProperty('index');
       expect(request).not.toHaveProperty('ignore_unavailable');
       expect(request.query).toEqual({
@@ -1213,6 +1218,19 @@ describe('elasticsearchService', () => {
 
       await searchVideos('   ');
       expect(sentSearch(1).body.highlight).toBeUndefined();
+    });
+
+    it('caps what the highlighter analyzes and refuses a page a shard failed', async () => {
+      await searchVideos('robot');
+
+      const { header, body } = sentSearch();
+      // At or below the index's own limit (index.highlight.max_analyzed_offset,
+      // 1,000,000 by default) a long field is truncated instead of failing the
+      // fetch of its folder's shard
+      expect(body.highlight.max_analyzed_offset).toBe(HIGHLIGHT_MAX_ANALYZED_CHARS);
+      expect(HIGHLIGHT_MAX_ANALYZED_CHARS).toBeLessThanOrEqual(1_000_000);
+      // A failure that happens anyway fails the read rather than shortening it
+      expect(header.allow_partial_search_results).toBe(false);
     });
 
     it('lists every channel name each folder carries, most frequent first', async () => {

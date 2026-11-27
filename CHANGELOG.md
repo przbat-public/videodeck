@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One huge comment section no longer empties its folder from a search.**
+  Past a million characters the highlighter failed the shard holding that
+  video, so its neighbours vanished from the page while the total still
+  counted them, and searching that folder's category alone answered 500.
+  Snippets now come from the first 100,000 characters of a field, and a page
+  missing a shard is refused rather than served short
 - **Libraries past 155 folders can search again.** Each read put every
   folder's alias into its URL, and from folder 156 on that request line
   outgrew the 4 KB Elasticsearch accepts, so searching, opening a video and
