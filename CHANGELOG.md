@@ -9,6 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Videos with hundreds of thousands of comments no longer fail their
+  folder's reindex.** Every comment went into the document's search text, so
+  one such video pushed a bulk request past the 100 MB Elasticsearch takes,
+  and the cluster answered 413. A document now keeps whole comments up to 10
+  million characters and stops before the first one that would cross that
+  mark. The video page still lists every comment; the ones past the mark just
+  stop matching a search
+- **Opening comment-heavy videos one after another no longer fills the
+  server's memory.** The comment cache kept the last 50 parsed trees however
+  large they were. Each tree now weighs as much as its file, the cache holds
+  at most a quarter of the heap, and the tree read longest ago goes first.
+  Two views of one video that arrive together share a single parse
+- **A video page reads its `info.json` once.** The details route parsed the
+  whole file for the title and counts, then the comment cache parsed it
+  again. Those fields come from the index now, so a count written by hand as
+  text no longer breaks the page, and an edit made outside the app shows
+  after the folder's next reindex
+- **A video whose `info.json` passes 512 MiB stays searchable.** Node cannot
+  hold a string that long, so the reindex skipped such a video as unreadable
+  and its comments answered 500. Its id and title now come from the head of
+  the file, and its page opens with no comments
+- **A download finished during an index rebuild stays in
+  `.videos-index.json`.** A rebuild that listed the folder before the job's
+  files landed saved last and dropped the new video, and a collection read
+  beside a job's refresh could lose an entry the same way. Writes to one
+  folder's index now take turns
+- **A full reindex of a big folder stops spending seconds on file names.**
+  Each video searched the whole folder listing for its sidecars, about 4 s
+  for 1,500 videos with six sidecars apiece; grouping the listing by stem once
+  brings that to some 40 ms. Rebuilding `.videos-index.json` no longer
+  parses each `info.json` whole either: a scan stops once it has seen the
+  comment and description keys
+- **Thumbnails and playback stop spending the request budget.** Each card's
+  thumbnail and every range the player fetched counted toward the 2,000
+  requests per 10 minutes an IP may make, so a long session ran it out:
+  thumbnails answered 429 and vanished, and the tab's own API calls were
+  refused next. A file read that names its folder, as the web UI always
+  does, is no longer counted; a read without one, which asks Elasticsearch
+  where the file lives, still is
+- **`.jpg`, `.jpeg` and `.png` thumbnails load as images and stay cached.**
+  The file route only knew `.webp`, so the rest went out as
+  `application/octet-stream`, uncached, and came down again on every visit.
+  They now get the year-long immutable cache `.webp` has
+- **Downloads no longer keep the library watcher busy.** It watched whole
+  drives recursively, so every write a download made woke it, and on Linux
+  Node armed one watch per file and listed a folder again on each event. Only
+  the directories that decide the folder list are watched now, such as
+  `/Volumes` and the top of each drive. A folder that turns into a channel
+  some time after it was created waits for the check that runs every minute
 - **Videos without a thumbnail show up in search.** The reindex dropped any
   video lacking a `.webp` or `.jpg` beside it, so a folder downloaded with
   `--no-write-thumbnail` stayed invisible, while the channel console counted
@@ -134,9 +183,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rebuild every index once after upgrading:** `POST /api/videos/refreshCache`
   without `onlyMissing` (Refresh index, with "only missing" unchecked). An
   `onlyMissing` run or a drive swap keeps indices built earlier, which lack
-  the billion-view counts, possessive matching, once-per-line auto-captions
-  and thumbnail-less videos fixed above. New indices carry an analysis
-  version in their mapping, and the boot log names each folder still behind
+  the billion-view counts, possessive matching, once-per-line auto-captions,
+  thumbnail-less videos, capped comment text and oversized `info.json` files
+  fixed above. New indices carry an analysis version in their mapping, and
+  the boot log names each folder still behind
+- **`GET /api/videos/:id/details` no longer returns `duration`.** Nothing
+  rendered it, and the index does not store it, so keeping it would have
+  meant parsing the `info.json` on every view again
 - **A typed phrase ranks by relevance unless you pick a sort.** Results
   stayed newest first, so a recent video sharing one common word with the
   phrase in a single comment outranked the video the phrase named in its
