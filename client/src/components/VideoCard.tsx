@@ -1,4 +1,5 @@
 import type { VideoListItem } from '@videodeck/shared/api';
+import { ImageOff } from 'lucide-react';
 import type { JSX } from 'react';
 import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -66,7 +67,6 @@ const renderMarkedFragment = (fragment: string): React.ReactNode => {
 
 function VideoCardInner({ video, searchQuery, index }: VideoCardProps): JSX.Element {
   const { t } = useTranslation();
-  const thumbnailUrl = `/api/videos/file/${encodeURIComponent(video.thumbnailPath)}?folder=${encodeURIComponent(video.folderPath)}`;
 
   const videoIdentifier = video.videoId || video.baseName;
   const serverTitle = video.highlights?.title?.[0];
@@ -76,19 +76,27 @@ function VideoCardInner({ video, searchQuery, index }: VideoCardProps): JSX.Elem
     <Link to={`/video/${encodeURIComponent(videoIdentifier)}`} className="video-card-link">
       <div className="video-card">
         <div className="video-thumbnail">
-          <img
-            src={thumbnailUrl}
-            alt={video.title}
-            // The first visible cards are the LCP: keep them eager (the top
-            // one with high fetch priority), lazy-load everything below the
-            // fold, decode every thumbnail off the main thread.
-            loading={index !== undefined && index < 4 ? 'eager' : 'lazy'}
-            decoding="async"
-            fetchPriority={index === 0 ? 'high' : undefined}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
-          />
+          {video.thumbnailPath ? (
+            <img
+              src={`/api/videos/file/${encodeURIComponent(video.thumbnailPath)}?folder=${encodeURIComponent(video.folderPath)}`}
+              alt={video.title}
+              // The first visible cards are the LCP: keep them eager (the top
+              // one with high fetch priority), lazy-load everything below the
+              // fold, decode every thumbnail off the main thread.
+              loading={index !== undefined && index < 4 ? 'eager' : 'lazy'}
+              decoding="async"
+              fetchPriority={index === 0 ? 'high' : undefined}
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          ) : (
+            // Indexed without a thumbnail on disk: the 16:9 frame keeps the
+            // grid even, and the placeholder says what is missing
+            <div className="video-thumbnail-placeholder" role="img" aria-label={t('video.noThumbnail')}>
+              <ImageOff aria-hidden="true" focusable="false" className="video-thumbnail-placeholder-icon" />
+            </div>
+          )}
           <div className="play-overlay">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="white">
               <title>{t('video.play')}</title>

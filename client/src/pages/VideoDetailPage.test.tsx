@@ -171,6 +171,18 @@ describe('VideoDetailPage', () => {
     );
   });
 
+  it('plays a video without a thumbnail, with no poster', async () => {
+    // The details of such a video carry no thumbnailPath, which the page's
+    // response schema refused: the viewer got the error screen instead
+    const { thumbnailPath: _thumbnailPath, ...withoutThumbnail } = details;
+    installFetch({ details: () => json({ details: withoutThumbnail }) });
+    renderPage();
+
+    const player = await screen.findByTestId('video-player');
+    expect(player).toHaveAttribute('src', `/api/videos/file/hedgehogs.mp4?folder=${encodeURIComponent('/videos/a')}`);
+    expect(player).not.toHaveAttribute('poster');
+  });
+
   it('renders one subtitle track per file with the language from its name', async () => {
     installFetch({
       details: () =>

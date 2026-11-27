@@ -59,6 +59,16 @@ describe('VideoCard', () => {
     );
   });
 
+  it('shows a named placeholder and asks for no image without a thumbnail', () => {
+    const { thumbnailPath: _thumbnailPath, ...withoutThumbnail } = mockVideo;
+    renderWithRouter(<VideoCard video={withoutThumbnail} />);
+
+    // The card used to request /api/videos/file/undefined; the 16:9 frame now
+    // holds a placeholder whose name says what is missing
+    expect(document.querySelector('img')).toBeNull();
+    expect(screen.getByRole('img', { name: i18n.t('video.noThumbnail') })).toBeInTheDocument();
+  });
+
   it('keeps the first thumbnail eager with high priority for the LCP', () => {
     renderWithRouter(<VideoCard video={mockVideo} index={0} />);
     const img = screen.getByAltText('Test Video Title');

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Videos without a thumbnail show up in search.** The reindex dropped any
+  video lacking a `.webp` or `.jpg` beside it, so a folder downloaded with
+  `--no-write-thumbnail` stayed invisible, while the channel console counted
+  `.png` and `.jpeg` too and reported no gap. Media plus `info.json` is
+  enough now: the card draws a placeholder, the player goes without a
+  poster, and search and console share one thumbnail rule. A folder whose
+  every video failed to read, as on a dying drive, keeps its previous index
+  instead of publishing an empty one
 - **Auto-captions are read once per line.** YouTube's rolling captions show
   each line two or three times, and every copy went into the text, so the
   100,000-character transcript cap kept only the first third or so of a long

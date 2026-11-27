@@ -159,7 +159,9 @@ Composite patterns: top bar (brand icon, back link on the detail page,
 gear menu), skip link (the first focusable element in the shell, off screen
 until it has focus, pointing at the landmark every route marks with
 `MAIN_CONTENT_ID`), search bar (input + selects), video card
-(thumbnail, title, muted metadata), queue item (status line, progress bar
+(thumbnail, title, muted metadata; a video without a thumbnail keeps the
+16:9 frame with a muted `ImageOff` icon, named "no thumbnail" through
+i18n), queue item (status line, progress bar
 while running, log on errors — the server drops the routine progress
 lines before they reach the log), detail player (70% width, poster,
 subtitle tracks), outage banner (a dependency is gone: one sentence that

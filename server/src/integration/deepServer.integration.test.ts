@@ -1,7 +1,13 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import type { QueueJob } from '@videodeck/shared/api';
-import { QueueJobResponseSchema, QueueListResponseSchema, QueueSummaryResponseSchema } from '@videodeck/shared/schemas';
+import {
+  QueueJobResponseSchema,
+  QueueListResponseSchema,
+  QueueSummaryResponseSchema,
+  SearchResponseSchema,
+  VideoDetailsResponseSchema,
+} from '@videodeck/shared/schemas';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import {
   createDeepServerTestEnv,
@@ -221,6 +227,30 @@ describe('deep server integration (real app, fake external world)', () => {
       process.env.DEEPSEEK_API_KEY = keyBefore;
       process.env.DEEPSEEK_MODEL = modelBefore;
     }
+  });
+
+  it('searches and opens a video that has no thumbnail', async () => {
+    // Downloaded with --no-write-thumbnail, or its image lost since: the media
+    // and the info.json are on disk, and search used to skip the video
+    const withoutThumbnail = Object.fromEntries(
+      Object.entries(videoFiles('nothumb0001', 'Bez miniatury')).filter(([name]) => !name.endsWith('.webp')),
+    );
+    await env.seedFolder('no-thumbnail', withoutThumbnail);
+    env.setFolders('no-thumbnail');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const search = await env.agent.get('/api/videos/search?q=miniatury').expect(200);
+    expect(search.body.totalCount).toBe(1);
+    // The shared contract the client parses pages with takes the item as it is
+    const [found] = SearchResponseSchema.parse(search.body).videos;
+    expect(found?.title).toBe('Bez miniatury');
+    expect(found).not.toHaveProperty('thumbnailPath');
+
+    const details = await env.agent.get('/api/videos/nothumb0001/details').expect(200);
+    const parsed = VideoDetailsResponseSchema.parse(details.body).details;
+    expect(parsed.videoPath).toBe('20260101_Bez miniatury.mp4');
+    expect(parsed).not.toHaveProperty('thumbnailPath');
   });
 
   it('answers a search whose page crosses the result window with a short page, not a 500', async () => {

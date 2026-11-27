@@ -220,6 +220,19 @@ describe('videoScanner', () => {
 
       expect(found.thumbnailFile).toBeUndefined();
     });
+
+    it('takes a .png, .jpeg or variant thumbnail, the rule the folder console counts by', () => {
+      // The console counted these as thumbnails while the index skipped the
+      // video for missing one, so it showed no gap and offered no repair
+      const thumbnailOf = (...images: string[]) =>
+        findVideoFiles('20231201_X', ['20231201_X.info.json', '20231201_X.mp4', ...images]).thumbnailFile;
+
+      expect(thumbnailOf('20231201_X.png')).toBe('20231201_X.png');
+      expect(thumbnailOf('20231201_X.JPEG')).toBe('20231201_X.JPEG');
+      // Current yt-dlp names a variant <stem>.<level>.<ext>, older releases <stem>.mp4_<level>.<ext>
+      expect(thumbnailOf('20231201_X.0.jpg', '20231201_X.3.png')).toBe('20231201_X.3.png');
+      expect(thumbnailOf('20231201_X.en.png')).toBeUndefined();
+    });
   });
 
   describe('buildVideoItem', () => {
@@ -399,6 +412,19 @@ describe('videoScanner', () => {
       });
     });
 
+    it('indexes a video with no thumbnail, thumbnailPath left out', async () => {
+      // A folder downloaded with --no-write-thumbnail, or one whose image went
+      // missing: the video and its info.json are all a search result needs
+      mockedFs.readFile.mockResolvedValue(JSON.stringify({ id: 'abcdefghijk', title: 'Bez miniatury' }));
+
+      const result = await buildVideoItem(FOLDER, 'a', ['a.info.json', 'a.mp4']);
+
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') return;
+      expect(result.video).toMatchObject({ baseName: 'a', title: 'Bez miniatury', videoPath: 'a.mp4' });
+      expect(result.video).not.toHaveProperty('thumbnailPath');
+    });
+
     it('skips when the video file is missing', async () => {
       const result = await buildVideoItem(FOLDER, '20231201_TestVideo1', [
         '20231201_TestVideo1.info.json',
@@ -559,7 +585,7 @@ describe('videoScanner', () => {
       expect(getReindexStatus()).toMatchObject({ indexed: 1, skipped: 1, errors: [] });
     });
 
-    it('skips videos without thumbnail or video file', async () => {
+    it('skips a video without its media file and indexes one without a thumbnail', async () => {
       mockFolder([
         'only_info.info.json',
         'no_thumb.info.json',
@@ -571,8 +597,39 @@ describe('videoScanner', () => {
 
       await loadVideosCache();
 
-      expect(bulkIndexedVideos().map((v) => v.baseName)).toEqual(['complete']);
-      expect(getReindexStatus().skipped).toBe(2);
+      expect(
+        bulkIndexedVideos()
+          .map((v) => v.baseName)
+          .sort(),
+      ).toEqual(['complete', 'no_thumb']);
+      expect(getReindexStatus().skipped).toBe(1);
+    });
+
+    it('keeps the live version when no video of the folder could be read', async () => {
+      // A drive failing its reads mid-run: every info.json errors, every video
+      // is skipped, and promoting the empty version deleted the one search used
+      mockFolder(['a.info.json', 'a.mp4', 'b.info.json', 'b.mp4', 'b.webp']);
+      mockedFs.readFile.mockRejectedValue(Object.assign(new Error('EIO: i/o error, read'), { code: 'EIO' }));
+
+      await loadVideosCache();
+
+      expect(mockedEs.promoteIndexVersion).not.toHaveBeenCalled();
+      expect(mockedEs.discardIndexVersion).toHaveBeenCalledWith(NEW_INDEX);
+      expect(getReindexStatus()).toMatchObject({ indexed: 0, skipped: 2 });
+      expect(getReindexStatus().errors).toEqual([
+        expect.stringContaining(`Error scanning folder ${FOLDER}: none of its 2 videos could be read`),
+      ]);
+    });
+
+    it('still publishes a folder whose info.json files have no video beside them', async () => {
+      // Sidecars only (a repair that never got the media, or metadata kept on
+      // its own): nothing to index, and nothing that failed
+      mockFolder(['a.info.json', 'a.webp', 'b.info.json']);
+
+      await loadVideosCache();
+
+      expect(mockedEs.promoteIndexVersion).toHaveBeenCalledWith(FOLDER, NEW_INDEX);
+      expect(getReindexStatus()).toMatchObject({ indexed: 0, skipped: 2, errors: [] });
     });
 
     it('ignores dot files', async () => {
@@ -775,7 +832,8 @@ describe('videoScanner', () => {
     });
 
     it('skips incomplete videos and swallows indexing errors', async () => {
-      readdirMock.mockResolvedValue(['a.info.json', 'a.mp4', 'a.webp', 'b.info.json', 'b.mp4']);
+      // b has no media file; a thumbnail alone is no reason to skip any more
+      readdirMock.mockResolvedValue(['a.info.json', 'a.mp4', 'a.webp', 'b.info.json', 'b.webp']);
       mockedFs.readFile.mockResolvedValue(JSON.stringify({ title: 'T' }));
       mockedEs.indexVideo.mockRejectedValueOnce(new Error('ES down'));
 

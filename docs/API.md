@@ -71,7 +71,7 @@ State of the ongoing (or last) reindex.
 }
 ```
 
-`filesDone/filesTotal` refer to the current folder, `indexed/skipped` to the whole run. `errors` is the list of folders that failed to index (max. 20 entries), `lastError` the last error message, and `finishedAt` appears once finished.
+`filesDone/filesTotal` refer to the current folder, `indexed/skipped` to the whole run. `errors` is the list of folders that failed to index (max. 20 entries), `lastError` the last error message, and `finishedAt` appears once finished. A video needs its video file (`.mp4` or `.mkv`) and its `info.json`; one without a thumbnail is indexed all the same. When a folder holds videos and not one of them could be read, as on a drive failing its reads, the folder keeps the index it had and shows up in `errors`.
 
 #### How the reindex works
 
@@ -134,6 +134,8 @@ The client appends further pages with the "Show more" button while `videos.lengt
   ]
 }
 ```
+
+`thumbnailPath` is left out for a video with no thumbnail on disk, here and in the details, and the client draws a placeholder in its place. The thumbnail is the plain `<stem>.webp`, `.jpg`, `.jpeg` or `.png`, or else the highest numbered variant `--write-all-thumbnails` wrote; the folder console counts thumbnails by the same rule.
 
 ### GET /api/videos/categories
 
