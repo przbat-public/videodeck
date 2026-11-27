@@ -141,6 +141,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Paste a YouTube link or id into search to check whether it is
+  archived.** A watch, share or Shorts link, or a bare 11-character id, is
+  looked up by id within the current filters: the video comes back, or an
+  empty list if the library lacks it. A plain word of that length matching
+  no archived id is searched as text
 - **Videos YouTube will not hand over stop filling the queue with errors**: a
   `download` for a video the catalog reports as `subscriber_only` or
   `premium_only` is skipped before a job exists, and a failure that waiting

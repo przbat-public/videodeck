@@ -374,6 +374,30 @@ describeIntegration('Elasticsearch integration', () => {
     expect(page.videos.map((item) => item.baseName)).toEqual(['20240101_tytul', '20240102_film_0']);
   });
 
+  it('finds the video a pasted watch link points at', async () => {
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      indexName,
+      [
+        toDocument({ ...video('20091025_klip', 'Klip'), videoId: 'dQw4w9WgXcQ', uploadDate: '20091025' }),
+        // Newer, with a link to another video in its description: the text
+        // search matched it through "https", "watch" and "v"
+        {
+          ...toDocument({ ...video('20240101_nowy', 'Nowy film'), videoId: 'nowy0000001', uploadDate: '20240101' }),
+          description: 'Linki: https://www.youtube.com/watch?v=abcdefghijk',
+        },
+      ],
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, indexName);
+
+    const baseNamesFor = async (q: string) =>
+      (await searchVideos(q, 'date-desc', [SCRATCH_FOLDER])).map((item) => item.baseName);
+    expect(await baseNamesFor('https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toEqual(['20091025_klip']);
+    expect(await baseNamesFor('dQw4w9WgXcQ')).toEqual(['20091025_klip']);
+    expect(await baseNamesFor('https://www.youtube.com/watch?v=notArchived')).toEqual([]);
+  });
+
   it('scores a downloaded file and a foreign-named file with the same title alike', async () => {
     const indexName = await createIndexVersion(SCRATCH_FOLDER);
     await bulkIndexDocuments(

@@ -1205,6 +1205,51 @@ describe('elasticsearchService', () => {
       });
     });
 
+    it('looks a pasted link up by its video id, keeping the filter, sort and paging, without highlights', async () => {
+      await searchVideosWithTotal(
+        'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLx&index=3',
+        'date-desc',
+        undefined,
+        {
+          channel: 'X',
+          offset: 0,
+          limit: 10,
+        },
+      );
+
+      const { header, body } = sentSearch();
+      expect(body.query).toEqual({
+        bool: { must: [{ ids: { values: ['dQw4w9WgXcQ'] } }], filter: [{ term: { 'channelName.keyword': 'X' } }] },
+      });
+      expect(body.sort).toEqual([{ uploadDate: { order: 'desc', missing: '_last' } }]);
+      expect(body.size).toBe(10);
+      expect(body).not.toHaveProperty('highlight');
+      expect(header).not.toHaveProperty('search_type');
+      // A link names one video: no text search follows, even when it is not archived
+      expect(mockClient.msearch).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers a bare video id from the id lookup when a video has it', async () => {
+      answerSearch({ hits: { total: { value: 1, relation: 'eq' }, hits: [hit(toDocument(video()), 'dQw4w9WgXcQ')] } });
+
+      const result = await searchVideosWithTotal('dQw4w9WgXcQ');
+
+      expect(sentSearch().body.query).toEqual({ ids: { values: ['dQw4w9WgXcQ'] } });
+      expect(result.total).toBe(1);
+      expect(mockClient.msearch).toHaveBeenCalledTimes(1);
+    });
+
+    it('searches an eleven-character word as text when no video has it as its id', async () => {
+      answerSearch({ hits: { total: { value: 0, relation: 'eq' }, hits: [] } });
+
+      await searchVideosWithTotal('programming');
+
+      expect(mockClient.msearch).toHaveBeenCalledTimes(2);
+      expect(sentSearch(0).body.query).toEqual({ ids: { values: ['programming'] } });
+      expect(sentSearch(1).body.query).toEqual({ multi_match: expect.objectContaining({ query: 'programming' }) });
+      expect(sentSearch(1).body.highlight).toBeDefined();
+    });
+
     it('maps ES highlight fragments into the response contract', async () => {
       answerSearch({
         hits: {

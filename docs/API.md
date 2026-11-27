@@ -98,7 +98,7 @@ Searches videos by phrase in the title (`title^3`), description (`^2`), subtitle
 
 **Query parameters:**
 
-- `q` (optional) - search phrase
+- `q` (optional) - search phrase. A YouTube link (watch, `youtu.be`, Shorts) or a bare 11-character video id is looked up by id under the same filters, sort and paging: a link returns that video or nothing, and a bare id that matches no archived video is searched as text
 - `sort` (optional) - sort order; when it is missing or unknown, a phrase ranks by relevance and an empty `q` lists the newest first:
   - `relevance` - by `_score`, the default with a phrase. Every folder is an index of its own, so scores come from the term statistics of all searched folders together (`dfs_query_then_fetch`) rather than per folder
   - `date-desc` - by date, newest first, the default without a phrase

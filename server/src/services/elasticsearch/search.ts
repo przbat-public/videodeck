@@ -2,6 +2,7 @@ import type { estypes } from '@elastic/elasticsearch';
 import type { SortOption, VideoListItem } from '@videodeck/shared/api';
 import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULT_WINDOW } from '@videodeck/shared/schemas';
 import { defaultSortFor } from '@videodeck/shared/search';
+import { extractYoutubeVideoId, isYoutubeVideoId } from '@videodeck/shared/youtube';
 import { getVideosFolderPaths } from '../../config';
 import { ElasticsearchUnavailableError } from '../elasticsearchErrors';
 import { fromDocument, type VideoDocument } from './bulkIndexing';
@@ -201,83 +202,59 @@ function pageSearchHeader(hasQuery: boolean, sortOption: SortOption): SearchHead
 }
 
 /**
- * Search videos with query, sorting and paging. `folderPaths` narrows the
- * search to those folders' indices (used by the category filter); an empty
- * array means "no folder qualifies" and yields no results. Without a sort, a
- * phrase ranks by relevance and an empty query lists the newest first.
+ * The highlight a phrase's page asks for. Fragments wrap matches in control
+ * chars the client turns into <mark>s; never HTML from the server into
+ * dangerouslySetInnerHTML.
  */
-export async function searchVideosWithTotal(
-  query?: string,
-  sortOption: SortOption = defaultSortFor(query),
-  folderPaths?: string[],
-  options: SearchOptions = {},
-): Promise<{ videos: VideoListItem[]; total: number }> {
-  if (folderPaths?.length === 0) {
-    return { videos: [], total: 0 };
-  }
-  assertElasticsearchReachable();
+const PAGE_HIGHLIGHT: estypes.SearchHighlight = {
+  fields: {
+    title: { number_of_fragments: 0 },
+    description: { fragment_size: 160, number_of_fragments: 1 },
+    commentsText: { fragment_size: 160, number_of_fragments: 1 },
+    transcriptText: { fragment_size: 160, number_of_fragments: 1 },
+  },
+  max_analyzed_offset: HIGHLIGHT_MAX_ANALYZED_CHARS,
+  pre_tags: [HIGHLIGHT_OPEN],
+  post_tags: [HIGHLIGHT_CLOSE],
+};
+
+/**
+ * The body of one page search: the clause to match, the channel filter as a
+ * filter clause so it leaves the score alone, the sort, paging kept inside the
+ * result window, and the highlight when a phrase asked for it. commentsText
+ * and the other search-only or unused fields stay out of the payload, which
+ * they would dominate otherwise.
+ */
+function pageSearchBody(
+  match: Record<string, unknown>,
+  sortOption: SortOption,
+  options: SearchOptions,
+  highlight: boolean,
+): estypes.SearchSearchRequestBody {
   const { from, size } = normalizePaging(options);
-
-  let mustQuery: Record<string, unknown> = { match_all: {} };
-  const trimmedQuery = query?.trim() ?? '';
-  const hasQuery = trimmedQuery.length > 0;
-
-  if (hasQuery) {
-    mustQuery = {
-      multi_match: {
-        query: trimmedQuery,
-        fields: SEARCH_FIELDS,
-        type: 'best_fields',
-        fuzziness: 'AUTO',
-      },
-    };
-  }
-
-  // The channel filter narrows the result set without touching scoring
-  const filters: Record<string, unknown>[] = [];
-  if (options.channel) {
-    filters.push({ term: { 'channelName.keyword': options.channel } });
-  }
-
-  // commentsText is search-only; it would dominate the payload otherwise
-  const response = await searchAliases<VideoDocument>(
-    getIndexPattern(folderPaths),
-    {
-      query:
-        filters.length > 0
-          ? { bool: { must: [mustQuery], filter: filters } }
-          : hasQuery
-            ? mustQuery
-            : { match_all: {} },
-      sort: buildSortOptions(sortOption),
-      from,
-      size,
-      track_total_hits: true,
-      _source: {
-        excludes: [...SEARCH_ONLY_SOURCE_FIELDS, ...SEARCH_EXCLUDED_SOURCE_FIELDS],
-      },
-      // Fragments wrap matches in control chars the client turns into <mark>s;
-      // never HTML from the server into dangerouslySetInnerHTML.
-      ...(hasQuery
-        ? {
-            highlight: {
-              fields: {
-                title: { number_of_fragments: 0 },
-                description: { fragment_size: 160, number_of_fragments: 1 },
-                commentsText: { fragment_size: 160, number_of_fragments: 1 },
-                transcriptText: { fragment_size: 160, number_of_fragments: 1 },
-              },
-              max_analyzed_offset: HIGHLIGHT_MAX_ANALYZED_CHARS,
-              pre_tags: [HIGHLIGHT_OPEN],
-              post_tags: [HIGHLIGHT_CLOSE],
-            },
-          }
-        : {}),
+  return {
+    query: options.channel
+      ? { bool: { must: [match], filter: [{ term: { 'channelName.keyword': options.channel } }] } }
+      : match,
+    sort: buildSortOptions(sortOption),
+    from,
+    size,
+    track_total_hits: true,
+    _source: {
+      excludes: [...SEARCH_ONLY_SOURCE_FIELDS, ...SEARCH_EXCLUDED_SOURCE_FIELDS],
     },
-    pageSearchHeader(hasQuery, sortOption),
-    options.signal,
-  );
+    ...(highlight ? { highlight: PAGE_HIGHLIGHT } : {}),
+  };
+}
 
+/** One page over the given aliases: its videos, highlights included, and the total of the same query */
+async function searchPage(
+  index: string[],
+  body: estypes.SearchSearchRequestBody,
+  header: SearchHeader,
+  signal: AbortSignal | undefined,
+): Promise<{ videos: VideoListItem[]; total: number }> {
+  const response = await searchAliases<VideoDocument>(index, body, header, signal);
   const videos = response.hits.hits.map((hit) => {
     if (!hit._source) {
       throw new Error(`Video document ${hit._id} has no _source field`);
@@ -292,6 +269,63 @@ export async function searchVideosWithTotal(
   const total =
     typeof response.hits.total === 'number' ? response.hits.total : (response.hits.total?.value ?? videos.length);
   return { videos, total };
+}
+
+/**
+ * The video a search phrase names, or null for a phrase the text search
+ * handles. A YouTube link names the video it points at. A bare word with the
+ * shape of a video id may name one, which only the lookup can tell, since
+ * "programming" has eleven characters too.
+ */
+function pastedVideo(phrase: string): { videoId: string; fromLink: boolean } | null {
+  const linked = extractYoutubeVideoId(phrase);
+  if (linked !== null) {
+    return { videoId: linked, fromLink: true };
+  }
+  return isYoutubeVideoId(phrase) ? { videoId: phrase, fromLink: false } : null;
+}
+
+/**
+ * Search videos with query, sorting and paging. `folderPaths` narrows the
+ * search to those folders' indices (used by the category filter); an empty
+ * array means "no folder qualifies" and yields no results. Without a sort, a
+ * phrase ranks by relevance and an empty query lists the newest first.
+ *
+ * A pasted YouTube link or bare video id is looked up by document id first,
+ * the way the details page finds a video, with the same filter, sort and
+ * paging. The text search found the newest videos whose descriptions held any
+ * link, and never the id itself, which no searched field carries. A link
+ * answers with its video or with nothing; a bare word that names no archived
+ * video goes on to the text search.
+ */
+export async function searchVideosWithTotal(
+  query?: string,
+  sortOption: SortOption = defaultSortFor(query),
+  folderPaths?: string[],
+  options: SearchOptions = {},
+): Promise<{ videos: VideoListItem[]; total: number }> {
+  if (folderPaths?.length === 0) {
+    return { videos: [], total: 0 };
+  }
+  assertElasticsearchReachable();
+  const index = getIndexPattern(folderPaths);
+  const phrase = query?.trim() ?? '';
+
+  const pasted = pastedVideo(phrase);
+  if (pasted !== null) {
+    const byId = pageSearchBody({ ids: { values: [pasted.videoId] } }, sortOption, options, false);
+    const page = await searchPage(index, byId, pageSearchHeader(false, sortOption), options.signal);
+    if (pasted.fromLink || page.total > 0) {
+      return page;
+    }
+  }
+
+  const match =
+    phrase.length > 0
+      ? { multi_match: { query: phrase, fields: SEARCH_FIELDS, type: 'best_fields', fuzziness: 'AUTO' } }
+      : { match_all: {} };
+  const body = pageSearchBody(match, sortOption, options, phrase.length > 0);
+  return searchPage(index, body, pageSearchHeader(phrase.length > 0, sortOption), options.signal);
 }
 
 /** Videos-only variant of the search (total dropped) */

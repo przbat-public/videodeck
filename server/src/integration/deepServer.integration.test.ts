@@ -291,6 +291,37 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(heavy.body.videos).toHaveLength(2);
   });
 
+  it('finds the video a pasted link or bare id names, and nothing for a link the library lacks', async () => {
+    // Old-style stems, which hold no id: the text search had nothing to find
+    // the id in, and a link matched the newer video through "https", "watch"
+    // and "v" in its description
+    await env.seedFolder('pasted-links', {
+      ...videoFiles('dQw4w9WgXcQ', 'Stary klip', { upload_date: '20200101' }),
+      ...videoFiles('newer000001', 'Nowszy klip', {
+        upload_date: '20250101',
+        description: 'Polecam https://www.youtube.com/watch?v=otherVideo1',
+      }),
+    });
+    env.setFolders('pasted-links');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const found = async (q: string) => {
+      const response = await env.agent.get('/api/videos/search').query({ q }).expect(200);
+      const body = response.body as { videos: Array<{ videoId?: string }>; totalCount: number };
+      return { ids: body.videos.map((video) => video.videoId), total: body.totalCount };
+    };
+
+    for (const q of [
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      'https://youtu.be/dQw4w9WgXcQ?si=share',
+      'dQw4w9WgXcQ',
+    ]) {
+      expect(await found(q), q).toEqual({ ids: ['dQw4w9WgXcQ'], total: 1 });
+    }
+    expect(await found('https://www.youtube.com/watch?v=notArchived')).toEqual({ ids: [], total: 0 });
+  });
+
   it('searches, opens and lists channels across 300 configured folders', async () => {
     const folderPath = await env.seedFolder('library-300', {
       ...videoFiles('lib300video', 'Film z dużej biblioteki', { channel: 'Kanał biblioteki' }),
