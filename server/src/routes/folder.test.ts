@@ -944,7 +944,15 @@ describe('folder router', () => {
       });
       expect(mockedSpawn).toHaveBeenCalledWith(
         'yt-dlp',
-        ['--ignore-config', '--flat-playlist', '-i', '-j', 'https://www.youtube.com/@a/videos'],
+        [
+          '--ignore-config',
+          '--flat-playlist',
+          '-i',
+          '-j',
+          '--extractor-args',
+          'youtube:raise_incomplete_data',
+          'https://www.youtube.com/@a/videos',
+        ],
         { cwd: FOLDER },
       );
       expect(mockedFs.open).toHaveBeenCalledWith(expect.stringMatching(/list\.json\..*\.tmp$/), 'w');
@@ -972,6 +980,19 @@ describe('folder router', () => {
       expect(response.body.error).toBe('Failed to download playlist');
       expect(response.body.message).toBeUndefined();
       expect(mockedFs.open).not.toHaveBeenCalled();
+    });
+
+    it('keeps list.json when yt-dlp printed part of the channel and then failed', async () => {
+      // What an incomplete continuation page looks like with
+      // raise_incomplete_data: the pages it had on stdout, then exit 1
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a/videos' });
+      fakeYtDlp('{"id":"v1","title":"Newest","url":""}\n', 1);
+
+      const response = await request(app).post('/api/folder/download-playlist').send({ folderPath: FOLDER });
+
+      expect(response.status).toBe(500);
+      expect(mockedFs.open).not.toHaveBeenCalled();
+      expect(mockedFs.rename).not.toHaveBeenCalled();
     });
 
     it('makes the next status report the list.json it just wrote', async () => {

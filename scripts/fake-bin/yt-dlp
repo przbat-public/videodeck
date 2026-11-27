@@ -16,7 +16,9 @@
  * detection can be exercised offline. A subtitle language named by
  * `FAKE_YTDLP_RATE_LIMIT_SUB_LANG` is left unwritten and reported as a
  * throttled subtitle after the other languages land, which is the partial
- * repair a test needs. A `yt-dlp.conf` in the working directory without
+ * repair a test needs. Files already on disk follow the live binary's policy
+ * (see refetch below): a throttled subtitle that existed is gone afterwards,
+ * unless the run passed --no-overwrites. A `yt-dlp.conf` in the working directory without
  * `--ignore-config` exits 3: the real binary would have loaded it. Everything
  * else is a strict no-op success.
  *
@@ -24,7 +26,7 @@
  * invocation appends its cwd and argv there as one JSON line, which is how
  * tests assert the arguments the queue built.
  */
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const args = process.argv.slice(2);
@@ -187,15 +189,50 @@ const writeInfoJson = args.includes('--write-info-json');
 const writeThumbnail = args.includes('--write-thumbnail');
 const writeDescription = args.includes('--write-description');
 const writeSubs = args.includes('--write-subs') || args.includes('--write-auto-subs');
+const writeComments = args.includes('--write-comments');
+const noOverwrites = args.includes('--no-overwrites') || args.includes('-w');
 const subLangIndex = args.indexOf('--sub-lang');
 const subLangs = subLangIndex >= 0 ? (args[subLangIndex + 1] ?? 'en').split(',') : ['en'];
 
+/**
+ * The live binary's file policy (YoutubeDL._write_info_json and existing_file
+ * in yt-dlp 2026.8.19), because it decides whether a refresh can lose data:
+ *  - the info.json and the description are rewritten in place;
+ *  - a subtitle or a thumbnail already on disk is deleted before it is fetched
+ *    again, so a fetch that then fails leaves nothing behind;
+ *  - with --no-overwrites every file already there is kept as it is ("Video
+ *    metadata is already present") and only what is missing gets written.
+ */
+const target = (file) => path.join(process.cwd(), file);
+
+/** An info.json or a description: rewritten unless --no-overwrites keeps it */
+function writeSidecar(file, body) {
+  if (noOverwrites && existsSync(target(file))) {
+    return;
+  }
+  writeFileSync(target(file), body);
+}
+
+/** A subtitle or a thumbnail: deleted, then fetched; `null` is a refused fetch */
+function refetch(file, fetch) {
+  if (existsSync(target(file))) {
+    if (noOverwrites) {
+      return;
+    }
+    rmSync(target(file));
+  }
+  const body = fetch();
+  if (body !== null) {
+    writeFileSync(target(file), body);
+  }
+}
+
 if (!skipDownload) {
-  writeFileSync(path.join(process.cwd(), `${baseName}.mp4`), 'fake-mp4-bytes');
+  writeFileSync(target(`${baseName}.mp4`), 'fake-mp4-bytes');
 }
 if (writeInfoJson) {
-  writeFileSync(
-    path.join(process.cwd(), `${baseName}.info.json`),
+  writeSidecar(
+    `${baseName}.info.json`,
     JSON.stringify({
       id,
       title: `Fake video ${id}`,
@@ -206,26 +243,35 @@ if (writeInfoJson) {
       channel: 'Deep test channel',
       description: 'Deep test description.',
       webpage_url: url,
+      // Like the binary: a run without --write-comments writes no comment
+      // section at all, not an empty one
+      ...(writeComments
+        ? { comment_count: 1, comments: [{ id: `Ugx-fake-${id}`, author: 'Fake viewer', text: 'Fake comment.' }] }
+        : {}),
     }),
   );
 }
 if (writeThumbnail) {
-  writeFileSync(path.join(process.cwd(), `${baseName}.webp`), 'fake-webp');
+  refetch(`${baseName}.webp`, () => 'fake-webp');
 }
 if (writeDescription) {
-  writeFileSync(path.join(process.cwd(), `${baseName}.description`), 'Fake description for deep integration tests.');
+  writeSidecar(`${baseName}.description`, 'Fake description for deep integration tests.');
 }
 if (writeSubs) {
   // The deep environment's videoFiles() helper (test-infra) promises this exact
   // body, so the fake and that promise stay in lockstep.
   const subtitleBody = 'WEBVTT\n\n00:00.000 --> 00:01.000\nDeep test subtitle line.\n';
+  let throttled = false;
   for (const lang of subLangs) {
-    if (lang === RATE_LIMITED_SUB_LANG) {
-      continue; // throttled below, after the languages that did answer
-    }
-    writeFileSync(path.join(process.cwd(), `${baseName}.${lang}.vtt`), subtitleBody);
+    refetch(`${baseName}.${lang}.vtt`, () => {
+      if (lang !== RATE_LIMITED_SUB_LANG) {
+        return subtitleBody;
+      }
+      throttled = true; // reported below, after the languages that did answer
+      return null;
+    });
   }
-  if (subLangs.includes(RATE_LIMITED_SUB_LANG)) {
+  if (throttled) {
     console.error(
       `WARNING: Unable to download video subtitles for '${RATE_LIMITED_SUB_LANG}': HTTP Error 429: Too Many Requests`,
     );

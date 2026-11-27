@@ -3,11 +3,17 @@ import { buildPlaylistArgs, buildYtDlpArgs, getYtDlpVersion } from './ytdlp';
 
 describe('buildPlaylistArgs', () => {
   it('fetches the flat playlist as NDJSON and ignores per-video errors', () => {
+    // raise_incomplete_data: on its own, yt-dlp turns "Incomplete data
+    // received" on a continuation page into a warning, stops paging and exits
+    // 0 with the pages it had, and list.json was replaced with the newest part
+    // of the channel only
     expect(buildPlaylistArgs('https://www.youtube.com/@a/videos')).toEqual([
       '--ignore-config',
       '--flat-playlist',
       '-i',
       '-j',
+      '--extractor-args',
+      'youtube:raise_incomplete_data',
       'https://www.youtube.com/@a/videos',
     ]);
   });
@@ -92,22 +98,34 @@ describe('buildYtDlpArgs', () => {
     expect(args).not.toContain('--merge-output-format');
   });
 
-  it('leaves comments alone for a sidecar repair and writes them when asked', () => {
+  it('keeps every file already on disk for a sidecar repair', () => {
+    // yt-dlp rewrites the info.json, and deletes a subtitle or a thumbnail
+    // before fetching it again, unless told not to overwrite. A sidecar repair
+    // writes no comment section, so overwriting replaced the archived comments
+    // with none, and a 429 on a subtitle it re-fetched left that one gone.
     const sidecars = buildYtDlpArgs({
       ...job,
       type: 'repair',
       baseName: '20260101_A_Video',
       writeComments: false,
     });
-    expect(sidecars).not.toContain('--write-comments');
 
+    expect(sidecars).not.toContain('--write-comments');
+    expect(sidecars).toContain('--no-overwrites');
+  });
+
+  it('refreshes the comment section when the repair asks for it', () => {
+    // --no-overwrites would keep the old info.json and throw the fresh
+    // comment list away, which is the whole job of this repair
     const withComments = buildYtDlpArgs({
       ...job,
       type: 'repair',
       baseName: '20260101_A_Video',
       writeComments: true,
     });
+
     expect(withComments).toContain('--write-comments');
+    expect(withComments).not.toContain('--no-overwrites');
   });
 
   it('still validates the output stem of a repair job', () => {

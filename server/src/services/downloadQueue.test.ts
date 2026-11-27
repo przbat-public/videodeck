@@ -153,8 +153,24 @@ describe('indexChangedVideos', () => {
     expect(mockedRefreshIndex).toHaveBeenCalledWith(
       '/videos/channel-a',
       new Date('2025-01-01T10:05:00.000Z').getTime(),
+      [],
     );
     expect(mockedIndexVideosFromDisk).toHaveBeenCalledWith('/videos/channel-a', ['20250101_New']);
+  });
+
+  it('re-reads the stem a repair worked on, whatever its info.json mtime', async () => {
+    // A sidecar repair keeps the info.json it finds (--no-overwrites), so
+    // the mtime window alone never sees the subtitle it fetched
+    mockedRefreshIndex.mockResolvedValue({ index: { ...indexFile([]), builtAt: 'x' }, changed: [], removed: [] });
+    const repair: QueueJob = { ...job, type: 'repair', baseName: '20250101_Existing' };
+
+    await indexChangedVideos(repair);
+
+    expect(mockedRefreshIndex).toHaveBeenCalledWith(
+      '/videos/channel-a',
+      new Date('2025-01-01T10:05:00.000Z').getTime(),
+      ['20250101_Existing'],
+    );
   });
 
   it('retries changed-video indexing in the background when the batch did not land', async () => {
@@ -331,6 +347,7 @@ describe('indexChangedVideos', () => {
     expect(mockedRefreshIndex).toHaveBeenCalledWith(
       '/videos/channel-a',
       new Date('2025-01-01T10:00:00.000Z').getTime(),
+      [],
     );
     expect(mockedIndexVideosFromDisk).not.toHaveBeenCalled();
   });

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A sidecar repair no longer destroys what it was sent to complete.**
+  "Repair gaps" and "Repair this video" asked yt-dlp for the missing files
+  with its default overwrite policy. That rewrote the info.json without a
+  comment section, so the archived comments of every repaired video were
+  gone from disk and from search, including comments YouTube no longer
+  serves. It also deleted a subtitle or a thumbnail before fetching it again,
+  so a 429 left the file missing while the job reported success. Sidecar
+  repairs now run with `--no-overwrites`: every file already there stays as
+  it is, and only the missing ones are written. "Refresh comments" keeps the
+  default policy for now: it rewrites the info.json and fetches subtitles and
+  the thumbnail again, so a 429 there can still lose a file
+- **An index rebuild no longer rewrites `archive.txt`.** A rebuild runs on its
+  own whenever a folder's index is missing or outdated, and it replaced the
+  archive with the videos it could index. Lines for a `.webm`, a video
+  downloaded without its `info.json` or another extractor were dropped, and
+  the next channel download fetched the YouTube ones among them again in
+  full. A rebuild now only adds lines; removing them stays with
+  `POST /api/folder/archive/reconcile`
+- **Fetching a channel's playlist no longer truncates `list.json`.** When
+  YouTube answered a continuation page with incomplete data, yt-dlp stopped
+  paging, exited 0, and the oldest part of the channel disappeared from the
+  list. The fetch now fails instead (`raise_incomplete_data`), and the list on
+  disk stays as it was
+
 ### Added
 
 - **Videos YouTube will not hand over stop filling the queue with errors**: a

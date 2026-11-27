@@ -13,7 +13,8 @@ import { ARCHIVE_FILE, type FolderIndex } from './folderIndex';
  *
  * Everything here follows one rule: the disk decides. The archive is rewritten
  * from the folder index, never the other way around, and never while the folder
- * looks like an unmounted drive.
+ * looks like an unmounted drive. This is also the only place that removes a
+ * line: the automatic paths (the post-job refresh, an index rebuild) only add.
  */
 
 /** What the archive and the disk disagree about */

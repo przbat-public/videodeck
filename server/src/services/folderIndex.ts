@@ -1,8 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { listVisibleFiles as sharedListVisibleFiles, writeJsonAtomic, writeTextAtomic } from '../utils/fsUtils';
+import { listVisibleFiles as sharedListVisibleFiles, writeJsonAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
 import { runPool } from '../utils/runPool';
+import { createSingleFlight } from '../utils/singleFlight';
 import { isSafeVideoStem } from '../utils/videoStem';
 
 /**
@@ -15,7 +16,10 @@ import { isSafeVideoStem } from '../utils/videoStem';
  * `archive.txt` (`youtube <id>` per line) so yt-dlp itself never re-downloads a
  * video whose title changed.
  *
- * Both files are derived from disk state and can be rebuilt at any time.
+ * The index is derived from disk state and can be rebuilt at any time.
+ * archive.txt is not: plain yt-dlp runs share it, and the disk cannot account
+ * for every line in it, so this module only ever adds lines and only the
+ * reconcile in archive.ts removes them.
  * Version 2 added the per-file facts (`subtitleLangs`, `hasComments`,
  * `hasDescription`, `videoBytes`); a version 1 file is rebuilt on read, because
  * its entries cannot answer what a video is still missing.
@@ -409,18 +413,6 @@ export async function readArchiveIds(folderPath: string): Promise<Set<string>> {
   }
 }
 
-async function writeArchive(folderPath: string, ids: Iterable<string>): Promise<void> {
-  const lines = Array.from(ids)
-    .sort()
-    .map((id) => `youtube ${id}`);
-  const content = lines.length > 0 ? `${lines.join('\n')}\n` : '';
-  // Through the atomic writer, which names its temp file per write: two
-  // readers rebuilding the same folder at once (two tabs, or a page and the
-  // library frame behind it) used to share one temp name, and the slower
-  // writer renamed a path the faster one had already moved.
-  await writeTextAtomic(path.join(folderPath, ARCHIVE_FILE), content);
-}
-
 /**
  * Append ids to archive.txt that are not there yet (yt-dlp usually appends
  * itself during a download; this covers rebuilt indexes and edge cases).
@@ -451,8 +443,16 @@ async function needsLeadingNewline(filePath: string): Promise<string> {
 
 /**
  * Scan the folder from scratch: every `.info.json` that has a matching video
- * file becomes an entry. Writes both the index and archive.txt (archive is
- * rewritten to reflect what is actually on disk).
+ * file becomes an entry. Writes the index, and adds every video it found to
+ * archive.txt.
+ *
+ * It never removes an archive line. A rebuild runs on its own, from a GET
+ * whenever the index is missing or outdated, and what it cannot read is not
+ * gone: a .webm, a video downloaded without its info.json, a line another
+ * extractor wrote, or a whole folder on a drive that is away. Rewriting the
+ * archive from such a scan dropped those lines silently, and the next channel
+ * download fetched those videos again. Removing lines is the reconcile
+ * endpoint's job, behind its guard and with a report (archive.ts).
  */
 export async function rebuildIndex(folderPath: string): Promise<FolderIndex> {
   const files = await listVisibleFiles(folderPath);
@@ -483,19 +483,28 @@ export async function rebuildIndex(folderPath: string): Promise<FolderIndex> {
 
   const index: FolderIndex = { version: INDEX_VERSION, builtAt: new Date().toISOString(), entries };
   await saveIndex(folderPath, index);
-  await writeArchive(folderPath, Object.keys(entries));
+  await ensureArchiveHas(folderPath, Object.keys(entries).sort());
   return index;
 }
 
+/** Readers that find no usable index share one rebuild per folder */
+const readerRebuilds = createSingleFlight<string, FolderIndex>();
+
 /**
  * Load the index, rebuilding it when missing or unreadable.
+ *
+ * Readers that land here at once (two tabs, a page and the library frame
+ * behind it) share one scan. That saves the scans, and it keeps archive.txt
+ * from getting the same lines appended once per reader. Only readers share:
+ * the post-job refresh and the rebuild endpoint run their own scan, so a job
+ * never joins one that listed the folder before its files landed.
  */
 export async function loadIndex(folderPath: string): Promise<FolderIndex> {
   const existing = await readIndexFile(folderPath);
   if (existing) {
     return existing;
   }
-  return rebuildIndex(folderPath);
+  return readerRebuilds.run(path.resolve(folderPath), () => rebuildIndex(folderPath));
 }
 
 export interface RefreshResult {
@@ -516,10 +525,17 @@ export interface RefreshResult {
  * visible: an unmounted removable drive makes the folder look empty, and a
  * mass-wipe of the index would be worse than stale entries.
  */
-export async function refreshIndex(folderPath: string, sinceMs: number): Promise<RefreshResult> {
+export async function refreshIndex(
+  folderPath: string,
+  sinceMs: number,
+  alsoBaseNames: readonly string[] = [],
+): Promise<RefreshResult> {
   // A small tolerance covers filesystems with coarse mtime resolution (exFAT: 2 s)
   const threshold = sinceMs - 2000;
-  return refreshEntries(folderPath, () => (_baseName, mtimeMs) => mtimeMs >= threshold);
+  // Stems re-read whatever their mtime: a sidecar repair keeps the info.json
+  // it found (--no-overwrites), so the subtitle it fetched changes no mtime
+  const also = new Set(alsoBaseNames);
+  return refreshEntries(folderPath, () => (baseName, mtimeMs) => mtimeMs >= threshold || also.has(baseName));
 }
 
 /**

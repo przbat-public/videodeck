@@ -137,7 +137,7 @@ describe('folderIndex', () => {
       expect(entry(index.entries, 'id-bare').videoBytes).toBe(Buffer.byteLength('video-bytes'));
     });
 
-    it('writes the index file and archive.txt reflecting disk state', async () => {
+    it('writes the index file and adds the videos it found to archive.txt', async () => {
       await writeVideo(dir, '20240101_First', 'id-first');
       await fs.writeFile(path.join(dir, ARCHIVE_FILE), 'youtube stale-id\n', 'utf-8');
 
@@ -147,8 +147,35 @@ describe('folderIndex', () => {
       expect(saved.version).toBe(2);
       expect(Object.keys(saved.entries)).toEqual(['id-first']);
 
+      // A line the rebuild cannot account for stays: only the reconcile
+      // endpoint, with its guard and its report, removes archive lines
       const archive = await fs.readFile(path.join(dir, ARCHIVE_FILE), 'utf-8');
-      expect(archive).toBe('youtube id-first\n');
+      expect(archive).toBe('youtube stale-id\nyoutube id-first\n');
+    });
+
+    it('keeps every archive line it cannot read back from the disk', async () => {
+      // A .webm the index does not list, a video downloaded without its
+      // info.json, a line another extractor wrote: none of them is an
+      // indexable video, and dropping their lines made the next channel
+      // download fetch them again in full
+      await writeVideo(dir, '20240101_First', 'id-first');
+      await fs.writeFile(path.join(dir, '20240102_Webm.webm'), 'webm-bytes', 'utf-8');
+      const archived = 'youtube id-webm\nyoutube id-without-info\nvimeo 123456789\nyoutube id-first\n';
+      await fs.writeFile(path.join(dir, ARCHIVE_FILE), archived, 'utf-8');
+
+      await rebuildIndex(dir);
+
+      expect(await fs.readFile(path.join(dir, ARCHIVE_FILE), 'utf-8')).toBe(archived);
+    });
+
+    it('leaves archive.txt byte for byte as it was in a folder without an info.json', async () => {
+      // That is how a drive that is away, or a scan that could not read a
+      // single file, looks: rewriting the archive from it emptied the file
+      await fs.writeFile(path.join(dir, ARCHIVE_FILE), 'youtube id-a\r\nyoutube id-b', 'utf-8');
+
+      await rebuildIndex(dir);
+
+      expect(await fs.readFile(path.join(dir, ARCHIVE_FILE), 'utf-8')).toBe('youtube id-a\r\nyoutube id-b');
     });
 
     it('falls back to a full JSON parse when id is not the first key', async () => {
@@ -184,16 +211,33 @@ describe('folderIndex', () => {
       await writeVideo(dir, '20240102_Second', 'id-second');
 
       // A folder without an index gets rebuilt by whoever asks first, and more
-      // than one reader can ask at once: an open page and the library frame
-      // that follows it, or simply two browser tabs. They all write
-      // archive.txt through a temp file, so a shared temp name makes the
-      // slower writer rename a path the faster one has already moved.
+      // than one rebuild can run at once (the rebuild endpoint next to a
+      // reader). They all write the index through a temp file, so a shared
+      // temp name makes the slower writer rename a path the faster one has
+      // already moved. archive.txt is appended instead, and a line two
+      // rebuilds both added is one id to every reader of the archive.
       const readers = await Promise.all(Array.from({ length: 5 }, () => rebuildIndex(dir)));
 
       for (const index of readers) {
         expect(Object.keys(index.entries).sort()).toEqual(['id-first', 'id-second']);
       }
       await expect(readArchiveIds(dir)).resolves.toEqual(new Set(['id-first', 'id-second']));
+    });
+
+    it('lets readers that find no index share one rebuild, so archive.txt gets each line once', async () => {
+      // Two tabs, or a page and the library frame behind it: each reader that
+      // finds no index used to start its own scan, and each scan appended the
+      // ids it found to the archive
+      await writeVideo(dir, '20240101_First', 'id-first');
+      await writeVideo(dir, '20240102_Second', 'id-second');
+
+      const readers = await Promise.all(Array.from({ length: 20 }, () => loadIndex(dir)));
+
+      for (const index of readers) {
+        expect(Object.keys(index.entries).sort()).toEqual(['id-first', 'id-second']);
+      }
+      const archive = await fs.readFile(path.join(dir, ARCHIVE_FILE), 'utf-8');
+      expect(archive).toBe('youtube id-first\nyoutube id-second\n');
     });
   });
 
@@ -315,6 +359,26 @@ describe('folderIndex', () => {
       expect(result.changed).toEqual(['id-new']);
       expect(Object.keys(result.index.entries).sort()).toEqual(['id-new', 'id-old']);
       expect(await readArchiveIds(dir)).toEqual(new Set(['id-old', 'id-new']));
+    });
+
+    it('re-reads a stem it is told about, whatever its info.json mtime', async () => {
+      // What a sidecar repair leaves behind: the info.json it kept
+      // (--no-overwrites) is as old as before, and a new subtitle sits next
+      // to it
+      await writeVideo(dir, '20240101_Repaired', 'id-repaired');
+      await rebuildIndex(dir);
+      const past = new Date(Date.now() - 60_000);
+      await fs.utimes(path.join(dir, '20240101_Repaired.info.json'), past, past);
+      const since = Date.now();
+      await fs.writeFile(path.join(dir, '20240101_Repaired.pl.vtt'), 'WEBVTT\n', 'utf-8');
+
+      const missed = await refreshIndex(dir, since);
+      expect(missed.changed).toEqual([]);
+
+      const result = await refreshIndex(dir, since, ['20240101_Repaired']);
+
+      expect(result.changed).toEqual(['id-repaired']);
+      expect(entry(result.index.entries, 'id-repaired').subtitleLangs).toEqual(['pl']);
     });
 
     it('updates infoMtime for an existing entry that was re-written', async () => {

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, utimes } from 'node:fs/promises';
 import { waitFor } from '@testing-library/react';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
 import { folderConfig, incompleteVideoFiles, YTDLP_ARGV_LOG_NAME } from '@videodeck/test-infra/deepServerTestEnv';
@@ -62,6 +62,17 @@ async function waitForJobToFinish(folderPath: string): Promise<void> {
   );
 }
 
+/**
+ * Give the seeded info.json the age a real library's has. A repair keeps the
+ * info.json it finds, so its mtime stays where it was; a seed written a moment
+ * before the job would fall inside the post-job refresh's mtime window anyway
+ * and hide whether the job's own stem is re-read.
+ */
+async function ageInfoJson(folderPath: string): Promise<void> {
+  const anHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  await utimes(`${folderPath}/20260101_Fake incomplete video.info.json`, anHourAgo, anHourAgo);
+}
+
 /** One video's state, as `GET /api/folder/video-state` answers it */
 async function fetchVideoState(folderPath: string): Promise<VideoStateBody> {
   const response = await fetch(
@@ -82,6 +93,7 @@ describe('repair journey — a video that never got its Polish subtitles', () =>
       [YTDLP_ARGV_LOG_NAME]: '',
     });
     env.setFolders('channel-repair');
+    await ageInfoJson(folderPath);
 
     // 1. The state names the gap: English is there, Polish is missing.
     const before = await fetchVideoState(folderPath);
@@ -106,11 +118,15 @@ describe('repair journey — a video that never got its Polish subtitles', () =>
     const after = await fetchVideoState(folderPath);
     expect(after.state.files).toMatchObject({ video: true, subLangs: ['en', 'pl'] });
     // The gap is gone from the list, and the language list is the proof it is
-    // gone for a reason. The one gap that may remain is `comments`: the fake
-    // rewrites `.info.json` without a comment section, because it models
-    // subtitles and metadata and not the comment API.
-    expect(after.state.missing.filter((item) => item !== 'comments')).toEqual([]);
+    // gone for a reason. Nothing else turned into a gap on the way: a sidecar
+    // repair writes no comment section, and it used to rewrite the info.json
+    // all the same, which replaced the archived comments with none.
+    expect(after.state.missing).toEqual([]);
     expect(existsSync(`${folderPath}/20260101_Fake incomplete video.pl.vtt`)).toBe(true);
+    const info = JSON.parse(await readFile(`${folderPath}/20260101_Fake incomplete video.info.json`, 'utf-8')) as {
+      comments?: { id: string }[];
+    };
+    expect(info.comments?.map((comment) => comment.id)).toEqual(['Ugx-seeded-comment']);
 
     // The repair wrote no media file of its own: the video that was there is
     // the video that is there, byte for byte.
@@ -157,6 +173,34 @@ describe('repair journey — a video that never got its Polish subtitles', () =>
     // The Polish subtitle is the gap that matters, and it is still named.
     expect(after.state.missing).toContain('pl');
     expect(existsSync(`${folderPath}/20260101_Fake incomplete video.pl.vtt`)).toBe(false);
+  });
+
+  it('keeps a subtitle it already had when the source refuses to send it again', async () => {
+    // yt-dlp deletes a subtitle on disk before it fetches it again. With the
+    // English track throttled, a repair that went looking for Polish used to
+    // delete the archived English one and exit 0 with only the Polish one.
+    const folderPath = await env.seedFolder(
+      'channel-keeps-english',
+      incompleteVideoFiles(VIDEO_ID, 'Fake incomplete video'),
+    );
+    env.setFolders('channel-keeps-english');
+    await ageInfoJson(folderPath);
+    const englishPath = `${folderPath}/20260101_Fake incomplete video.en.vtt`;
+    const english = await readFile(englishPath, 'utf-8');
+    process.env.FAKE_YTDLP_RATE_LIMIT_SUB_LANG = 'en';
+
+    const repair = await fetch('/api/folder/repair', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ folderPath, method: 'sidecars', videos: [{ videoId: VIDEO_ID }] }),
+    });
+    expect(repair.status).toBe(202);
+    await waitForJobToFinish(folderPath);
+
+    expect(await readFile(englishPath, 'utf-8')).toBe(english);
+    const after = await fetchVideoState(folderPath);
+    expect(after.state.files).toMatchObject({ subLangs: ['en', 'pl'] });
+    expect(after.state.missing).toEqual([]);
   });
 
   it('refuses to repair a video the folder does not hold', async () => {
