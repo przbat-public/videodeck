@@ -735,5 +735,101 @@ describe('videoScanner', () => {
       expect(indexed).toBe(0);
       expect(mockedEs.indexVideo).not.toHaveBeenCalled();
     });
+
+    const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+    it('writes only once a reindex of the folder has swapped in its new version', async () => {
+      // Until the swap the alias points at the version the swap deletes, so a
+      // write through it meanwhile would be gone with that version
+      mockFolder(['a.info.json', 'a.mp4', 'a.webp']);
+      let finishBulk: () => void = () => undefined;
+      mockedEs.bulkIndexDocuments.mockImplementationOnce(
+        (_index, documents) =>
+          new Promise<{ indexed: number; skipped: number }>((resolve) => {
+            finishBulk = () => resolve({ indexed: documents.length, skipped: 0 });
+          }),
+      );
+      const reindex = loadVideosCache();
+      try {
+        await vi.waitFor(() => expect(mockedEs.bulkIndexDocuments).toHaveBeenCalled());
+
+        const write = indexVideosFromDisk(FOLDER, ['a']);
+        await settle();
+        expect(mockedEs.indexVideo).not.toHaveBeenCalled();
+
+        finishBulk();
+        await reindex;
+        await vi.waitFor(() => expect(mockedEs.indexVideo).toHaveBeenCalled());
+        expect(await write).toBe(1);
+        expect(at(mockedEs.promoteIndexVersion.mock.invocationCallOrder, 0)).toBeLessThan(
+          at(mockedEs.indexVideo.mock.invocationCallOrder, 0),
+        );
+      } finally {
+        // A failed assertion must not leave the reindex running for the next test
+        finishBulk();
+        await reindex;
+      }
+    });
+
+    it('releases the writes it held when the rebuild fails', async () => {
+      // A failed rebuild is discarded and the alias keeps its version, so the
+      // writes that waited go there. Left waiting, every later write, deferred
+      // job batch and retry for the folder would hang until the next reindex.
+      mockFolder(['a.info.json', 'a.mp4', 'a.webp']);
+      let failBulk: () => void = () => undefined;
+      mockedEs.bulkIndexDocuments.mockImplementationOnce(
+        () =>
+          new Promise<{ indexed: number; skipped: number }>((_resolve, reject) => {
+            failBulk = () => reject(new Error('bulk refused (HTTP 500)'));
+          }),
+      );
+      const reindex = loadVideosCache();
+      try {
+        await vi.waitFor(() => expect(mockedEs.bulkIndexDocuments).toHaveBeenCalled());
+        const write = indexVideosFromDisk(FOLDER, ['a']);
+
+        failBulk();
+        await reindex;
+
+        await vi.waitFor(() => expect(mockedEs.indexVideo).toHaveBeenCalled());
+        expect(await write).toBe(1);
+        expect(mockedEs.discardIndexVersion).toHaveBeenCalledWith(NEW_INDEX);
+        expect(mockedEs.promoteIndexVersion).not.toHaveBeenCalled();
+      } finally {
+        failBulk();
+        await reindex;
+      }
+    });
+
+    it('lets a write already in flight land before a reindex lists the folder', async () => {
+      // On a folder with no alias yet, the write creates and promotes a
+      // version of its own, and that promotion deletes every other version:
+      // the reindex creates its version only after the write has landed. With
+      // an alias the wait changes nothing, since the files are on disk before
+      // the write starts and the listing sees them either way.
+      mockFolder(['a.info.json', 'a.mp4', 'a.webp']);
+      let finishWrite: () => void = () => undefined;
+      mockedEs.indexVideo.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishWrite = () => resolve();
+          }),
+      );
+      const write = indexVideosFromDisk(FOLDER, ['a']);
+      await vi.waitFor(() => expect(mockedEs.indexVideo).toHaveBeenCalled());
+      const reindex = loadVideosCache();
+      try {
+        await settle();
+        expect(mockedEs.createIndexVersion).not.toHaveBeenCalled();
+
+        finishWrite();
+        expect(await write).toBe(1);
+        await reindex;
+        expect(mockedEs.promoteIndexVersion).toHaveBeenCalledWith(FOLDER, NEW_INDEX);
+      } finally {
+        finishWrite();
+        await reindex;
+      }
+    });
   });
 });

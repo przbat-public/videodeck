@@ -349,6 +349,72 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(list.body.downloadStatuses.aaaaaaaaaaa).toBe(true);
   });
 
+  describe('a download that finishes while its folder is being reindexed', () => {
+    /** Search hits for one term; polled, since the deferred write lands after the reindex reports idle */
+    const titlesFor = async (term: string) => {
+      const response = await env.agent.get(`/api/videos/search?q=${encodeURIComponent(term)}`).expect(200);
+      return (response.body as { videos: Array<{ title: string }> }).videos.map((video) => video.title);
+    };
+
+    /**
+     * Reindex the folder with its bulk write held, download one video while
+     * it waits, then let the reindex finish. The job must end without waiting
+     * for the reindex, and the video must reach the version the reindex swaps in.
+     */
+    async function downloadDuringReindex(folderPath: string, videoId: string): Promise<void> {
+      const hold = env.fakeEs.holdRequestsMatching('/_bulk');
+      try {
+        await env.agent.post('/api/videos/refreshCache').expect(202);
+        await hold.reached;
+        await env.agent
+          .post('/api/folder/queue')
+          .send({ folderPath, type: 'download', videos: [{ videoUrl: `https://www.youtube.com/watch?v=${videoId}` }] })
+          .expect(202);
+        await waitForJobStatus(folderPath, videoId, 'done');
+      } finally {
+        hold.release();
+      }
+      await waitForRefreshIdle();
+    }
+
+    it('indexes the video into the version the reindex swaps in', async () => {
+      const folderPath = await env.seedFolder('channel-reindexing', videoFiles('reindexold1', 'Film sprzed reindeksu'));
+      env.setFolders('channel-reindexing');
+      await env.agent.post('/api/videos/refreshCache').expect(202);
+      await waitForRefreshIdle();
+
+      await downloadDuringReindex(folderPath, 'reindexnew1');
+
+      // Written through the alias during the reindex, the video went into the
+      // version the swap deletes
+      await waitFor(
+        () => titlesFor('reindexnew1'),
+        (titles) => (titles as string[]).includes('Fake video reindexnew1'),
+      );
+      expect(await titlesFor('reindeksu')).toEqual(['Film sprzed reindeksu']);
+    }, 30_000);
+
+    it('keeps the first reindex of a folder intact', async () => {
+      // No alias yet: a write through it created and promoted a version of its
+      // own, and the promotion deleted the version the reindex was writing
+      const folderPath = await env.seedFolder(
+        'channel-first-reindex',
+        videoFiles('firstold001', 'Film pierwszego indeksu'),
+      );
+      env.setFolders('channel-first-reindex');
+
+      await downloadDuringReindex(folderPath, 'firstnew001');
+
+      const status = await env.agent.get('/api/videos/refreshCache/status').expect(200);
+      expect((status.body as { errors: string[] }).errors).toEqual([]);
+      await waitFor(
+        () => titlesFor('firstnew001'),
+        (titles) => (titles as string[]).includes('Fake video firstnew001'),
+      );
+      expect(await titlesFor('pierwszego')).toEqual(['Film pierwszego indeksu']);
+    }, 30_000);
+  });
+
   it('refuses folder configs that carry a yt-dlp escape hatch, and stores the safe ones', async () => {
     const folderPath = await env.seedFolder('channel-config-guard', {});
     env.setFolders('channel-config-guard');

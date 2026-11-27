@@ -370,4 +370,45 @@ describe('FakeElasticsearch controls', () => {
     expect(await matchesFor('zostajetoken', 'title')).toBe(1);
     expect(await matchesFor('znikatoken', 'title')).toBe(0);
   });
+
+  it('holds a matching request until it is released, and serves the others meanwhile', async () => {
+    const hold = fake.holdRequestsMatching('/_bulk');
+    try {
+      let answered = false;
+      const held = bulk([{ index: { _index: 'videos_x', _id: 'held' } }, { title: 'Held' }]).then((response) => {
+        answered = true;
+        return response;
+      });
+      await hold.reached;
+
+      expect((await search()).status).toBe(200);
+      expect(answered).toBe(false);
+
+      hold.release();
+      expect((await held).status).toBe(200);
+      // Released for good: the next bulk write goes straight through
+      expect((await bulk([{ index: { _index: 'videos_x', _id: 'after' } }, { title: 'After' }])).status).toBe(200);
+    } finally {
+      // The fake is shared by the whole file: a held bulk must not outlive a failure
+      hold.release();
+    }
+  });
+
+  it('answers every held request when it stops, so a failed test cannot hang its teardown', async () => {
+    const own = new FakeElasticsearch();
+    const ownUrl = await own.start();
+    const hold = own.holdRequestsMatching('/_cluster/health');
+    let answered = false;
+    const held = fetch(`${ownUrl}/_cluster/health`).then((response) => {
+      answered = true;
+      return response;
+    });
+    await hold.reached;
+
+    const stopping = own.stop();
+    await vi.waitFor(() => expect(answered, 'stop() answers the held request').toBe(true));
+    await stopping;
+
+    expect((await held).status).toBe(200);
+  });
 });

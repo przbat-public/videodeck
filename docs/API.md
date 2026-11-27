@@ -85,7 +85,7 @@ Thanks to this, search works the whole time on the old index version, and an int
 
 Comments are **not** stored in ES as objects. Only one text field, `commentsText`, which search runs over. The `GET /api/videos/:id/details` endpoint reads the full comment tree from `info.json`. The `commentsText` field is not returned in search results.
 
-After every download-queue job (`download`/`update`), the changed videos are indexed incrementally, so a new video is visible in search without a full reindex.
+After every download-queue job (`download`/`update`), the changed videos are indexed incrementally, so a new video is visible in search without a full reindex. A job that finishes while its own folder is being reindexed hands its videos to that reindex instead: they become searchable once the new version is swapped in. If the server stops before that swap, the next full reindex brings them in.
 
 **Changing the analyzer requires a reindex:** existing indexes keep the
 mappings from their creation time, so after an upgrade that changes text

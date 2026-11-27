@@ -121,6 +121,20 @@ function isActive(job: QueueJob): boolean {
   return job.status === 'queued' || job.status === 'running';
 }
 
+/** Dedup key of a video in a folder; a path cannot hold a NUL, so no two pairs share one */
+function videoKey(folderPath: string, videoId: string): string {
+  return `${folderPath}\u0000${videoId}`;
+}
+
+/** The slots in use, counted once per pump pass */
+interface Slots {
+  downloads: number;
+  /** Updates and repairs, which share one limit */
+  metadata: number;
+  /** Folders a live download holds: only downloads append to archive.txt */
+  busyFolders: Set<string>;
+}
+
 /**
  * The job without its log tail: what the queue list endpoints send. The log
  * stays behind GET /api/folder/queue/:jobId, because the list is polled and on
@@ -184,6 +198,10 @@ export class DownloadQueue extends EventEmitter {
   private readonly logRemainder = new Map<string, string>();
   /** While paused, queued jobs wait; running ones finish (cancel still works) */
   private paused = false;
+  /** A pump pass is running; a pump asked for meanwhile becomes the next pass */
+  private pumping = false;
+  /** A pump was asked for while a pass ran */
+  private pumpRequested = false;
   /** Set by stopForShutdown: the state file keeps the last snapshot taken before it */
   private shuttingDown = false;
 
@@ -324,10 +342,14 @@ export class DownloadQueue extends EventEmitter {
    * same video would overwrite the file the download is writing.
    */
   enqueue(requests: EnqueueRequest[]): QueueJob[] {
+    // One index for the whole batch: a lookup per request that scanned the
+    // queue made a bulk enqueue cost the batch times the backlog
+    const active = this.activeJobsByVideo();
     const result: QueueJob[] = [];
     for (const request of requests) {
-      const existing = this.findActive(request.folderPath, request.videoId);
-      if (existing) {
+      const key = videoKey(request.folderPath, request.videoId);
+      const existing = active.get(key);
+      if (existing && isActive(existing)) {
         result.push(existing);
         continue;
       }
@@ -347,6 +369,7 @@ export class DownloadQueue extends EventEmitter {
         createdAt: new Date().toISOString(),
       });
       this.jobs.set(job.id, job);
+      active.set(key, job);
       result.push(job);
       this.emitJob(job);
     }
@@ -547,58 +570,110 @@ export class DownloadQueue extends EventEmitter {
     }
   }
 
-  private findActive(folderPath: string, videoId: string): QueueJob | undefined {
+  /** The first active job of every folder + video, in queue order */
+  private activeJobsByVideo(): Map<string, QueueJob> {
+    const active = new Map<string, QueueJob>();
     for (const job of this.jobs.values()) {
-      if (isActive(job) && job.folderPath === folderPath && job.videoId === videoId) {
-        return job;
+      const key = videoKey(job.folderPath, job.videoId);
+      if (isActive(job) && !active.has(key)) {
+        active.set(key, job);
       }
     }
-    return undefined;
+    return active;
   }
 
   /**
-   * Downloads that still hold a yt-dlp process, whatever their status: a
-   * cancelled job keeps its slot until the process really closes, because a
-   * SIGTERMed yt-dlp may still be merging or appending to archive.txt.
+   * Whether a job holds a slot now. A download holds one while it has a
+   * yt-dlp process, whatever its status: a cancelled job keeps it until the
+   * process really closes, because a SIGTERMed yt-dlp may still be merging or
+   * appending to archive.txt. A metadata job holds one while it runs.
    */
-  private liveDownloads(): QueueJob[] {
-    return Array.from(this.jobs.values()).filter(
-      (job) => job.type === 'download' && (job.status === 'running' || this.processes.has(job.id)),
-    );
+  private holdsSlot(job: QueueJob): boolean {
+    if (job.type === 'download') {
+      return job.status === 'running' || this.processes.has(job.id);
+    }
+    return job.status === 'running';
+  }
+
+  /** The slots in use, in one pass over the queue */
+  private countSlots(): Slots {
+    const slots: Slots = { downloads: 0, metadata: 0, busyFolders: new Set<string>() };
+    for (const job of this.jobs.values()) {
+      if (this.holdsSlot(job)) {
+        this.take(job, slots);
+      }
+    }
+    return slots;
   }
 
   /**
-   * Whether a queued job may start now. Downloads and metadata jobs are
-   * counted against separate limits; only downloads are exclusive within a
-   * folder, because only they append to the folder's archive.txt.
+   * Whether a queued job fits in the slots left. Downloads and metadata jobs
+   * are counted against separate limits; only downloads are exclusive within
+   * a folder, because only they append to the folder's archive.txt.
    *
    * A repair shares the update limit: both run `--skip-download`, both write
    * under an existing stem, and neither ends up with two processes in one
    * folder.
    */
-  private canStart(job: QueueJob): boolean {
+  private fits(job: QueueJob, slots: Slots): boolean {
     if (job.type === 'update' || job.type === 'repair') {
-      return this.runningMetadata().length < this.maxConcurrentUpdates;
+      return slots.metadata < this.maxConcurrentUpdates;
     }
-    const downloads = this.liveDownloads();
-    return downloads.length < this.maxConcurrent && !downloads.some((running) => running.folderPath === job.folderPath);
+    return slots.downloads < this.maxConcurrent && !slots.busyFolders.has(job.folderPath);
   }
 
-  /** Running metadata jobs: updates and repairs, which share one limit */
-  private runningMetadata(): QueueJob[] {
-    return Array.from(this.jobs.values()).filter(
-      (job) => (job.type === 'update' || job.type === 'repair') && job.status === 'running',
-    );
+  /** Count a job that holds a slot into the counts */
+  private take(job: QueueJob, slots: Slots): void {
+    if (job.type === 'download') {
+      slots.downloads += 1;
+      slots.busyFolders.add(job.folderPath);
+    } else {
+      slots.metadata += 1;
+    }
   }
 
-  /** Start every queued job that may run, oldest first; a blocked job does not hold up the ones behind it */
+  /**
+   * Start every queued job that may run, oldest first; a blocked job does not
+   * hold up the ones behind it. A pass counts the slots once and walks the
+   * queue once, so a transition costs the size of the queue and not its
+   * square, and it stops early once both limits are full.
+   *
+   * A pump asked for during a pass becomes the next pass. start() can refuse
+   * a job synchronously and finish it, and that finish pumps: nested inside
+   * the pass, it would start jobs the outer pass never counted, and the outer
+   * pass would then overshoot both limits.
+   */
   private pump(): void {
+    if (this.pumping) {
+      this.pumpRequested = true;
+      return;
+    }
+    this.pumping = true;
+    try {
+      do {
+        this.pumpRequested = false;
+        this.pumpPass();
+      } while (this.pumpRequested);
+    } finally {
+      this.pumping = false;
+    }
+  }
+
+  private pumpPass(): void {
     if (this.paused) {
       return;
     }
+    const slots = this.countSlots();
     for (const job of this.jobs.values()) {
-      if (job.status === 'queued' && this.canStart(job)) {
+      if (slots.downloads >= this.maxConcurrent && slots.metadata >= this.maxConcurrentUpdates) {
+        return;
+      }
+      if (job.status === 'queued' && this.fits(job, slots)) {
         this.start(job);
+        // A job start() refused is already finished and holds nothing
+        if (this.holdsSlot(job)) {
+          this.take(job, slots);
+        }
       }
     }
   }

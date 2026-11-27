@@ -3,7 +3,7 @@ import { listVisibleFiles } from '../../utils/fsUtils';
 import { logger } from '../../utils/logger';
 import type { FolderIndex } from '../folderIndex';
 import { findVideoFile, refreshIndex } from '../folderIndex';
-import { indexVideosFromDisk } from '../videoScanner';
+import { folderReindexInFlight, indexVideosFromDisk } from '../videoScanner';
 
 /**
  * Post-job work: check that the job produced what it promised, push the videos
@@ -98,6 +98,26 @@ export async function indexChangedVideos(job: QueueJob): Promise<void> {
   if (baseNames.length === 0) {
     return;
   }
+  const reindex = folderReindexInFlight(job.folderPath);
+  if (reindex) {
+    // The batch would wait for the new index version inside
+    // indexVideosFromDisk, and the job with it: a job counts as running until
+    // its hook returns, and a running download holds its folder. So the batch
+    // goes in once the reindex settles, and the job ends now.
+    logger.info(`Job ${job.id}: ${baseNames.length} changed videos wait for the reindex of ${job.folderPath}`);
+    void reindex
+      .then(() => indexBatch(job, baseNames))
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`Job ${job.id}: indexing after the reindex failed: ${message}`);
+      });
+    return;
+  }
+  await indexBatch(job, baseNames);
+}
+
+/** Index a job's changed videos, with the bounded retry when part of the batch did not land */
+async function indexBatch(job: QueueJob, baseNames: string[]): Promise<void> {
   // indexVideosFromDisk logs per-video failures and never rejects, so a short
   // count is the only signal that part of the batch did not land.
   const indexed = await indexVideosFromDisk(job.folderPath, baseNames);
