@@ -10,15 +10,24 @@
  *
  * The answer is the one the rule it replaces gives (`Array.isArray(comments)
  * && comments.length > 0`, `typeof description === 'string' &&
- * description.trim().length > 0`) for any JSON object without duplicate keys,
- * which yt-dlp's json.dump of a dict cannot write. The pass follows strings,
- * escapes and nesting rather than every token, and it departs from that rule
- * on purpose in three places: the first of two equal keys decides, where a
- * parse keeps the last; a file cut off after its first comment still counts as
- * having comments; and a description literal longer than
- * DESCRIPTION_PROBE_BYTES counts as a description without being decoded. A
- * file that ends inside its top-level object before both facts are known is
- * rejected, as a parse of it fails.
+ * description.trim().length > 0`) for valid JSON, with two departures on
+ * purpose: the first of two equal keys decides, where a parse keeps the last
+ * (yt-dlp's json.dump of a dict cannot write two), and a description literal
+ * longer than DESCRIPTION_PROBE_BYTES counts as a description without being
+ * decoded.
+ *
+ * The pass follows strings, escapes and nesting, not every token, so it does
+ * not validate the file. A malformed file reads as the valid file it
+ * resembles once both facts are settled, since nothing after them is read (a
+ * file cut off after its first comment counts as having comments), or when
+ * its defect leaves strings and nesting intact: NaN and Infinity, which
+ * Python's json writes for a float nan or inf, a stray comma, bytes after
+ * the closing brace. A parse of such a file fails, so the rule gave it
+ * neither flag. With the scan's flags the console offers no comment or
+ * description repair for the video, while the reindex, which parses the
+ * file, still skips it. Other defects get whatever the pass makes of the
+ * bytes, and the one it rejects is a file that ends inside its top-level
+ * object before both facts are known, as a parse of it fails.
  */
 
 export interface InfoJsonFlags {

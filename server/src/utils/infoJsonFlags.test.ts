@@ -229,9 +229,17 @@ describe('scanInfoJsonFlags', () => {
     await expect(scanInfoJsonFlags(chunksOf('{"id": "x", "formats": [{"url": "'))).rejects.toThrow();
   });
 
-  describe('where it departs from a parse of the whole file, on files yt-dlp does not write', () => {
+  describe('where it departs from a parse of the whole file: equal keys, a long description, and a malformed file read as the valid one it resembles', () => {
     it('counts a file cut off after its first comment as having comments', async () => {
       const text = '{"id": "x", "description": "d", "comments": [{"id": "c1", "text": "cut';
+
+      expect(await flagsOf(text)).toEqual({ hasComments: true, hasDescription: true });
+      expect(ruleOf(text)).toEqual(NO_FLAGS);
+    });
+
+    it('counts the flags of a file with a NaN in its formats, which a parse refuses', async () => {
+      // Python's json writes a float nan as NaN, and JSON.parse refuses it
+      const text = '{"id": "x", "formats": [{"tbr": NaN}], "description": "d", "comments": [{"id": "c1"}]}';
 
       expect(await flagsOf(text)).toEqual({ hasComments: true, hasDescription: true });
       expect(ruleOf(text)).toEqual(NO_FLAGS);
