@@ -297,6 +297,12 @@ describe('deep server integration (real app, fake external world)', () => {
     await env.agent.post('/api/videos/refreshCache').expect(202);
     await waitForRefreshIdle();
 
+    // The app's own logger instance, loaded after the environment is up like
+    // every server module this suite touches
+    const { logger } = await import('../utils/logger.js');
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {
+      /* silence the expected rate-limit warning */
+    });
     env.mockOpenai.rateLimitModel('gpt-4o');
     try {
       const response = await env.agent
@@ -305,7 +311,11 @@ describe('deep server integration (real app, fake external world)', () => {
       expect(response.body.summary).toBe('Fake summary.');
       // The env is shared across tests: this test's own two calls are the last ones
       expect(env.mockOpenai.requests.slice(-2).map((request) => request.model)).toEqual(['gpt-4o', 'gpt-4o-mini']);
+      // The mock's 429 carries Retry-After: 1, and the real SDK hands it over as
+      // a Headers object: the wait has to come from that header
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('(waited 1s)'));
     } finally {
+      warn.mockRestore();
       env.mockOpenai.clearRateLimits();
     }
   });
