@@ -188,6 +188,29 @@ describe('folderIndex', () => {
       expect(Object.keys(index.entries)).toEqual(['id-reordered']);
     });
 
+    it('counts the comments of an info.json past the string limit, which it cannot parse', async () => {
+      // Past V8's longest string the parse fails, and the entry said no
+      // comments: the console then offered a comment repair for the very
+      // file that holds them, and that repair keeps a file this size as it is
+      await writeVideo(dir, '20240101_Huge', 'id-huge');
+      const realStat = fs.stat;
+      vi.spyOn(fs, 'stat').mockImplementation(async (file) => {
+        const stats = await realStat(file);
+        return String(file).endsWith('.info.json') ? Object.assign(stats, { size: 600 * 1024 * 1024 }) : stats;
+      });
+      const realReadFile = fs.readFile;
+      vi.spyOn(fs, 'readFile').mockImplementation(async (file, options) => {
+        if (String(file).endsWith('.info.json')) {
+          throw new RangeError('Invalid string length');
+        }
+        return realReadFile(file, options);
+      });
+
+      const index = await rebuildIndex(dir);
+
+      expect(entry(index.entries, 'id-huge').hasComments).toBe(true);
+    });
+
     it('skips unreadable info.json files without failing', async () => {
       await writeVideo(dir, '20240101_Good', 'id-good');
       await writeVideo(dir, '20240102_Broken', 'ignored', { infoPrefix: '{not json' });

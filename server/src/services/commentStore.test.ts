@@ -134,6 +134,20 @@ describe('loadCommentTree', () => {
     expect((await second)?.[0]?.id).toBe('new');
   });
 
+  it('answers no comments for an info.json past the string limit, without reading it', async () => {
+    // Past V8's longest string (536,870,888 code units on Node 24) readFile
+    // fails the way it does here, and every comments page answered 500
+    await writeInfo([{ id: 'c1', text: 'root' }]);
+    const realStat = fs.stat;
+    vi.spyOn(fs, 'stat').mockImplementation(async (file) =>
+      Object.assign(await realStat(file), { size: 600 * 1024 * 1024 }),
+    );
+    const readFile = vi.spyOn(fs, 'readFile').mockRejectedValue(new RangeError('Invalid string length'));
+
+    await expect(loadCommentTree(dir, '20231201_Video')).resolves.toEqual([]);
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
   it('reads a broken info.json again on the next request', async () => {
     await fs.writeFile(filePath, '{"comments": [', 'utf-8');
     const readFile = vi.spyOn(fs, 'readFile');

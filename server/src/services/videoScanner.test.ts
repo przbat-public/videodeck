@@ -1,7 +1,10 @@
+import type { Stats } from 'node:fs';
+import type { FileHandle } from 'node:fs/promises';
 import * as fs from 'node:fs/promises';
 import type { Mock, Mocked } from 'vitest';
 import * as config from '../config';
 import { at } from '../test-utils';
+import { logger } from '../utils/logger';
 import { MAX_COMMENTS_CHARS } from './elasticsearch/bulkIndexing';
 import type { VideoDocument } from './elasticsearchService';
 import * as elasticsearchService from './elasticsearchService';
@@ -72,6 +75,23 @@ function rollingAutoCaptions(lines: string[]): string {
   return cues.join('\n');
 }
 
+/** Past V8's longest string (536,870,888 code units on Node 24), so the file cannot be read as one */
+const PAST_STRING_LIMIT_BYTES = 600 * 1024 * 1024;
+
+/** A FileHandle stand-in for a file of `size` bytes that starts with `head` */
+function fakeHandle(head: string, size: number): FileHandle {
+  const bytes = Buffer.from(head, 'utf-8');
+  const handle = {
+    read: async (buffer: Buffer, offset: number, length: number, position: number) => ({
+      bytesRead: bytes.copy(buffer, offset, position, position + length),
+      buffer,
+    }),
+    stat: async () => ({ size }),
+    close: async () => undefined,
+  };
+  return handle as unknown as FileHandle;
+}
+
 function mockFolder(files: string[], infoJson: Record<string, unknown> = { title: 'Test Video 1' }) {
   mockedConfig.getVideosFolderPaths.mockReturnValue([FOLDER]);
   readdirMock.mockResolvedValue(files);
@@ -93,6 +113,8 @@ describe('videoScanner', () => {
     mockedEs.fromDocument.mockImplementation(realEs.fromDocument);
     mockedEs.estimateDocumentBytes.mockImplementation(realEs.estimateDocumentBytes);
     mockedFs.realpath.mockImplementation((p) => Promise.resolve(String(p)));
+    // An info.json of an ordinary size, read whole
+    mockedFs.stat.mockResolvedValue({ size: 1024 } as Stats);
     mockedEs.checkElasticsearchConnection.mockResolvedValue(true);
     mockedEs.createIndexVersion.mockResolvedValue(NEW_INDEX);
     mockedEs.bulkIndexDocuments.mockImplementation(async (_index, documents) => ({
@@ -450,6 +472,41 @@ describe('videoScanner', () => {
         status: 'skipped',
         reason: expect.stringContaining('missing video file'),
       });
+      expect(mockedFs.readFile).not.toHaveBeenCalled();
+    });
+
+    it('indexes a video whose info.json is past the string limit, from its head and without comments', async () => {
+      // readFile fails on such a file the way Node does, and the video left
+      // search; its head still names the id and the title yt-dlp writes first
+      const stem = '20231201_Huge_video_hugeVideo01';
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+      mockedFs.stat.mockResolvedValue({ size: PAST_STRING_LIMIT_BYTES } as Stats);
+      mockedFs.readFile.mockRejectedValue(new RangeError('Invalid string length'));
+      mockedFs.open.mockResolvedValue(
+        fakeHandle('{"id": "hugeVideo01", "title": "Huge video", "formats": [', PAST_STRING_LIMIT_BYTES),
+      );
+
+      const result = await buildVideoItem(FOLDER, stem, [`${stem}.info.json`, `${stem}.mp4`]);
+
+      expect(result).toMatchObject({
+        status: 'ok',
+        video: { videoId: 'hugeVideo01', title: 'Huge video', uploadDate: '20231201', comments: [] },
+      });
+      expect(mockedFs.readFile).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips a video whose info.json is past the string limit and names no id in its head, unread', async () => {
+      const stem = '20231201_Huge_video';
+      mockedFs.stat.mockResolvedValue({ size: PAST_STRING_LIMIT_BYTES } as Stats);
+      mockedFs.readFile.mockRejectedValue(new RangeError('Invalid string length'));
+      mockedFs.open.mockResolvedValue(
+        fakeHandle('{"title": "Huge video", "id": "late", "formats": [', PAST_STRING_LIMIT_BYTES),
+      );
+
+      const result = await buildVideoItem(FOLDER, stem, [`${stem}.info.json`, `${stem}.mp4`]);
+
+      expect(result).toEqual({ status: 'skipped', reason: expect.stringContaining('too large to read') });
       expect(mockedFs.readFile).not.toHaveBeenCalled();
     });
 

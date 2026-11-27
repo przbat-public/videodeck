@@ -6,6 +6,7 @@ import type { VideoInfoJson } from '../types';
 import { buildCommentTree } from '../utils/commentTreeUtils';
 import { resolveContainedPath } from '../utils/fsUtils';
 import { createSingleFlight } from '../utils/singleFlight';
+import { MAX_INFO_JSON_BYTES } from './folderIndex';
 
 /**
  * Parsed comment trees with a cache keyed by the info.json mtime. Videos
@@ -92,6 +93,11 @@ export async function loadCommentTree(folderPath: string, baseName: string): Pro
       return null;
     }
     throw error;
+  }
+  if (size > MAX_INFO_JSON_BYTES) {
+    // No string holds the file, so no parse can reach its comments: the
+    // video opens without them instead of failing every comments page
+    return [];
   }
 
   const cached = cache.get(key);

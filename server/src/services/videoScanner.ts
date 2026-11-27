@@ -23,6 +23,7 @@ import {
   searchVideosWithTotal,
   toDocument,
 } from './elasticsearchService';
+import { MAX_INFO_JSON_BYTES, readVideoHead } from './folderIndex';
 import { extractTextFromVttSubtitles } from './summaryService';
 
 /** Max documents per bulk request */
@@ -192,6 +193,27 @@ async function readTranscriptText(
 }
 
 /**
+ * The info.json to index a video from. A file past MAX_INFO_JSON_BYTES
+ * cannot be read as one string, so only its head is: the id and the title
+ * yt-dlp writes first, which keep the video in search by its title, without
+ * a description, counts or comments. Null when that head names no id.
+ */
+async function readInfoForIndex(realPath: string, baseName: string): Promise<VideoInfoJson | null> {
+  const { size } = await fs.stat(realPath);
+  if (size <= MAX_INFO_JSON_BYTES) {
+    return JSON.parse(await fs.readFile(realPath, 'utf-8')) as VideoInfoJson;
+  }
+  const head = await readVideoHead(realPath);
+  if (head === null) {
+    return null;
+  }
+  logger.warn(
+    `${baseName}: its info.json of ${size} bytes is past the longest string Node holds, so only its id and title are indexed`,
+  );
+  return { ...head };
+}
+
+/**
  * Read `<baseName>.info.json` and build the document for it. Returns a
  * `skipped` result (with reason) when the video file is missing or the JSON is
  * unreadable, so callers can count and log without throwing. A thumbnail is
@@ -209,15 +231,18 @@ export async function buildVideoItem(
     return { status: 'skipped', reason: `${baseName}: missing video file (.mp4 or .mkv)` };
   }
 
-  let infoJson: VideoInfoJson;
+  let infoJson: VideoInfoJson | null;
   try {
     // Containment check: the info.json must resolve inside the folder even
     // if a symlink redirects the read elsewhere on the disk.
     const realPath = await resolveContainedPath(folderPath, `${baseName}.info.json`);
-    infoJson = JSON.parse(await fs.readFile(realPath, 'utf-8')) as VideoInfoJson;
+    infoJson = await readInfoForIndex(realPath, baseName);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     return { status: 'skipped', reason: `${baseName}: cannot read info.json (${detail})` };
+  }
+  if (infoJson === null) {
+    return { status: 'skipped', reason: `${baseName}: info.json too large to read, and its head names no id` };
   }
 
   const title = infoJson.title || infoJson.fulltitle || '';

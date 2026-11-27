@@ -1,3 +1,5 @@
+import { constants as bufferConstants } from 'node:buffer';
+import type { Stats } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { listVisibleFiles as sharedListVisibleFiles, writeJsonAtomic } from '../utils/fsUtils';
@@ -37,6 +39,13 @@ export const INDEX_VERSION = 2;
 const INFO_SUFFIX = '.info.json';
 const VIDEO_EXTENSIONS = ['.mp4', '.mkv'];
 const ID_HEAD_BYTES = 8 * 1024;
+/**
+ * The largest info.json read whole. Past V8's longest string (536,870,888
+ * code units on Node 24) readFile cannot return the file at all, and a UTF-8
+ * file never decodes to more code units than it has bytes. Such a file is
+ * read from its head only: the id and the title yt-dlp writes first.
+ */
+export const MAX_INFO_JSON_BYTES = bufferConstants.MAX_STRING_LENGTH;
 /** How many info.json files are inspected at once when (re)building the index */
 const INDEX_REBUILD_CONCURRENCY = 8;
 
@@ -120,7 +129,7 @@ export function extractTitleFromHead(head: string): string | null {
   }
 }
 
-interface VideoHead {
+export interface VideoHead {
   id: string;
   title?: string;
 }
@@ -129,8 +138,15 @@ function toVideoHead(id: string, title: unknown): VideoHead {
   return typeof title === 'string' ? { id, title } : { id };
 }
 
-async function readVideoHead(infoPath: string): Promise<VideoHead | null> {
+/**
+ * The id and the title of a video from the head of its info.json, with a full
+ * parse as the fallback for a file whose id is not the first key. Null when
+ * neither finds an id, or when the fallback would have to read a file past
+ * MAX_INFO_JSON_BYTES.
+ */
+export async function readVideoHead(infoPath: string): Promise<VideoHead | null> {
   const handle = await fs.open(infoPath, 'r');
+  let size: number;
   try {
     const buffer = Buffer.alloc(ID_HEAD_BYTES);
     const { bytesRead } = await handle.read(buffer, 0, ID_HEAD_BYTES, 0);
@@ -139,11 +155,15 @@ async function readVideoHead(infoPath: string): Promise<VideoHead | null> {
     if (fromHead) {
       return toVideoHead(fromHead, extractTitleFromHead(head));
     }
+    size = (await handle.stat()).size;
   } finally {
     await handle.close();
   }
+  if (size > MAX_INFO_JSON_BYTES) {
+    return null;
+  }
 
-  // Fallback: full parse (rare — e.g. reformatted files)
+  // Fallback: full parse (rare, e.g. reformatted files)
   try {
     const parsed: unknown = JSON.parse(await fs.readFile(infoPath, 'utf-8'));
     if (typeof parsed !== 'object' || parsed === null || !('id' in parsed)) {
@@ -204,8 +224,18 @@ function subtitleLangsOf(baseName: string, files: Set<string>): string[] {
  * description source. Both come from the same read: the file is already open
  * for its id, and comments are what make it large: a channel with comments on
  * averages over a megabyte per video, most of it the comment list.
+ *
+ * A file past MAX_INFO_JSON_BYTES cannot be parsed. Its comments are what
+ * made it that large, so it counts as having them, and a comment repair is
+ * not offered for it: the repair keeps a file that size as it is.
  */
-async function readInfoExtras(infoPath: string): Promise<{ hasComments: boolean; hasDescription: boolean }> {
+async function readInfoExtras(
+  infoPath: string,
+  infoBytes: number,
+): Promise<{ hasComments: boolean; hasDescription: boolean }> {
+  if (infoBytes > MAX_INFO_JSON_BYTES) {
+    return { hasComments: true, hasDescription: false };
+  }
   try {
     const parsed: unknown = JSON.parse(await fs.readFile(infoPath, 'utf-8'));
     if (typeof parsed !== 'object' || parsed === null) {
@@ -230,18 +260,18 @@ function hasThumbnailOf(baseName: string, files: Set<string>): boolean {
   return findThumbnailFile(baseName, files) !== undefined;
 }
 
-/** Everything the index records about the files of one video */
+/** Everything the index records about the files of one video, whose info.json the caller has just statted */
 async function collectEntryFiles(
   folderPath: string,
   baseName: string,
   files: Set<string>,
   videoFile: string,
+  infoStats: Stats,
 ): Promise<EntryFiles> {
   const infoPath = path.join(folderPath, `${baseName}${INFO_SUFFIX}`);
-  const [videoStats, infoStats, extras] = await Promise.all([
+  const [videoStats, extras] = await Promise.all([
     statOrNull(path.join(folderPath, videoFile)),
-    statOrNull(infoPath),
-    readInfoExtras(infoPath),
+    readInfoExtras(infoPath, infoStats.size),
   ]);
   return {
     videoFile,
@@ -250,7 +280,7 @@ async function collectEntryFiles(
     hasDescription: extras.hasDescription || files.has(`${baseName}.description`),
     hasThumbnail: hasThumbnailOf(baseName, files),
     videoBytes: videoStats?.size ?? 0,
-    infoBytes: infoStats?.size ?? 0,
+    infoBytes: infoStats.size,
   };
 }
 
@@ -276,7 +306,7 @@ async function listVisibleFiles(folderPath: string): Promise<Set<string>> {
 }
 
 /** fs.stat result, or null when the file vanished mid-scan */
-async function statOrNull(filePath: string): Promise<import('node:fs').Stats | null> {
+async function statOrNull(filePath: string): Promise<Stats | null> {
   try {
     return await fs.stat(filePath);
   } catch {
@@ -463,7 +493,7 @@ export async function rebuildIndex(folderPath: string): Promise<FolderIndex> {
         return;
       }
       const stats = await fs.stat(infoPath);
-      const entryFiles = await collectEntryFiles(folderPath, baseName, files, videoFile);
+      const entryFiles = await collectEntryFiles(folderPath, baseName, files, videoFile, stats);
       entries[head.id] = toIndexEntry(head, baseName, entryFiles, stats.mtime);
     } catch (error) {
       logger.error(`folderIndex: skipping ${infoPath}:`, error);
@@ -598,7 +628,7 @@ async function collectChangedEntries(
       // The sidecars of a video change with its download, so the per-file facts
       // are re-read whenever the info.json is: a subtitle fetched by a repair
       // job has to show up without a full rebuild.
-      const entryFiles = await collectEntryFiles(folderPath, baseName, files, videoFile);
+      const entryFiles = await collectEntryFiles(folderPath, baseName, files, videoFile, stats);
       existing.entries[head.id] = toIndexEntry(head, baseName, entryFiles, stats.mtime);
       changed.push(head.id);
     } catch (error) {
