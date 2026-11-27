@@ -8,8 +8,28 @@
  * checked at every boundary, with the spawn as the last one.
  */
 
-/** Longest stem accepted: yt-dlp's own output stays far below it */
+/**
+ * Longest stem accepted: yt-dlp's own output stays below it. Downloads are
+ * named `<upload_date>_<title>_<id>` in ASCII (--restrict-filenames), which
+ * leaves 179 characters for the sanitized title.
+ */
 export const MAX_VIDEO_STEM_LENGTH = 200;
+
+/** A stem's upload date, or `NA`, which yt-dlp writes for a video without one */
+const UPLOAD_DATE_PREFIX_RE = /^(\d{8}|NA)_/;
+
+/**
+ * A readable title from a file stem, for a video whose metadata has none.
+ * Older downloads are named `<upload_date>_<title>`, newer ones end in the
+ * video id as well. The id goes only when it is this video's whole suffix: an
+ * id may hold `_` and `-`, and an older title may end in a word that merely
+ * looks like one.
+ */
+export function titleFromStem(stem: string, videoId: string | undefined): string {
+  const idSuffix = videoId ? `_${videoId}` : undefined;
+  const withoutId = idSuffix && stem.endsWith(idSuffix) ? stem.slice(0, -idSuffix.length) : stem;
+  return withoutId.replace(UPLOAD_DATE_PREFIX_RE, '').replaceAll('_', ' ');
+}
 
 /**
  * Whether a value is usable as a video file stem: one path segment, non-empty,

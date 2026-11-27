@@ -82,6 +82,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   list. The fetch now fails instead (`raise_incomplete_data`), and the list on
   disk stays as it was
 
+### Changed
+
+- **A new download's file name ends in its id**:
+  `<upload_date>_<title>_<id>` replaces `<upload_date>_<title>`. Under
+  `--restrict-filenames`, titles differing only in Polish letters or
+  punctuation, or in case on a case-insensitive drive, came out as one name,
+  so a second video of that day rewrote the first one's `info.json`,
+  description, subtitles and thumbnail while keeping its media. Files already
+  on disk stay as they are and keep working. Before upgrading, let the queue
+  drain, or cancel every download that has started, one waiting for a retry
+  included: after the restart such a download starts over under the new name,
+  and its sidecars and partial media (`.part`, `.ytdl`) stay under the old one
+  until deleted by hand
+- **The extension stops fetching a video the folder already holds**: its
+  route checks the folder index, as the queue route does, and answers
+  "Already downloaded" without a job. With the id in new names, a video whose
+  `archive.txt` line went missing would come down again under a second name
+
 ### Added
 
 - **Videos YouTube will not hand over stop filling the queue with errors**: a

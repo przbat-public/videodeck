@@ -11,7 +11,15 @@ import { STAGING_DIR, usesStaging } from './refreshStaging';
  * never hand-build yt-dlp arguments.
  */
 
-export const OUTPUT_TEMPLATE = '%(upload_date)s_%(title)s.%(ext)s';
+/**
+ * How a download names its files. The id ends the name: under
+ * --restrict-filenames, titles that differ only in letters outside ASCII, in
+ * punctuation or in case (on a case-insensitive drive) sanitize to one name,
+ * and a second video of the same day then took over the first one's sidecars.
+ * Older files keep their `<upload_date>_<title>` names; updates and repairs
+ * reuse whatever stem a video has.
+ */
+export const OUTPUT_TEMPLATE = '%(upload_date)s_%(title)s_%(id)s.%(ext)s';
 
 /**
  * Machine-readable progress line (yt-dlp `--progress-template`). Starts with

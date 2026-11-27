@@ -303,6 +303,30 @@ describe('videoScanner', () => {
       expect(result.video.subtitlePath).toBeUndefined();
     });
 
+    it('leaves the id out of a title derived from a stem that ends in it', async () => {
+      // Downloads name their files <date>_<title>_<id>; an id can hold `_` and
+      // `-`, so it is matched as the whole suffix, never by splitting
+      mockedFs.readFile.mockResolvedValue(JSON.stringify({ id: '-abc_def-gh' }));
+      const stem = '20231201_Test_Video1_-abc_def-gh';
+
+      const result = await buildVideoItem(FOLDER, stem, [`${stem}.info.json`, `${stem}.mp4`, `${stem}.webp`]);
+
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') return;
+      expect(result.video.title).toBe('Test Video1');
+    });
+
+    it('keeps the last word of an older stem that only looks like an id', async () => {
+      mockedFs.readFile.mockResolvedValue(JSON.stringify({ id: 'xyzXYZ01234' }));
+      const stem = '20231201_Lesson_Programming';
+
+      const result = await buildVideoItem(FOLDER, stem, [`${stem}.info.json`, `${stem}.mp4`, `${stem}.webp`]);
+
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') return;
+      expect(result.video.title).toBe('Lesson Programming');
+    });
+
     it('parses a real yt-dlp info.json fixture', async () => {
       const realFs = (await vi.importActual<typeof import('fs/promises')>(
         'fs/promises',

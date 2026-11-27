@@ -6,6 +6,7 @@ import type { Response } from 'express';
 import { getVideosFolderPaths } from '../../config';
 import { sseStreamsOpen } from '../../metrics';
 import { loadDownloadOptions } from '../../services/folderConfig';
+import { findEntryByVideoId } from '../../services/folderIndex';
 import { logger } from '../../utils/logger';
 import { registerSseStream } from '../../utils/sseRegistry';
 import { normalizeFolderPath } from '../../utils/videoPathUtils';
@@ -53,6 +54,26 @@ function readDownloadVideoRequest<Res>(
 }
 
 /**
+ * The folder side of a valid request: allowed, on a drive that is there, and
+ * present. Sends the error response and returns false when a check fails.
+ */
+async function prepareFolder<Res>(folderPath: string, res: Response<Res | ApiError>): Promise<boolean> {
+  // requireAllowedFolder already authorizes the folder; re-assert inline
+  // so the guard sits on the same code path as the file operations below.
+  const allowedFolders = getVideosFolderPaths().map(normalizeFolderPath);
+  if (!allowedFolders.includes(folderPath)) {
+    logger.warn(`Rejected folderPath not in the allowed list: ${folderPath}`);
+    res.status(403).json({ error: `Folder path is not in the allowed list: ${folderPath}` });
+    return false;
+  }
+  if (!(await requireMountedFolder(folderPath, res))) {
+    return false;
+  }
+  await fs.mkdir(folderPath, { recursive: true });
+  return true;
+}
+
+/**
  * Single-video download with SSE progress (used by the Chrome extension).
  * The job runs in the server-side queue; closing the connection only stops
  * the event stream, not the download.
@@ -61,21 +82,18 @@ export function createDownloadVideo(queue: DownloadQueueLike): RouteHandler<NoPa
   return async (req, res) => {
     try {
       const request = readDownloadVideoRequest(req, res);
-      if (!request) {
+      if (!request || !(await prepareFolder(request.folderPath, res))) {
         return;
       }
-      // requireAllowedFolder already authorizes the folder; re-assert inline
-      // so the guard sits on the same code path as the file operations below.
-      const allowedFolders = getVideosFolderPaths().map(normalizeFolderPath);
-      if (!allowedFolders.includes(request.folderPath)) {
-        logger.warn(`Rejected folderPath not in the allowed list: ${request.folderPath}`);
-        res.status(403).json({ error: `Folder path is not in the allowed list: ${request.folderPath}` });
+      // The rule the queue route applies: a video the folder index holds is
+      // not downloaded again. The extension cannot tell a downloaded video
+      // from a new one, and archive.txt is not the disk: a video whose line
+      // went missing would be fetched again, under a second file name now
+      // that names end in the id.
+      if (await findEntryByVideoId(request.folderPath, request.videoId)) {
+        streamAlreadyDownloaded(res);
         return;
       }
-      if (!(await requireMountedFolder(request.folderPath, res))) {
-        return;
-      }
-      await fs.mkdir(request.folderPath, { recursive: true });
 
       // Strip playlist context (&list=, &index=) — see the comment in
       // enqueueJobs.
@@ -103,33 +121,51 @@ export function createDownloadVideo(queue: DownloadQueueLike): RouteHandler<NoPa
   };
 }
 
+/** Open the Server-Sent Events response; proxies must not buffer it */
+function openEventStream(res: Response): void {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+}
+
+/**
+ * Write one event. Every event is validated against the shared contract
+ * before it reaches the wire: a malformed event would corrupt the client's
+ * stream parser.
+ */
+function writeEvent(res: Response, event: DownloadVideoEvent): void {
+  const parsed = downloadVideoEventSchema.safeParse(event);
+  if (!parsed.success) {
+    logger.warn(`Dropping invalid SSE event ${JSON.stringify(event)}: ${firstZodError(parsed.error)}`);
+    return;
+  }
+  res.write(`data: ${JSON.stringify(parsed.data)}\n\n`);
+}
+
+/** The whole stream for a video the folder already holds: no job, no wait */
+function streamAlreadyDownloaded(res: Response): void {
+  openEventStream(res);
+  writeEvent(res, { type: 'downloadStart' });
+  writeEvent(res, { type: 'downloadComplete', message: 'Already downloaded' });
+  res.end();
+}
+
 /**
  * Stream one queue job as Server-Sent Events until it settles (done, error,
  * cancelled) or the client disconnects. The job keeps running server-side
  * either way — closing the stream never cancels the download.
  */
 function streamJobProgress(res: Response, queue: DownloadQueueLike, job: QueueJob): void {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  res.flushHeaders();
+  openEventStream(res);
 
   // Track the stream so graceful shutdown can end it and let server.close()
   // finish instead of waiting on the keep-alive connection.
   const unregister = registerSseStream(res);
   sseStreamsOpen.inc();
 
-  // Every event is validated against the shared contract before it reaches
-  // the wire: a malformed event would corrupt the client's stream parser.
-  const sendEvent = (event: DownloadVideoEvent) => {
-    const parsed = downloadVideoEventSchema.safeParse(event);
-    if (!parsed.success) {
-      logger.warn(`Dropping invalid SSE event ${JSON.stringify(event)}: ${firstZodError(parsed.error)}`);
-      return;
-    }
-    res.write(`data: ${JSON.stringify(parsed.data)}\n\n`);
-  };
+  const sendEvent = (event: DownloadVideoEvent) => writeEvent(res, event);
 
   sendEvent({ type: 'downloadStart' });
 

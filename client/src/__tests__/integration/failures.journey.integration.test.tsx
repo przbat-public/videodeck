@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
@@ -95,7 +95,7 @@ describe('failure journeys — permanent errors, rate limits, broken dependencie
     // Nothing landed on disk — the failures skipped the retry backoff. The
     // folder index build may create an empty archive.txt, but the failed ids
     // must never be recorded in it (a recorded id would skip future runs).
-    expect(existsSync(`${folderPath}/20260101_Fake video member99999.mp4`)).toBe(false);
+    expect(readdirSync(folderPath).filter((name) => name.includes('member99999'))).toEqual([]);
     const archive = existsSync(`${folderPath}/archive.txt`) ? await readFile(`${folderPath}/archive.txt`, 'utf-8') : '';
     expect(archive).not.toContain('member99999');
     expect(archive).not.toContain('private9999');

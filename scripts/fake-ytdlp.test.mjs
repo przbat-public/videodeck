@@ -145,7 +145,7 @@ test('a download writes the video, sidecars, progress lines and archive entry', 
   try {
     const result = run(
       '-o',
-      '%(upload_date)s_%(title)s.%(ext)s',
+      '%(upload_date)s_%(title)s_%(id)s.%(ext)s',
       '--write-thumbnail',
       '--write-description',
       '--write-info-json',
@@ -160,9 +160,10 @@ test('a download writes the video, sidecars, progress lines and archive entry', 
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^download {2}\d+%/m);
-    // The deep environment's videoFiles() helper (test-infra) promises these
-    // exact names and contents; the fake and that promise stay in lockstep.
-    const base = path.join(dir, '20260101_Fake video dQw4w9WgXcQ');
+    // A download's name ends in its id, and the fake's title already holds
+    // it. The deep environment's videoFiles() helper (test-infra) seeds the
+    // older <date>_<title> stems and these same contents.
+    const base = path.join(dir, '20260101_Fake video dQw4w9WgXcQ_dQw4w9WgXcQ');
     assert.equal(readFileSync(`${base}.mp4`, 'utf-8'), 'fake-mp4-bytes');
     assert.equal(readFileSync(`${base}.webp`, 'utf-8'), 'fake-webp');
     assert.equal(
@@ -186,10 +187,35 @@ test('a download writes the video, sidecars, progress lines and archive entry', 
   }
 });
 
+test('a titles file gives a video the title a test needs', () => {
+  // The fake derives every title from the id, so no two downloads could
+  // share a name. Two videos of one day with one title are how names
+  // collided, and the file is how a test makes them.
+  const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
+  try {
+    writeFileSync(path.join(dir, '.fake-ytdlp-titles.json'), JSON.stringify({ dQw4w9WgXcQ: 'Odcinek' }));
+    const result = run('-o', '%(upload_date)s_%(title)s_%(id)s.%(ext)s', '--write-info-json', WATCH_URL, dir);
+
+    assert.equal(result.status, 0, result.stderr);
+    const base = path.join(dir, '20260101_Odcinek_dQw4w9WgXcQ');
+    assert.equal(readFileSync(`${base}.mp4`, 'utf-8'), 'fake-mp4-bytes');
+    assert.equal(JSON.parse(readFileSync(`${base}.info.json`, 'utf-8')).title, 'Odcinek');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a recorded archive entry skips the download (silent success)', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'fake-ytdlp-'));
   try {
-    const args = ['-o', '%(upload_date)s_%(title)s.%(ext)s', '--download-archive', 'archive.txt', WATCH_URL, dir];
+    const args = [
+      '-o',
+      '%(upload_date)s_%(title)s_%(id)s.%(ext)s',
+      '--download-archive',
+      'archive.txt',
+      WATCH_URL,
+      dir,
+    ];
     assert.equal(run(...args).status, 0);
     const second = run(...args);
     assert.equal(second.status, 0);

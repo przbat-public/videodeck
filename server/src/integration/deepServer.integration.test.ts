@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import type { QueueJob } from '@videodeck/shared/api';
 import { QueueJobResponseSchema, QueueListResponseSchema, QueueSummaryResponseSchema } from '@videodeck/shared/schemas';
@@ -8,6 +8,7 @@ import {
   folderConfig,
   videoFiles,
   YTDLP_ARGV_LOG_NAME,
+  YTDLP_TITLES_NAME,
 } from '@videodeck/test-infra/deepServerTestEnv';
 
 /**
@@ -341,8 +342,9 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(job.incomplete).toBeUndefined();
 
     // The fake yt-dlp wrote the video, sidecars and the archive entry
-    expect(existsSync(`${folderPath}/20260101_Fake video aaaaaaaaaaa.mp4`)).toBe(true);
-    expect(existsSync(`${folderPath}/20260101_Fake video aaaaaaaaaaa.info.json`)).toBe(true);
+    // The name ends in the id, and the fake's title already holds it
+    expect(existsSync(`${folderPath}/20260101_Fake video aaaaaaaaaaa_aaaaaaaaaaa.mp4`)).toBe(true);
+    expect(existsSync(`${folderPath}/20260101_Fake video aaaaaaaaaaa_aaaaaaaaaaa.info.json`)).toBe(true);
     expect(existsSync(`${folderPath}/archive.txt`)).toBe(true);
 
     const list = await env.agent.get(`/api/folder/list?folderPath=${encodeURIComponent(folderPath)}`).expect(200);
@@ -413,6 +415,30 @@ describe('deep server integration (real app, fake external world)', () => {
       );
       expect(await titlesFor('pierwszego')).toEqual(['Film pierwszego indeksu']);
     }, 30_000);
+  });
+
+  it('keeps the files of two same-day videos whose titles share a name apart', async () => {
+    // Under --restrict-filenames, titles that differ only in letters outside
+    // ASCII or in punctuation sanitize to one name. Before the id joined it,
+    // the second download rewrote the first one's info.json. The fake names
+    // files from the title as it is, so both videos get one title here.
+    const folderPath = await env.seedFolder('channel-same-title', {
+      [YTDLP_TITLES_NAME]: JSON.stringify({ samettl0001: 'Odcinek', samettl0002: 'Odcinek' }),
+    });
+    env.setFolders('channel-same-title');
+
+    for (const videoId of ['samettl0001', 'samettl0002']) {
+      await env.agent
+        .post('/api/folder/queue')
+        .send({ folderPath, type: 'download', videos: [{ videoUrl: `https://www.youtube.com/watch?v=${videoId}` }] })
+        .expect(202);
+      await waitForJobStatus(folderPath, videoId, 'done');
+    }
+
+    const infoIds = readdirSync(folderPath)
+      .filter((name) => name.endsWith('.info.json'))
+      .map((name) => (JSON.parse(readFileSync(`${folderPath}/${name}`, 'utf-8')) as { id: string }).id);
+    expect(infoIds.sort()).toEqual(['samettl0001', 'samettl0002']);
   });
 
   it('refuses folder configs that carry a yt-dlp escape hatch, and stores the safe ones', async () => {
@@ -526,7 +552,7 @@ describe('deep server integration (real app, fake external world)', () => {
 
     const job = (await waitForJobStatus(folderPath, 'conf0000001', 'done')) as QueueJob;
     expect(job.progress).toBe(100);
-    expect(existsSync(`${folderPath}/20260101_Fake video conf0000001.mp4`)).toBe(true);
+    expect(existsSync(`${folderPath}/20260101_Fake video conf0000001_conf0000001.mp4`)).toBe(true);
 
     const downloadCall = env
       .ytDlpCalls(folderPath)
@@ -591,7 +617,9 @@ describe('deep server integration (real app, fake external world)', () => {
     expect(listedJob.id).toBe(job.id);
     expect(listedJob).not.toHaveProperty('log');
     expect(listedJob).not.toHaveProperty('logLineCount');
-    expect(JSON.stringify(list.body).length).toBeLessThan(4096);
+    // Per job: the queue this file shares holds the jobs of the tests before
+    // it, so the size of the whole list says more about the order than the log
+    expect(JSON.stringify(listedJob).length).toBeLessThan(1024);
 
     // The log is reachable, one job at a time
     const detail = await env.agent.get(`/api/folder/queue/${listedJob.id}`).expect(200);
@@ -728,6 +756,6 @@ describe('deep server integration (real app, fake external world)', () => {
 
     const job = (await waitForJobStatus(folderPath, 'member11111', 'error')) as QueueJob;
     expect(job.error).toMatch(/members-only/i);
-    expect(existsSync(`${folderPath}/20260101_Fake video member11111.mp4`)).toBe(false);
+    expect(readdirSync(folderPath).filter((name) => name.includes('member11111'))).toEqual([]);
   });
 });

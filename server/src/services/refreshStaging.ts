@@ -344,10 +344,11 @@ function infoId(info: LiveInfo | FreshInfo): string | undefined {
 }
 
 /**
- * Refuse a commit whose files describe another video. Two videos with the
- * same upload date and title share one restricted file name, so the info.json
- * under a stem can belong to the other one; merging the two would write a
- * video that never existed, and the union of comments could never undo it.
+ * Refuse a commit whose files describe another video. Before the id joined
+ * the file name, two videos of one day whose titles sanitized alike shared one
+ * restricted name, so the info.json under such an older stem can belong to the
+ * other one; merging the two would write a video that never existed, and the
+ * union of comments could never undo it.
  */
 function assertSameVideo(videoId: string, live: LiveInfo, fresh: FreshInfo): void {
   for (const id of [infoId(live), infoId(fresh)]) {

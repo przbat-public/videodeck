@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import type { DeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv';
@@ -160,8 +160,9 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
     await within(section).findByRole('progressbar', undefined, { timeout: 15_000 });
     expect(within(section).queryByText(/^download\s+\d/)).toBeNull();
     await waitFor(() => expect(within(section).queryAllByText('Pobrano')).toHaveLength(2), { timeout: 30_000 });
-    expect(existsSync(`${folderPath}/20260101_Fake video aaaaaaaaaaa.mp4`)).toBe(true);
-    expect(existsSync(`${folderPath}/20260101_Fake video bbbbbbbbbbb.info.json`)).toBe(true);
+    // The name ends in the id, and the fake's title already holds it
+    expect(existsSync(`${folderPath}/20260101_Fake video aaaaaaaaaaa_aaaaaaaaaaa.mp4`)).toBe(true);
+    expect(existsSync(`${folderPath}/20260101_Fake video bbbbbbbbbbb_bbbbbbbbbbb.info.json`)).toBe(true);
     const archive = await readFile(`${folderPath}/archive.txt`, 'utf-8');
     expect(archive).toContain('youtube aaaaaaaaaaa');
     expect(archive).toContain('youtube bbbbbbbbbbb');
@@ -228,7 +229,7 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
 
       // The cancel happened before the fake yt-dlp ever ran: no files, and the
       // persisted state no longer holds the job.
-      expect(existsSync(`${folderPath}/20260101_Fake video ccccccccccc.mp4`)).toBe(false);
+      expect(readdirSync(folderPath).filter((name) => name.includes('ccccccccccc'))).toEqual([]);
       await waitFor(async () => {
         const state = await readQueueState();
         expect(state.paused).toBe(true);
@@ -293,7 +294,7 @@ describe('download journey — pause, enqueue, resume, drain, search', () => {
       await waitFor(() => expect(within(row).queryByText('1 niepobrany')).toBeNull(), { timeout: 20_000 });
       expect(within(row).getByText('2 filmów')).toBeInTheDocument();
       expect(within(row).queryByText('1 czeka')).toBeNull();
-      expect(existsSync(`${folderPath}/20260101_Fake video eeeeeeeeeee.mp4`)).toBe(true);
+      expect(existsSync(`${folderPath}/20260101_Fake video eeeeeeeeeee_eeeeeeeeeee.mp4`)).toBe(true);
     } finally {
       await setQueuePaused(false);
     }
