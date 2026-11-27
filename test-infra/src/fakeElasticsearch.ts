@@ -31,6 +31,10 @@ import type { AddressInfo } from 'node:net';
  *   index alike ("sorts counts by value across an integer and a long index").
  *   The `numeric_type` the service's sort names is accepted and ignored: the
  *   fake has no per-index sort types for it to reconcile.
+ * - a mapping read through an alias answers with the mapping the index was
+ *   created with, `_meta` included, where the boot check finds the analysis
+ *   version ("hands back the _meta an index was created with on a mapping
+ *   read"). Analysis settings are kept but never applied.
  * - a bulk item aimed at an index that does not exist answers 404 instead of
  *   auto-creating the index ("refuses a bulk item whose index does not
  *   exist"). The service always creates its index before writing, so the

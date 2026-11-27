@@ -87,10 +87,15 @@ Comments are **not** stored in ES as objects. Only one text field, `commentsText
 
 After every download-queue job (`download`/`update`), the changed videos are indexed incrementally, so a new video is visible in search without a full reindex. A job that finishes while its own folder is being reindexed hands its videos to that reindex instead: they become searchable once the new version is swapped in. If the server stops before that swap, the next full reindex brings them in.
 
-**Changing the analyzer requires a reindex:** existing indexes keep the
-mappings from their creation time, so after an upgrade that changes text
-analysis (e.g. introducing `polish_folded`), call `POST /api/videos/refreshCache`.
-New indexes get the new analyzer, and the aliases switch atomically.
+**Changing the analysis requires a full reindex:** an index keeps the
+mapping, the analyzer chain and the documents it was built with, and both an
+`onlyMissing` run and a drive swap leave it in place. Every new index records
+the analysis version it was built under in its mapping
+(`_meta.analysis_version`, 1 at present), and at boot the server logs a
+warning for each folder whose index carries an older one, naming what a
+rebuild brings. After an upgrade that raises it, call
+`POST /api/videos/refreshCache` without `onlyMissing`: new indexes get the
+current analysis, and the aliases switch atomically.
 
 ### GET /api/videos/search
 

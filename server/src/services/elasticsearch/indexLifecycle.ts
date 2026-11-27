@@ -61,7 +61,22 @@ const SEARCH_ANALYZER = 'polish_folded';
  */
 const POSSESSIVE_FILTER = 'english_possessive';
 
+/**
+ * The version of the rules a new index is built under, stamped in its
+ * mapping's `_meta`: the analysis chain, the field types and what a scan
+ * writes into it. A change that only a rebuild brings to an existing index
+ * raises it, because an `onlyMissing` run and a disk swap both keep the index
+ * a folder has, and the same analyzer name can hide another chain. An index
+ * without the stamp predates version 1.
+ */
+const INDEX_ANALYSIS_VERSION = 1;
+
+/** What the current version brings over the one before, for the boot warning */
+const INDEX_ANALYSIS_CHANGES =
+  'long view counts, English possessives cut to their word, auto-captions read once per line and videos without a thumbnail';
+
 const INDEX_MAPPINGS = {
+  _meta: { analysis_version: INDEX_ANALYSIS_VERSION },
   properties: {
     // Exact lookups only (getVideoByBaseName); the file name is no search field
     baseName: { type: 'keyword' },
@@ -513,14 +528,26 @@ async function deleteIndexBestEffort(index: string): Promise<void> {
   }
 }
 
+/** The analysis version an index mapping carries, 0 for one built before the stamp existed */
+function analysisVersionOf(mappings: estypes.MappingTypeMapping | undefined): number {
+  const stamped = (mappings?._meta as { analysis_version?: unknown } | undefined)?.analysis_version;
+  return typeof stamped === 'number' ? stamped : 0;
+}
+
 /**
- * How an index built under an older mapping differs from the current one, one
- * reason per changed property; empty for an index built with the current one.
+ * How an index built under older rules differs from a new one, one reason
+ * each; empty for an index built under the current ones. The version covers
+ * every such change; the properties named on top say what an old index does
+ * wrong today.
  */
 function legacyMappingReasons(mappings: estypes.MappingTypeMapping | undefined): string[] {
   const properties = mappings?.properties ?? {};
   const analyzer = (properties.title as { analyzer?: string } | undefined)?.analyzer;
+  const version = analysisVersionOf(mappings);
   const reasons: string[] = [];
+  if (version < INDEX_ANALYSIS_VERSION) {
+    reasons.push(`analysis version ${version}, before ${INDEX_ANALYSIS_VERSION} brought ${INDEX_ANALYSIS_CHANGES}`);
+  }
   if (analyzer !== undefined && analyzer !== SEARCH_ANALYZER) {
     reasons.push(`title uses the "${analyzer}" analyzer, not "${SEARCH_ANALYZER}"`);
   }
@@ -531,16 +558,18 @@ function legacyMappingReasons(mappings: estypes.MappingTypeMapping | undefined):
 }
 
 /**
- * Log a warning for every folder whose index was built under an older mapping.
- * A reindex with `onlyMissing` skips such a folder and a disk swap brings its
- * index back as it was, so the old behavior stays until a full reindex.
+ * Log a warning for every folder whose index was built under older rules. A
+ * reindex with `onlyMissing` skips such a folder and a disk swap brings its
+ * index back as it was, so the old behavior stays until a full reindex. A
+ * folder with no index yet gets nothing: its first reindex builds a current one.
  */
 export async function warnOnLegacyMappings(folderPaths: string[] = getVideosFolderPaths()): Promise<void> {
   for (const folderPath of folderPaths) {
     try {
       const alias = getIndexNameFromFolderPath(folderPath);
       const mapping = await getProbeClient().indices.getMapping({ index: alias, ignore_unavailable: true });
-      const reasons = legacyMappingReasons(mapping[Object.keys(mapping)[0] ?? '']?.mappings);
+      const indexMapping = mapping[Object.keys(mapping)[0] ?? ''];
+      const reasons = indexMapping === undefined ? [] : legacyMappingReasons(indexMapping.mappings);
       if (reasons.length > 0) {
         logger.warn(
           `Folder ${folderPath}: its index predates the current mapping (${reasons.join('; ')}). ` +

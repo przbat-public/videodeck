@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Client } from '@elastic/elasticsearch';
 import type { VideoListItem } from '@videodeck/shared/api';
 import { ELASTICSEARCH_URL, invalidateVideosFolderCache } from '../config';
+import { logger } from '../utils/logger';
 import {
   buildIndexVersionName,
   bulkIndexDocuments,
@@ -19,6 +20,7 @@ import {
   searchVideos,
   searchVideosWithTotal,
   toDocument,
+  warnOnLegacyMappings,
 } from './elasticsearchService';
 
 /**
@@ -708,6 +710,25 @@ describeIntegration('Elasticsearch integration', () => {
     const [item] = response.responses;
     expect(item?.status).toBe(400);
     expect(item && 'error' in item ? item.error.type : undefined).toBe('search_phase_execution_exception');
+  });
+
+  it('hands back the _meta an index was created with on a mapping read', async () => {
+    const indexName = await indexOneVideo('20240101_wersja', 'Wersja analizy');
+
+    const mapping = await esClient.indices.getMapping({
+      index: getIndexNameFromFolderPath(SCRATCH_FOLDER),
+      ignore_unavailable: true,
+    });
+    expect(mapping[indexName]?.mappings._meta).toEqual({ analysis_version: 1 });
+
+    // So the boot check has nothing to say about a folder built under it
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    try {
+      await warnOnLegacyMappings([SCRATCH_FOLDER]);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('matches nothing for a term on a subfield the mapping does not declare', async () => {

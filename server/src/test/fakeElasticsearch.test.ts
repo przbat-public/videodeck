@@ -272,6 +272,29 @@ describe('FakeElasticsearch controls', () => {
     expect(await hitsFor('kosmosu', 'title')).toBe(0);
   });
 
+  it('hands back the _meta an index was created with on a mapping read', async () => {
+    // The boot check reads the analysis version from there, through the alias
+    await fetch(`${baseUrl}/videos_meta`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        settings: {},
+        mappings: { _meta: { analysis_version: 1 }, properties: { viewCount: { type: 'long' } } },
+      }),
+    });
+    await fetch(`${baseUrl}/_aliases`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ actions: [{ add: { index: 'videos_meta', alias: 'videos_meta_alias' } }] }),
+    });
+
+    const response = await fetch(`${baseUrl}/videos_meta_alias/_mapping?ignore_unavailable=true`);
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, { mappings?: { _meta?: unknown } }>;
+    expect(body.videos_meta?.mappings?._meta).toEqual({ analysis_version: 1 });
+  });
+
   it('buckets a terms aggregation only on a field the index mapping declares', async () => {
     // The mapping the server writes: folderPath is a keyword, channelName is
     // text with a keyword subfield. A cluster buckets the first two names and

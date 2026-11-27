@@ -251,6 +251,8 @@ describe('elasticsearchService', () => {
       // Views pass int32 on the biggest videos; likes stay far below it
       expect(request.mappings.properties.viewCount).toEqual({ type: 'long' });
       expect(request.mappings.properties.likeCount).toEqual({ type: 'integer' });
+      // The analysis version, which tells an index built under older rules apart
+      expect(request.mappings._meta).toEqual({ analysis_version: 1 });
       expect(request.mappings.properties).not.toHaveProperty('comments');
       expect(request.settings.index).not.toHaveProperty('mapping');
       expect(mockClient.indices.updateAliases).not.toHaveBeenCalled();
@@ -295,9 +297,17 @@ describe('elasticsearchService', () => {
 
   describe('warnOnLegacyMappings', () => {
     /** The mapping FOLDER_A's index answers with, under the physical name behind its alias */
-    const folderMapping = (properties: Record<string, unknown>) =>
+    const folderMapping = (properties: Record<string, unknown>, meta?: Record<string, unknown>) =>
       mockClient.indices.getMapping.mockResolvedValue({
-        [`${ALIAS_A}_20250101000000000`]: { mappings: { properties } },
+        [`${ALIAS_A}_20250101000000000`]: { mappings: { ...(meta === undefined ? {} : { _meta: meta }), properties } },
+      });
+
+    /** The properties of an index whose chain and types match the current mapping */
+    const currentProperties = { title: { type: 'text', analyzer: 'polish_folded' }, viewCount: { type: 'long' } };
+
+    const silenceWarnings = () =>
+      vi.spyOn(console, 'warn').mockImplementation(() => {
+        /* the assertions read the calls */
       });
 
     it('asks for a full reindex of a folder whose index stores views as integer', async () => {
@@ -318,11 +328,36 @@ describe('elasticsearchService', () => {
       expect(line).toContain('POST /api/videos/refreshCache without onlyMissing');
     });
 
+    it('reports an index built before the current analysis version, whatever its chain is named', async () => {
+      // The possessive filter and the transcript dedupe changed what an index
+      // holds under the same analyzer name and field types: only the version
+      // stamped in _meta tells such an index from a rebuilt one
+      const warn = silenceWarnings();
+      folderMapping(currentProperties);
+
+      await warnOnLegacyMappings([FOLDER_A]);
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      const line = String(warn.mock.calls[0]?.[0]);
+      expect(line).toContain(`Folder ${FOLDER_A}`);
+      expect(line).toContain('analysis version 0, before 1 brought');
+      expect(line).toContain('POST /api/videos/refreshCache without onlyMissing');
+    });
+
     it('says nothing about an index built with the current mapping', async () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
-        /* a warning here fails the test below */
-      });
-      folderMapping({ title: { type: 'text', analyzer: 'polish_folded' }, viewCount: { type: 'long' } });
+      const warn = silenceWarnings();
+      folderMapping(currentProperties, { analysis_version: 1 });
+
+      await warnOnLegacyMappings([FOLDER_A]);
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('says nothing about a folder that has no index yet', async () => {
+      // ignore_unavailable answers a missing alias with no mapping at all; the
+      // next reindex builds that folder a current index anyway
+      const warn = silenceWarnings();
+      mockClient.indices.getMapping.mockResolvedValue({});
 
       await warnOnLegacyMappings([FOLDER_A]);
 

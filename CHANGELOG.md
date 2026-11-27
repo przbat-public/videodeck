@@ -131,6 +131,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Rebuild every index once after upgrading:** `POST /api/videos/refreshCache`
+  without `onlyMissing` (Refresh index, with "only missing" unchecked). An
+  `onlyMissing` run or a drive swap keeps indices built earlier, which lack
+  the billion-view counts, possessive matching, once-per-line auto-captions
+  and thumbnail-less videos fixed above. New indices carry an analysis
+  version in their mapping, and the boot log names each folder still behind
 - **A typed phrase ranks by relevance unless you pick a sort.** Results
   stayed newest first, so a recent video sharing one common word with the
   phrase in a single comment outranked the video the phrase named in its
