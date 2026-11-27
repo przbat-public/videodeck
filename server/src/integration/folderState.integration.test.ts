@@ -109,12 +109,16 @@ describe('folder state over real folders', () => {
     it('lists every orphan, sorted, whatever the filter', async () => {
       // The sort and the map only run once there is more than one orphan, and
       // an unsorted list is the kind of bug a screenshot does not catch. The
-      // index takes its order from the file names, and these titles sort the
-      // other way round from the ids, so the route gets them unsorted.
+      // index mostly follows the file names, but it is built by a small pool,
+      // so with two orphans it sometimes comes out sorted on its own. Five
+      // whose titles sort against their ids leave that to chance no more.
       const folderPath = await env.seedFolder('state-orphans', {
         ...incompleteVideoFiles('aaaaaaaaaaa', 'Kept'),
         ...videoFiles('zzzzzzzzzzz', 'First'),
-        ...videoFiles('bbbbbbbbbbb', 'Last'),
+        ...videoFiles('eeeeeeeeeee', 'Second'),
+        ...videoFiles('ddddddddddd', 'Third'),
+        ...videoFiles('ccccccccccc', 'Upper'),
+        ...videoFiles('bbbbbbbbbbb', 'Very last'),
       });
       env.setFolders('state-orphans');
 
@@ -122,9 +126,15 @@ describe('folder state over real folders', () => {
         (await env.agent.get('/api/folder/state').query({ folderPath, filter: 'orphan' })).body,
       );
 
-      expect(body.orphans.map((video) => video.id)).toEqual(['bbbbbbbbbbb', 'zzzzzzzzzzz']);
-      expect(body.orphans.map((video) => video.title)).toEqual(['Last', 'First']);
-      expect(body.counts.orphans).toBe(2);
+      expect(body.orphans.map((video) => video.id)).toEqual([
+        'bbbbbbbbbbb',
+        'ccccccccccc',
+        'ddddddddddd',
+        'eeeeeeeeeee',
+        'zzzzzzzzzzz',
+      ]);
+      expect(body.orphans.map((video) => video.title)).toEqual(['Very last', 'Upper', 'Third', 'Second', 'First']);
+      expect(body.counts.orphans).toBe(5);
     });
 
     it('refuses an unknown filter and an unknown folder', async () => {

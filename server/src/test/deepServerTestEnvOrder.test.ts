@@ -14,6 +14,16 @@ import { createDeepServerTestEnv } from '@videodeck/test-infra/deepServerTestEnv
  */
 describe('deep environment boot order', () => {
   it('refuses to boot after a server module was imported before it', async () => {
-    await expect(createDeepServerTestEnv()).rejects.toThrow(/imported before/);
+    const refusal = await createDeepServerTestEnv().then(
+      () => 'booted',
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    );
+
+    expect(refusal).toMatch(/imported before/);
+    // Named value by value: the queue file is the one whose leak rewrote a
+    // state file outside the temp root. YTDLP_PATH is left out, because an
+    // earlier deep file in the same worker may already have set it alike.
+    expect(refusal).toMatch(/ELASTICSEARCH_URL=/);
+    expect(refusal).toMatch(/QUEUE_STATE_FILE=/);
   });
 });

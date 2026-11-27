@@ -93,12 +93,13 @@ alias switching, diacritic folding, searching transcripts; they are
 skipped in the regular `pnpm test`):
 
 ```bash
-cd server && pnpm run test:integration  # requires a running ES (ELASTICSEARCH_URL)
+cd server && pnpm run test:integration  # requires a running ES; tests never read server/.env, so export ELASTICSEARCH_URL for one that is not on localhost:9200
 ```
 
 **Integration tests with a real yt-dlp**: download-queue argument templates
 checked against the installed binary (`--simulate`, without
-downloading; skipped in the regular `pnpm test`):
+downloading; skipped in the regular `pnpm test`). CI runs the same suite
+against the version `server/Dockerfile` pins:
 
 ```bash
 cd server && pnpm run test:ytdlp-integration  # requires yt-dlp on PATH

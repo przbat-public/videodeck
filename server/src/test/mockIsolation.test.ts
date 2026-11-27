@@ -23,3 +23,18 @@ describe('mock isolation between tests', { shuffle: false }, () => {
     expect(leftover()).toBeUndefined();
   });
 });
+
+describe('mock isolation and the hooks of a test', () => {
+  const fromHook = vi.fn<() => string | undefined>();
+
+  // The reset runs before beforeEach, so a default a hook installs is what
+  // the test sees. A reset after the hooks would leave every such default
+  // undefined.
+  beforeEach(() => {
+    fromHook.mockReturnValue('hook');
+  });
+
+  it('keeps the default a beforeEach installs', () => {
+    expect(fromHook()).toBe('hook');
+  });
+});

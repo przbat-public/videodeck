@@ -333,6 +333,14 @@ describeIntegration('Elasticsearch integration', () => {
       expect((await getVideoByFilePath('20240102_plik_b.mp4'))?.baseName).toBe('20240102_plik_b');
       expect((await getVideoByFilePath('20240101_plik_a.webp'))?.baseName).toBe('20240101_plik_a');
       expect(await getVideoByFilePath('missing.mp4')).toBeNull();
+
+      // A should list on its own needs one match by default: the fake assumes
+      // exactly that for a bool query without minimum_should_match
+      const bare = await esClient.search({
+        index: indexName,
+        query: { bool: { should: [{ term: { videoPath: '20240102_plik_b.mp4' } }] } },
+      });
+      expect(bare.hits.total).toMatchObject({ value: 1 });
     } finally {
       await deleteIndex(folder);
       await fs.rm(folder, { recursive: true, force: true });

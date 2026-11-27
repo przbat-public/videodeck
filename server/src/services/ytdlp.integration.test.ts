@@ -3,8 +3,9 @@ import { buildYtDlpArgs } from './ytdlp';
 
 /**
  * The argument templates the download queue builds, checked by the real
- * yt-dlp: the twin of the fake in scripts/fake-bin, which looks only at the
- * shape of the URL. Skipped by default; run against the yt-dlp on PATH with:
+ * yt-dlp: the twin of the fake in scripts/fake-bin, which checks the URL, the
+ * refused flags and --ignore-config but never the templates. Skipped by
+ * default; run against the yt-dlp on PATH with:
  *
  *   pnpm run test:ytdlp-integration
  *

@@ -434,6 +434,26 @@ describe('FakeElasticsearch controls', () => {
     expect(((await unbounded.json()) as { hits: { total: { value: number } } }).hits.total.value).toBe(1);
   });
 
+  it('reads a should list next to must as optional, and refuses a minimum it does not model', async () => {
+    await putDocument('should-1', { title: 'Opcjonalny', videoPath: 'opt.mp4' });
+    const boolSearch = (bool: Record<string, unknown>) =>
+      fetch(`${baseUrl}/videos_x/_search`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query: { bool } }),
+      });
+
+    // Next to must or filter, a cluster asks for none of the should clauses
+    const optional = await boolSearch({ must: [{ match_all: {} }], should: [{ term: { videoPath: 'other.mp4' } }] });
+    expect(((await optional.json()) as { hits: { total: { value: number } } }).hits.total.value).toBe(1);
+
+    // A cluster also takes '1' or '75%'; the fake models whole numbers only,
+    // and says so rather than guess
+    const percent = await boolSearch({ should: [{ term: { videoPath: 'opt.mp4' } }], minimum_should_match: '75%' });
+    expect(percent.status).toBe(500);
+    expect(JSON.stringify(await percent.json())).toContain('minimum_should_match');
+  });
+
   it('matches nothing for a term on a subfield the mapping does not declare', async () => {
     await putDocument('subfield-1', { title: 'Podpoledokument', videoPath: 'subfield.mp4' });
 
