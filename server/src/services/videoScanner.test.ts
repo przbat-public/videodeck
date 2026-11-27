@@ -638,6 +638,27 @@ describe('videoScanner', () => {
       expect(order).toEqual(['bulk', 'promote']);
     });
 
+    it('keeps a reindex linear in the size of the folder', async () => {
+      // Every stem's sidecars were looked up in the whole listing, so a full
+      // reindex cost the square of the folder: seconds at a few thousand videos
+      const REINDEX_SCAN_BUDGET_MS = 1_000;
+      const sidecars = ['.info.json', '.mp4', '.webp', '.description', '.en.vtt', '.pl.vtt'];
+      const stems = Array.from({ length: 1_500 }, (_unused, n) => `2024${String(n).padStart(4, '0')}_Video_${n}`);
+      mockFolder(stems.flatMap((stem) => sidecars.map((sidecar) => `${stem}${sidecar}`)));
+      mockedFs.readFile.mockImplementation(async (filePath: unknown) =>
+        String(filePath).endsWith('.vtt')
+          ? 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nA line'
+          : JSON.stringify({ title: 'Video' }),
+      );
+
+      const started = performance.now();
+      await loadVideosCache();
+      const elapsed = performance.now() - started;
+
+      expect(getReindexStatus()).toMatchObject({ indexed: 1_500, skipped: 0 });
+      expect(elapsed).toBeLessThan(REINDEX_SCAN_BUDGET_MS);
+    });
+
     it('splits large folders into batches', async () => {
       const count = REINDEX_BATCH_SIZE * 2 + 3;
       const files: string[] = [];

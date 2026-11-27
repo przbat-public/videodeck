@@ -157,6 +157,32 @@ export function findVideoFiles(baseName: string, visibleFiles: string[]): Folder
   return { videoFile, thumbnailFile, subtitleFile, subtitleFiles };
 }
 
+/**
+ * A folder's file names by every stem they could belong to: each name goes
+ * under each prefix that ends right before one of its dots, in listing order.
+ * Every file findVideoFiles accepts for a stem starts with `${stem}.` (the
+ * media, the subtitles and the thumbnail rule of utils/thumbnails.ts), so the
+ * group of a stem holds all its candidates in the order the listing had them,
+ * which is the order ties are broken in. Grouping by path.parse(name).name
+ * would lose `.en.vtt` and `.mp4_4.webp`, and grouping at the first dot would
+ * lose every stem with a dot in it.
+ */
+export function groupFilesByStemPrefix(files: Iterable<string>): Map<string, string[]> {
+  const groups = new Map<string, string[]>();
+  for (const file of files) {
+    for (let dot = file.indexOf('.'); dot !== -1; dot = file.indexOf('.', dot + 1)) {
+      const prefix = file.slice(0, dot);
+      const group = groups.get(prefix);
+      if (group === undefined) {
+        groups.set(prefix, [file]);
+      } else {
+        group.push(file);
+      }
+    }
+  }
+  return groups;
+}
+
 export type BuildResult = { status: 'ok'; video: VideoListItem } | { status: 'skipped'; reason: string };
 
 /**
@@ -313,6 +339,9 @@ async function scanFolder(folderPath: string): Promise<void> {
  */
 async function buildFolderVersion(folderPath: string): Promise<void> {
   const visibleFiles = await listVisibleFiles(folderPath);
+  // Each stem looks its sidecars up in its own group: matched against the
+  // whole listing, a folder of a few thousand videos took seconds
+  const filesByStem = groupFilesByStemPrefix(visibleFiles);
   const baseNames = visibleFiles
     .filter((file) => file.endsWith('.info.json'))
     .map((file) => file.replace(/\.info\.json$/, ''));
@@ -356,7 +385,7 @@ async function buildFolderVersion(folderPath: string): Promise<void> {
     // Reading info.json files (up to tens of MB each) is I/O-bound, so the
     // folder is scanned by a small pool instead of one file at a time.
     await runPool(baseNames, REINDEX_CONCURRENCY, async (baseName) => {
-      const result = await buildVideoItem(folderPath, baseName, visibleFiles);
+      const result = await buildVideoItem(folderPath, baseName, filesByStem.get(baseName) ?? []);
       if (result.status === 'ok') {
         built += 1;
         const document = toDocument(result.video);

@@ -2,6 +2,7 @@ import { extractYtDlpProgress, isYtDlpProgressLine } from '@videodeck/shared/pro
 import { extractYoutubeVideoId, toWatchUrl } from '@videodeck/shared/youtube';
 import fc from 'fast-check';
 import { extractTextFromVttSubtitles } from './services/summaryService';
+import { findVideoFiles, groupFilesByStemPrefix } from './services/videoScanner';
 import { runPool } from './utils/runPool';
 import { stripVttCueSettings } from './utils/vttUtils';
 
@@ -171,6 +172,45 @@ describe('runPool', () => {
           expect([...seen].sort((a, b) => a - b)).toEqual([...items].sort((a, b) => a - b));
         },
       ),
+    );
+  });
+});
+
+describe('groupFilesByStemPrefix', () => {
+  /** What the sidecar rules look at: media, images of each kind and size, subtitles and other metadata */
+  const SIDECARS = [
+    '.info.json',
+    '.mp4',
+    '.mkv',
+    '.webp',
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.WEBP',
+    '.mp4_4.webp',
+    '.2.jpg',
+    '.vtt',
+    '.en.vtt',
+    '.pl.vtt',
+    '.description',
+  ];
+
+  /** A few stems, dots in them included, and a shuffled part of their sidecars as the folder listing */
+  const folderArb = fc.uniqueArray(fc.stringMatching(/^[aB.]{1,3}$/), { minLength: 1, maxLength: 4 }).chain((stems) =>
+    fc.record({
+      stems: fc.constant(stems),
+      listing: fc.shuffledSubarray(stems.flatMap((stem) => SIDECARS.map((sidecar) => `${stem}${sidecar}`))),
+    }),
+  );
+
+  it("gives findVideoFiles the answer of the whole listing from a stem's group alone", () => {
+    fc.assert(
+      fc.property(folderArb, ({ stems, listing }) => {
+        const groups = groupFilesByStemPrefix(listing);
+        for (const stem of stems) {
+          expect(findVideoFiles(stem, groups.get(stem) ?? [])).toEqual(findVideoFiles(stem, listing));
+        }
+      }),
     );
   });
 });
