@@ -1385,8 +1385,23 @@ export class FakeElasticsearch {
     return (field.split('^')[0] ?? field).replace(/\.text$/, '').replace(/\.keyword$/, '');
   }
 
+  /**
+   * A document's score: for a multi_match, the field weights of the terms it
+   * holds, with no IDF; for a bool query, the sum over the must clauses and
+   * the should clauses it matches, the way a cluster adds them up, while a
+   * filter narrows and scores nothing. Every other clause scores 1. The page
+   * search sends its phrase as a bool of two multi_match clauses, which the
+   * fake used to score 1 throughout, so no field weight decided a page.
+   */
   private score(doc: DocumentEntry, query: Record<string, unknown>): number {
-    const multi = (query as { multi_match?: { query?: string; fields?: string[] } }).multi_match;
+    const { multi_match: multi, bool } = query as {
+      multi_match?: { query?: string; fields?: string[] };
+      bool?: BoolQuery;
+    };
+    if (bool) {
+      const scoring = [...(bool.must ?? []), ...(bool.should ?? []).filter((clause) => this.matches(doc, clause))];
+      return scoring.reduce((sum, clause) => sum + this.score(doc, clause), 0);
+    }
     if (!multi) {
       return 1;
     }
@@ -1434,8 +1449,7 @@ export class FakeElasticsearch {
     if (!highlight) {
       return {};
     }
-    const multi = (body.query as { multi_match?: { query?: string } }).multi_match;
-    const terms = termsOf(multi?.query ?? '');
+    const terms = phraseTermsOf(body.query);
     if (terms.length === 0) {
       return {};
     }
@@ -1455,6 +1469,23 @@ export class FakeElasticsearch {
     }
     return { highlight: result };
   }
+}
+
+/**
+ * The words a query highlights: those of its multi_match clauses, at any depth
+ * of bool must and should. The page search sends its phrase as a bool of two
+ * multi_match clauses, nested in a must next to a channel filter, and a
+ * cluster highlights their words as it would a bare multi_match.
+ */
+function phraseTermsOf(query: unknown): string[] {
+  const { multi_match: multi, bool } = (query ?? {}) as { multi_match?: { query?: string }; bool?: BoolQuery };
+  if (multi) {
+    return termsOf(multi.query ?? '');
+  }
+  if (bool) {
+    return [...new Set([...(bool.must ?? []), ...(bool.should ?? [])].flatMap((clause) => phraseTermsOf(clause)))];
+  }
+  return [];
 }
 
 /**

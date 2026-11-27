@@ -296,6 +296,25 @@ async function searchPage(
 }
 
 /**
+ * The clause a typed phrase matches through: its words as typed, and within
+ * the typo budget.
+ *
+ * The fuzzy clause alone defeated DFS. On each shard it becomes the near words
+ * that shard holds, and a folder with no near word in a field gets no clause
+ * for that field at all, so the DFS round read that field's statistics only
+ * from the folders that matched. A title match in a one-video folder then
+ * weighed what it weighs without DFS and lost to a comment match in a big
+ * folder. The clause as typed looks every field up on every shard, which hands
+ * DFS the statistics of the whole library, and the fuzzy clause scores on the
+ * same field statistics. A word typed right scores in both clauses, so it
+ * outscores a near spelling in the same field.
+ */
+function phraseClause(phrase: string): Record<string, unknown> {
+  const asTyped = { query: phrase, fields: SEARCH_FIELDS, type: 'best_fields' };
+  return { bool: { should: [{ multi_match: asTyped }, { multi_match: { ...asTyped, fuzziness: 'AUTO' } }] } };
+}
+
+/**
  * The video a search phrase names, or null for a phrase the text search
  * handles. A YouTube link names the video it points at. A bare word with the
  * shape of a video id may name one, which only the lookup can tell, since
@@ -344,10 +363,7 @@ export async function searchVideosWithTotal(
     }
   }
 
-  const match =
-    phrase.length > 0
-      ? { multi_match: { query: phrase, fields: SEARCH_FIELDS, type: 'best_fields', fuzziness: 'AUTO' } }
-      : { match_all: {} };
+  const match = phrase.length > 0 ? phraseClause(phrase) : { match_all: {} };
   const body = pageSearchBody(match, sortOption, options, phrase.length > 0);
   return searchPage(index, body, pageSearchHeader(phrase.length > 0, sortOption), options.signal);
 }
