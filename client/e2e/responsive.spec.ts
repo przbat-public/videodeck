@@ -454,7 +454,6 @@ test.describe('long unbroken content', () => {
           title: 'Szczegóły filmu',
           description: 'opis'.repeat(400),
           uploadDate: '20240615',
-          duration: '10:30',
           viewCount: 1234,
           likeCount: 56,
           channelName: 'Kanał E2E',

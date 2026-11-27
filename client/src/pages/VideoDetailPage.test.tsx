@@ -12,7 +12,6 @@ const details: VideoDetails = {
   title: 'A talk about hedgehogs',
   description: 'Everything about hedgehogs',
   uploadDate: '20240615',
-  duration: '10:30',
   viewCount: 1234,
   likeCount: 56,
   channelName: 'Nature',

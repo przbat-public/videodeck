@@ -10,6 +10,7 @@ import { stripUndefined } from '../utils/objectUtils';
 import { runPool } from '../utils/runPool';
 import { findThumbnailFile } from '../utils/thumbnails';
 import { titleFromStem } from '../utils/videoStem';
+import { findSubtitleFiles } from '../utils/vttUtils';
 import type { SearchOptions, VideoDocument } from './elasticsearchService';
 import {
   bulkIndexDocuments,
@@ -23,6 +24,7 @@ import {
   searchVideosWithTotal,
   toDocument,
 } from './elasticsearchService';
+import { MAX_INFO_JSON_BYTES, readVideoHead } from './folderIndex';
 import { extractTextFromVttSubtitles } from './summaryService';
 
 /** Max documents per bulk request */
@@ -144,16 +146,39 @@ function isVideoFile(file: string): boolean {
 export function findVideoFiles(baseName: string, visibleFiles: string[]): FolderFiles {
   const videoFile = visibleFiles.find((f) => isVideoFile(f) && getBaseName(f) === baseName);
   const thumbnailFile = findThumbnailFile(baseName, visibleFiles);
-
-  const isSubtitle = (f: string) =>
-    f.endsWith('.vtt') && (getBaseName(f) === baseName || getBaseName(f).startsWith(`${baseName}.`));
-  const subtitleFiles = visibleFiles.filter(isSubtitle);
+  const subtitleFiles = findSubtitleFiles(baseName, visibleFiles);
   // Prefer English for summaries; fall back to ANY subtitle language so a
   // Polish-only video is still summarizable (the old behavior 404'd on
   // every visit).
-  const subtitleFile =
-    visibleFiles.find((f) => f.endsWith('.en.vtt') && getBaseName(f) === `${baseName}.en`) ?? subtitleFiles[0];
+  const subtitleFile = subtitleFiles.find((f) => f === `${baseName}.en.vtt`) ?? subtitleFiles[0];
   return { videoFile, thumbnailFile, subtitleFile, subtitleFiles };
+}
+
+/**
+ * A folder's file names by every stem they could belong to: each name goes
+ * under each prefix that ends right before one of its dots, in listing order.
+ * Every name that decides what findVideoFiles answers for a stem starts with
+ * `${stem}.` (the media, the subtitle rule of utils/vttUtils.ts and the
+ * thumbnail rule of utils/thumbnails.ts, the sibling videos those two look for
+ * included), so the group of a stem holds all its candidates in the order the
+ * listing had them, which is the order ties are broken in. Grouping by
+ * path.parse(name).name would lose `.en.vtt` and `.mp4_4.webp`, and grouping
+ * at the first dot would lose every stem with a dot in it.
+ */
+export function groupFilesByStemPrefix(files: Iterable<string>): Map<string, string[]> {
+  const groups = new Map<string, string[]>();
+  for (const file of files) {
+    for (let dot = file.indexOf('.'); dot !== -1; dot = file.indexOf('.', dot + 1)) {
+      const prefix = file.slice(0, dot);
+      const group = groups.get(prefix);
+      if (group === undefined) {
+        groups.set(prefix, [file]);
+      } else {
+        group.push(file);
+      }
+    }
+  }
+  return groups;
 }
 
 export type BuildResult = { status: 'ok'; video: VideoListItem } | { status: 'skipped'; reason: string };
@@ -192,6 +217,27 @@ async function readTranscriptText(
 }
 
 /**
+ * The info.json to index a video from. A file past MAX_INFO_JSON_BYTES
+ * cannot be read as one string, so only its head is: the id and the title
+ * yt-dlp writes first, which keep the video in search by its title, without
+ * a description, counts or comments. Null when that head names no id.
+ */
+async function readInfoForIndex(realPath: string, baseName: string): Promise<VideoInfoJson | null> {
+  const { size } = await fs.stat(realPath);
+  if (size <= MAX_INFO_JSON_BYTES) {
+    return JSON.parse(await fs.readFile(realPath, 'utf-8')) as VideoInfoJson;
+  }
+  const head = await readVideoHead(realPath);
+  if (head === null) {
+    return null;
+  }
+  logger.warn(
+    `${baseName}: its info.json of ${size} bytes is past the longest string Node holds, so only its id and title are indexed`,
+  );
+  return { ...head };
+}
+
+/**
  * Read `<baseName>.info.json` and build the document for it. Returns a
  * `skipped` result (with reason) when the video file is missing or the JSON is
  * unreadable, so callers can count and log without throwing. A thumbnail is
@@ -209,15 +255,18 @@ export async function buildVideoItem(
     return { status: 'skipped', reason: `${baseName}: missing video file (.mp4 or .mkv)` };
   }
 
-  let infoJson: VideoInfoJson;
+  let infoJson: VideoInfoJson | null;
   try {
     // Containment check: the info.json must resolve inside the folder even
     // if a symlink redirects the read elsewhere on the disk.
     const realPath = await resolveContainedPath(folderPath, `${baseName}.info.json`);
-    infoJson = JSON.parse(await fs.readFile(realPath, 'utf-8')) as VideoInfoJson;
+    infoJson = await readInfoForIndex(realPath, baseName);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     return { status: 'skipped', reason: `${baseName}: cannot read info.json (${detail})` };
+  }
+  if (infoJson === null) {
+    return { status: 'skipped', reason: `${baseName}: info.json too large to read, and its head names no id` };
   }
 
   const title = infoJson.title || infoJson.fulltitle || '';
@@ -288,6 +337,9 @@ async function scanFolder(folderPath: string): Promise<void> {
  */
 async function buildFolderVersion(folderPath: string): Promise<void> {
   const visibleFiles = await listVisibleFiles(folderPath);
+  // Each stem looks its sidecars up in its own group: matched against the
+  // whole listing, a folder of a few thousand videos took seconds
+  const filesByStem = groupFilesByStemPrefix(visibleFiles);
   const baseNames = visibleFiles
     .filter((file) => file.endsWith('.info.json'))
     .map((file) => file.replace(/\.info\.json$/, ''));
@@ -331,7 +383,7 @@ async function buildFolderVersion(folderPath: string): Promise<void> {
     // Reading info.json files (up to tens of MB each) is I/O-bound, so the
     // folder is scanned by a small pool instead of one file at a time.
     await runPool(baseNames, REINDEX_CONCURRENCY, async (baseName) => {
-      const result = await buildVideoItem(folderPath, baseName, visibleFiles);
+      const result = await buildVideoItem(folderPath, baseName, filesByStem.get(baseName) ?? []);
       if (result.status === 'ok') {
         built += 1;
         const document = toDocument(result.video);

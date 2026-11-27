@@ -3,6 +3,7 @@ import type { Mock } from 'vitest';
 import { metricsRegistry } from '../metricsRegistry';
 import { at } from '../test-utils';
 import { logger } from '../utils/logger';
+import { MAX_COMMENTS_CHARS } from './elasticsearch/bulkIndexing';
 import { isElasticsearchUnavailable } from './elasticsearchErrors';
 import {
   buildIndexVersionName,
@@ -214,6 +215,40 @@ describe('elasticsearchService', () => {
 
     it('omits commentsText when there are no comments', () => {
       expect(toDocument(video())).not.toHaveProperty('commentsText');
+    });
+
+    it('keeps whole comments up to MAX_COMMENTS_CHARS', () => {
+      const half = MAX_COMMENTS_CHARS / 2;
+      const document = toDocument(
+        video({
+          comments: [
+            { id: '1', text: 'a'.repeat(half) },
+            { id: '2', text: 'b'.repeat(half - 1) },
+            { id: '3', text: 'c' },
+          ],
+        }),
+      );
+
+      // The first two and the newline between them fill the cap exactly, so
+      // the third would pass it by its own newline and its one character
+      expect(document.commentsText?.split('\n').map((text) => text.length)).toEqual([half, half - 1]);
+    });
+
+    it('stops at the first comment that would pass the cap', () => {
+      const half = MAX_COMMENTS_CHARS / 2;
+      const document = toDocument(
+        video({
+          comments: [
+            { id: '1', text: 'a'.repeat(half) },
+            { id: '2', text: 'b'.repeat(half + 1000) },
+            { id: '3', text: 'c' },
+          ],
+        }),
+      );
+
+      // The short one after it would fit, and stays out all the same: what
+      // search keeps is the head of the list yt-dlp wrote, never a sample
+      expect(document.commentsText?.split('\n').map((text) => text.length)).toEqual([half]);
     });
 
     it('restores the API shape with empty comments', () => {

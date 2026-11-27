@@ -115,7 +115,7 @@ ELASTICSEARCH_URL=http://localhost:9200
 VIDEOS_FOLDER_PATH=/Volumes/*/*
 ```
 
-This single line finds all channels on every currently mounted volume. A drive that is absent simply contributes no folders (the server starts with a warning and picks the folders up when the drive comes back; the list is refreshed every few seconds). You can mix patterns with literals (`~/` expands to the home directory):
+This single line finds all channels on every currently mounted volume. A drive that is absent simply contributes no folders (the server starts with a warning and picks the folders up when the drive comes back). The watch sits on `/Volumes` and on the top of each drive, never inside a channel, so downloads cost it nothing. Drives coming and going show up right away. So does a new channel, unless the folder sits empty for a while before its first `config.json` or `*.info.json` arrives; then it waits for the scan that runs every minute anyway, which is also how network shares, sending no events, get noticed. You can mix patterns with literals (`~/` expands to the home directory):
 
 ```
 VIDEOS_FOLDER_PATH=/Volumes/MEDIA/example-*;/Volumes/MEDIA/*;/Users/<user>/Downloads/youtube/youtube-chrome
@@ -138,7 +138,7 @@ API_TOKEN=secret            # bearer token protecting /api (see the Security sec
 CORS_ORIGINS=https://example.com  # extra CORS origins (comma-separated), beyond localhost and chrome-extension://
 ALLOWED_HOSTS=nas.local,192.168.0.10  # extra hostnames/IPs allowed in the Host header (needed with HOST=0.0.0.0)
 EXTENSION_ORIGINS=chrome-extension://abcdefghijklmnop  # exact extension id allowed by CORS (without it: any chrome-extension://)
-RATE_LIMIT_MAX=2000         # HTTP request limit per time window per IP (default 2000)
+RATE_LIMIT_MAX=2000         # HTTP request limit per time window per IP (default 2000; only a file read, such as a thumbnail, a video or a subtitle, that names its folder and passes the auth does not count)
 RATE_LIMIT_WINDOW_MS=600000 # rate-limit window length in ms (default 10 minutes)
 ```
 

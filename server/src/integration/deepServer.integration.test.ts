@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
+import fs, { writeFile } from 'node:fs/promises';
 import type { QueueJob } from '@videodeck/shared/api';
 import {
   QueueJobResponseSchema,
@@ -251,6 +251,62 @@ describe('deep server integration (real app, fake external world)', () => {
     const parsed = VideoDetailsResponseSchema.parse(details.body).details;
     expect(parsed.videoPath).toBe('20260101_Bez miniatury.mp4');
     expect(parsed).not.toHaveProperty('thumbnailPath');
+  });
+
+  it('builds the details from the index and reads the info.json only for its comments', async () => {
+    // The route parsed the whole info.json on every view for six short
+    // fields the index already holds, and the comment store parsed it again
+    const comment = { id: 'Ugx-details', author: 'Viewer', text: 'First comment', like_count: 1 };
+    await env.seedFolder(
+      'details-from-index',
+      videoFiles('details0001', 'Details from the index', { comments: [comment] }),
+    );
+    env.setFolders('details-from-index');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+    const readFile = vi.spyOn(fs, 'readFile');
+    const infoJsonReads = (): number =>
+      readFile.mock.calls.filter(([file]) => String(file).endsWith('20260101_Details from the index.info.json')).length;
+
+    try {
+      const first = await env.agent.get('/api/videos/details0001/details').expect(200);
+      expect(infoJsonReads()).toBe(1);
+      await env.agent.get('/api/videos/details0001/details').expect(200);
+      expect(infoJsonReads()).toBe(1);
+
+      expect(VideoDetailsResponseSchema.parse(first.body).details).toMatchObject({
+        title: 'Details from the index',
+        description: 'Deep test description.',
+        uploadDate: '20260101',
+        viewCount: 1234,
+        likeCount: 56,
+        channelName: 'Deep test channel',
+        comments: [expect.objectContaining({ id: 'Ugx-details', text: 'First comment' })],
+        commentCount: 1,
+      });
+    } finally {
+      readFile.mockRestore();
+    }
+  });
+
+  it('opens a hand-edited video with a string count and no title', async () => {
+    // The index coerces the count and takes the title from the file name; the
+    // route read the file again and answered a string count and an empty
+    // title, a payload the client's own contract refuses
+    await env.seedFolder(
+      'details-hand-edited',
+      videoFiles('handedit001', 'Edited by hand', { title: undefined, view_count: '1234' }),
+    );
+    env.setFolders('details-hand-edited');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const response = await env.agent.get('/api/videos/handedit001/details').expect(200);
+
+    expect(VideoDetailsResponseSchema.parse(response.body).details).toMatchObject({
+      title: 'Edited by hand',
+      viewCount: 1234,
+    });
   });
 
   it('answers a search whose page crosses the result window with a short page, not a 500', async () => {

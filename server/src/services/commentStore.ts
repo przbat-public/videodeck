@@ -1,30 +1,96 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import v8 from 'node:v8';
 import type { CommentWithReplies } from '@videodeck/shared/api';
 import type { VideoInfoJson } from '../types';
 import { buildCommentTree } from '../utils/commentTreeUtils';
 import { resolveContainedPath } from '../utils/fsUtils';
+import { createSingleFlight } from '../utils/singleFlight';
+import { MAX_INFO_JSON_BYTES } from './folderIndex';
 
 /**
  * Parsed comment trees with a cache keyed by the info.json mtime. Videos
  * with hundreds of thousands of comments produce info.json files of hundreds
  * of megabytes: the details endpoint and the paginated comments endpoint
- * must not re-parse them on every request — and once a download rewrites the
+ * must not re-parse them on every request, and once a download rewrites the
  * file, the mtime changes and the next read gets the fresh tree.
+ *
+ * The cache is bounded by memory, not by a count: it used to keep fifty
+ * trees whatever their size, and fifty files of a hundred megabytes outgrow
+ * a 4 GB heap. Every tree weighs its file size times
+ * TREE_HEAP_BYTES_PER_FILE_BYTE, the trees together may hold
+ * CACHE_HEAP_SHARE of the heap limit, and the tree read longest ago goes
+ * first. Two requests that miss the cache at once share one parse.
  */
 
-/** Oldest entries are dropped past this many cached trees */
-const CACHE_MAX_ENTRIES = 50;
+/**
+ * Heap a parsed tree holds per byte of its info.json, measured after a gc on
+ * Node 24 with 40,000 comments: 1.17 for ASCII text up to 1.61 for long
+ * Polish comments. One letter outside Latin-1, as nearly every Polish
+ * diacritic is, makes V8 store the whole string at two bytes a character.
+ * The comments this app opens are mostly Polish, and a factor set high only
+ * caches fewer trees, so it sits above that range.
+ */
+export const TREE_HEAP_BYTES_PER_FILE_BYTE = 1.7;
+/** Share of the V8 heap limit the cached trees may hold together */
+export const CACHE_HEAP_SHARE = 0.25;
 
 interface CacheEntry {
   mtimeMs: number;
+  /** Estimated heap the tree holds, in bytes */
+  weight: number;
   tree: CommentWithReplies[];
 }
 
+/** In the order the trees were last read: the first one is the next to go */
 const cache = new Map<string, CacheEntry>();
+/** Sum of the weights in the cache */
+let cachedWeight = 0;
+
+/** Parses in flight by folder, stem and mtime, so a rewritten file never joins the parse of its older version */
+const parses = createSingleFlight<string, CommentWithReplies[]>();
 
 export function invalidateCommentCache(): void {
   cache.clear();
+  cachedWeight = 0;
+}
+
+/**
+ * Store a tree as the most recently read one, then drop the trees read
+ * longest ago until the rest fits the budget. The tree just stored always
+ * stays, even when it alone passes the budget: the request that parsed it is
+ * about to page through it.
+ */
+function remember(key: string, entry: CacheEntry): void {
+  const previous = cache.get(key);
+  if (previous !== undefined) {
+    cache.delete(key);
+    cachedWeight -= previous.weight;
+  }
+  cache.set(key, entry);
+  cachedWeight += entry.weight;
+
+  const budget = v8.getHeapStatistics().heap_size_limit * CACHE_HEAP_SHARE;
+  for (const [oldestKey, oldest] of cache) {
+    if (cachedWeight <= budget || oldestKey === key) {
+      break;
+    }
+    cache.delete(oldestKey);
+    cachedWeight -= oldest.weight;
+  }
+}
+
+/**
+ * The text of an info.json and its length in bytes, from one read. The tree
+ * is weighed by those bytes, not by the stat taken before: an update or a
+ * comment repair can rename a new file into place in between, and a small
+ * file grown to hundreds of megabytes would be booked at its old size.
+ * Nothing holds the buffer once this returns, so the parse holds only the
+ * text, as it did when readFile decoded the file itself.
+ */
+async function readInfoJson(filePath: string): Promise<{ text: string; byteLength: number }> {
+  const content = await fs.readFile(filePath);
+  return { text: content.toString('utf-8'), byteLength: content.byteLength };
 }
 
 /**
@@ -36,31 +102,39 @@ export async function loadCommentTree(folderPath: string, baseName: string): Pro
   const key = `${folderPath}\n${baseName}`;
 
   let mtimeMs: number;
+  let size: number;
   try {
-    mtimeMs = (await fs.stat(filePath)).mtimeMs;
+    ({ mtimeMs, size } = await fs.stat(filePath));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return null;
     }
     throw error;
   }
+  if (size > MAX_INFO_JSON_BYTES) {
+    // No string holds the file, so no parse can reach its comments: the
+    // video opens without them instead of failing every comments page
+    return [];
+  }
 
   const cached = cache.get(key);
   if (cached !== undefined && cached.mtimeMs === mtimeMs) {
+    // Moved to the end: the tree read last is the last to go
+    cache.delete(key);
+    cache.set(key, cached);
     return cached.tree;
   }
 
-  // Containment check: the info.json must resolve inside the folder even if
-  // a symlink tries to redirect the read elsewhere on the disk.
-  const realPath = await resolveContainedPath(folderPath, `${baseName}.info.json`);
-  const infoJson = JSON.parse(await fs.readFile(realPath, 'utf-8')) as VideoInfoJson;
-  const tree = buildCommentTree(infoJson.comments || []);
-  cache.set(key, { mtimeMs, tree });
-  if (cache.size > CACHE_MAX_ENTRIES) {
-    const oldest = cache.keys().next().value;
-    if (oldest !== undefined) {
-      cache.delete(oldest);
-    }
-  }
-  return tree;
+  // A parse that fails is dropped with its promise, so the next request
+  // reads the file again rather than getting the old error
+  return parses.run(`${key}\n${mtimeMs}`, async () => {
+    // Containment check: the info.json must resolve inside the folder even if
+    // a symlink tries to redirect the read elsewhere on the disk.
+    const realPath = await resolveContainedPath(folderPath, `${baseName}.info.json`);
+    const { text, byteLength } = await readInfoJson(realPath);
+    const infoJson = JSON.parse(text) as VideoInfoJson;
+    const tree = buildCommentTree(infoJson.comments || []);
+    remember(key, { mtimeMs, weight: byteLength * TREE_HEAP_BYTES_PER_FILE_BYTE, tree });
+    return tree;
+  });
 }

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -101,7 +101,11 @@ export interface DeepServerTestEnv {
   mockOpenai: MockOpenai;
   /** Path of a folder under videos/ (created lazily by seedFolder) */
   folder(name: string): string;
-  /** Create a folder under videos/ and write the given files into it */
+  /**
+   * Write the given files into a folder under videos/. A folder that is not
+   * there yet arrives with them in one rename, as a drive does; one that is
+   * there is written in place.
+   */
   seedFolder(name: string, files: Record<string, string>): Promise<string>;
   /** Point VIDEOS_FOLDER_PATH at the named folders (config caches per raw value) */
   setFolders(...names: string[]): void;
@@ -216,9 +220,21 @@ export async function createDeepServerTestEnv(options: DeepServerTestEnvOptions 
   const folder = (name: string): string => path.join(videosDir, name);
   const seedFolder = async (name: string, files: Record<string, string>): Promise<string> => {
     const folderPath = folder(name);
-    await fs.mkdir(folderPath, { recursive: true });
+    // A folder that is not there yet arrives whole, the way a mounted drive or
+    // a folder moved in from elsewhere does: its files go into a staging
+    // directory under the root, outside videos/, and one rename moves it into
+    // place. The library watch on videos/ is a plain one, so the writes inside
+    // a new folder raise no event of their own. A folder made empty and filled
+    // afterwards could be read in between by the one reconcile its appearance
+    // starts, and would then wait for the minute backstop.
+    const isNew = !existsSync(folderPath);
+    const target = isNew ? await fs.mkdtemp(path.join(root, '.seed-')) : folderPath;
     for (const [fileName, content] of Object.entries(files)) {
-      await fs.writeFile(path.join(folderPath, fileName), content);
+      await fs.writeFile(path.join(target, fileName), content);
+    }
+    if (isNew) {
+      await fs.mkdir(path.dirname(folderPath), { recursive: true });
+      await fs.rename(target, folderPath);
     }
     return folderPath;
   };

@@ -83,7 +83,7 @@ Every folder has an **alias** `videos_<sha256(folderPath)[:16]>` in Elasticsearc
 
 Thanks to this, search works the whole time on the old index version, and an interrupted reindex (error, server restart) does not leave an empty index. At most an orphaned `videos_<hash>_<timestamp>` index remains, which is removed at the next successful reindex of that folder. Videos with the same `videoId` (duplicates on disk) go into a single document.
 
-Comments are **not** stored in ES as objects. Only one text field, `commentsText`, which search runs over. The `GET /api/videos/:id/details` endpoint reads the full comment tree from `info.json`. The `commentsText` field is not returned in search results.
+Comments are **not** stored in ES as objects. Only one text field, `commentsText`, which search runs over. It keeps whole comments, from the first one `info.json` lists, up to 10,000,000 characters: a video with a few hundred thousand comments made a document larger than the 100 MB a request may carry, so its later comments are left out of search. The `GET /api/videos/:id/details` endpoint reads the full comment tree from `info.json`. The `commentsText` field is not returned in search results. An `info.json` larger than the longest string Node can hold (536,870,888 characters, about 512 MiB) cannot be read whole, so such a video is indexed from the head of the file: search finds it by its title, without description, counts or comments, and its details open with no comments.
 
 After every download-queue job (`download`/`update`), the changed videos are indexed incrementally, so a new video is visible in search without a full reindex. A job that finishes while its own folder is being reindexed hands its videos to that reindex instead: they become searchable once the new version is swapped in. If the server stops before that swap, the next full reindex brings them in.
 
@@ -172,16 +172,18 @@ The names come from one Elasticsearch aggregation over the folder path, with eac
 
 ### GET /api/videos/file/:filename?folder=<path>
 
-Serves video files (.mp4) and thumbnails (.webp).
+Serves video files (`.mp4`), thumbnails (`.webp`, `.jpg`, `.jpeg` and `.png`, numbered sizes included) and subtitles (`.vtt`).
 
 **Parameters:**
 
 - `filename` - the file name (e.g. `video.mp4`, `thumbnail.webp`)
-- `folder` (optional, recommended) - the folder the file lives in; must be one of those configured in `VIDEOS_FOLDER_PATH` (otherwise 403). Without this parameter, the file is looked up by name in Elasticsearch.
+- `folder` (optional, recommended) - the folder the file lives in; must be one of those configured in `VIDEOS_FOLDER_PATH` (otherwise 403). Without this parameter, the file is looked up by name in Elasticsearch. A GET that names its folder, carries no body and passes the auth does not count toward `RATE_LIMIT_MAX`, so a page of thumbnails and a playing video leave the request budget to the API calls. A read without `folder`, or one the auth refuses, still counts.
+
+**Caching:** `.mp4` videos and thumbnails get `public, max-age=31536000, immutable`, because no job of the app writes new bytes under a media or thumbnail name that already exists. The name is not a content address, though: a file replaced by hand, or deleted and downloaded or repaired again under its old name, stays stale in a browser that cached it until eviction or a hard reload. A `.vtt` is `no-cache`, since a metadata update can replace it under the same name, and goes out with its cue settings stripped. Anything else (`.info.json`, `.description`, `.srt`) keeps the `no-store` of the rest of the API.
 
 ### GET /api/videos/:baseName/details
 
-Returns detailed information about a video together with its comments.
+Returns detailed information about a video together with its comments. The title, description, date, counts and channel come from the video's document in the index, the same values search shows, so an `info.json` edited outside the app shows its new values once its folder is indexed again. Only the comments are read from `info.json`: the first 50 top-level comments come here, each with its replies, and `commentCount` counts the top-level comments.
 
 **Parameters:**
 
@@ -195,7 +197,6 @@ Returns detailed information about a video together with its comments.
     "title": "Video title",
     "description": "Full description...",
     "uploadDate": "20231201",
-    "duration": "10:30",
     "viewCount": 1000,
     "likeCount": 50,
     "channelName": "Channel name",
@@ -253,14 +254,14 @@ Endpoints for managing a channel folder (all require a `folderPath` from the `VI
 
 The check only covers the `download` path. `update` and `repair` work on a file that is already on disk, so a failure there is about the files the operator asked to refresh, and it stays visible as a job error. `GET /api/folder/summaries` counts the affected videos as `unavailable`, apart from `notDownloaded`: a members-only video is not a download waiting to happen.
 
-At most `DOWNLOAD_CONCURRENCY` downloads run in parallel (default 2) and only one per folder, because each appends to that folder's `archive.txt`. Metadata updates run at most `UPDATE_CONCURRENCY` (default 2), and also one at a time per folder: each writes only under its own file stem, and the folder index refresh after a job is queued per folder, so parallel jobs do not overwrite each other's `.videos-index.json`. When raising this limit, remember that every `yt-dlp` process (especially with `--write-comments`) means many requests to YouTube from a single IP address; 429 errors or a sign-in prompt are a signal to go back to a smaller value. The client polls `GET /api/folder/queue` every 1.5 s, only when there is something in the queue. The queue persists across server restarts: active jobs are re-enqueued on boot and the paused state is kept (`.queue-state.json`).
+At most `DOWNLOAD_CONCURRENCY` downloads run in parallel (default 2) and only one per folder, because each appends to that folder's `archive.txt`. Metadata updates run at most `UPDATE_CONCURRENCY` (default 2), and also one at a time per folder: each writes only under its own file stem, and the folder index refresh after a job is queued per folder, so parallel jobs do not overwrite each other's `.videos-index.json`. Every write of that file takes its turn the same way, a rebuild and a collection read adding new videos included, so none of them saves over an entry another one has just added. When raising this limit, remember that every `yt-dlp` process (especially with `--write-comments`) means many requests to YouTube from a single IP address; 429 errors or a sign-in prompt are a signal to go back to a smaller value. The client polls `GET /api/folder/queue` every 1.5 s, only when there is something in the queue. The queue persists across server restarts: active jobs are re-enqueued on boot and the paused state is kept (`.queue-state.json`).
 
 **Two kinds of jobs:**
 
 - `download` - a full download with `--download-archive archive.txt`; a video whose id is already in `archive.txt` is not downloaded a second time, even if its title changed on YouTube. Its files are named `<upload_date>_<title>_<id>`, in ASCII (`--restrict-filenames`): without the id, titles that differ only in letters outside ASCII or punctuation, or in case on a case-insensitive drive, would share a name. Older files keep their `<upload_date>_<title>` names and work beside the new ones.
 - `update` - metadata only (`--skip-download`) for the **existing** base file name, so no second set of files appears under a new title. It writes into `.videodeck-staging/<jobId>/` (`-o ".videodeck-staging/<jobId>/<baseName>.%(ext)s"`), and the server merges the result into the archive (see "Refreshing what is already archived").
 
-**Folder index** (`server/src/services/folderIndex.ts`): every folder holds a hidden `.videos-index.json` file (`videoId → { baseName, videoFile, infoMtime, title, subtitleLangs, hasComments, hasDescription, hasThumbnail, videoBytes, infoBytes }`) plus yt-dlp's `archive.txt` and, once a download fails for a reason that waiting cannot fix, `.unavailable.json` (`videoId → { code, at }`). Version 2 added the per-file facts; an index written by an older build is rebuilt on the next read, which costs one full scan per folder and loses nothing, because the file is derived from disk state. Those facts are what `GET /api/folder/state` answers from, without walking the folder per video. Both files are built from disk on first use (only the header of each `info.json` is read, which is where yt-dlp writes the id and the title) and updated incrementally after every job, so `GET /api/folder/list` no longer parses all `info.json` files. After manually deleting files from the folder, call `POST /api/folder/rebuild-index`. A rebuild only ever adds archive lines, so to make the deleted videos downloadable again, follow it with `POST /api/folder/archive/reconcile` with `method: "remove"` and their `videoIds`. Avoid `rebuild` there: it also drops the lines of videos the index cannot read (a `.webm`, a video without its `info.json`). A collection has no jobs to trigger that refresh, so every read of its list or counts first adds the `info.json` files the index has never seen, whatever their mtime (yt-dlp runs in a terminal, files moved in from another folder).
+**Folder index** (`server/src/services/folderIndex.ts`): every folder holds a hidden `.videos-index.json` file (`videoId → { baseName, videoFile, infoMtime, title, subtitleLangs, hasComments, hasDescription, hasThumbnail, videoBytes, infoBytes }`) plus yt-dlp's `archive.txt` and, once a download fails for a reason that waiting cannot fix, `.unavailable.json` (`videoId → { code, at }`). Version 2 added the per-file facts; an index written by an older build is rebuilt on the next read, which costs one full scan per folder and loses nothing, because the file is derived from disk state. Those facts are what `GET /api/folder/state` answers from, without walking the folder per video. Both files are built from disk on first use (no `info.json` that yt-dlp wrote is parsed whole: its head gives the id and the title yt-dlp writes first, and a scan that stops at the first comment tells whether comments and a description are there; a file whose id is not its first key is still parsed once, whole, for its id) and updated incrementally after every job, so `GET /api/folder/list` no longer parses all `info.json` files. After manually deleting files from the folder, call `POST /api/folder/rebuild-index`. A rebuild only ever adds archive lines, so to make the deleted videos downloadable again, follow it with `POST /api/folder/archive/reconcile` with `method: "remove"` and their `videoIds`. Avoid `rebuild` there: it also drops the lines of videos the index cannot read (a `.webm`, a video without its `info.json`). A collection has no jobs to trigger that refresh, so every read of its list or counts first adds the `info.json` files the index has never seen, whatever their mtime (yt-dlp runs in a terminal, files moved in from another folder).
 
 ## yt-dlp file format
 
