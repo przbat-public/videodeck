@@ -19,7 +19,7 @@ removes, is the same liability without the announcement.
 
 - Removing or renaming an API field or a queue state shape
 - Changing an env var or config key in `server/.env`
-- Bumping a held major version (typescript, zod, react-window)
+- Bumping a held dependency (typescript or @types/node majors, a jsdom minor or patch release)
 - Cleaning up dead client reducers, unused exports or orphaned helpers
 
 ## Compulsory vs advisory
@@ -45,10 +45,13 @@ removes, is the same liability without the announcement.
 
 ## Known holds
 
-Dependabot ignores semver-major bumps for `typescript`, `zod` and
-`react-window` because each needs an API migration first. Lifting a hold
-is its own PR: the migration, the test suite updates, and the dependabot
-config change in one reviewable unit.
+`.github/dependabot.yml` is the list, and `CONTRIBUTING.md` explains each
+entry. Today Dependabot ignores semver-major bumps of `typescript` (the
+type-aware lint toolchain has to move with it) and of `@types/node` (it
+follows the Node runtime, never leads it), and every minor or patch release
+of `jsdom`, pinned exactly because 30.1.0 broke the client suite. Lifting a
+hold is its own PR: the migration, the test suite updates, and the
+dependabot config change in one reviewable unit.
 
 ## Zombie code removal
 

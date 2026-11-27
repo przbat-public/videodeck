@@ -46,8 +46,9 @@ knip, lint:deps, humanizer:gate, typecheck, test:coverage, test:integration and
 the client e2e suite, in that order. Each step also has its own script
 (listed in `AGENTS.md`) for the inner loop.
 
-CI also runs a `pnpm audit` job (moderate and above) and the weekly
-dependency report; releases follow `RELEASING.md`.
+CI also runs a `pnpm audit` job (moderate and above), and a `CI ok` job
+that fails unless every other job passed, or was skipped because the change
+touched documentation only; releases follow `RELEASING.md`.
 
 Commit hooks (husky + lint-staged) run `biome check --write` on the staged
 files automatically.
@@ -78,7 +79,7 @@ files automatically.
 
 ## Dependency version holds
 
-Dependabot deliberately ignores semver-major bumps of two packages
+Dependabot deliberately holds back three packages
 (`.github/dependabot.yml`). Upgrade each one by hand, when the time comes:
 
 - **`typescript` (semver-major)**: a TS major breaks the type-aware lint
@@ -89,6 +90,10 @@ Dependabot deliberately ignores semver-major bumps of two packages
   images); type majors must follow a Node upgrade, not lead it. Bump
   `@types/node` in the same change that moves the runtime. Node 24 is an LTS
   line: plan the next hop before its maintenance window closes.
+- **`jsdom` (every minor and patch release)**: 30.1.0 broke 27 client tests
+  (Radix menus), so `client/package.json` pins the version that passes.
+  Move the pin by hand, after the client unit and integration suites pass
+  on the new release.
 
 Everything else, including `zod` and `react-window`, is open to a Dependabot
 major PR; their 4.x and 2.x API migrations are already done.

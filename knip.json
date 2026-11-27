@@ -17,7 +17,8 @@
   "workspaces": {
     ".": {
       "entry": ["scripts/**/*.mjs"],
-      "project": ["scripts/**/*.mjs"]
+      "project": ["scripts/**/*.mjs"],
+      "ignoreBinaries": ["jq"]
     },
     "server": {
       "project": ["src/**/*.ts"],
