@@ -5,6 +5,7 @@ import '../i18n';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, vi } from 'vitest';
 import { applyLibraryRevision, resetLibraryState } from '../utils/libraryStatus';
+import { resetQueueSummaryStore } from '../utils/queueSummaryStore';
 import { resetReindexState } from '../utils/reindexStore';
 import { toast } from './toastMock';
 
@@ -101,6 +102,9 @@ beforeEach(() => {
   // The reindex run is app state too: a run left behind by one test would make
   // the next one's button disabled for no reason it can see
   resetReindexState();
+  // So are the queue counters: a summary left behind by one test makes the next
+  // status page re-read the folders it names, which no longer exist
+  resetQueueSummaryStore();
 });
 
 // Cleanup after each test
