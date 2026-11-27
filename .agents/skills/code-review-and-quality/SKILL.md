@@ -82,8 +82,9 @@ Adding a dependency is a liability. First ask whether the existing stack
 covers it, check its size, maintenance, vulnerabilities (`pnpm audit`) and
 license. Upgrades: one dependency per change, read the changelog not just
 the version number, review the `pnpm-lock.yaml` diff, let the test suites
-decide. Semver-major bumps for `typescript`, `zod` and `react-window` are
-deliberately on hold.
+decide. The holds live in `.github/dependabot.yml` and `CONTRIBUTING.md`:
+`typescript` and `@types/node` majors, and every `jsdom` release below a
+major.
 
 ## Dead code hygiene
 

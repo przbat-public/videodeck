@@ -20,6 +20,12 @@ updates:
       prefix: 'chore(deps)'
     labels: [dependencies]
     groups:
+      # Security fixes arrive as one pull request, however many there are:
+      # with the whole lockfile visible to GitHub, the first scan can raise
+      # a batch of them at once
+      security:
+        applies-to: security-updates
+        patterns: ['*']
       prod-deps:
         dependency-type: production
       dev-deps:
@@ -35,14 +41,17 @@ updates:
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
       # jsdom 30.1.0 breaks 27 client tests (Radix menus), so the suite-passing
-      # version is pinned exactly in client/package.json. The minor rule covers
-      # patch releases too, which leaves every update below a major to a human
-      # who re-runs the client suite before moving the pin.
+      # version is pinned exactly in client/package.json. Minor and patch
+      # releases both wait for a human who re-runs the client suite before
+      # moving the pin (a minor rule alone lets patches through); a major
+      # still arrives as a pull request.
       - dependency-name: 'jsdom'
-        update-types: ['version-update:semver-minor']
+        update-types: ['version-update:semver-minor', 'version-update:semver-patch']
 
+  # The root covers .github/workflows only; the composite action needs its
+  # own directory, or its pins drift from the workflows' (they did).
   - package-ecosystem: github-actions
-    directory: /
+    directories: ['/', '/.github/actions/*']
     schedule:
       interval: monthly
     groups:

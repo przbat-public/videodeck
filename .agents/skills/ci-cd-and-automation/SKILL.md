@@ -29,8 +29,11 @@ the supply-chain and security jobs.
 | Server integration | yt-dlp templates against the image's pinned binary, offline; Elasticsearch against a real cluster |
 | Coverage ratchet | coverage never falls below the committed floor |
 | Playwright E2E | the thin mocked-API browser layer |
+| Playwright E2E (production bundle) | the same suite against `vite preview` |
 | Build | production bundles build |
+| Docker images | both images build and answer a smoke request |
 | pnpm audit (moderate+) | dependency vulnerabilities |
+| CI ok | every job above passed, or skipped for a documentation-only change |
 | dependency-review, Analyze, CodeQL | supply chain and static security |
 
 ## The local gate
@@ -50,17 +53,23 @@ infrastructure flakiness, and a flaky infra failure is itself a finding.
 
 - A new check must have a local command equivalent; CI-only checks drift
   and surprise contributors.
-- Keep the matrix names stable; branch protection and `gh pr checks`
-  output reference them.
+- Keep job and matrix names stable: `gh pr checks` output references them,
+  and so does every check the ruleset still requires by name.
+- A new job goes into the `needs` of `ci-ok`, the check that stands for all
+  of ci.yml in the ruleset on `main`. `scripts/check-ci-gate.test.mjs` fails
+  until it does, because a job outside `ci-ok` gates nothing. `ci-ok` cannot
+  reach other workflows, so dependency-review and CodeQL stay required by
+  name.
 - Workflow changes are code: review them like code (`code-review-and-quality`),
   and watch `actions/` dependency bumps through Dependabot PRs.
 - A documentation-only pull request runs `lint` and the unit-test matrix, and
   skips the rest. That skip lives inside the workflow, in the `changes` job,
   never in a `paths-ignore` on the trigger: a trigger that never fires leaves
-  the required checks pending, and the ruleset on `main` requires them by name,
-  so the pull request could not merge at all. `lint` runs because it carries
-  the prose gate, and the matrix runs because a skipped matrix job reports its
-  name unexpanded, which is a name no ruleset knows.
+  the required checks pending, so the pull request could not merge at all.
+  `ci-ok` accepts those skips only when `changes` said the diff is
+  documentation; a skip after a failed `changes` job fails it. `lint` runs
+  because it carries the prose gate, and the matrix runs because a skipped
+  matrix job reports its name unexpanded, which is a name no ruleset knows.
 
 ## Rationalizations
 
