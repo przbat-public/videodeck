@@ -40,7 +40,7 @@ export function summarizeFolder(
     .filter((time) => !Number.isNaN(time));
   // Folded rather than spread into Math.max: a channel can list tens of
   // thousands of videos, past the argument limit of a spread call.
-  const newest = parsedDates.reduce((max, time) => (time > max ? time : max), Number.NEGATIVE_INFINITY);
+  const newest = parsedDates.reduce((max, time) => Math.max(max, time), Number.NEGATIVE_INFINITY);
 
   return {
     videos: list.length,

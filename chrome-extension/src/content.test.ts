@@ -17,8 +17,16 @@ interface ContentChromeMock {
   runtime: { onMessage: { addListener: MockFn } };
 }
 
-/** The smallest document stand-in the content script touches. */
-function fakeDocument(title: string, videoSrc?: string): Record<string, unknown> {
+/**
+ * The smallest document stand-in the content script touches. `headings` maps a
+ * selector to the text the element it finds holds, the way YouTube's player
+ * heading answers the title selectors.
+ */
+function fakeDocument(
+  title: string,
+  videoSrc?: string,
+  headings: Record<string, string> = {},
+): Record<string, unknown> {
   return {
     title,
     body: null,
@@ -26,7 +34,12 @@ function fakeDocument(title: string, videoSrc?: string): Record<string, unknown>
     // exercise the message handler.
     readyState: 'loading',
     addEventListener: vi.fn(),
-    querySelector: vi.fn((selector: string) => (selector === 'video' && videoSrc ? { src: videoSrc } : null)),
+    querySelector: vi.fn((selector: string) => {
+      if (selector in headings) {
+        return { textContent: headings[selector] };
+      }
+      return selector === 'video' && videoSrc ? { src: videoSrc } : null;
+    }),
   };
 }
 
@@ -39,7 +52,12 @@ describe('content script video detection', () => {
   });
 
   /** Imports the content script for one page URL and captures its message listener. */
-  async function loadContentScript(url: string, title: string, videoSrc?: string): Promise<void> {
+  async function loadContentScript(
+    url: string,
+    title: string,
+    videoSrc?: string,
+    headings: Record<string, string> = {},
+  ): Promise<void> {
     vi.resetModules();
     chromeMock = {
       runtime: {
@@ -51,10 +69,9 @@ describe('content script video detection', () => {
       },
     };
     vi.stubGlobal('chrome', chromeMock);
-    vi.stubGlobal('document', fakeDocument(title, videoSrc));
+    vi.stubGlobal('document', fakeDocument(title, videoSrc, headings));
     vi.stubGlobal('window', { location: { href: url } });
     vi.stubGlobal('MutationObserver', class {});
-    vi.stubGlobal('HTMLElement', class {});
     vi.stubGlobal('HTMLMetaElement', class {});
 
     await import('./content');
@@ -96,6 +113,24 @@ describe('content script video detection', () => {
       videoTitle: 'Clip',
       platform: 'generic',
     });
+  });
+
+  it("takes the title from the player's heading, trimmed, before the page title", async () => {
+    await loadContentScript('https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'Tab Title - YouTube', undefined, {
+      'h1.ytd-watch-metadata yt-formatted-string': '  Player Title  ',
+    });
+
+    expect(askForVideoInfo()?.videoTitle).toBe('Player Title');
+  });
+
+  it('passes over a heading that is empty or only says YouTube', async () => {
+    await loadContentScript('https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'Tab Title - YouTube', undefined, {
+      'h1.ytd-watch-metadata yt-formatted-string': '   ',
+      'h1.title yt-formatted-string': 'YouTube',
+      'h1.ytd-watch-metadata': 'Second Heading',
+    });
+
+    expect(askForVideoInfo()?.videoTitle).toBe('Second Heading');
   });
 
   it('reports no video on a YouTube page without a video id', async () => {
