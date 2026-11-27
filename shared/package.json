@@ -20,6 +20,11 @@
       "import": "./schemas.ts",
       "require": "./schemas.ts"
     },
+    "./search": {
+      "types": "./search.ts",
+      "import": "./search.ts",
+      "require": "./search.ts"
+    },
     "./progress": {
       "types": "./progress.ts",
       "import": "./progress.ts",

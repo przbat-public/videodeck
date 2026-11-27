@@ -94,14 +94,14 @@ New indexes get the new analyzer, and the aliases switch atomically.
 
 ### GET /api/videos/search
 
-Searches videos by phrase in the file name (`baseName.text^4`), title (`^3`), description (`^2`), subtitle transcript (`transcriptText^2`), and comments (`commentsText`). Text is analyzed with **diacritic folding** (custom `polish_folded` analyzer: `standard` + `lowercase` + `asciifolding`), so `srodek` finds `środek` without typing Polish characters. Polish stemming/stop words would require the `analysis-stempel` plugin (absent from the default Docker image), so the analyzer uses only built-in components. Transcripts and comments are search-only fields; they are never returned in responses.
+Searches videos by phrase in the title (`title^3`), description (`^2`), subtitle transcript (`transcriptText^2`), and comments (`commentsText`). The file name is not searched: a video without a title takes one from its file name at indexing time. Text is analyzed with **diacritic folding** (custom `polish_folded` analyzer: `standard` + `lowercase` + `asciifolding`), so `srodek` finds `środek` without typing Polish characters. Polish stemming/stop words would require the `analysis-stempel` plugin (absent from the default Docker image), so the analyzer uses only built-in components. Transcripts and comments are search-only fields; they are never returned in responses. Match snippets are cut from the first 100,000 characters of a field, so a phrase found deeper into a long comment section still returns its video, only without a snippet.
 
 **Query parameters:**
 
-- `q` (optional) - search phrase
-- `sort` (optional) - sort order:
-  - `relevance` - by relevance (default Elasticsearch behavior, `_score`; only meaningful with a phrase)
-  - `date-desc` - by date, newest first (default)
+- `q` (optional) - search phrase. A YouTube link (watch, `youtu.be`, Shorts) or a bare 11-character video id is looked up by id under the same filters, sort and paging: a link returns that video or nothing, and a bare id that matches no archived video is searched as text
+- `sort` (optional) - sort order; when it is missing or unknown, a phrase ranks by relevance and an empty `q` lists the newest first:
+  - `relevance` - by `_score`, the default with a phrase. Every folder is an index of its own, so scores come from the term statistics of all searched folders together (`dfs_query_then_fetch`) rather than per folder
+  - `date-desc` - by date, newest first, the default without a phrase
   - `date-asc` - by date, oldest first
   - `views-desc` - by view count, descending
   - `views-asc` - by view count, ascending

@@ -65,6 +65,7 @@ export {
   getVideoByBaseName,
   getVideoByFilePath,
   getVideoByVideoId,
+  HIGHLIGHT_MAX_ANALYZED_CHARS,
   listChannelsByFolder,
   SEARCH_DEFAULT_LIMIT,
   SEARCH_FIELDS,

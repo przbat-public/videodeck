@@ -2,6 +2,8 @@ import type { VideoListItem } from '@videodeck/shared/api';
 import type { Mock } from 'vitest';
 import { metricsRegistry } from '../metricsRegistry';
 import { at } from '../test-utils';
+import { logger } from '../utils/logger';
+import { isElasticsearchUnavailable } from './elasticsearchErrors';
 import {
   buildIndexVersionName,
   bulkIndexDocuments,
@@ -21,6 +23,7 @@ import {
   getVideoByBaseName,
   getVideoByFilePath,
   getVideoByVideoId,
+  HIGHLIGHT_MAX_ANALYZED_CHARS,
   indexCacheLogThrottle,
   indexVideo,
   listCachedFolders,
@@ -49,7 +52,7 @@ const mockClient = {
   },
   bulk: vi.fn(),
   index: vi.fn(),
-  search: vi.fn(),
+  msearch: vi.fn(),
   count: vi.fn(),
   ping: vi.fn(),
   deleteByQuery: vi.fn(),
@@ -84,6 +87,16 @@ const ALIAS_A = getIndexNameFromFolderPath(FOLDER_A);
 const ALIAS_B = getIndexNameFromFolderPath(FOLDER_B);
 
 const notFound = () => Object.assign(new Error('index_not_found'), { meta: { statusCode: 404 } });
+
+/** The clause a typed phrase is searched with: its words as typed, and within the typo budget */
+const phraseQuery = (query: string) => ({
+  bool: {
+    should: [
+      { multi_match: { query, fields: SEARCH_FIELDS, type: 'best_fields' } },
+      { multi_match: { query, fields: SEARCH_FIELDS, type: 'best_fields', fuzziness: 'AUTO' } },
+    ],
+  },
+});
 
 /** The creation stamp `buildIndexVersionName` appends, for the current moment */
 function stampOfNow(): string {
@@ -122,6 +135,17 @@ function aliasPointsAt(...indices: string[]) {
 /** What `indices.get('<alias>_*')` returns */
 function physicalIndices(...indices: string[]) {
   mockClient.indices.get.mockResolvedValue(Object.fromEntries(indices.map((index) => [index, { aliases: {} }])));
+}
+
+/** Answer every read with this search response, in the envelope _msearch returns it in */
+function answerSearch(response: Record<string, unknown>) {
+  mockClient.msearch.mockResolvedValue({ took: 0, responses: [{ status: 200, ...response }] });
+}
+
+/** The header line and the body line of the n-th read the service sent */
+function sentSearch(call = 0) {
+  const [header, body] = at(mockClient.msearch.mock.calls, call)[0].searches;
+  return { header, body };
 }
 
 describe('elasticsearchService', () => {
@@ -220,6 +244,8 @@ describe('elasticsearchService', () => {
         analyzer: 'polish_folded',
       });
       expect(request.settings.analysis.analyzer.polish_folded.filter).toEqual(['lowercase', 'asciifolding']);
+      // A bare keyword: the exact lookup by file name is all that reads it
+      expect(request.mappings.properties.baseName).toEqual({ type: 'keyword' });
       expect(request.mappings.properties).not.toHaveProperty('comments');
       expect(request.settings.index).not.toHaveProperty('mapping');
       expect(mockClient.indices.updateAliases).not.toHaveBeenCalled();
@@ -328,7 +354,7 @@ describe('elasticsearchService', () => {
   describe('fail-fast while Elasticsearch is down', () => {
     afterEach(() => {
       clearElasticsearchOutage();
-      mockClient.search.mockReset();
+      mockClient.msearch.mockReset();
     });
 
     it('refuses a read immediately instead of waiting for the client retries', async () => {
@@ -336,7 +362,7 @@ describe('elasticsearchService', () => {
 
       await expect(searchVideosWithTotal('robot arm')).rejects.toThrow('Elasticsearch is not reachable');
       // The whole point: no request left the process
-      expect(mockClient.search).not.toHaveBeenCalled();
+      expect(mockClient.msearch).not.toHaveBeenCalled();
     });
 
     it('lets reads through again once the window has passed', async () => {
@@ -344,10 +370,10 @@ describe('elasticsearchService', () => {
       now.mockReturnValue(1_000);
       noteElasticsearchUnavailable();
       now.mockReturnValue(10_000);
-      mockClient.search.mockResolvedValue({ hits: { hits: [], total: { value: 0 } } });
+      answerSearch({ hits: { hits: [], total: { value: 0 } } });
 
       await searchVideosWithTotal('robot arm');
-      expect(mockClient.search).toHaveBeenCalled();
+      expect(mockClient.msearch).toHaveBeenCalled();
       now.mockRestore();
     });
 
@@ -355,10 +381,10 @@ describe('elasticsearchService', () => {
       noteElasticsearchUnavailable();
       mockClient.ping.mockResolvedValue({});
       await checkElasticsearchConnection();
-      mockClient.search.mockResolvedValue({ hits: { hits: [], total: { value: 0 } } });
+      answerSearch({ hits: { hits: [], total: { value: 0 } } });
 
       await searchVideosWithTotal('robot arm');
-      expect(mockClient.search).toHaveBeenCalled();
+      expect(mockClient.msearch).toHaveBeenCalled();
     });
 
     it('lets a read through when a stale failure lands right after a healthy probe', async () => {
@@ -372,11 +398,11 @@ describe('elasticsearchService', () => {
       await checkElasticsearchConnection();
       // ... and a request that failed on the client it replaced lands after
       noteElasticsearchUnavailable();
-      mockClient.search.mockResolvedValue({ hits: { hits: [], total: { value: 0 } } });
+      answerSearch({ hits: { hits: [], total: { value: 0 } } });
 
       await searchVideosWithTotal('robot arm');
 
-      expect(mockClient.search).toHaveBeenCalled();
+      expect(mockClient.msearch).toHaveBeenCalled();
     });
 
     it('still refuses a read when the failure is not stale', async () => {
@@ -386,10 +412,10 @@ describe('elasticsearchService', () => {
       now.mockReturnValue(50_000);
       clearElasticsearchOutage();
       noteElasticsearchUnavailable();
-      mockClient.search.mockReset();
+      mockClient.msearch.mockReset();
 
       await expect(searchVideosWithTotal('robot arm')).rejects.toThrow('Elasticsearch is not reachable');
-      expect(mockClient.search).not.toHaveBeenCalled();
+      expect(mockClient.msearch).not.toHaveBeenCalled();
       now.mockRestore();
     });
 
@@ -967,29 +993,31 @@ describe('elasticsearchService', () => {
     const hit = (source: Record<string, unknown>, id = 'id') => ({ _id: id, _source: source });
 
     beforeEach(() => {
-      mockClient.search.mockResolvedValue({ hits: { hits: [] } });
+      answerSearch({ hits: { hits: [] } });
     });
 
     it('searches all folder aliases with commentsText in the fields and out of the payload', async () => {
-      mockClient.search.mockResolvedValue({
+      answerSearch({
         hits: { hits: [hit({ ...toDocument(video()), commentsText: 'leak' })] },
       });
 
       const results = await searchVideos('robot arm', 'views-desc');
 
-      const request = at(mockClient.search.mock.calls, 0)[0];
-      expect(request.index).toEqual([ALIAS_A, ALIAS_B]);
-      expect(request.ignore_unavailable).toBe(true);
-      expect(request.query).toEqual({
-        multi_match: {
-          query: 'robot arm',
-          fields: SEARCH_FIELDS,
-          type: 'best_fields',
-          fuzziness: 'AUTO',
-        },
-      });
+      const { header, body: request } = sentSearch();
+      // The alias list rides in the _msearch header, never in the URL, whose
+      // request line a cluster caps at 4 KB
+      expect(header).toEqual({ index: [ALIAS_A, ALIAS_B], ignore_unavailable: true });
+      expect(at(mockClient.msearch.mock.calls, 0)[0]).not.toHaveProperty('index');
+      expect(request).not.toHaveProperty('ignore_unavailable');
+      // The words as typed sit next to the fuzzy clause: a fuzzy clause alone
+      // expands to nothing in a folder that holds no near word in a field, so
+      // the DFS round never read that field's statistics there, and a title
+      // match in a one-video folder lost to a comment match in a big one
+      expect(request.query).toEqual(phraseQuery('robot arm'));
       expect(SEARCH_FIELDS).toContain('commentsText');
-      expect(SEARCH_FIELDS[0]).toBe('baseName.text^4');
+      // The file name is no search field: new stems are one token under the
+      // standard tokenizer, and a foreign-named file's words outscored titles
+      expect(SEARCH_FIELDS.filter((field) => field.startsWith('baseName'))).toEqual([]);
       expect(request.sort).toEqual([{ viewCount: { order: 'desc', missing: '_last' } }]);
       expect(request.from).toBe(0);
       expect(request.size).toBe(100);
@@ -1003,7 +1031,7 @@ describe('elasticsearchService', () => {
     });
 
     it('returns the query-aware total from hits.total (track_total_hits)', async () => {
-      mockClient.search.mockResolvedValue({
+      answerSearch({
         hits: {
           total: { value: 3, relation: 'eq' },
           hits: [hit(toDocument(video()), 'a'), hit(toDocument(video()), 'b'), hit(toDocument(video()), 'c')],
@@ -1014,13 +1042,13 @@ describe('elasticsearchService', () => {
 
       expect(result.total).toBe(3);
       expect(result.videos).toHaveLength(3);
-      expect(at(mockClient.search.mock.calls, 0)[0].track_total_hits).toBe(true);
+      expect(sentSearch().body.track_total_hits).toBe(true);
     });
 
     it('uses match_all for blank queries and sorts by date by default', async () => {
       await searchVideos('   ');
 
-      const request = at(mockClient.search.mock.calls, 0)[0];
+      const request = sentSearch().body;
       expect(request.query).toEqual({ match_all: {} });
       expect(request.sort).toEqual([{ uploadDate: { order: 'desc', missing: '_last' } }]);
     });
@@ -1029,37 +1057,99 @@ describe('elasticsearchService', () => {
       mockFolders.current = [];
 
       await expect(searchVideos('q')).rejects.toThrow(/No video folders configured/);
-      expect(mockClient.search).not.toHaveBeenCalled();
+      expect(mockClient.msearch).not.toHaveBeenCalled();
     });
 
     it('omits the sort for relevance, letting Elasticsearch order by score', async () => {
       await searchVideos('q', 'relevance');
 
-      const request = at(mockClient.search.mock.calls, 0)[0];
+      const request = sentSearch().body;
       expect(request.sort).toEqual([]);
     });
 
+    it('ranks a phrase by relevance by default, scored with the statistics of every folder', async () => {
+      await searchVideos('robot');
+
+      const { header, body } = sentSearch();
+      expect(body.sort).toEqual([]);
+      // Every folder is an index of one shard, and per-shard term statistics
+      // scored a match in a small folder far above the same match in a big one
+      expect(header.search_type).toBe('dfs_query_then_fetch');
+    });
+
+    it('asks for no extra statistics round trip when the page is not ranked by a phrase', async () => {
+      await searchVideos('robot', 'date-desc');
+      await searchVideos('   ', 'relevance');
+
+      expect(sentSearch(0).header).not.toHaveProperty('search_type');
+      expect(sentSearch(1).header).not.toHaveProperty('search_type');
+    });
+
     it('fails loudly on hits without _source', async () => {
-      mockClient.search.mockResolvedValue({ hits: { hits: [{ _id: 'x' }] } });
+      answerSearch({ hits: { hits: [{ _id: 'x' }] } });
       await expect(searchVideos('q')).rejects.toThrow('has no _source');
+    });
+
+    it('reads a search no shard could serve yet as the outage it is', async () => {
+      // Inside an _msearch a failed search is an item of a 200 answer rather
+      // than a thrown 503, and read as any other failure it would hide the
+      // outage banner and skip the fail-fast window
+      mockClient.msearch.mockResolvedValue({
+        took: 0,
+        responses: [{ status: 503, error: { type: 'search_phase_execution_exception', reason: 'all shards failed' } }],
+      });
+
+      const error = await searchVideos('q').catch((caught: unknown) => caught);
+
+      expect(isElasticsearchUnavailable(error)).toBe(true);
+      expect(String(error)).toContain('503 search_phase_execution_exception: all shards failed');
+    });
+
+    it('fails a search the cluster refused with its reason and root cause in the message', async () => {
+      mockClient.msearch.mockResolvedValue({
+        took: 0,
+        responses: [
+          {
+            status: 400,
+            error: {
+              type: 'search_phase_execution_exception',
+              root_cause: [{ type: 'illegal_argument_exception', reason: 'Result window is too large' }],
+            },
+          },
+        ],
+      });
+
+      const error = await searchVideos('q').catch((caught: unknown) => caught);
+
+      expect(isElasticsearchUnavailable(error)).toBe(false);
+      expect(String(error)).toContain(
+        'Elasticsearch refused the search: 400 search_phase_execution_exception: no reason given ' +
+          '(illegal_argument_exception: Result window is too large)',
+      );
+    });
+
+    it('fails a multi-search answer that carries no response', async () => {
+      mockClient.msearch.mockResolvedValue({ took: 0, responses: [] });
+
+      await expect(searchVideos('q')).rejects.toThrow('Elasticsearch answered the search without a response');
     });
 
     it('narrows the search to the given folders', async () => {
       await searchVideos('q', 'date-desc', [FOLDER_B]);
 
-      expect(at(mockClient.search.mock.calls, 0)[0].index).toEqual([ALIAS_B]);
+      expect(sentSearch().header.index).toEqual([ALIAS_B]);
     });
 
     it('returns nothing without querying when no folder qualifies', async () => {
       // An empty index list would make Elasticsearch search *every* index
       expect(await searchVideos('q', 'date-desc', [])).toEqual([]);
-      expect(mockClient.search).not.toHaveBeenCalled();
+      expect(mockClient.msearch).not.toHaveBeenCalled();
     });
 
     it('passes offset and limit through to Elasticsearch', async () => {
       await searchVideos('q', 'date-desc', undefined, { offset: 200, limit: 25 });
 
-      const request = at(mockClient.search.mock.calls, 0)[0];
+      const request = sentSearch().body;
       expect(request.from).toBe(200);
       expect(request.size).toBe(25);
     });
@@ -1069,7 +1159,7 @@ describe('elasticsearchService', () => {
       // with from + size above it is rejected, so the page is cut at the end.
       await searchVideos('q', 'date-desc', undefined, { offset: 9990, limit: 20 });
 
-      const request = at(mockClient.search.mock.calls, 0)[0];
+      const request = sentSearch().body;
       expect(request.from).toBe(9990);
       expect(request.size).toBe(10);
     });
@@ -1077,19 +1167,19 @@ describe('elasticsearchService', () => {
     it('leaves a page that ends exactly at the result window untouched', async () => {
       await searchVideos('q', 'date-desc', undefined, { offset: 9900, limit: 100 });
 
-      const request = at(mockClient.search.mock.calls, 0)[0];
+      const request = sentSearch().body;
       expect(request.from).toBe(9900);
       expect(request.size).toBe(100);
     });
 
     it('answers an offset past the result window with a count-only page', async () => {
-      mockClient.search.mockResolvedValue({ hits: { total: { value: 37438, relation: 'eq' }, hits: [] } });
+      answerSearch({ hits: { total: { value: 37438, relation: 'eq' }, hits: [] } });
 
       const result = await searchVideosWithTotal('q', 'date-desc', undefined, { offset: 10_000, limit: 20 });
 
       // Asking for hits there would 400; a size-0 query at the start keeps the
       // total honest and returns no page to repeat.
-      const request = at(mockClient.search.mock.calls, 0)[0];
+      const request = sentSearch().body;
       expect(request.from).toBe(0);
       expect(request.size).toBe(0);
       expect(result.videos).toEqual([]);
@@ -1101,10 +1191,10 @@ describe('elasticsearchService', () => {
         channel: 'Jordan B Peterson',
       });
 
-      const request = at(mockClient.search.mock.calls, 0)[0];
+      const request = sentSearch().body;
       expect(request.query).toEqual({
         bool: {
-          must: [expect.objectContaining({ multi_match: expect.objectContaining({ query: 'q' }) })],
+          must: [phraseQuery('q')],
           filter: [{ term: { 'channelName.keyword': 'Jordan B Peterson' } }],
         },
       });
@@ -1113,14 +1203,59 @@ describe('elasticsearchService', () => {
     it('applies filters to blank queries too', async () => {
       await searchVideos(undefined, 'date-desc', undefined, { channel: 'X' });
 
-      const request = at(mockClient.search.mock.calls, 0)[0];
+      const request = sentSearch().body;
       expect(request.query).toEqual({
         bool: { must: [{ match_all: {} }], filter: [{ term: { 'channelName.keyword': 'X' } }] },
       });
     });
 
+    it('looks a pasted link up by its video id, keeping the filter, sort and paging, without highlights', async () => {
+      await searchVideosWithTotal(
+        'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLx&index=3',
+        'date-desc',
+        undefined,
+        {
+          channel: 'X',
+          offset: 0,
+          limit: 10,
+        },
+      );
+
+      const { header, body } = sentSearch();
+      expect(body.query).toEqual({
+        bool: { must: [{ ids: { values: ['dQw4w9WgXcQ'] } }], filter: [{ term: { 'channelName.keyword': 'X' } }] },
+      });
+      expect(body.sort).toEqual([{ uploadDate: { order: 'desc', missing: '_last' } }]);
+      expect(body.size).toBe(10);
+      expect(body).not.toHaveProperty('highlight');
+      expect(header).not.toHaveProperty('search_type');
+      // A link names one video: no text search follows, even when it is not archived
+      expect(mockClient.msearch).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers a bare video id from the id lookup when a video has it', async () => {
+      answerSearch({ hits: { total: { value: 1, relation: 'eq' }, hits: [hit(toDocument(video()), 'dQw4w9WgXcQ')] } });
+
+      const result = await searchVideosWithTotal('dQw4w9WgXcQ');
+
+      expect(sentSearch().body.query).toEqual({ ids: { values: ['dQw4w9WgXcQ'] } });
+      expect(result.total).toBe(1);
+      expect(mockClient.msearch).toHaveBeenCalledTimes(1);
+    });
+
+    it('searches an eleven-character word as text when no video has it as its id', async () => {
+      answerSearch({ hits: { total: { value: 0, relation: 'eq' }, hits: [] } });
+
+      await searchVideosWithTotal('programming');
+
+      expect(mockClient.msearch).toHaveBeenCalledTimes(2);
+      expect(sentSearch(0).body.query).toEqual({ ids: { values: ['programming'] } });
+      expect(sentSearch(1).body.query).toEqual(phraseQuery('programming'));
+      expect(sentSearch(1).body.highlight).toBeDefined();
+    });
+
     it('maps ES highlight fragments into the response contract', async () => {
-      mockClient.search.mockResolvedValue({
+      answerSearch({
         hits: {
           hits: [
             {
@@ -1147,17 +1282,75 @@ describe('elasticsearchService', () => {
 
     it('requests highlight fragments only for real queries', async () => {
       await searchVideos('robot');
-      const first = at(mockClient.search.mock.calls, 0)[0];
+      const first = sentSearch().body;
       expect(first.highlight).toBeDefined();
       expect(first.highlight?.pre_tags).toEqual(['\u0001']);
       expect(first.highlight?.post_tags).toEqual(['\u0002']);
 
       await searchVideos('   ');
-      expect(at(mockClient.search.mock.calls, 1)[0].highlight).toBeUndefined();
+      expect(sentSearch(1).body.highlight).toBeUndefined();
+    });
+
+    it('hands the abort signal to the transport, and no transport options without one', async () => {
+      const controller = new AbortController();
+
+      await searchVideosWithTotal('robot', 'date-desc', undefined, { signal: controller.signal });
+      await searchVideosWithTotal('robot');
+
+      // The transport drops the connection on abort, which is what makes the
+      // cluster cancel the search; the signal never leaks into the request
+      expect(at(mockClient.msearch.mock.calls, 0)[1]).toEqual({ signal: controller.signal });
+      expect(sentSearch(0).body).not.toHaveProperty('signal');
+      expect(at(mockClient.msearch.mock.calls, 1)[1]).toBeUndefined();
+    });
+
+    it('caps what the highlighter analyzes', async () => {
+      await searchVideos('robot');
+
+      const { body } = sentSearch();
+      // At or below the index's own limit (index.highlight.max_analyzed_offset,
+      // 1,000,000 by default) a long field is truncated instead of failing the
+      // fetch of its folder's shard
+      expect(body.highlight.max_analyzed_offset).toBe(HIGHLIGHT_MAX_ANALYZED_CHARS);
+      expect(HIGHLIGHT_MAX_ANALYZED_CHARS).toBeLessThanOrEqual(1_000_000);
+    });
+
+    it('serves a page without the folder that could not answer, and logs which one', async () => {
+      // A red index, a shard still recovering after a restart, or the old
+      // version a reindex deletes right after its swap: refusing the page would
+      // show the outage banner for the whole library while the cluster answers
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {
+        /* the warning is the assertion */
+      });
+      answerSearch({
+        _shards: {
+          total: 2,
+          successful: 1,
+          skipped: 0,
+          failed: 1,
+          failures: [
+            {
+              index: 'videos_b_20250101000000000',
+              shard: 0,
+              reason: { type: 'no_shard_available_action_exception', reason: 'no shard copy is active' },
+            },
+          ],
+        },
+        hits: { hits: [hit(toDocument(video()))], total: { value: 1, relation: 'eq' } },
+      });
+
+      const results = await searchVideos('robot');
+
+      expect(results).toHaveLength(1);
+      expect(sentSearch().header).not.toHaveProperty('allow_partial_search_results');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('without 1 of 2 folder shards'));
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('videos_b_20250101000000000: no_shard_available_action_exception'),
+      );
     });
 
     it('lists every channel name each folder carries, most frequent first', async () => {
-      mockClient.search.mockResolvedValue({
+      answerSearch({
         aggregations: {
           folders: {
             buckets: [
@@ -1179,7 +1372,7 @@ describe('elasticsearchService', () => {
       // One query answers for every folder, and it asks for the field the
       // mapping declares: folderPath is a keyword, folderPath.keyword is
       // nothing at all, and the missing field is why the map used to be empty
-      const request = at(mockClient.search.mock.calls, 0)[0];
+      const request = sentSearch().body;
       expect(request.aggs).toEqual({
         folders: {
           terms: { field: 'folderPath', size: 500 },
@@ -1192,19 +1385,17 @@ describe('elasticsearchService', () => {
       // A freshly attached drive adds folders that nobody has indexed. Search
       // already tolerates their missing aliases; the channel filter must too,
       // otherwise the whole endpoint answers 500 until the drive is indexed.
-      mockClient.search.mockResolvedValue({ aggregations: { folders: { buckets: [] } } });
+      answerSearch({ aggregations: { folders: { buckets: [] } } });
 
       expect(await listChannelsByFolder()).toEqual({});
 
-      const request = at(mockClient.search.mock.calls, 0)[0];
-      expect(request.index).toEqual([ALIAS_A, ALIAS_B]);
-      expect(request.ignore_unavailable).toBe(true);
+      expect(sentSearch().header).toEqual({ index: [ALIAS_A, ALIAS_B], ignore_unavailable: true });
     });
 
     it('clamps out-of-range paging values', async () => {
       await searchVideos('q', 'date-desc', undefined, { offset: -10, limit: 9999 });
 
-      const request = at(mockClient.search.mock.calls, 0)[0];
+      const request = sentSearch().body;
       expect(request.from).toBe(0);
       expect(request.size).toBe(500);
     });
@@ -1212,19 +1403,19 @@ describe('elasticsearchService', () => {
 
   describe('single-document lookups', () => {
     beforeEach(() => {
-      mockClient.search.mockResolvedValue({ hits: { hits: [] } });
+      answerSearch({ hits: { hits: [] } });
     });
 
     it('getVideoByVideoId uses an ids query and returns null when missing', async () => {
       expect(await getVideoByVideoId('abc')).toBeNull();
-      const request = at(mockClient.search.mock.calls, 0)[0];
-      expect(request.query).toEqual({ ids: { values: ['abc'] } });
-      expect(request.size).toBe(1);
-      expect(request.index).toEqual([ALIAS_A, ALIAS_B]);
+      const { header, body } = sentSearch();
+      expect(body.query).toEqual({ ids: { values: ['abc'] } });
+      expect(body.size).toBe(1);
+      expect(header).toEqual({ index: [ALIAS_A, ALIAS_B], ignore_unavailable: true });
     });
 
     it('getVideoByBaseName uses a term query', async () => {
-      mockClient.search.mockResolvedValue({
+      answerSearch({
         hits: { hits: [{ _id: 'x', _source: toDocument(video()) }] },
       });
 
@@ -1232,7 +1423,7 @@ describe('elasticsearchService', () => {
 
       expect(found?.baseName).toBe('20240101_Video');
       expect(found?.comments).toBeUndefined();
-      expect(at(mockClient.search.mock.calls, 0)[0].query).toEqual({
+      expect(sentSearch().body.query).toEqual({
         term: { baseName: '20240101_Video' },
       });
     });
@@ -1240,7 +1431,7 @@ describe('elasticsearchService', () => {
     it('getVideoByFilePath matches video or thumbnail file names', async () => {
       await getVideoByFilePath('a.mp4');
 
-      expect(at(mockClient.search.mock.calls, 0)[0].query).toEqual({
+      expect(sentSearch().body.query).toEqual({
         bool: {
           should: [{ term: { videoPath: 'a.mp4' } }, { term: { thumbnailPath: 'a.mp4' } }],
           minimum_should_match: 1,

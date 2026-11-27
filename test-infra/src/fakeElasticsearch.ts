@@ -51,12 +51,37 @@ import type { AddressInfo } from 'node:net';
  *   on a field that is not a keyword ("answers a query shape it does not model
  *   with a 500 that names it"). An index with no documents never runs its
  *   query, so there the refusal waits for the first document.
+ * - `http.max_initial_line_length`: a request whose first line passes 4096
+ *   bytes gets the cluster's 400 before any index is read ("refuses a request
+ *   line past 4 KB the way Elasticsearch does"). An alias list in a _search
+ *   URL crosses it at 156 folders, which is why the service searches through
+ *   _msearch.
+ * - `_msearch` answers each header and body pair with its own response and
+ *   `status`, and a refused search fails its own item inside a 200 ("answers
+ *   _msearch with one response per search"). A header other than the one the
+ *   service sends, an index list with ignore_unavailable true and optionally
+ *   allow_partial_search_results and search_type, answers 500 ("takes the
+ *   _msearch header the service sends and refuses any other with a 500 that
+ *   names it"). search_type is accepted and ignored: the fake's score counts
+ *   matches with no IDF, so dfs_query_then_fetch has nothing to change, and
+ *   only the real-ES suite shows what it does to a ranking.
+ * - `index.highlight.max_analyzed_offset`, one shard per index as in the
+ *   service's indices, and `_shards` in every answer. A page hit whose
+ *   highlighted field passes 1,000,000 characters fails its index's shard in
+ *   the fetch phase, unless the request's own max_analyzed_offset sits at or
+ *   below that limit and truncates the field. The failed shard's hits leave
+ *   the page and stay in the total; with every shard failed, or partial
+ *   results refused, the search answers 400 ("fails the shard of a hit whose
+ *   highlighted field passes the analyzed-offset limit, unless the request
+ *   caps it", "refuses a page with a failed shard when partial results are
+ *   not allowed").
  *
- * Search still implements only the query shapes the service sends
- * (match_all, multi_match over SEARCH_FIELDS, bool must/filter/should, term on
- * keyword fields, ids, uploadDate/viewCount/likeCount sorts, highlight
- * fragments with the service's control chars). Everything else the real-ES CI
- * integration suite covers against an actual cluster.
+ * Search, over a _search URL or an _msearch pair, still implements only the
+ * query shapes the service sends (match_all, multi_match over SEARCH_FIELDS,
+ * bool must/filter/should, term on keyword fields, ids,
+ * uploadDate/viewCount/likeCount sorts, highlight fragments with the service's
+ * control chars). Everything else the real-ES CI integration suite covers
+ * against an actual cluster.
  */
 
 interface DocumentEntry {
@@ -67,6 +92,8 @@ interface DocumentEntry {
 }
 
 interface IndexEntry {
+  /** The physical index name, which a shard failure reports */
+  name: string;
   documents: Map<string, DocumentEntry>;
   /** The last mapping body PUT with the index (settings/mappings kept verbatim) */
   mappings: Record<string, unknown>;
@@ -81,6 +108,7 @@ interface SearchBody {
     fields?: Record<string, unknown>;
     pre_tags?: string[];
     post_tags?: string[];
+    max_analyzed_offset?: number;
   };
   _source?: { excludes?: string[] } | boolean;
 }
@@ -115,25 +143,150 @@ const ASCII_FOLD_SPECIALS: Record<string, string> = {
  */
 const RESULT_WINDOW = 10_000;
 
+/**
+ * The cluster's default `http.max_initial_line_length`, 4kb, which is a static
+ * setting. Hardcoded for the reason RESULT_WINDOW is.
+ */
+const MAX_INITIAL_LINE_LENGTH = 4096;
+
+/** The 400 body a cluster answers a request line past that length with */
+function tooLongLineError(): Record<string, unknown> {
+  const cause = {
+    type: 'too_long_http_line_exception',
+    reason: `An HTTP line is larger than ${MAX_INITIAL_LINE_LENGTH} bytes.`,
+  };
+  return { error: { root_cause: [cause], ...cause }, status: 400 };
+}
+
+/** One search of an _msearch body: its header line and its body line */
+interface MsearchPair {
+  header: Record<string, unknown>;
+  body: SearchBody;
+}
+
+/**
+ * The msearch header keys the fake models: the ones the service sends. Its
+ * score has no IDF, so search_type, which only decides where a cluster takes
+ * its term statistics from, changes nothing here and is read as a no-op.
+ */
+const MSEARCH_HEADER_KEYS = new Set(['index', 'ignore_unavailable', 'allow_partial_search_results', 'search_type']);
+
+/** An _msearch NDJSON body, read into its header and body pairs */
+function msearchPairs(rawBody: string): MsearchPair[] {
+  const lines = rawBody.split('\n').filter((line) => line.trim().length > 0);
+  if (lines.length % 2 !== 0) {
+    throw new Error('an _msearch body needs a body line after every header line');
+  }
+  const pairs: MsearchPair[] = [];
+  for (let i = 0; i < lines.length; i += 2) {
+    pairs.push({
+      header: JSON.parse(lines[i] ?? '{}') as Record<string, unknown>,
+      body: JSON.parse(lines[i + 1] ?? '{}') as SearchBody,
+    });
+  }
+  return pairs;
+}
+
+/**
+ * The names one msearch header targets. Only the header the service sends is
+ * modelled: an index name or a list of them, with ignore_unavailable true, so
+ * a name nothing holds is skipped the way a cluster skips it. Without an index
+ * a cluster searches every index, without ignore_unavailable it fails on a
+ * missing name, and any other key may route or score the search differently,
+ * so each of those is refused rather than guessed.
+ */
+function msearchTargets(header: Record<string, unknown>): string[] {
+  const unmodelled = Object.keys(header).find((key) => !MSEARCH_HEADER_KEYS.has(key));
+  if (unmodelled !== undefined) {
+    throw new Error(`the msearch header key ${unmodelled} is not modelled`);
+  }
+  const names = typeof header.index === 'string' ? header.index.split(',') : header.index;
+  if (!Array.isArray(names) || names.length === 0 || names.some((name) => typeof name !== 'string' || !name.trim())) {
+    throw new Error('an msearch header without an index is not modelled');
+  }
+  if (header.ignore_unavailable !== true) {
+    throw new Error('an msearch header without ignore_unavailable: true is not modelled');
+  }
+  return names as string[];
+}
+
+/** One failed shard, as a search answer reports it */
+interface ShardFailure {
+  index: string;
+  reason: { type: string; reason: string };
+}
+
+/** The 400 body a cluster answers a search with when its shards failed */
+function searchPhaseError(phase: string, reason: string, failures: ShardFailure[]): Record<string, unknown> {
+  return {
+    error: {
+      root_cause: failures.slice(0, 1).map((failure) => failure.reason),
+      type: 'search_phase_execution_exception',
+      reason,
+      phase,
+      grouped: true,
+      failed_shards: failures.map((failure) => ({ shard: 0, node: 'fake-node', ...failure })),
+    },
+    status: 400,
+  };
+}
+
 /** The 400 body a real cluster answers a page past the window with */
 function resultWindowError(target: string, requested: number): Record<string, unknown> {
   const reason =
     `Result window is too large, from + size must be less than or equal to: [${RESULT_WINDOW}] but was [${requested}]. ` +
     'See the scroll api for a more efficient way to request large data sets. This limit can be set by changing the ' +
     '[index.max_result_window] index level setting.';
+  return searchPhaseError('query', 'all shards failed', [
+    { index: target, reason: { type: 'illegal_argument_exception', reason } },
+  ]);
+}
+
+/**
+ * The cluster's default `index.highlight.max_analyzed_offset`: how many
+ * characters of one field the highlighter analyzes. Hardcoded like
+ * RESULT_WINDOW.
+ */
+const INDEX_MAX_ANALYZED_OFFSET = 1_000_000;
+
+/** The shard failure a cluster's highlighter reports for a field past that limit */
+function analyzedOffsetFailure(index: string, field: string, length: number): ShardFailure {
+  const reason =
+    `The length [${length}] of field [${field}] in doc[0]/index[${index}] exceeds the ` +
+    `[index.highlight.max_analyzed_offset] limit [${INDEX_MAX_ANALYZED_OFFSET}]. To avoid this error, set the ` +
+    `query parameter [max_analyzed_offset] to a value less than index setting [${INDEX_MAX_ANALYZED_OFFSET}] and ` +
+    'this will tolerate long field values by truncating them.';
+  return { index, reason: { type: 'illegal_argument_exception', reason } };
+}
+
+/**
+ * How much of a field the highlighter reads for this request, or null when a
+ * field past the index limit fails its shard instead. A request cap at or
+ * below that limit truncates the field; a missing or larger one does not, the
+ * index setting prevails and the field fails the fetch.
+ */
+function analyzedLength(highlight: NonNullable<SearchBody['highlight']>): number | null {
+  const requested = highlight.max_analyzed_offset;
+  return requested !== undefined && requested <= INDEX_MAX_ANALYZED_OFFSET ? requested : null;
+}
+
+/** The `_shards` block of a search answer, failures listed when there are any */
+function shardStatistics(total: number, failures: ShardFailure[]): Record<string, unknown> {
   return {
-    error: {
-      root_cause: [{ type: 'illegal_argument_exception', reason }],
-      type: 'search_phase_execution_exception',
-      reason: 'all shards failed',
-      phase: 'query',
-      grouped: true,
-      failed_shards: [
-        { shard: 0, index: target, node: 'fake-node', reason: { type: 'illegal_argument_exception', reason } },
-      ],
-    },
-    status: 400,
+    total,
+    successful: total - failures.length,
+    skipped: 0,
+    failed: failures.length,
+    ...(failures.length > 0
+      ? { failures: failures.map((failure) => ({ shard: 0, node: 'fake-node', ...failure })) }
+      : {}),
   };
+}
+
+/** One search's answer, before a route writes it out: a _search body or an _msearch item */
+interface SearchAnswer {
+  status: number;
+  body: Record<string, unknown>;
 }
 
 /**
@@ -310,9 +463,9 @@ function holdsTerm(text: string, term: string, budget: number): boolean {
   return termsOf(text).some((token) => withinEditDistance(token, term, budget));
 }
 
-function readJsonBody(req: IncomingMessage, rawBody: string): unknown {
+function readJsonBody(req: IncomingMessage, rawBody: string, pathname: string): unknown {
   if (req.headers['content-type']?.includes('ndjson')) {
-    return rawBody;
+    return pathname === '/_msearch' ? msearchPairs(rawBody) : rawBody;
   }
   if (!rawBody) {
     return {};
@@ -341,23 +494,52 @@ export interface FakeEsRequest {
   method: string;
   /** pathname plus query string, as received */
   path: string;
-  /** Parsed JSON body when the request carried one */
+  /** Parsed JSON body when the request carried one; an _msearch body as its header and body pairs */
   body?: unknown;
+}
+
+/** What holdRequestsMatching hands back */
+export interface HeldRequests {
+  /** Settles when the first matching request arrives */
+  reached: Promise<void>;
+  /** Settles when a held request's connection closes before the fake answered it */
+  abandoned: Promise<void>;
+  /** Answer the held requests, and stop holding new ones */
+  release: () => void;
+}
+
+/** One search the fake ran, whether a _search URL or an _msearch pair asked for it */
+export interface FakeEsSearch {
+  /** The index or alias names the search targeted, in request order */
+  index: string[];
+  /** The search body as received: query, sort, paging, highlight, aggregations */
+  body: Record<string, unknown>;
 }
 
 export class FakeElasticsearch {
   private readonly indices = new Map<string, IndexEntry>();
   private readonly aliases = new Map<string, string>();
   private readonly requests: FakeEsRequest[] = [];
+  private readonly searches: FakeEsSearch[] = [];
   private readonly faults: Array<{ match: string | RegExp; status: number }> = [];
-  private readonly holds: Array<{ match: string | RegExp; arrive: () => void; released: Promise<void> }> = [];
+  private readonly holds: Array<{
+    match: string | RegExp;
+    arrive: () => void;
+    abandon: () => void;
+    released: Promise<void>;
+  }> = [];
   private readonly releases = new Set<() => void>();
   private server: Server | null = null;
   private port: number | null = null;
 
-  /** Every request the app sent, in order (assertions on search bodies) */
+  /** Every request the app sent, in order */
   get requestLog(): FakeEsRequest[] {
     return [...this.requests];
+  }
+
+  /** Every search the fake ran, in order, a refused page included (assertions on search bodies) */
+  get searchLog(): FakeEsSearch[] {
+    return [...this.searches];
   }
 
   /** Answer requests whose path contains the substring with this status */
@@ -372,19 +554,25 @@ export class FakeElasticsearch {
   /**
    * Hold the requests whose path matches until `release` runs, so a test can
    * act while one step of a longer flow waits (a reindex's bulk write).
-   * `reached` settles when the first such request arrives. `stop` releases
-   * every hold, so a failed assertion cannot leave a request hanging.
+   * `reached` settles when the first such request arrives, and `abandoned`
+   * when a held request's connection closes before the fake answered it, the
+   * way a cluster sees a client that gave up. `stop` releases every hold, so a
+   * failed assertion cannot leave a request hanging.
    */
-  holdRequestsMatching(match: string | RegExp): { reached: Promise<void>; release: () => void } {
+  holdRequestsMatching(match: string | RegExp): HeldRequests {
     let arrive: () => void = () => undefined;
+    let abandon: () => void = () => undefined;
     let open: () => void = () => undefined;
     const reached = new Promise<void>((resolve) => {
       arrive = resolve;
     });
+    const abandoned = new Promise<void>((resolve) => {
+      abandon = resolve;
+    });
     const released = new Promise<void>((resolve) => {
       open = resolve;
     });
-    const hold = { match, arrive, released };
+    const hold = { match, arrive, abandon, released };
     this.holds.push(hold);
     const release = (): void => {
       this.releases.delete(release);
@@ -395,7 +583,7 @@ export class FakeElasticsearch {
       open();
     };
     this.releases.add(release);
-    return { reached, release };
+    return { reached, abandoned, release };
   }
 
   /** The physical index an alias currently points at, if any */
@@ -413,12 +601,10 @@ export class FakeElasticsearch {
     return this.indices.get(this.aliases.get(name) ?? name);
   }
 
-  private resolveTargets(target: string): IndexEntry[] {
+  /** The physical indices behind index, alias and wildcard names, in that order */
+  private resolveTargets(names: readonly string[]): IndexEntry[] {
     const entries: IndexEntry[] = [];
-    for (const name of target
-      .split(',')
-      .map((part) => part.trim())
-      .filter(Boolean)) {
+    for (const name of names.map((part) => part.trim()).filter(Boolean)) {
       if (name.includes('*')) {
         const pattern = new RegExp(`^${name.replace(/\*/g, '.*')}$`);
         for (const [indexName, entry] of this.indices) {
@@ -496,7 +682,7 @@ export class FakeElasticsearch {
     const rawBody = Buffer.concat(chunks).toString('utf-8');
 
     try {
-      const body = readJsonBody(req, rawBody);
+      const body = readJsonBody(req, rawBody, url.pathname);
       const [path, suffix] = splitPath(url.pathname);
       const name = suffix !== undefined ? decodeURIComponent(path) : decodeURIComponent(url.pathname.slice(1));
 
@@ -506,11 +692,25 @@ export class FakeElasticsearch {
         ...(body === undefined ? {} : { body }),
       });
 
+      // Netty refuses the line before Elasticsearch routes anything, so no
+      // hold or fault applies to it either
+      if (Buffer.byteLength(`${req.method} ${req.url} HTTP/${req.httpVersion}`) > MAX_INITIAL_LINE_LENGTH) {
+        this.json(res, 400, tooLongLineError());
+        return;
+      }
+
       const target = url.pathname + url.search;
       const hold = this.holds.find((entry) =>
         typeof entry.match === 'string' ? target.includes(entry.match) : entry.match.test(target),
       );
       if (hold) {
+        // The response's close, not the request's: the request closes once its
+        // body is read, the response when the client drops the connection
+        res.once('close', () => {
+          if (!res.writableFinished) {
+            hold.abandon();
+          }
+        });
         hold.arrive();
         await hold.released;
       }
@@ -561,8 +761,12 @@ export class FakeElasticsearch {
     if (this.handleDataRoutes(req, res, url, suffix, body)) {
       return true;
     }
+    if (url.pathname === '/_msearch') {
+      this.msearch(res, body as MsearchPair[]);
+      return true;
+    }
     if (suffix === '_search') {
-      this.search(res, name, body as SearchBody);
+      this.search(res, name, body as SearchBody, url.searchParams);
       return true;
     }
     if (suffix === '_count') {
@@ -692,7 +896,7 @@ export class FakeElasticsearch {
       return;
     }
     const mappings = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
-    this.indices.set(name, { documents: new Map(), mappings });
+    this.indices.set(name, { name, documents: new Map(), mappings });
     this.json(res, 200, { acknowledged: true, index: name });
   }
 
@@ -805,7 +1009,8 @@ export class FakeElasticsearch {
   }
 
   private count(res: ServerResponse, target: string): void {
-    this.json(res, 200, { count: this.resolveTargets(target).reduce((sum, entry) => sum + entry.documents.size, 0) });
+    const entries = this.resolveTargets(target.split(','));
+    this.json(res, 200, { count: entries.reduce((sum, entry) => sum + entry.documents.size, 0) });
   }
 
   /** PUT /:index/_doc/:id — index one document through an index or alias */
@@ -827,7 +1032,7 @@ export class FakeElasticsearch {
   private deleteByQuery(res: ServerResponse, target: string, body: unknown): void {
     const query = (body ?? {}) as { query?: Record<string, unknown> };
     let deleted = 0;
-    for (const entry of this.resolveTargets(target)) {
+    for (const entry of this.resolveTargets(target.split(','))) {
       if (query.query === undefined) {
         deleted += entry.documents.size;
         entry.documents.clear();
@@ -843,39 +1048,103 @@ export class FakeElasticsearch {
     this.json(res, 200, { deleted });
   }
 
-  private search(res: ServerResponse, target: string, body: SearchBody): void {
+  /** POST /:target/_search: the names come from the URL, comma-separated, the flags from its query string */
+  private search(res: ServerResponse, target: string, body: SearchBody, params: URLSearchParams): void {
+    const answer = this.runSearch(target.split(','), body, params.get('allow_partial_search_results') !== 'false');
+    this.json(res, answer.status, answer.body);
+  }
+
+  /**
+   * POST /_msearch: one answer per header and body pair, under `responses`. A
+   * search the cluster refuses fails its own item, `{ error, status }`, while
+   * the request itself answers 200, which is how a cluster answers too.
+   */
+  private msearch(res: ServerResponse, pairs: unknown): void {
+    if (!Array.isArray(pairs)) {
+      throw new Error('an _msearch body has to be NDJSON');
+    }
+    const responses = (pairs as MsearchPair[]).map(({ header, body }) => {
+      const answer = this.runSearch(msearchTargets(header), body, header.allow_partial_search_results !== false);
+      return { ...answer.body, status: answer.status };
+    });
+    this.json(res, 200, { took: 0, responses });
+  }
+
+  /**
+   * One search over the named indices and aliases, as the status and body a
+   * cluster answers. Every physical index is one shard, as the service's are:
+   * the query phase ranks every match, then the fetch phase may fail a shard
+   * over one of its page hits (fetchFailures). A failed shard's hits leave the
+   * page and still count in the total of a 200; when every shard failed, or
+   * the request refused partial results, the search answers 400.
+   */
+  private runSearch(names: string[], body: SearchBody, allowPartial: boolean): SearchAnswer {
+    this.searches.push({ index: names, body: body as Record<string, unknown> });
     const from = body.from ?? 0;
     const size = body.size ?? 10;
     if (from + size > RESULT_WINDOW) {
-      this.json(res, 400, resultWindowError(target, from + size));
-      return;
+      return { status: 400, body: resultWindowError(names.join(','), from + size) };
     }
-    const sources = this.resolveTargets(target).flatMap((entry) => [...entry.documents.values()]);
-    const matches = sources.filter((doc) => this.matches(doc, body.query ?? {}));
-    const scored = matches
-      .map((doc) => ({ doc, score: this.score(doc, body.query ?? {}) }))
+    const query = body.query ?? {};
+    const shards = [...new Set(this.resolveTargets(names))];
+    const scored = shards
+      .flatMap((shard) => [...shard.documents.values()].map((doc) => ({ doc, shard })))
+      .filter(({ doc }) => this.matches(doc, query))
+      .map((hit) => ({ ...hit, score: this.score(hit.doc, query) }))
       .sort((a, b) => this.compare(a, b, body.sort));
-    const page = scored.slice(from, from + size);
+    const failures = this.fetchFailures(scored.slice(from, from + size), body);
+    if (failures.length > 0 && (failures.length === shards.length || !allowPartial)) {
+      const reason = failures.length === shards.length ? 'all shards failed' : 'Partial shards failure';
+      return { status: 400, body: searchPhaseError('fetch', reason, failures) };
+    }
+    const failed = new Set(failures.map((failure) => failure.index));
+    const page = scored.slice(from, from + size).filter(({ shard }) => !failed.has(shard.name));
     const excludes = new Set<string>(
       body._source && typeof body._source === 'object' ? (body._source.excludes ?? []) : [],
     );
 
-    this.json(res, 200, {
-      took: 0,
-      hits: {
-        total: { value: scored.length, relation: 'eq' },
-        hits: page.map(({ doc, score }) => ({
-          _id: doc.id,
-          _score: score,
-          _source: Object.fromEntries(Object.entries(doc.source).filter(([key]) => !excludes.has(key))),
-          ...this.highlight(doc, body),
-        })),
+    return {
+      status: 200,
+      body: {
+        took: 0,
+        _shards: shardStatistics(shards.length, failures),
+        hits: {
+          total: { value: scored.length, relation: 'eq' },
+          hits: page.map(({ doc, score }) => ({
+            _id: doc.id,
+            _score: score,
+            _source: Object.fromEntries(Object.entries(doc.source).filter(([key]) => !excludes.has(key))),
+            ...this.highlight(doc, body),
+          })),
+        },
+        ...this.aggregations(
+          scored.map(({ doc }) => doc),
+          body,
+        ),
       },
-      ...this.aggregations(
-        scored.map(({ doc }) => doc),
-        body,
-      ),
-    });
+    };
+  }
+
+  /**
+   * The shards whose fetch phase fails for this page. The highlighter refuses
+   * a field longer than index.highlight.max_analyzed_offset unless the request
+   * caps it at that limit or below, and one refused field fails the fetch of
+   * its whole shard, the other page hits of that shard included.
+   */
+  private fetchFailures(page: Array<{ doc: DocumentEntry; shard: IndexEntry }>, body: SearchBody): ShardFailure[] {
+    const highlight = body.highlight;
+    if (!highlight || analyzedLength(highlight) !== null) {
+      return [];
+    }
+    const fields = Object.keys(highlight.fields ?? {}).map((spec) => this.fieldKey(spec));
+    const failures = new Map<string, ShardFailure>();
+    for (const { doc, shard } of page) {
+      const tooLong = fields.find((field) => String(doc.source[field] ?? '').length > INDEX_MAX_ANALYZED_OFFSET);
+      if (tooLong !== undefined && !failures.has(shard.name)) {
+        failures.set(shard.name, analyzedOffsetFailure(shard.name, tooLong, String(doc.source[tooLong]).length));
+      }
+    }
+    return [...failures.values()];
   }
 
   /** Minimal terms aggregations over the matched documents (channel facets) */
@@ -1095,8 +1364,23 @@ export class FakeElasticsearch {
     return (field.split('^')[0] ?? field).replace(/\.text$/, '').replace(/\.keyword$/, '');
   }
 
+  /**
+   * A document's score: for a multi_match, the field weights of the terms it
+   * holds, with no IDF; for a bool query, the sum over the must clauses and
+   * the should clauses it matches, the way a cluster adds them up, while a
+   * filter narrows and scores nothing. Every other clause scores 1. The page
+   * search sends its phrase as a bool of two multi_match clauses, which the
+   * fake used to score 1 throughout, so no field weight decided a page.
+   */
   private score(doc: DocumentEntry, query: Record<string, unknown>): number {
-    const multi = (query as { multi_match?: { query?: string; fields?: string[] } }).multi_match;
+    const { multi_match: multi, bool } = query as {
+      multi_match?: { query?: string; fields?: string[] };
+      bool?: BoolQuery;
+    };
+    if (bool) {
+      const scoring = [...(bool.must ?? []), ...(bool.should ?? []).filter((clause) => this.matches(doc, clause))];
+      return scoring.reduce((sum, clause) => sum + this.score(doc, clause), 0);
+    }
     if (!multi) {
       return 1;
     }
@@ -1144,28 +1428,53 @@ export class FakeElasticsearch {
     if (!highlight) {
       return {};
     }
-    const multi = (body.query as { multi_match?: { query?: string } }).multi_match;
-    const terms = termsOf(multi?.query ?? '');
+    const terms = phraseTermsOf(body.query);
     if (terms.length === 0) {
       return {};
     }
-    const open = highlight.pre_tags?.[0] ?? '';
-    const close = highlight.post_tags?.[0] ?? '';
+    const tags = { open: highlight.pre_tags?.[0] ?? '', close: highlight.post_tags?.[0] ?? '' };
+    // A capped request analyzes only the start of each field, so a match past
+    // the cap leaves the hit without a fragment from that field
+    const limit = analyzedLength(highlight);
     const result: Record<string, string[]> = {};
     for (const fieldSpec of Object.keys(highlight.fields ?? {})) {
       const field = this.fieldKey(fieldSpec);
-      const text = String(doc.source[field] ?? '');
-      let marked = text;
-      for (const term of terms) {
-        const index = fold(text).indexOf(term);
-        if (index >= 0) {
-          marked = `${text.slice(0, index)}${open}${text.slice(index, index + term.length)}${close}${text.slice(index + term.length)}`;
-        }
-      }
+      const whole = String(doc.source[field] ?? '');
+      const text = limit === null ? whole : whole.slice(0, limit);
+      const marked = markTerms(text, terms, tags);
       if (marked !== text) {
         result[field] = [marked];
       }
     }
     return { highlight: result };
   }
+}
+
+/**
+ * The words a query highlights: those of its multi_match clauses, at any depth
+ * of bool must and should. The page search sends its phrase as a bool of two
+ * multi_match clauses, nested in a must next to a channel filter, and a
+ * cluster highlights their words as it would a bare multi_match.
+ */
+function phraseTermsOf(query: unknown): string[] {
+  const { multi_match: multi, bool } = (query ?? {}) as { multi_match?: { query?: string }; bool?: BoolQuery };
+  if (multi) {
+    return termsOf(multi.query ?? '');
+  }
+  if (bool) {
+    return [...new Set([...(bool.must ?? []), ...(bool.should ?? [])].flatMap((clause) => phraseTermsOf(clause)))];
+  }
+  return [];
+}
+
+/** The text with one occurrence of each query term wrapped in the highlight tags */
+function markTerms(text: string, terms: string[], tags: { open: string; close: string }): string {
+  let marked = text;
+  for (const term of terms) {
+    const index = fold(text).indexOf(term);
+    if (index >= 0) {
+      marked = `${text.slice(0, index)}${tags.open}${text.slice(index, index + term.length)}${tags.close}${text.slice(index + term.length)}`;
+    }
+  }
+  return marked;
 }

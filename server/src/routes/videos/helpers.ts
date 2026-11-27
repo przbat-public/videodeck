@@ -1,4 +1,5 @@
 import type { SortOption, VideoListItem } from '@videodeck/shared/api';
+import { defaultSortFor } from '@videodeck/shared/search';
 import { getVideoByBaseName, getVideoByVideoId } from '../../services/elasticsearchService';
 
 /**
@@ -24,9 +25,12 @@ function isSortOption(value: string): value is SortOption {
   return (SORT_OPTIONS as readonly string[]).includes(value);
 }
 
-/** `?sort=` value; unknown or missing values fall back to the default */
-export function parseSortOption(value: unknown): SortOption {
-  return typeof value === 'string' && isSortOption(value) ? value : 'date-desc';
+/**
+ * `?sort=` value; an unknown or missing one falls back to the default for the
+ * phrase it came with: relevance for a phrase, newest first without one
+ */
+export function parseSortOption(value: unknown, query: string | undefined): SortOption {
+  return typeof value === 'string' && isSortOption(value) ? value : defaultSortFor(query);
 }
 
 /** `?offset=`/`?limit=` values; anything malformed falls back to the default */

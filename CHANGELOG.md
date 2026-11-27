@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An abandoned search stops on the cluster too.** Typing a new phrase
+  aborted the browser's request, but the server kept waiting on
+  Elasticsearch, which went on scoring and highlighting a page nobody would
+  read. The server now drops its own request once the client disconnects,
+  and Elasticsearch cancels the search along with it
+- **One huge comment section no longer empties its folder from a search.**
+  Past a million characters the highlighter failed the shard holding that
+  video, so its neighbours vanished from the page while the total still
+  counted them, and searching that folder's category alone answered 500.
+  Snippets now come from the first 100,000 characters of a field. A folder
+  that cannot answer for another reason is left off the page as before, and
+  the server log now names it
+- **Libraries past 155 folders can search again.** Each read put every
+  folder's alias into its URL, and from folder 156 on that request line
+  outgrew the 4 KB Elasticsearch accepts, so searching, opening a video and
+  listing channels all failed with a 500. The alias list now travels inside
+  an `_msearch` body, whatever the folder count
 - **A rate-limited summary waits as long as the provider asks.** The OpenAI
   SDK hands a 429 its response's `Headers` object, which the retry read as a
   plain record and never found `Retry-After` in, so every throttled request
@@ -89,6 +106,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A typed phrase ranks by relevance unless you pick a sort.** Results
+  stayed newest first, so a recent video sharing one common word with the
+  phrase in a single comment outranked the video the phrase named in its
+  title. With a phrase and no sort chosen, results now follow the score,
+  computed over the statistics of every folder at once, and the word as you
+  typed it weighs more than a near spelling; clearing the phrase brings back
+  newest first, and a sort you picked survives both. Old `?q=` bookmarks
+  open by relevance
+- **Search ignores file names.** A stem yt-dlp writes is one token to the
+  analyzer and never matched, while a file named by hand split into words
+  that weighed more than its title. Titles carry those words; a video
+  without one borrows its file name's when indexed. Older indices keep the
+  unused subfield until their next reindex
 - **Test runs never read `server/.env`.** Only the server's entry point
   loads it, ahead of every import, where `config.ts` used to load it for
   anything that imported the app. A remote cluster for the server's
@@ -113,6 +143,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Paste a YouTube link or id into search to check whether it is
+  archived.** A watch, share or Shorts link is looked up by id within the
+  current filters: the video comes back, or an empty list if the library
+  lacks it. A bare 11-character id finds its video the same way, and one the
+  library lacks is searched as text, like any other word
 - **Videos YouTube will not hand over stop filling the queue with errors**: a
   `download` for a video the catalog reports as `subscriber_only` or
   `premium_only` is skipped before a job exists, and a failure that waiting

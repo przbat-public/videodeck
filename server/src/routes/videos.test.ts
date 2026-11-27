@@ -137,9 +137,10 @@ describe('videos router', () => {
         videos: mockVideos,
         totalCount: 100,
       });
-      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'relevance', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -151,10 +152,11 @@ describe('videos router', () => {
       );
 
       expect(response.status).toBe(200);
-      expect(mockedGetVideos).toHaveBeenCalledWith('x', 'date-desc', undefined, {
+      expect(mockedGetVideos).toHaveBeenCalledWith('x', 'relevance', undefined, {
         offset: 0,
         limit: 100,
         channel: 'Jordan B Peterson',
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -221,16 +223,25 @@ describe('videos router', () => {
       expect(response.body).toEqual({ error: 'Internal server error' });
     });
 
-    it('should use default sort when sort parameter is not provided', async () => {
+    it('ranks a phrase by relevance and a blank one newest first when no sort is given', async () => {
       const mockVideos: VideoListItem[] = [];
       mockedGetVideos.mockResolvedValue({ videos: mockVideos, total: 0 });
 
       const response = await request(app).get('/api/videos/search?q=test');
 
       expect(response.status).toBe(200);
-      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'relevance', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
+      });
+
+      // Whitespace is no phrase: the list stays newest first
+      await request(app).get('/api/videos/search?q=%20%20').expect(200);
+      expect(mockedGetVideos).toHaveBeenLastCalledWith('  ', 'date-desc', undefined, {
+        offset: 0,
+        limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -244,6 +255,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith('test', 'views-desc', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -256,6 +268,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith('test', 'relevance', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -264,9 +277,10 @@ describe('videos router', () => {
 
       await request(app).get('/api/videos/search?q=test&offset=200&limit=25');
 
-      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'relevance', undefined, {
         offset: 200,
         limit: 25,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -275,9 +289,10 @@ describe('videos router', () => {
 
       await request(app).get('/api/videos/search?q=test&offset=abc&limit=-5');
 
-      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', undefined, {
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'relevance', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -285,15 +300,17 @@ describe('videos router', () => {
       mockedGetVideos.mockResolvedValue({ videos: [], total: 0 });
 
       await request(app).get('/api/videos/search?q=test&sort=title-asc');
-      expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc', undefined, {
+      expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'relevance', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
 
       await request(app).get('/api/videos/search?q=test&sort=views-desc&sort=likes-asc');
-      expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'date-desc', undefined, {
+      expect(mockedGetVideos).toHaveBeenLastCalledWith('test', 'relevance', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -308,6 +325,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -342,9 +360,10 @@ describe('videos router', () => {
 
       expect(response.status).toBe(200);
       expect(mockedGetFolderPathsForCategory).toHaveBeenCalledWith('fpv');
-      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'date-desc', ['/test/videos'], {
+      expect(mockedGetVideos).toHaveBeenCalledWith('test', 'relevance', ['/test/videos'], {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
       expect(response.body.totalCount).toBe(12);
     });
@@ -360,6 +379,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', [], {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
 
@@ -372,6 +392,7 @@ describe('videos router', () => {
       expect(mockedGetVideos).toHaveBeenCalledWith(undefined, 'date-desc', undefined, {
         offset: 0,
         limit: 100,
+        signal: expect.any(AbortSignal),
       });
     });
   });

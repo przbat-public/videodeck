@@ -238,8 +238,7 @@ describe('deep server integration (real app, fake external world)', () => {
     // window ends rather than guessing from an empty page
     expect(response.body.totalCount).toBe(1);
 
-    const searches = env.fakeEs.requestLog.filter((request) => request.path.includes('_search'));
-    const lastBody = searches.at(-1)?.body as { from?: number; size?: number };
+    const lastBody = env.fakeEs.searchLog.at(-1)?.body as { from?: number; size?: number };
     expect((lastBody.from ?? 0) + (lastBody.size ?? 0)).toBeLessThanOrEqual(10_000);
   });
 
@@ -256,9 +255,99 @@ describe('deep server integration (real app, fake external world)', () => {
 
     // A size-0 query is the one shape a real cluster still answers there, and
     // it keeps the total honest instead of guessing
-    const searches = env.fakeEs.requestLog.filter((request) => request.path.includes('_search'));
-    const lastBody = searches.at(-1)?.body as { size?: number } | undefined;
+    const lastBody = env.fakeEs.searchLog.at(-1)?.body as { size?: number } | undefined;
     expect(lastBody?.size).toBe(0);
+  });
+
+  it('serves every folder of a typed search when one video carries more comment text than the highlighter analyzes', async () => {
+    // One comment of 1,100,000 characters, past the 1,000,000 a cluster's
+    // highlighter analyzes by default: that hit failed the fetch of its
+    // folder's whole shard, so the folder's videos left the page
+    const heavyComment = { id: 'Ugx-heavy', author: 'Viewer', text: 'komentarz '.repeat(110_000), like_count: 0 };
+    await env.seedFolder('highlight-heavy', {
+      ...videoFiles('heavy000001', 'Film z komentarzami', { comments: [heavyComment] }),
+      ...videoFiles('heavy000002', 'Film bez komentarzy'),
+      'config.json': folderConfig('https://www.youtube.com/@heavy', 'heavy'),
+    });
+    await env.seedFolder('highlight-light', {
+      ...videoFiles('light000001', 'Film z innego folderu'),
+      'config.json': folderConfig('https://www.youtube.com/@light', 'light'),
+    });
+    env.setFolders('highlight-heavy', 'highlight-light');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const both = await env.agent.get('/api/videos/search?q=film').expect(200);
+    expect(both.body.totalCount).toBe(3);
+    expect((both.body.videos as Array<{ title: string }>).map((video) => video.title).sort()).toEqual([
+      'Film bez komentarzy',
+      'Film z innego folderu',
+      'Film z komentarzami',
+    ]);
+
+    // The heavy folder alone is one shard, where the same failure was a 500
+    const heavy = await env.agent.get('/api/videos/search?q=film&category=heavy').expect(200);
+    expect(heavy.body.totalCount).toBe(2);
+    expect(heavy.body.videos).toHaveLength(2);
+  });
+
+  it('finds the video a pasted link or bare id names, and nothing for a link the library lacks', async () => {
+    // Old-style stems, which hold no id: the text search had nothing to find
+    // the id in, and a link matched the newer video through "https", "watch"
+    // and "v" in its description
+    await env.seedFolder('pasted-links', {
+      ...videoFiles('dQw4w9WgXcQ', 'Stary klip', { upload_date: '20200101' }),
+      ...videoFiles('newer000001', 'Nowszy klip', {
+        upload_date: '20250101',
+        description: 'Polecam https://www.youtube.com/watch?v=otherVideo1',
+      }),
+    });
+    env.setFolders('pasted-links');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const found = async (q: string) => {
+      const response = await env.agent.get('/api/videos/search').query({ q }).expect(200);
+      const body = response.body as { videos: Array<{ videoId?: string }>; totalCount: number };
+      return { ids: body.videos.map((video) => video.videoId), total: body.totalCount };
+    };
+
+    for (const q of [
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      'https://youtu.be/dQw4w9WgXcQ?si=share',
+      'dQw4w9WgXcQ',
+    ]) {
+      expect(await found(q), q).toEqual({ ids: ['dQw4w9WgXcQ'], total: 1 });
+    }
+    expect(await found('https://www.youtube.com/watch?v=notArchived')).toEqual({ ids: [], total: 0 });
+  });
+
+  it('searches, opens and lists channels across 300 configured folders', async () => {
+    const folderPath = await env.seedFolder('library-300', {
+      ...videoFiles('lib300video', 'Film z dużej biblioteki', { channel: 'Kanał biblioteki' }),
+      'config.json': folderConfig('https://www.youtube.com/@library300'),
+    });
+    env.setFolders('library-300');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    // 299 more folders the library lists and nobody has indexed yet, the way a
+    // freshly attached drive arrives. Every read names all 300 aliases, and in
+    // a _search URL that list alone is about 7.8 KB of request line, which a
+    // cluster refuses past 4 KB before it reads a single name.
+    const unindexed = Array.from({ length: 299 }, (_unused, index) => `library-300-unindexed-${index}`);
+    env.setFolders('library-300', ...unindexed);
+
+    const search = await env.agent.get('/api/videos/search?q=biblioteki').expect(200);
+    expect(search.body.totalCount).toBe(1);
+    expect(search.body.videos[0].title).toBe('Film z dużej biblioteki');
+
+    const details = await env.agent.get('/api/videos/lib300video/details').expect(200);
+    expect(details.body.details.title).toBe('Film z dużej biblioteki');
+
+    const channels = await env.agent.get('/api/videos/channels').expect(200);
+    expect(channels.body.folders[folderPath]).toBe('Kanał biblioteki');
+    expect(channels.body.channels).toContain('Kanał biblioteki');
   });
 
   it('reports the document the cluster refused and still indexes the rest of the batch', async () => {
