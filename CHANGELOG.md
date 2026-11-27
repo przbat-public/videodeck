@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **"World's" turns up for `world`.** The tokenizer keeps a possessive
+  whole, two edits away from its word, while fuzzy matching lets a
+  five-letter query differ by one, so titles like "Tesla's Cheapest Car"
+  never matched their brand. The analyzer drops a trailing `'s` now, with
+  any apostrophe, from stored and typed text alike, in folders reindexed
+  after the upgrade
 - **Videos with billions of views get indexed.** View counts were mapped as
   32-bit integers, so the cluster turned away anything past 2,147,483,647,
   and a folder of nothing but such hits lost its whole reindex. They are

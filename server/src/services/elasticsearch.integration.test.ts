@@ -188,6 +188,26 @@ describeIntegration('Elasticsearch integration', () => {
     expect(folded.map((item) => item.baseName)).toContain('20240101_czyszczenie');
   });
 
+  it('matches an English possessive through its base word', async () => {
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      indexName,
+      documentsOf([video('20240101_pizza', "World's Biggest Pizza"), video('20240102_tesla', 'Tesla’s Cheapest Car')]),
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, indexName);
+
+    // The standard tokenizer keeps each possessive in one token, two edits
+    // from a five-letter query that fuzziness AUTO allows one; asciifolding
+    // turns ‘ into the ' the stemmer knows
+    const analyzed = await esClient.indices.analyze({ index: indexName, field: 'title', text: 'World’s World‘s' });
+    expect(analyzed.tokens?.map((token) => token.token)).toEqual(['world', 'world']);
+    const baseNamesFor = async (q: string) =>
+      (await searchVideos(q, 'relevance', [SCRATCH_FOLDER])).map((item) => item.baseName);
+    expect(await baseNamesFor('world')).toEqual(['20240101_pizza']);
+    expect(await baseNamesFor('tesla')).toEqual(['20240102_tesla']);
+  });
+
   it('matches any query term, tolerates a typo and ignores a substring that is not a token', async () => {
     const indexName = await createIndexVersion(SCRATCH_FOLDER);
     await bulkIndexDocuments(

@@ -44,12 +44,22 @@ export function buildIndexVersionName(folderPath: string, now: Date = new Date()
 
 /**
  * Text analysis for search: diacritics folding, so `srodek` finds `środek`
- * and `ŚRODEK` without the user typing diacritics. Polish stemming/stopwords
- * would need the `analysis-stempel` plugin (not in the stock docker image),
- * so this analyzer sticks to built-in components only; indices created before
- * it existed keep the old `standard` mapping until the next reindex.
+ * and `ŚRODEK` without the user typing diacritics, and English possessives cut
+ * to their word, so `world` finds "World's". The standard tokenizer keeps
+ * world's as one token, two edits from `world`, while fuzziness AUTO gives a
+ * five-letter word one. Polish stemming/stopwords would need the
+ * `analysis-stempel` plugin (not in the stock docker image), so this analyzer
+ * sticks to built-in components only; an index keeps the chain it was created
+ * with until the next full reindex.
  */
 const SEARCH_ANALYZER = 'polish_folded';
+
+/**
+ * Lucene's English possessive stemmer: strips a trailing 's, written with ',
+ * ’ or ＇. It runs after asciifolding, which turns ‘ and the other quote marks
+ * into ', so every spelling of the apostrophe reaches it as one it knows.
+ */
+const POSSESSIVE_FILTER = 'english_possessive';
 
 const INDEX_MAPPINGS = {
   properties: {
@@ -112,11 +122,14 @@ export async function createIndexVersion(folderPath: string): Promise<string> {
         number_of_replicas: 0,
       },
       analysis: {
+        filter: {
+          [POSSESSIVE_FILTER]: { type: 'stemmer', language: 'possessive_english' },
+        },
         analyzer: {
           [SEARCH_ANALYZER]: {
             type: 'custom',
             tokenizer: 'standard',
-            filter: ['lowercase', 'asciifolding'],
+            filter: ['lowercase', 'asciifolding', POSSESSIVE_FILTER],
           },
         },
       },

@@ -235,7 +235,17 @@ describe('elasticsearchService', () => {
         type: 'text',
         analyzer: 'polish_folded',
       });
-      expect(request.settings.analysis.analyzer.polish_folded.filter).toEqual(['lowercase', 'asciifolding']);
+      // The possessive stemmer after asciifolding, which turns ‘ into the '
+      // the stemmer knows, so "World's" and "Tesla‘s" index as world and tesla
+      expect(request.settings.analysis.analyzer.polish_folded.filter).toEqual([
+        'lowercase',
+        'asciifolding',
+        'english_possessive',
+      ]);
+      expect(request.settings.analysis.filter.english_possessive).toEqual({
+        type: 'stemmer',
+        language: 'possessive_english',
+      });
       // A bare keyword: the exact lookup by file name is all that reads it
       expect(request.mappings.properties.baseName).toEqual({ type: 'keyword' });
       // Views pass int32 on the biggest videos; likes stay far below it
