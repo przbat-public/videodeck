@@ -179,6 +179,33 @@ describe('loadCommentTree', () => {
     expect(readFile).toHaveBeenCalledTimes(1);
   });
 
+  it('puts the tree of a rewritten file in place of its old one, in the budget and in the reading order', async () => {
+    // An update or a comment repair gives a cached video a new mtime. Left in
+    // the budget, the old tree's weight leaks on every refresh; left in its
+    // place in line, the fresh tree is the next to go
+    const size = await writeVideo('a');
+    await writeVideo('b');
+    await writeVideo('c');
+    heapLimitFitting(2.5, size);
+    await loadCommentTree(dir, 'a');
+    await loadCommentTree(dir, 'b');
+    await writeVideo('a');
+    // A distinct mtime whatever the file system's clock granularity
+    const later = new Date(Date.now() + 60_000);
+    await fs.utimes(path.join(dir, 'a.info.json'), later, later);
+    await loadCommentTree(dir, 'a');
+    // Three trees pass the budget of two and a half, and b is now the tree
+    // read longest ago
+    await loadCommentTree(dir, 'c');
+    const readFile = vi.spyOn(fs, 'readFile');
+
+    await loadCommentTree(dir, 'a');
+    expect(readFile).not.toHaveBeenCalled();
+
+    await loadCommentTree(dir, 'b');
+    expect(readFile).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the newest tree even when it alone passes the budget', async () => {
     const size = await writeVideo('a');
     await writeVideo('b');
