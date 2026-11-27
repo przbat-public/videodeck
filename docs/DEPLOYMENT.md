@@ -83,6 +83,18 @@ skips every folder that already has an index).
 Elasticsearch data is rebuildable at any time. The video folders are the
 store of record.
 
+### yt-dlp in the image
+
+`server/Dockerfile` pins yt-dlp (`ARG YTDLP_VERSION`) and installs it with the
+`pin`, `pin-curl-cffi` and `pin-deno` extras (`ARG YTDLP_EXTRAS`), so every
+library it loads has a fixed version as well, and a rebuild changes nothing
+until you bump the argument. curl_cffi is what `impersonate: true` needs.
+yt-dlp-ejs and deno solve the JavaScript challenges YouTube puts in front of a
+download. yt-dlp starts deno with no permissions. The player code it runs can
+neither open a connection, not even to the `client` proxy that adds the token,
+nor read the environment that holds the API keys. The boot log names the
+version: `yt-dlp version: ...`.
+
 ### Restarts and the download queue
 
 The queue persists its active jobs to `.queue-state.json` and re-enqueues them

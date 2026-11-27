@@ -1,7 +1,7 @@
-# Server image: Node + yt-dlp (pinned) + ffmpeg. Two stages keep the dev
-# dependencies and their build cache out of the runtime layer, and the runtime
-# runs as the unprivileged `node` user. Video folders are mounted at runtime
-# (see docker-compose.yml).
+# Server image: Node + yt-dlp (pinned, with curl_cffi and deno) + ffmpeg. Two
+# stages keep the dev dependencies and their build cache out of the runtime
+# layer, and the runtime runs as the unprivileged `node` user. Video folders
+# are mounted at runtime (see docker-compose.yml).
 
 # --- build ------------------------------------------------------------------
 FROM node:24-slim AS build
@@ -33,14 +33,26 @@ FROM node:24-slim AS runtime
 # must not silently swap the downloader underneath it: bump this argument when
 # you mean to.
 ARG YTDLP_VERSION=2026.8.19
+# A bare yt-dlp installs none of its dependencies: each one sits behind an
+# extra. The pin extras add them at the versions that release names, so the
+# pin above holds for the whole tree. `pin` is the default set, yt-dlp-ejs and
+# its challenge scripts among it; `pin-curl-cffi` is what `impersonate: true`
+# loads; `pin-deno` is the runtime the challenge scripts run in. yt-dlp finds
+# deno by itself and starts it with no permissions, so the YouTube player code
+# it runs reaches neither the network nor the environment, which holds the API
+# keys.
+ARG YTDLP_EXTRAS=pin,pin-curl-cffi,pin-deno
 
+# Wheels only (--only-binary): nothing compiles from a source archive as root,
+# and a platform that lacks a wheel fails the build with the package's name.
 RUN corepack enable \
     && apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     python3 \
     python3-pip \
     && rm -rf /var/lib/apt/lists/* \
-    && python3 -m pip install --break-system-packages --no-cache-dir "yt-dlp==${YTDLP_VERSION}" \
+    && python3 -m pip install --break-system-packages --no-cache-dir --only-binary=:all: \
+    "yt-dlp[${YTDLP_EXTRAS}]==${YTDLP_VERSION}" \
     # The queue state file lives here (QUEUE_STATE_FILE below): outside the app
     # tree, so the unprivileged user can write it.
     && mkdir -p /app/state \
@@ -56,8 +68,14 @@ COPY chrome-extension/package.json ./chrome-extension/
 COPY test-infra/package.json ./test-infra/
 # Production dependencies only, and no lifecycle scripts: nothing the server
 # needs at runtime has a postinstall step, and skipping them keeps the build
-# from executing package code as root.
-RUN pnpm install --frozen-lockfile --prod --ignore-scripts
+# from executing package code as root. The filter keeps the install to the
+# server and the workspace package it runs on (shared): without it the image
+# carried the client's packages and the test tooling as well. A plain --filter
+# would follow the server's devDependencies into test-infra, and
+# --fail-if-no-match turns a renamed package into a failed build instead of an
+# empty install.
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts \
+    --filter-prod 'video-search-server...' --fail-if-no-match
 
 # `shared` stays source: the server imports the workspace package, and Node
 # strips the types at load time.

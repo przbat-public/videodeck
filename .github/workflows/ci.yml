@@ -240,11 +240,12 @@ jobs:
           # would let a later build step push with it.
           persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
-      # The yt-dlp the Docker image ships: the version server/Dockerfile pins,
-      # installed without extras, as the image does. `yt-dlp --version` fails
-      # the step at once if pipx did not put the binary on PATH.
+      # The yt-dlp the Docker image ships: the version and the extras
+      # server/Dockerfile pins, so the impersonate case finds curl_cffi as the
+      # image does. `yt-dlp --version` fails the step at once if pipx did not
+      # put the binary on PATH.
       - name: Install the pinned yt-dlp
-        run: pipx install "yt-dlp==$(sed -n 's/^ARG YTDLP_VERSION=//p' server/Dockerfile)" && yt-dlp --version
+        run: pipx install "yt-dlp[$(sed -n 's/^ARG YTDLP_EXTRAS=//p' server/Dockerfile)]==$(sed -n 's/^ARG YTDLP_VERSION=//p' server/Dockerfile)" && yt-dlp --version
       # The yt-dlp suite checks the argument templates against that binary,
       # offline: every case targets a string that is not a URL. The
       # Elasticsearch suite runs against the service container above. Nothing

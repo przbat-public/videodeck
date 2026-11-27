@@ -9,8 +9,10 @@ import { buildYtDlpArgs } from './ytdlp';
  *
  *   pnpm run test:ytdlp-integration
  *
- * CI installs the version server/Dockerfile pins, so a pin bump to a release
- * that drops or renames a flag the templates use turns that job red.
+ * CI installs the version and the extras server/Dockerfile pins, so a pin bump
+ * to a release that drops or renames a flag the templates use turns that job
+ * red, and so does an extras list that drops curl_cffi. Homebrew's yt-dlp
+ * ships without curl_cffi, so the impersonate case fails against it.
  *
  * Nothing goes over the network. Every case targets a string that is not a
  * URL, and yt-dlp validates the whole command line (option names and arity,

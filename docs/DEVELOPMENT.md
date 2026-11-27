@@ -99,7 +99,10 @@ cd server && pnpm run test:integration  # requires a running ES; tests never rea
 **Integration tests with a real yt-dlp**: download-queue argument templates
 checked against the installed binary (`--simulate`, without
 downloading; skipped in the regular `pnpm test`). CI runs the same suite
-against the version `server/Dockerfile` pins:
+against the version and the extras `server/Dockerfile` pins. The impersonate
+case needs curl_cffi, which Homebrew's yt-dlp lacks, so it fails there and
+passes once `pipx install "yt-dlp[default,curl-cffi]"` puts a yt-dlp that has
+it first on PATH:
 
 ```bash
 cd server && pnpm run test:ytdlp-integration  # requires yt-dlp on PATH
