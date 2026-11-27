@@ -31,8 +31,11 @@ FROM node:24-slim AS runtime
 # Pinned on purpose. The docs recommend the nightly channel for a hand install
 # because YouTube breaks old releases, but a rebuild of a running deployment
 # must not silently swap the downloader underneath it: bump this argument when
-# you mean to.
-ARG YTDLP_VERSION=2026.8.19
+# you mean to. Nothing older than 2026.10.26: every earlier release pins a
+# brotli, a certifi or a urllib3 with a published advisory
+# (scripts/check-server-image.test.mjs). From that release on yt-dlp needs
+# Python 3.11, the version the bookworm base ships.
+ARG YTDLP_VERSION=2026.11.23
 # A bare yt-dlp installs none of its dependencies: each one sits behind an
 # extra. The pin extras add them at the versions that release names, so the
 # pin above holds for the whole tree. `pin` is the default set, yt-dlp-ejs and
