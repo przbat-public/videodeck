@@ -7,12 +7,13 @@ import path from 'node:path';
 import zlib, { type Gunzip, gzipSync } from 'node:zlib';
 import type { HealthResponse } from '@videodeck/shared/api';
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Test } from 'supertest';
 import request from 'supertest';
 import type { MockedFunction } from 'vitest';
 import { createApp } from '../app';
 import { checkElasticsearchConnection, getVideoByFilePath } from '../services/elasticsearchService';
-import { createAuthMiddleware, createAuthorizer, isAllowedCorsOrigin } from './http';
+import { type Authorizer, createAuthMiddleware, createAuthorizer, isAllowedCorsOrigin } from './http';
 
 vi.mock('../services/elasticsearchService', () => ({
   checkElasticsearchConnection: vi.fn(),
@@ -50,13 +51,23 @@ afterEach(() => {
 });
 
 describe('createAuthMiddleware', () => {
-  function buildApp(token?: string): express.Express {
+  /**
+   * The guard in a bare app, the way createApp mounts it. Like that app, it
+   * sits behind a rate limit, which CodeQL asks of every app that authorizes;
+   * this one never counts close to its limit.
+   */
+  function guardedApp(authorize: Authorizer): express.Express {
     const app = express();
-    app.use(createAuthMiddleware(createAuthorizer(token)));
+    app.use(rateLimit({ windowMs: 60_000, limit: 10_000 }));
+    app.use(createAuthMiddleware(authorize));
     app.get('/test', (_req, res) => {
       res.json({ ok: true });
     });
     return app;
+  }
+
+  function buildApp(token?: string): express.Express {
+    return guardedApp(createAuthorizer(token));
   }
 
   it('lets requests through when no token is configured', async () => {
@@ -109,11 +120,7 @@ describe('createAuthMiddleware', () => {
   });
 
   it('accepts a CORS_ORIGINS entry as same-site', async () => {
-    const app = express();
-    app.use(createAuthMiddleware(createAuthorizer(undefined, false, { extraOrigins: ['https://deck.example'] })));
-    app.get('/test', (_req, res) => {
-      res.json({ ok: true });
-    });
+    const app = guardedApp(createAuthorizer(undefined, false, { extraOrigins: ['https://deck.example'] }));
 
     expect((await request(app).get('/test').set('Sec-Fetch-Site', 'cross-site')).status).toBe(403);
     expect(
