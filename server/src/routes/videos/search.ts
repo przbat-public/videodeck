@@ -33,7 +33,7 @@ export const search: RouteHandler<NoParams, SearchResponse> = async (req, res) =
   });
 
   const query = readString(req.query.q);
-  const sort = parseSortOption(req.query.sort);
+  const sort = parseSortOption(req.query.sort, query);
   const category = readString(req.query.category)?.trim();
   const offset = parseOffset(readString(req.query.offset));
   const limit = parseNonNegativeInt(readString(req.query.limit), SEARCH_DEFAULT_LIMIT);

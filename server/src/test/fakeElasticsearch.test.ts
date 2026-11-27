@@ -161,11 +161,24 @@ describe('FakeElasticsearch controls', () => {
     expect(body.responses[1]?.error?.type).toBe('search_phase_execution_exception');
   });
 
-  it('refuses an _msearch header it does not model with a 500 that names it', async () => {
+  it('takes the _msearch header the service sends and refuses any other with a 500 that names it', async () => {
     const failureOf = async (header: Record<string, unknown>) => {
       const response = await msearch([header, { query: { match_all: {} } }]);
       return { status: response.status, error: ((await response.json()) as { error?: unknown }).error };
     };
+
+    // Every key the service sends, a relevance page's DFS statistics included
+    const served = await msearch([
+      {
+        index: ['videos_alias'],
+        ignore_unavailable: true,
+        allow_partial_search_results: false,
+        search_type: 'dfs_query_then_fetch',
+      },
+      { query: { match_all: {} } },
+    ]);
+    expect(served.status).toBe(200);
+    expect(((await served.json()) as { responses: Array<{ status: number }> }).responses[0]?.status).toBe(200);
 
     // Each of these changes the answer on a cluster: a header without an index
     // searches every index, one without ignore_unavailable fails on a name

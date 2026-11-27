@@ -317,8 +317,9 @@ describe('VideoListPage', () => {
 
       await screen.findByText('First');
 
+      // A phrase's default is relevance, which the URL leaves unsaid
       expect(searchUrls(fetchMock)).toEqual(['/api/videos/search?q=drone&category=fpv&offset=0&limit=100']);
-      expect(sortSelect()).toHaveTextContent('Najnowsze');
+      expect(sortSelect()).toHaveTextContent(i18n.t('sortOption.relevance'));
       expect(searchInput()).toHaveValue('drone');
     });
 
@@ -380,7 +381,8 @@ describe('VideoListPage', () => {
       await pick(sortSelect(), 'Najmniej polubień');
       await waitFor(() => expect(currentUrl()).toBe('/?q=drone&sort=likes-asc'));
 
-      await pick(sortSelect(), 'Najnowsze');
+      // Relevance is what a phrase defaults to, so picking it again clears the sort
+      await pick(sortSelect(), i18n.t('sortOption.relevance'));
       await waitFor(() => expect(currentUrl()).toBe('/?q=drone'));
 
       expect(searchUrls(fetchMock)).toEqual([

@@ -326,6 +326,53 @@ describeIntegration('Elasticsearch integration', () => {
     expect(single.videos.map((item) => item.baseName).sort()).toEqual(['20240101_lekki', '20240103_ciezki']);
   });
 
+  it('ranks the video a typed phrase names above a newer one sharing a word in a comment', async () => {
+    const indexName = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      indexName,
+      [
+        // Newer, and tied to the phrase by one common word in its one comment
+        {
+          ...toDocument({ ...video('20240105_vlog', 'Vlog z wakacji'), uploadDate: '20240105' }),
+          commentsText: 'jak zawsze super',
+        },
+        toDocument({ ...video('20230101_pizza', 'Jak zrobić pizzę w domu'), uploadDate: '20230101' }),
+      ],
+      false,
+    );
+    await promoteIndexVersion(SCRATCH_FOLDER, indexName);
+
+    // No sort asked for: the phrase ranks by relevance, where newest first led
+    // with the vlog
+    const page = await searchVideosWithTotal('jak zrobić', undefined, [SCRATCH_FOLDER]);
+    expect(page.videos.map((item) => item.baseName)).toEqual(['20230101_pizza', '20240105_vlog']);
+  });
+
+  it('ranks a title match above a comment match across folders by the statistics of the whole library', async () => {
+    // One folder holds one video whose title has the word, the other ten
+    // commented videos, one of which has it in a comment. Scored per shard,
+    // the word is in every document of the first folder and weighs next to
+    // nothing there, while it is rare in the second: the comment led. Over the
+    // statistics of both folders (dfs_query_then_fetch) the title match wins.
+    const titled = await createIndexVersion(SCRATCH_FOLDER);
+    await bulkIndexDocuments(titled, [toDocument(video('20240101_tytul', 'Rakieta na Marsa'))], false);
+    await promoteIndexVersion(SCRATCH_FOLDER, titled);
+
+    const commented = await createIndexVersion(SECOND_SCRATCH_FOLDER);
+    await bulkIndexDocuments(
+      commented,
+      Array.from({ length: 10 }, (_unused, index) => ({
+        ...toDocument({ ...video(`20240102_film_${index}`, `Odcinek ${index}`), folderPath: SECOND_SCRATCH_FOLDER }),
+        commentsText: index === 0 ? 'rakieta super' : 'super odcinek',
+      })),
+      false,
+    );
+    await promoteIndexVersion(SECOND_SCRATCH_FOLDER, commented);
+
+    const page = await searchVideosWithTotal('rakieta', undefined, [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER]);
+    expect(page.videos.map((item) => item.baseName)).toEqual(['20240101_tytul', '20240102_film_0']);
+  });
+
   // The scenarios below are the twins of the fake's own tests: the same
   // scenario name, the same expectation, once against the fake and once here.
 

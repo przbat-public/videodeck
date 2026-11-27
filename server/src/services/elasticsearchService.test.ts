@@ -1059,6 +1059,24 @@ describe('elasticsearchService', () => {
       expect(request.sort).toEqual([]);
     });
 
+    it('ranks a phrase by relevance by default, scored with the statistics of every folder', async () => {
+      await searchVideos('robot');
+
+      const { header, body } = sentSearch();
+      expect(body.sort).toEqual([]);
+      // Every folder is an index of one shard, and per-shard term statistics
+      // scored a match in a small folder far above the same match in a big one
+      expect(header.search_type).toBe('dfs_query_then_fetch');
+    });
+
+    it('asks for no extra statistics round trip when the page is not ranked by a phrase', async () => {
+      await searchVideos('robot', 'date-desc');
+      await searchVideos('   ', 'relevance');
+
+      expect(sentSearch(0).header).not.toHaveProperty('search_type');
+      expect(sentSearch(1).header).not.toHaveProperty('search_type');
+    });
+
     it('fails loudly on hits without _source', async () => {
       answerSearch({ hits: { hits: [{ _id: 'x' }] } });
       await expect(searchVideos('q')).rejects.toThrow('has no _source');

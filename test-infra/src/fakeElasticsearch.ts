@@ -59,9 +59,12 @@ import type { AddressInfo } from 'node:net';
  * - `_msearch` answers each header and body pair with its own response and
  *   `status`, and a refused search fails its own item inside a 200 ("answers
  *   _msearch with one response per search"). A header other than the one the
- *   service sends, an index list with ignore_unavailable true and an optional
- *   allow_partial_search_results, answers 500 ("refuses an _msearch header it
- *   does not model with a 500 that names it").
+ *   service sends, an index list with ignore_unavailable true and optionally
+ *   allow_partial_search_results and search_type, answers 500 ("takes the
+ *   _msearch header the service sends and refuses any other with a 500 that
+ *   names it"). search_type is accepted and ignored: the fake's score counts
+ *   matches with no IDF, so dfs_query_then_fetch has nothing to change, and
+ *   only the real-ES suite shows what it does to a ranking.
  * - `index.highlight.max_analyzed_offset`, one shard per index as in the
  *   service's indices, and `_shards` in every answer. A page hit whose
  *   highlighted field passes 1,000,000 characters fails its index's shard in
@@ -161,8 +164,12 @@ interface MsearchPair {
   body: SearchBody;
 }
 
-/** The msearch header keys the fake models: the ones the service sends */
-const MSEARCH_HEADER_KEYS = new Set(['index', 'ignore_unavailable', 'allow_partial_search_results']);
+/**
+ * The msearch header keys the fake models: the ones the service sends. Its
+ * score has no IDF, so search_type, which only decides where a cluster takes
+ * its term statistics from, changes nothing here and is read as a no-op.
+ */
+const MSEARCH_HEADER_KEYS = new Set(['index', 'ignore_unavailable', 'allow_partial_search_results', 'search_type']);
 
 /** An _msearch NDJSON body, read into its header and body pairs */
 function msearchPairs(rawBody: string): MsearchPair[] {

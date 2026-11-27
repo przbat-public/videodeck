@@ -99,9 +99,9 @@ Searches videos by phrase in the file name (`baseName.text^4`), title (`^3`), de
 **Query parameters:**
 
 - `q` (optional) - search phrase
-- `sort` (optional) - sort order:
-  - `relevance` - by relevance (default Elasticsearch behavior, `_score`; only meaningful with a phrase)
-  - `date-desc` - by date, newest first (default)
+- `sort` (optional) - sort order; when it is missing or unknown, a phrase ranks by relevance and an empty `q` lists the newest first:
+  - `relevance` - by `_score`, the default with a phrase. Every folder is an index of its own, so scores come from the term statistics of all searched folders together (`dfs_query_then_fetch`) rather than per folder
+  - `date-desc` - by date, newest first, the default without a phrase
   - `date-asc` - by date, oldest first
   - `views-desc` - by view count, descending
   - `views-asc` - by view count, ascending

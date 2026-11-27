@@ -1,6 +1,7 @@
 import type { estypes } from '@elastic/elasticsearch';
 import type { SortOption, VideoListItem } from '@videodeck/shared/api';
 import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULT_WINDOW } from '@videodeck/shared/schemas';
+import { defaultSortFor } from '@videodeck/shared/search';
 import { getVideosFolderPaths } from '../../config';
 import { ElasticsearchUnavailableError } from '../elasticsearchErrors';
 import { fromDocument, type VideoDocument } from './bulkIndexing';
@@ -175,13 +176,32 @@ function normalizePaging(options: SearchOptions): { from: number; size: number }
 }
 
 /**
+ * The _msearch header of a page search.
+ *
+ * A shard that fails anyway fails the page, where a 200 used to come back
+ * short of that folder's hits with nothing to say so; a red shard is still
+ * the 503 it was, anything else a logged 500. A phrase ranked by relevance is
+ * scored with the term statistics of every folder at once (DFS): each folder
+ * is an index of one shard, and statistics taken per shard scored a match in
+ * a small folder far above the same match in a big one. That costs one more
+ * round trip, so only a relevance page with a phrase asks for it.
+ */
+function pageSearchHeader(hasQuery: boolean, sortOption: SortOption): SearchHeader {
+  return {
+    allow_partial_search_results: false,
+    ...(hasQuery && sortOption === 'relevance' ? { search_type: 'dfs_query_then_fetch' as const } : {}),
+  };
+}
+
+/**
  * Search videos with query, sorting and paging. `folderPaths` narrows the
  * search to those folders' indices (used by the category filter); an empty
- * array means "no folder qualifies" and yields no results.
+ * array means "no folder qualifies" and yields no results. Without a sort, a
+ * phrase ranks by relevance and an empty query lists the newest first.
  */
 export async function searchVideosWithTotal(
   query?: string,
-  sortOption: SortOption = 'date-desc',
+  sortOption: SortOption = defaultSortFor(query),
   folderPaths?: string[],
   options: SearchOptions = {},
 ): Promise<{ videos: VideoListItem[]; total: number }> {
@@ -247,10 +267,7 @@ export async function searchVideosWithTotal(
           }
         : {}),
     },
-    // A shard that fails anyway fails the page, where a 200 used to come back
-    // short of that folder's hits with nothing to say so. A red shard is still
-    // the 503 it was; anything else is a logged 500.
-    { allow_partial_search_results: false },
+    pageSearchHeader(hasQuery, sortOption),
     options.signal,
   );
 
@@ -273,7 +290,7 @@ export async function searchVideosWithTotal(
 /** Videos-only variant of the search (total dropped) */
 export async function searchVideos(
   query?: string,
-  sortOption: SortOption = 'date-desc',
+  sortOption: SortOption = defaultSortFor(query),
   folderPaths?: string[],
   options: SearchOptions = {},
 ): Promise<VideoListItem[]> {

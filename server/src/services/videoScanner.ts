@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ReindexStatus, SortOption, VideoListItem } from '@videodeck/shared/api';
+import { defaultSortFor } from '@videodeck/shared/search';
 import { getVideosFolderPaths } from '../config';
 import type { VideoInfoJson } from '../types';
 import { listVisibleFiles, resolveContainedPath } from '../utils/fsUtils';
@@ -530,7 +531,7 @@ async function writeVideosFromDisk(folderPath: string, baseNames: string[]): Pro
 
 export const getVideos = async (
   query?: string,
-  sortOption: SortOption = 'date-desc',
+  sortOption: SortOption = defaultSortFor(query),
   folderPaths?: string[],
   options?: SearchOptions,
 ): Promise<{ videos: VideoListItem[]; total: number }> => {

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A typed phrase ranks by relevance unless you pick a sort.** Results
+  stayed newest first, so a recent video sharing one common word with the
+  phrase in a single comment outranked the video the phrase named in its
+  title. With a phrase and no sort chosen, results now follow the score,
+  computed over the statistics of every folder at once; clearing the phrase
+  brings back newest first, and a sort you picked survives both. Old `?q=`
+  bookmarks open by relevance
 - **An abandoned search stops on the cluster too.** Typing a new phrase
   aborted the browser's request, but the server kept waiting on
   Elasticsearch, which went on scoring and highlighting a page nobody would
