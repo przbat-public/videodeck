@@ -195,6 +195,13 @@ test('the documented Elasticsearch docker run caps its log like the compose stac
     const end = text.indexOf('docker.elastic.co/elasticsearch/elasticsearch:', start);
     assert.notEqual(end, -1, `${doc}: the Elasticsearch docker run names no image`);
     const command = text.slice(start, end);
+    // Named, as in the compose stack: a daemon whose default driver is
+    // journald refuses both --log-opt flags, and the node never starts
+    assert.match(
+      command,
+      /--log-driver[= ]json-file\s/,
+      `${doc}: the docker run must name --log-driver json-file, the driver its --log-opt flags belong to`,
+    );
     assert.match(
       command,
       new RegExp(`--log-opt max-size=${maxSize}\\s`),

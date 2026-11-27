@@ -27,7 +27,7 @@ Then start Elasticsearch (ports bound to loopback; there is no password, so ES m
 
 ```bash
 docker run -d --name videodeck-elasticsearch --restart unless-stopped \
-  --log-opt max-size=10m --log-opt max-file=5 \
+  --log-driver json-file --log-opt max-size=10m --log-opt max-file=5 \
   -p 127.0.0.1:9200:9200 \
   -v videodeck-es-data:/usr/share/elasticsearch/data \
   -e discovery.type=single-node \
@@ -48,11 +48,13 @@ The flags that carry weight:
   the index on disk. Replacing it then costs seconds, not a reindex.
 - `--restart unless-stopped` brings the node back with Docker. An explicit
   `docker stop` still keeps it down.
-- The two `--log-opt` flags cap the log at five files of 10 MB. Without them
-  it grows for as long as the node runs, on the disk that holds the index.
-  Docker reads them at creation only. A container you started before this
-  line existed keeps its old log until `docker rm -f videodeck-elasticsearch`
-  and a fresh run of the command above.
+- `--log-driver json-file` and the two `--log-opt` flags cap the log at five
+  files of 10 MB. Without them it grows for as long as the node runs, on the
+  disk that holds the index. The driver is spelled out because the options
+  belong to it: a daemon whose default is journald, as on NixOS, refuses them
+  and the node never starts. Docker reads all three at creation only. A
+  container you started before this line existed keeps its old log until
+  `docker rm -f videodeck-elasticsearch` and a fresh run of the command above.
 - `ES_JAVA_OPTS` holds the JVM at 1 GB. Without it the image claims half of the
   Docker VM. Two nodes started that way are what the OOM killer ends.
 - The four health flags let `docker ps` answer the question that matters while

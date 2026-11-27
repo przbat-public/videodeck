@@ -59,7 +59,7 @@ videos straight from YouTube.
 
    ```bash
    docker run -d --name videodeck-elasticsearch --restart unless-stopped \
-     --log-opt max-size=10m --log-opt max-file=5 \
+     --log-driver json-file --log-opt max-size=10m --log-opt max-file=5 \
      -p 127.0.0.1:9200:9200 \
      -v videodeck-es-data:/usr/share/elasticsearch/data \
      -e discovery.type=single-node \
