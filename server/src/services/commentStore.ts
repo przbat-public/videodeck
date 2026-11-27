@@ -24,10 +24,14 @@ import { MAX_INFO_JSON_BYTES } from './folderIndex';
  */
 
 /**
- * Heap a parsed tree holds per byte of its info.json: measured from 1.16 for
- * ASCII text to 1.40. Set high, it only caches fewer trees.
+ * Heap a parsed tree holds per byte of its info.json, measured after a gc on
+ * Node 24 with 40,000 comments: 1.17 for ASCII text up to 1.61 for long
+ * Polish comments. One letter outside Latin-1, as nearly every Polish
+ * diacritic is, makes V8 store the whole string at two bytes a character.
+ * The comments this app opens are mostly Polish, and a factor set high only
+ * caches fewer trees, so it sits above that range.
  */
-export const TREE_HEAP_BYTES_PER_FILE_BYTE = 1.4;
+export const TREE_HEAP_BYTES_PER_FILE_BYTE = 1.7;
 /** Share of the V8 heap limit the cached trees may hold together */
 export const CACHE_HEAP_SHARE = 0.25;
 
