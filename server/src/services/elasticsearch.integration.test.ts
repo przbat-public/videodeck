@@ -10,6 +10,7 @@ import {
   deleteAllVideosFromFolder,
   deleteIndex,
   getIndexVersions,
+  getVideoByFilePath,
   listChannelsByFolder,
   promoteIndexVersion,
   searchVideos,
@@ -244,7 +245,7 @@ describeIntegration('Elasticsearch integration', () => {
     expect(results.map((item) => item.baseName)).toEqual(['20240101_kept']);
   });
 
-  // The three scenarios below are the twins of the fake's own tests: the same
+  // The five scenarios below are the twins of the fake's own tests: the same
   // scenario name, the same expectation, once against the fake and once here.
 
   it('refuses a page past the result window the way Elasticsearch does', async () => {
@@ -306,6 +307,54 @@ describeIntegration('Elasticsearch integration', () => {
     await promoteIndexVersion(SCRATCH_FOLDER, indexName);
     const results = await searchVideos('', 'date-desc', [SCRATCH_FOLDER]);
     expect(results.map((item) => item.baseName)).toEqual(['20240101_dobry']);
+  });
+
+  it('finds a video by its video or thumbnail file name, and nothing for a name no video holds', async () => {
+    // getVideoByFilePath searches every configured folder, so the configuration
+    // points at a directory of this test's own, as the channel test does
+    const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'es-files-'));
+    const previous = process.env.VIDEOS_FOLDER_PATH;
+    process.env.VIDEOS_FOLDER_PATH = folder;
+    invalidateVideosFolderCache();
+    try {
+      const indexName = await createIndexVersion(folder);
+      await bulkIndexDocuments(
+        indexName,
+        documentsOf([
+          { ...video('20240101_plik_a', 'Plik A'), folderPath: folder },
+          { ...video('20240102_plik_b', 'Plik B'), folderPath: folder },
+        ]),
+        false,
+      );
+      await promoteIndexVersion(folder, indexName);
+
+      // One lookup per file kind, plus a name no video holds, which must come
+      // back empty rather than as the first video of the folder
+      expect((await getVideoByFilePath('20240102_plik_b.mp4'))?.baseName).toBe('20240102_plik_b');
+      expect((await getVideoByFilePath('20240101_plik_a.webp'))?.baseName).toBe('20240101_plik_a');
+      expect(await getVideoByFilePath('missing.mp4')).toBeNull();
+    } finally {
+      await deleteIndex(folder);
+      await fs.rm(folder, { recursive: true, force: true });
+      if (previous === undefined) {
+        delete process.env.VIDEOS_FOLDER_PATH;
+      } else {
+        process.env.VIDEOS_FOLDER_PATH = previous;
+      }
+      invalidateVideosFolderCache();
+    }
+  });
+
+  it('matches nothing for a term on a subfield the mapping does not declare', async () => {
+    const indexName = await indexOneVideo('20240101_podpole', 'Podpole');
+
+    const totalFor = async (field: string) =>
+      (await esClient.search({ index: indexName, query: { term: { [field]: '20240101_podpole.mp4' } } })).hits.total;
+
+    // videoPath is a keyword with no subfields: the cluster answers a term on
+    // the subfield it does not have with no hits, not with an error
+    expect(await totalFor('videoPath.keyword')).toEqual({ value: 0, relation: 'eq' });
+    expect(await totalFor('videoPath')).toEqual({ value: 1, relation: 'eq' });
   });
 });
 

@@ -33,14 +33,30 @@ import type { AddressInfo } from 'node:net';
  *   subfields included, and answers an unmapped one with no buckets at all
  *   ("buckets a terms aggregation only on a field the index mapping
  *   declares"). That is what a cluster does with the `folderPath.keyword` the
- *   service used to ask for, which is why the mistake stayed quiet. Query
- *   matching stays lenient: it still folds a subfield away.
+ *   service used to ask for, which is why the mistake stayed quiet.
+ * - a term query resolves its field through the same mapping. A keyword field
+ *   or keyword subfield compares the raw value, and a name the mapping does
+ *   not declare matches nothing ("matches nothing for a term on a subfield the
+ *   mapping does not declare"). Full-text matching stays lenient: multi_match
+ *   still folds a subfield away.
+ * - a bool query needs every must and filter clause and minimum_should_match
+ *   of its should clauses, which defaults to one for a should list on its own
+ *   and to none next to must or filter. getVideoByFilePath sends that should
+ *   list, and a fake that dropped it resolved every file name to the first
+ *   video ("finds a video by its video or thumbnail file name, and nothing for
+ *   a name no video holds").
+ * - a query shape outside that set answers 500 with a message naming it,
+ *   instead of matching every document: a leaf clause other than match_all,
+ *   multi_match, term, range and ids, a bool key such as must_not, or a term
+ *   on a field that is not a keyword ("answers a query shape it does not model
+ *   with a 500 that names it"). An index with no documents never runs its
+ *   query, so there the refusal waits for the first document.
  *
  * Search still implements only the query shapes the service sends
- * (multi_match over SEARCH_FIELDS, bool filters, uploadDate/viewCount/
- * likeCount sorts, highlight fragments with the service's control chars).
- * Everything else the real-ES CI integration suite covers against an actual
- * cluster.
+ * (match_all, multi_match over SEARCH_FIELDS, bool must/filter/should, term on
+ * keyword fields, ids, uploadDate/viewCount/likeCount sorts, highlight
+ * fragments with the service's control chars). Everything else the real-ES CI
+ * integration suite covers against an actual cluster.
  */
 
 interface DocumentEntry {
@@ -134,6 +150,16 @@ interface MappingProperty {
   type?: string;
   fields?: Record<string, { type?: string } | undefined>;
 }
+
+/** The bool keys the fake models: the ones the service sends */
+interface BoolQuery {
+  must?: Array<Record<string, unknown>>;
+  filter?: Array<Record<string, unknown>>;
+  should?: Array<Record<string, unknown>>;
+  minimum_should_match?: number;
+}
+
+const BOOL_KEYS = new Set(['must', 'filter', 'should', 'minimum_should_match']);
 
 /** The slice of a terms aggregation definition the fake reads */
 interface TermsDefinition {
@@ -941,18 +967,10 @@ export class FakeElasticsearch {
   private matches(doc: DocumentEntry, query: Record<string, unknown>): boolean {
     const { multi_match: multi, bool } = query as {
       multi_match?: { query?: string; fields?: string[]; fuzziness?: unknown };
-      bool?: { must?: unknown[]; filter?: unknown[] };
+      bool?: BoolQuery;
     };
     if (bool) {
-      const must = (bool.must ?? []).map((clause) => clause as Record<string, unknown>);
-      const filter = (bool.filter ?? []).map((clause) => clause as Record<string, unknown>);
-      if (must.some((clause) => !this.matches(doc, clause))) {
-        return false;
-      }
-      if (filter.some((clause) => !this.matches(doc, clause))) {
-        return false;
-      }
-      return true;
+      return this.matchesBool(doc, bool);
     }
     if (multi) {
       const terms = termsOf(multi.query ?? '');
@@ -975,7 +993,35 @@ export class FakeElasticsearch {
     return this.matchesClause(doc, clause as [string, unknown]);
   }
 
+  /**
+   * A bool query the way a cluster reads it: every must and filter clause,
+   * and at least `minimum_should_match` of the should clauses. That minimum
+   * defaults to one for a should list on its own and to none next to a must
+   * or filter clause. getVideoByFilePath sends a should list, which the fake
+   * used to drop, so every file name resolved to the first video. Keys the
+   * service never sends, must_not among them, are refused rather than guessed.
+   */
+  private matchesBool(doc: DocumentEntry, bool: BoolQuery): boolean {
+    const unmodelled = Object.keys(bool).find((key) => !BOOL_KEYS.has(key));
+    if (unmodelled !== undefined) {
+      throw new Error(`bool.${unmodelled} is not modelled`);
+    }
+    const required = [...(bool.must ?? []), ...(bool.filter ?? [])];
+    const should = bool.should ?? [];
+    const minimum = bool.minimum_should_match ?? (should.length > 0 && required.length === 0 ? 1 : 0);
+    if (!Number.isInteger(minimum) || minimum < 0) {
+      throw new Error(`bool.minimum_should_match ${JSON.stringify(minimum)} is not modelled`);
+    }
+    if (required.some((clause) => !this.matches(doc, clause))) {
+      return false;
+    }
+    return should.filter((clause) => this.matches(doc, clause)).length >= minimum;
+  }
+
   private matchesClause(doc: DocumentEntry, [clauseType, clauseBody]: [string, unknown]): boolean {
+    if (clauseType === 'match_all') {
+      return true;
+    }
     if (clauseType === 'term') {
       return this.matchesTerm(doc, clauseBody);
     }
@@ -988,7 +1034,9 @@ export class FakeElasticsearch {
       const values = (clauseBody ?? {}) as { values?: unknown };
       return Array.isArray(values.values) && values.values.includes(doc.id);
     }
-    return true; // unknown clauses keep the document (behaviour fidelity is not the goal here)
+    // Refused rather than kept: a clause the fake ignores widens the answer,
+    // and a test reading a wider answer than a cluster gives can still pass
+    throw new Error(`the ${clauseType} query is not modelled`);
   }
 
   private matchesTerm(doc: DocumentEntry, clauseBody: unknown): boolean {
@@ -1000,7 +1048,31 @@ export class FakeElasticsearch {
     // ES accepts both { field: value } and { field: { value } }
     const value =
       typeof fieldValue === 'object' && fieldValue !== null ? (fieldValue as { value?: unknown }).value : fieldValue;
-    return doc.source[this.fieldKey(field)] === value;
+    const source = this.termField(doc, field);
+    return source !== undefined && doc.source[source] === value;
+  }
+
+  /**
+   * The document field a term query compares, resolved through the stored
+   * mapping the way aggregationField resolves one: a name the mapping does not
+   * declare, subfield included, matches nothing, as on a cluster
+   * (`videoPath.keyword` does not exist). Only keyword fields are modelled. On
+   * a cluster a term on an analysed field matches only a value equal to one of
+   * its lowercased tokens, so it is refused instead of being compared with the
+   * raw text; every term the service sends targets a keyword field.
+   */
+  private termField(doc: DocumentEntry, requested: string): string | undefined {
+    const source = this.aggregationField(doc, requested);
+    if (source === undefined) {
+      return undefined;
+    }
+    const property = mappingProperties(doc.mapping)[source];
+    const subfield = requested.split('.')[1];
+    const type = subfield === undefined ? property?.type : property?.fields?.[subfield]?.type;
+    if (type !== 'keyword') {
+      throw new Error(`a term query on the ${type ?? 'untyped'} field ${requested} is not modelled`);
+    }
+    return source;
   }
 
   private matchesRange(doc: DocumentEntry, clauseBody: unknown): boolean {
