@@ -13,6 +13,16 @@ services:
     # recover, and that recovery is what turns the next boot slow.
     restart: unless-stopped
     stop_grace_period: 60s
+    # json-file is Docker's default log driver, and it never rotates on its own.
+    # Each request the stack serves leaves a line, so an uncapped log grows on
+    # the Docker disk that holds es-data too, the disk whose flood stage turns
+    # the index read-only. Five files of 10 MB keep the newest 50 MB of each
+    # container's log. The other two services carry the same cap.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
     environment:
       - discovery.type=single-node
       # Security is off and the port below is bound to loopback: anything that
@@ -58,6 +68,11 @@ services:
       dockerfile: server/Dockerfile
     # A host reboot brings the whole stack back, not just the database.
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
     environment:
       - HOST=0.0.0.0
       - PORT=3001
@@ -99,6 +114,11 @@ services:
       dockerfile: client/Dockerfile
     # Same as the server: after a reboot the UI comes back on its own.
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
     environment:
       # The UI container talks to the server on the browser's behalf and holds
       # the token for it: the browser sends no Authorization header of its own.

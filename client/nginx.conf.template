@@ -15,6 +15,12 @@ server {
     }
 
     location /api/ {
+        # The server writes a line for every API request already, and this
+        # log would add the query string it leaves out on purpose: a folder
+        # path or a search phrase. The price is the cross-site 403 below,
+        # which now leaves no line anywhere. The page and its assets stay
+        # logged.
+        access_log off;
         # The server refuses cross-site requests on its own; answering here too
         # keeps such a request from reaching it at all. Browsers set this
         # header, so clients without it (curl, the extension worker) are

@@ -27,6 +27,7 @@ Then start Elasticsearch (ports bound to loopback; there is no password, so ES m
 
 ```bash
 docker run -d --name videodeck-elasticsearch --restart unless-stopped \
+  --log-opt max-size=10m --log-opt max-file=5 \
   -p 127.0.0.1:9200:9200 \
   -v videodeck-es-data:/usr/share/elasticsearch/data \
   -e discovery.type=single-node \
@@ -47,6 +48,11 @@ The flags that carry weight:
   the index on disk. Replacing it then costs seconds, not a reindex.
 - `--restart unless-stopped` brings the node back with Docker. An explicit
   `docker stop` still keeps it down.
+- The two `--log-opt` flags cap the log at five files of 10 MB. Without them
+  it grows for as long as the node runs, on the disk that holds the index.
+  Docker reads them at creation only. A container you started before this
+  line existed keeps its old log until `docker rm -f videodeck-elasticsearch`
+  and a fresh run of the command above.
 - `ES_JAVA_OPTS` holds the JVM at 1 GB. Without it the image claims half of the
   Docker VM. Two nodes started that way are what the OOM killer ends.
 - The four health flags let `docker ps` answer the question that matters while
@@ -152,7 +158,7 @@ RATE_LIMIT_WINDOW_MS=600000 # rate-limit window length in ms (default 10 minutes
 - If you use Docker and get a "Cannot connect to the Docker daemon" error, make sure Docker Desktop is running.
 - After starting the server for the first time, you must manually call the `POST /api/videos/refreshCache` endpoint to index videos into Elasticsearch (this may take a while depending on the number of videos). The same applies, without `onlyMissing`, after an upgrade that changes the index mapping or analysis: the boot log then names each folder whose index predates it (see [docs/API.md](API.md)).
 - **Keep yt-dlp up to date**: YouTube regularly breaks older versions. yt-dlp recommends the `nightly` channel (stable tends to be "stale and prone to external breakage"); the version is shown in the server startup log (`yt-dlp version: ...`), and when downloads start failing with "Sign in to confirm you're not a bot"/429 errors, the first thing to try is `yt-dlp -U` or the `nightly` channel. In a channel's `config.json` you can also enable `impersonate: true` (browser impersonation, without cookies).
-- **`impersonate: true` needs curl_cffi**, and Homebrew's yt-dlp does not ship it: every job of such a channel fails with `Impersonate target "chrome" is not available`. `pipx install "yt-dlp[default,curl-cffi]"` installs a yt-dlp that has it. YouTube's challenges need two more pieces, yt-dlp-ejs (part of `default`) and a JavaScript runtime: yt-dlp finds `deno` on PATH by itself (`brew install deno`, or add the `deno` extra). The Docker image ships all of them at pinned versions ([DEPLOYMENT.md](DEPLOYMENT.md)).
+- **`impersonate: true` needs curl_cffi.** Homebrew's yt-dlp does not ship it, and every job of such a channel then fails with `Impersonate target "chrome" is not available`; `pipx install "yt-dlp[default,curl-cffi]"` installs a yt-dlp that has it. YouTube's challenges need yt-dlp-ejs, part of `default`, and a JavaScript runtime. yt-dlp finds `deno` on PATH by itself (`brew install deno`, or the `deno` extra). The Docker image ships all of it, pinned ([DEPLOYMENT.md](DEPLOYMENT.md)).
 
 
 ## Production builds and type checking
