@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { entry } from '../test-utils';
+import { DESCRIPTION_PROBE_BYTES } from '../utils/infoJsonFlags';
 import { logger } from '../utils/logger';
 import {
   ARCHIVE_FILE,
@@ -17,6 +18,32 @@ import {
   rebuildIndex,
   refreshIndex,
 } from './folderIndex';
+
+/** An info.json shaped like yt-dlp's: the metadata and formats first, the comment list last */
+function ytDlpInfo(id: string, commentCount: number): string {
+  const formats = Array.from({ length: 30 }, (_unused, n) => ({
+    format_id: String(n),
+    url: `https://rr1---sn.googlevideo.com/videoplayback?id=${id}&itag=${n}&sig=${'s'.repeat(1500)}`,
+    ext: 'mp4',
+    width: 1920,
+    height: 1080,
+  }));
+  return JSON.stringify({
+    id,
+    title: `Video ${id}`,
+    formats,
+    description: 'A description with "quotes", a \\ backslash and a comments: [ decoy',
+    automatic_captions: { en: [{ ext: 'vtt', url: 'https://www.youtube.com/api/timedtext?lang=en' }] },
+    comment_count: commentCount,
+    comments: Array.from({ length: commentCount }, (_unused, n) => ({
+      id: `Ugx-${n}`,
+      parent: 'root',
+      text: `Comment number ${n}: ${'z'.repeat(360)}`,
+      author: `@viewer${n}`,
+      like_count: n,
+    })),
+  });
+}
 
 async function writeVideo(
   dir: string,
@@ -135,6 +162,24 @@ describe('folderIndex', () => {
         hasDescription: false,
       });
       expect(entry(index.entries, 'id-bare').videoBytes).toBe(Buffer.byteLength('video-bytes'));
+    });
+
+    it('answers the comment and description flags without parsing the info.json', async () => {
+      // Two booleans cost a parse of the whole file, comments and all, for
+      // every video of a rebuild: eight at once per folder, eight folders at
+      // once behind the console
+      await writeVideo(dir, '20240101_Heavy', 'id-heavy', { infoPrefix: ytDlpInfo('id-heavy', 4000) });
+      await writeVideo(dir, '20240102_Quiet', 'id-quiet', {
+        infoPrefix: JSON.stringify({ id: 'id-quiet', title: 'Quiet', description: 'Only in the info.json' }),
+      });
+      const parse = vi.spyOn(JSON, 'parse');
+
+      const index = await rebuildIndex(dir);
+
+      expect(entry(index.entries, 'id-heavy')).toMatchObject({ hasComments: true, hasDescription: true });
+      expect(entry(index.entries, 'id-quiet')).toMatchObject({ hasComments: false, hasDescription: true });
+      const longestParsed = Math.max(...parse.mock.calls.map(([text]) => String(text).length));
+      expect(longestParsed).toBeLessThanOrEqual(DESCRIPTION_PROBE_BYTES + 2);
     });
 
     it('writes the index file and adds the videos it found to archive.txt', async () => {

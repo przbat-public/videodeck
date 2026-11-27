@@ -1,8 +1,9 @@
 import { constants as bufferConstants } from 'node:buffer';
-import type { Stats } from 'node:fs';
+import { createReadStream, type Stats } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { listVisibleFiles as sharedListVisibleFiles, writeJsonAtomic } from '../utils/fsUtils';
+import { type InfoJsonFlags, scanInfoJsonFlags } from '../utils/infoJsonFlags';
 import { logger } from '../utils/logger';
 import { runPool } from '../utils/runPool';
 import { createSingleFlight } from '../utils/singleFlight';
@@ -39,11 +40,14 @@ export const INDEX_VERSION = 2;
 const INFO_SUFFIX = '.info.json';
 const VIDEO_EXTENSIONS = ['.mp4', '.mkv'];
 const ID_HEAD_BYTES = 8 * 1024;
+/** Read size of the comment flag scan, which ends at the first comment, written after the metadata */
+const INFO_SCAN_CHUNK_BYTES = 64 * 1024;
 /**
- * The largest info.json read whole. Past V8's longest string (536,870,888
+ * The largest info.json parsed whole. Past V8's longest string (536,870,888
  * code units on Node 24) readFile cannot return the file at all, and a UTF-8
- * file never decodes to more code units than it has bytes. Such a file is
- * read from its head only: the id and the title yt-dlp writes first.
+ * file never decodes to more code units than it has bytes. Past it only the
+ * head is parsed, for the id and the title yt-dlp writes first; the comment
+ * flags of the index come from a scan, which has no such limit.
  */
 export const MAX_INFO_JSON_BYTES = bufferConstants.MAX_STRING_LENGTH;
 /** How many info.json files are inspected at once when (re)building the index */
@@ -221,32 +225,16 @@ function subtitleLangsOf(baseName: string, files: Set<string>): string[] {
 
 /**
  * Whether the info.json carries comments, and whether it counts as a
- * description source. Both come from the same read: the file is already open
- * for its id, and comments are what make it large: a channel with comments on
- * averages over a megabyte per video, most of it the comment list.
- *
- * A file past MAX_INFO_JSON_BYTES cannot be parsed. Its comments are what
- * made it that large, so it counts as having them, and a comment repair is
- * not offered for it: the repair keeps a file that size as it is.
+ * description source. Comments are what make the file large: a channel with
+ * comments on averages over a megabyte per video, most of it the comment
+ * list, which yt-dlp writes last. So the file is scanned rather than parsed
+ * (utils/infoJsonFlags.ts), up to the first comment once the description is
+ * known, and a file of any size, one past the longest string included, costs
+ * one read chunk of memory.
  */
-async function readInfoExtras(
-  infoPath: string,
-  infoBytes: number,
-): Promise<{ hasComments: boolean; hasDescription: boolean }> {
-  if (infoBytes > MAX_INFO_JSON_BYTES) {
-    return { hasComments: true, hasDescription: false };
-  }
+async function readInfoExtras(infoPath: string): Promise<InfoJsonFlags> {
   try {
-    const parsed: unknown = JSON.parse(await fs.readFile(infoPath, 'utf-8'));
-    if (typeof parsed !== 'object' || parsed === null) {
-      return { hasComments: false, hasDescription: false };
-    }
-    const record = parsed as Record<string, unknown>;
-    const comments = record.comments;
-    return {
-      hasComments: Array.isArray(comments) && comments.length > 0,
-      hasDescription: typeof record.description === 'string' && record.description.trim().length > 0,
-    };
+    return await scanInfoJsonFlags(createReadStream(infoPath, { highWaterMark: INFO_SCAN_CHUNK_BYTES }));
   } catch {
     // An unreadable info.json is not a folder index failure: the video is
     // still indexed from its head, it just reports no comments and no
@@ -271,7 +259,7 @@ async function collectEntryFiles(
   const infoPath = path.join(folderPath, `${baseName}${INFO_SUFFIX}`);
   const [videoStats, extras] = await Promise.all([
     statOrNull(path.join(folderPath, videoFile)),
-    readInfoExtras(infoPath, infoStats.size),
+    readInfoExtras(infoPath),
   ]);
   return {
     videoFile,
@@ -478,8 +466,9 @@ export async function rebuildIndex(folderPath: string): Promise<FolderIndex> {
   const entries: Record<string, FolderIndexEntry> = {};
 
   const infoFiles = [...files].filter((file) => file.endsWith(INFO_SUFFIX));
-  // Reading the id head and stat of every info.json is I/O-bound; a small
-  // pool finishes the folder scan several times faster than one by one.
+  // Every info.json costs its id head, a stat and a scan up to its first
+  // comment, all I/O-bound; a small pool finishes the folder scan several
+  // times faster than one by one.
   await runPool(infoFiles, INDEX_REBUILD_CONCURRENCY, async (file) => {
     const baseName = file.slice(0, -INFO_SUFFIX.length);
     const videoFile = findVideoFile(baseName, files);
