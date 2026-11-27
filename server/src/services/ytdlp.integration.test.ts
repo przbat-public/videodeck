@@ -2,36 +2,59 @@ import { spawnSync } from 'node:child_process';
 import { buildYtDlpArgs } from './ytdlp';
 
 /**
- * Real-yt-dlp tests for the argument templates the download queue uses.
- * Skipped by default — run against the installed binary with:
+ * The argument templates the download queue builds, checked by the real
+ * yt-dlp: the twin of the fake in scripts/fake-bin, which looks only at the
+ * shape of the URL. Skipped by default; run against the yt-dlp on PATH with:
  *
- *   npm run test:ytdlp-integration
+ *   pnpm run test:ytdlp-integration
  *
- * `--simulate` makes yt-dlp resolve and validate everything (formats,
- * templates, extractors) without downloading a byte; the target is a famous,
- * stable public video.
+ * CI installs the version server/Dockerfile pins, so a pin bump to a release
+ * that drops or renames a flag the templates use turns that job red.
+ *
+ * Nothing goes over the network. Every case targets a string that is not a
+ * URL, and yt-dlp validates the whole command line (option names and arity,
+ * the output and progress templates, --retry-sleep, the format selector)
+ * before it extracts anything, so "is not a valid URL" means the template
+ * was accepted.
  */
 
 const runIntegration = process.env.RUN_YTDLP_INTEGRATION === '1';
 const describeIntegration = runIntegration ? describe : describe.skip;
 
-const VIDEO_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+/** Fails extraction offline, after every option has been parsed and validated */
+const OFFLINE_TARGET = 'not-a-url';
+/** What the real binary prints once it accepted the command line */
+const TEMPLATE_ACCEPTED = /'not-a-url' is not a valid URL/;
 
-// Fast options: no comments/subs — the target's comment pages can take
-// minutes, and this test only exercises the argument template.
+// Fast options: no comments or subtitles, since this test only exercises the
+// argument template.
 const FAST_OPTIONS = { maxHeight: 720, subLangs: [] as string[], writeComments: false };
 
-describeIntegration('yt-dlp integration', () => {
-  it('accepts the download argument template', () => {
-    const args = buildYtDlpArgs({ type: 'download', videoUrl: VIDEO_URL, options: FAST_OPTIONS });
+const simulate = (args: string[]) =>
+  spawnSync('yt-dlp', [...args, '--simulate'], { encoding: 'utf-8', timeout: 120_000 });
 
-    const result = spawnSync('yt-dlp', [...args, '--simulate'], {
-      encoding: 'utf-8',
-      timeout: 120_000,
-    });
+describeIntegration('yt-dlp integration', () => {
+  it('rejects a flag yt-dlp does not have, so the binary under test is the real one', () => {
+    const args = [
+      ...buildYtDlpArgs({ type: 'download', videoUrl: OFFLINE_TARGET, options: FAST_OPTIONS }),
+      '--definitely-not-a-yt-dlp-flag',
+    ];
+
+    const result = simulate(args);
+
+    // The message is the proof: the fake exits 2 as well, for a target that
+    // is not a YouTube URL
+    expect(result.stderr).toMatch(/no such option: --definitely-not-a-yt-dlp-flag/);
+    expect(result.status).toBe(2);
+  });
+
+  it('accepts the download argument template', () => {
+    const args = buildYtDlpArgs({ type: 'download', videoUrl: OFFLINE_TARGET, options: FAST_OPTIONS });
+
+    const result = simulate(args);
 
     expect(result.error).toBeUndefined();
-    expect(result.status).toBe(0);
+    expect(result.stderr).toMatch(TEMPLATE_ACCEPTED);
   });
 
   it('accepts the update argument template pinned to a stem', () => {
@@ -39,36 +62,30 @@ describeIntegration('yt-dlp integration', () => {
     const args = buildYtDlpArgs({
       id: 'job-1',
       type: 'update',
-      videoUrl: VIDEO_URL,
+      videoUrl: OFFLINE_TARGET,
       baseName: 'stem',
       options: FAST_OPTIONS,
     });
 
-    const result = spawnSync('yt-dlp', [...args, '--simulate'], {
-      encoding: 'utf-8',
-      timeout: 120_000,
-    });
+    const result = simulate(args);
 
     expect(result.error).toBeUndefined();
-    expect(result.status).toBe(0);
+    expect(result.stderr).toMatch(TEMPLATE_ACCEPTED);
   });
 
   it('accepts the comment repair argument template, staged like an update', () => {
     const args = buildYtDlpArgs({
       id: 'job-1',
       type: 'repair',
-      videoUrl: VIDEO_URL,
+      videoUrl: OFFLINE_TARGET,
       baseName: 'stem',
       options: FAST_OPTIONS,
       writeComments: true,
     });
 
-    const result = spawnSync('yt-dlp', [...args, '--simulate'], {
-      encoding: 'utf-8',
-      timeout: 120_000,
-    });
+    const result = simulate(args);
 
     expect(result.error).toBeUndefined();
-    expect(result.status).toBe(0);
+    expect(result.stderr).toMatch(TEMPLATE_ACCEPTED);
   });
 });

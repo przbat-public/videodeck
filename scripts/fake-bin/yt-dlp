@@ -4,7 +4,9 @@
  *
  * Modes:
  *  - `--version`               answers the boot-time probe
- *  - `--simulate`              validates the argument template, writes nothing
+ *  - `--simulate`              checks only the URL shape and writes nothing; the
+ *                              real yt-dlp validates the argument templates
+ *                              (server/src/services/ytdlp.integration.test.ts)
  *  - `--flat-playlist -j`      prints NDJSON playlist entries
  *  - a download/update run     writes the video file + sidecars (.info.json,
  *                              thumbnail, description, subtitles) into the

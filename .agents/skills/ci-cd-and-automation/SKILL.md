@@ -26,7 +26,7 @@ the supply-chain and security jobs.
 | Unit tests (client) | vitest, the full client unit suite |
 | Unit tests (chrome-extension) | vitest |
 | Client integration | real `<App />` against the real backend in-process |
-| Server integration | fake yt-dlp + fake Elasticsearch |
+| Server integration | yt-dlp templates against the image's pinned binary, offline; Elasticsearch against a real cluster |
 | Coverage ratchet | coverage never falls below the committed floor |
 | Playwright E2E | the thin mocked-API browser layer |
 | Build | production bundles build |
