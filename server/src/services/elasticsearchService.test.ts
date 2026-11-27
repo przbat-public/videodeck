@@ -88,6 +88,16 @@ const ALIAS_B = getIndexNameFromFolderPath(FOLDER_B);
 
 const notFound = () => Object.assign(new Error('index_not_found'), { meta: { statusCode: 404 } });
 
+/** The clause a typed phrase is searched with: its words as typed, and within the typo budget */
+const phraseQuery = (query: string) => ({
+  bool: {
+    should: [
+      { multi_match: { query, fields: SEARCH_FIELDS, type: 'best_fields' } },
+      { multi_match: { query, fields: SEARCH_FIELDS, type: 'best_fields', fuzziness: 'AUTO' } },
+    ],
+  },
+});
+
 /** The creation stamp `buildIndexVersionName` appends, for the current moment */
 function stampOfNow(): string {
   return new Date()
@@ -999,14 +1009,11 @@ describe('elasticsearchService', () => {
       expect(header).toEqual({ index: [ALIAS_A, ALIAS_B], ignore_unavailable: true });
       expect(at(mockClient.msearch.mock.calls, 0)[0]).not.toHaveProperty('index');
       expect(request).not.toHaveProperty('ignore_unavailable');
-      expect(request.query).toEqual({
-        multi_match: {
-          query: 'robot arm',
-          fields: SEARCH_FIELDS,
-          type: 'best_fields',
-          fuzziness: 'AUTO',
-        },
-      });
+      // The words as typed sit next to the fuzzy clause: a fuzzy clause alone
+      // expands to nothing in a folder that holds no near word in a field, so
+      // the DFS round never read that field's statistics there, and a title
+      // match in a one-video folder lost to a comment match in a big one
+      expect(request.query).toEqual(phraseQuery('robot arm'));
       expect(SEARCH_FIELDS).toContain('commentsText');
       // The file name is no search field: new stems are one token under the
       // standard tokenizer, and a foreign-named file's words outscored titles
@@ -1187,7 +1194,7 @@ describe('elasticsearchService', () => {
       const request = sentSearch().body;
       expect(request.query).toEqual({
         bool: {
-          must: [expect.objectContaining({ multi_match: expect.objectContaining({ query: 'q' }) })],
+          must: [phraseQuery('q')],
           filter: [{ term: { 'channelName.keyword': 'Jordan B Peterson' } }],
         },
       });
@@ -1243,7 +1250,7 @@ describe('elasticsearchService', () => {
 
       expect(mockClient.msearch).toHaveBeenCalledTimes(2);
       expect(sentSearch(0).body.query).toEqual({ ids: { values: ['programming'] } });
-      expect(sentSearch(1).body.query).toEqual({ multi_match: expect.objectContaining({ query: 'programming' }) });
+      expect(sentSearch(1).body.query).toEqual(phraseQuery('programming'));
       expect(sentSearch(1).body.highlight).toBeDefined();
     });
 

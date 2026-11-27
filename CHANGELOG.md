@@ -110,9 +110,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stayed newest first, so a recent video sharing one common word with the
   phrase in a single comment outranked the video the phrase named in its
   title. With a phrase and no sort chosen, results now follow the score,
-  computed over the statistics of every folder at once; clearing the phrase
-  brings back newest first, and a sort you picked survives both. Old `?q=`
-  bookmarks open by relevance
+  computed over the statistics of every folder at once, and the word as you
+  typed it weighs more than a near spelling; clearing the phrase brings back
+  newest first, and a sort you picked survives both. Old `?q=` bookmarks
+  open by relevance
 - **Search ignores file names.** A stem yt-dlp writes is one token to the
   analyzer and never matched, while a file named by hand split into words
   that weighed more than its title. Titles carry those words; a video

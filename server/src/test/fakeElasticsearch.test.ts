@@ -565,6 +565,91 @@ describe('FakeElasticsearch controls', () => {
     expect(JSON.stringify(await percent.json())).toContain('minimum_should_match');
   });
 
+  it('scores a bool query by the must and should clauses a document matches, filters aside', async () => {
+    // The comment match goes in first: under one score for every bool query,
+    // the fake kept that order and read no field weight
+    await putDocument('bool-score-comment', {
+      title: 'Odcinek',
+      commentsText: 'rakietaunikat super',
+      videoPath: 'a.mp4',
+    });
+    await putDocument('bool-score-title', {
+      title: 'Rakietaunikat na Marsa',
+      commentsText: 'super',
+      videoPath: 'b.mp4',
+    });
+    const phrase = (extra: Record<string, unknown> = {}) => ({
+      multi_match: { query: 'rakietaunikat', fields: ['title^3', 'commentsText'], type: 'best_fields', ...extra },
+    });
+    const idsFor = async (query: Record<string, unknown>): Promise<string[]> => {
+      const response = await fetch(`${baseUrl}/videos_x/_search`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+      return ((await response.json()) as { hits: { hits: Array<{ _id: string }> } }).hits.hits.map((hit) => hit._id);
+    };
+
+    // A cluster adds up the scores of the clauses a document matches
+    expect(await idsFor({ bool: { should: [phrase(), phrase({ fuzziness: 'AUTO' })] } })).toEqual([
+      'bool-score-title',
+      'bool-score-comment',
+    ]);
+
+    // A filter narrows the hits and leaves their scores alone: scored, its
+    // heavy title clause would put the comment match first, and the third
+    // video matches the phrase but not the filter
+    await putDocument('bool-score-dropped', { title: 'Rakietaunikat kosmiczna', videoPath: 'c.mp4' });
+    const filter = {
+      bool: {
+        should: [
+          { term: { videoPath: 'a.mp4' } },
+          { term: { videoPath: 'b.mp4' } },
+          { multi_match: { query: 'odcinek', fields: ['title^10'] } },
+        ],
+      },
+    };
+    expect(await idsFor({ bool: { must: [phrase()], filter: [filter] } })).toEqual([
+      'bool-score-title',
+      'bool-score-comment',
+    ]);
+  });
+
+  it('highlights the words of a phrase sent as a bool, bare and next to a filter', async () => {
+    await putDocument('bool-highlight', {
+      title: 'Rakietaunikat na Marsa',
+      commentsText: 'lot rakietaunikat',
+      videoPath: 'h.mp4',
+    });
+    const multi = { query: 'rakietaunikat', fields: ['title^3', 'commentsText'], type: 'best_fields' };
+    const phrase = { bool: { should: [{ multi_match: multi }, { multi_match: { ...multi, fuzziness: 'AUTO' } }] } };
+    const highlightOf = async (query: Record<string, unknown>) => {
+      const response = await fetch(`${baseUrl}/videos_x/_search`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          highlight: {
+            fields: { title: { number_of_fragments: 0 }, commentsText: { fragment_size: 160, number_of_fragments: 1 } },
+            pre_tags: ['['],
+            post_tags: [']'],
+          },
+        }),
+      });
+      const body = (await response.json()) as { hits: { hits: Array<{ highlight?: Record<string, string[]> }> } };
+      return body.hits.hits[0]?.highlight;
+    };
+
+    // The page search sends its phrase as a bool of two clauses, which a
+    // cluster highlights like a bare multi_match; the fake read the words of
+    // a top-level multi_match only and gave such a page no fragment at all
+    const fragments = { title: ['[Rakietaunikat] na Marsa'], commentsText: ['lot [rakietaunikat]'] };
+    expect(await highlightOf(phrase)).toEqual(fragments);
+    expect(await highlightOf({ bool: { must: [phrase], filter: [{ term: { videoPath: 'h.mp4' } }] } })).toEqual(
+      fragments,
+    );
+  });
+
   it('matches nothing for a term on a subfield the mapping does not declare', async () => {
     await putDocument('subfield-1', { title: 'Podpoledokument', videoPath: 'subfield.mp4' });
 

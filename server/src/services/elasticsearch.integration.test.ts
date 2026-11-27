@@ -354,7 +354,10 @@ describeIntegration('Elasticsearch integration', () => {
     // commented videos, one of which has it in a comment. Scored per shard,
     // the word is in every document of the first folder and weighs next to
     // nothing there, while it is rare in the second: the comment led. Over the
-    // statistics of both folders (dfs_query_then_fetch) the title match wins.
+    // statistics of both folders (dfs_query_then_fetch) the title match wins,
+    // once the phrase also goes out as typed: the fuzzy clause alone expanded
+    // to nothing in the second folder's titles, which kept its title
+    // statistics out of the DFS round, and this test failed on a real cluster.
     const titled = await createIndexVersion(SCRATCH_FOLDER);
     await bulkIndexDocuments(titled, [toDocument(video('20240101_tytul', 'Rakieta na Marsa'))], false);
     await promoteIndexVersion(SCRATCH_FOLDER, titled);
@@ -372,6 +375,11 @@ describeIntegration('Elasticsearch integration', () => {
 
     const page = await searchVideosWithTotal('rakieta', undefined, [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER]);
     expect(page.videos.map((item) => item.baseName)).toEqual(['20240101_tytul', '20240102_film_0']);
+
+    // A typo still finds both: the clause as typed matches nothing, and the
+    // fuzzy clause keeps the near word
+    const typo = await searchVideosWithTotal('rakita', undefined, [SCRATCH_FOLDER, SECOND_SCRATCH_FOLDER]);
+    expect(typo.videos.map((item) => item.baseName).sort()).toEqual(['20240101_tytul', '20240102_film_0']);
   });
 
   it('finds the video a pasted watch link points at', async () => {
@@ -412,11 +420,13 @@ describeIntegration('Elasticsearch integration', () => {
     );
     await promoteIndexVersion(SCRATCH_FOLDER, indexName);
 
-    // The service's own match over its fields: with the file name among them
-    // at ^4, the second file's words lifted it above the first
+    // The service's own match over its fields, the phrase as typed and within
+    // the typo budget: with the file name among them at ^4, the second file's
+    // words lifted it above the first
+    const asTyped = { query: 'robot', fields: SEARCH_FIELDS, type: 'best_fields' as const };
     const response = await esClient.search({
       index: indexName,
-      query: { multi_match: { query: 'robot', fields: SEARCH_FIELDS, type: 'best_fields', fuzziness: 'AUTO' } },
+      query: { bool: { should: [{ multi_match: asTyped }, { multi_match: { ...asTyped, fuzziness: 'AUTO' } }] } },
     });
     const scores = response.hits.hits.map((hit) => hit._score);
     expect(scores).toHaveLength(2);
