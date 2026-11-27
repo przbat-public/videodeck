@@ -120,9 +120,9 @@ export const VideoListItemSchema = z.object({
   baseName: z.string(),
   videoId: z.string().optional(),
   title: z.string(),
-  // Optional on purpose: search responses exclude the heavyweight fields
-  // (full yt-dlp descriptions are MBs of payload) — the details endpoint
-  // serves them from info.json instead.
+  // Optional on purpose: search leaves the heavy fields out of its hits (a
+  // full yt-dlp description can run to megabytes), and the details endpoint
+  // reads them from the video's index document.
   description: z.string().optional(),
   videoPath: z.string().optional(),
   /** Absent for a video indexed without a thumbnail on disk; the card shows a placeholder */
