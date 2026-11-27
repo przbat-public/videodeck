@@ -138,7 +138,7 @@ API_TOKEN=secret            # bearer token protecting /api (see the Security sec
 CORS_ORIGINS=https://example.com  # extra CORS origins (comma-separated), beyond localhost and chrome-extension://
 ALLOWED_HOSTS=nas.local,192.168.0.10  # extra hostnames/IPs allowed in the Host header (needed with HOST=0.0.0.0)
 EXTENSION_ORIGINS=chrome-extension://abcdefghijklmnop  # exact extension id allowed by CORS (without it: any chrome-extension://)
-RATE_LIMIT_MAX=2000         # HTTP request limit per time window per IP (default 2000; thumbnail and video reads do not count)
+RATE_LIMIT_MAX=2000         # HTTP request limit per time window per IP (default 2000; only a thumbnail or video read that names its folder and passes the auth does not count)
 RATE_LIMIT_WINDOW_MS=600000 # rate-limit window length in ms (default 10 minutes)
 ```
 

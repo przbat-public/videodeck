@@ -18,7 +18,7 @@ import { metricsBody, metricsRegistry, recordRequest } from './metrics';
 import { getEvents } from './routes/events';
 import type { DownloadQueueLike } from './routes/folder';
 import { createFolderRouter } from './routes/folder';
-import { createAuthMiddleware, isAllowedCorsOrigin } from './routes/http';
+import { createAuthMiddleware, createAuthorizer, isAllowedCorsOrigin } from './routes/http';
 import { JSON_BODY_LIMIT_BYTES } from './routes/validation';
 import videosRouter from './routes/videos';
 import { isElasticsearchUnavailable } from './services/elasticsearchErrors';
@@ -71,13 +71,31 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
  * budget is sized for. They skip the budget, so a long results page no longer
  * runs it out and blanks its own thumbnails. Only a read that names its folder
  * qualifies: without `?folder=` the route asks Elasticsearch where the file
- * lives, and that lookup stays on the budget. There is no exemption by address
- * either, because behind the dev proxy, or any proxy on the same host without
- * TRUST_PROXY, every client is loopback. At the app level `req.path` is the
- * whole path, `/api` included.
+ * lives, and that lookup stays on the budget. So does a read with a body, which
+ * no img or video element sends: it goes through the JSON parser, and a broken
+ * one ends in the error log. The limiter asks the auth decision on top of this
+ * (createApp), so a read the guard refuses counts too. There is no exemption
+ * by address either, because behind the dev proxy, or any proxy on the same
+ * host without TRUST_PROXY, every client is loopback. At the app level
+ * `req.path` is the whole path, `/api` included.
  */
 function isMediaRead(req: Request): boolean {
-  return req.method === 'GET' && req.path.startsWith('/api/videos/file/') && typeof req.query.folder === 'string';
+  return (
+    req.method === 'GET' &&
+    req.path.startsWith('/api/videos/file/') &&
+    typeof req.query.folder === 'string' &&
+    hasNoBody(req)
+  );
+}
+
+/** No Content-Type, no Transfer-Encoding and no Content-Length other than 0 */
+function hasNoBody(req: Request): boolean {
+  const length = req.headers['content-length'];
+  return (
+    req.headers['content-type'] === undefined &&
+    req.headers['transfer-encoding'] === undefined &&
+    (length === undefined || length === '0')
+  );
 }
 
 /**
@@ -177,6 +195,14 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   const extraCorsOrigins = getCorsOrigins();
   const extensionOrigins = getExtensionOrigins();
 
+  // One auth decision for the two places that need it: the guard on /api and
+  // /metrics below, and the rate limit, which must not wave through a read
+  // the guard refuses
+  const authorize = createAuthorizer(readApiToken(options.apiToken), isTokenRequired(), {
+    extraOrigins: extraCorsOrigins,
+    extensionOrigins,
+  });
+
   // DNS-rebinding guard first — every request pays the Host check
   app.use(createHostGuard(getAllowedHosts()));
 
@@ -184,10 +210,10 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
 
   // Broad-but-bounded rate limit: stops runaway scripts and the browser tab
   // from hammering the server; the queue poll (1.5 s) stays far below it.
-  // The file route stays behind it as well: a media read skips the count per
-  // request (isMediaRead), while a file read that asks Elasticsearch for its
-  // folder is still counted, which mounting the route ahead of the limiter
-  // would give up.
+  // The file route stays behind it as well: a media read (isMediaRead) skips
+  // the count only when the auth lets it through, so a guess at the token is
+  // still counted, as is a file read that asks Elasticsearch for its folder.
+  // Mounting the route ahead of the limiter would give both up.
   app.use(
     rateLimit({
       windowMs: getRateLimitWindowMs(),
@@ -195,7 +221,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
       standardHeaders: true,
       legacyHeaders: false,
       message: { error: 'Too many requests' },
-      skip: isMediaRead,
+      skip: (req) => isMediaRead(req) && authorize(req).allowed,
     }),
   );
 
@@ -214,10 +240,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   // /health and /health/live stay public; /metrics and everything else are
   // behind the token when set (metrics leak route cardinality and OpenAI
   // cost counters). REQUIRE_API_TOKEN closes open mode entirely.
-  const auth = createAuthMiddleware(readApiToken(options.apiToken), isTokenRequired(), {
-    extraOrigins: extraCorsOrigins,
-    extensionOrigins,
-  });
+  const auth = createAuthMiddleware(authorize);
   app.use('/api', auth);
   app.use('/metrics', auth);
 

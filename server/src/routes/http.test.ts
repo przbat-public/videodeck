@@ -7,11 +7,12 @@ import path from 'node:path';
 import zlib, { type Gunzip, gzipSync } from 'node:zlib';
 import type { HealthResponse } from '@videodeck/shared/api';
 import express from 'express';
+import type { Test } from 'supertest';
 import request from 'supertest';
 import type { MockedFunction } from 'vitest';
 import { createApp } from '../app';
 import { checkElasticsearchConnection, getVideoByFilePath } from '../services/elasticsearchService';
-import { createAuthMiddleware, isAllowedCorsOrigin } from './http';
+import { createAuthMiddleware, createAuthorizer, isAllowedCorsOrigin } from './http';
 
 vi.mock('../services/elasticsearchService', () => ({
   checkElasticsearchConnection: vi.fn(),
@@ -51,7 +52,7 @@ afterEach(() => {
 describe('createAuthMiddleware', () => {
   function buildApp(token?: string): express.Express {
     const app = express();
-    app.use(createAuthMiddleware(token));
+    app.use(createAuthMiddleware(createAuthorizer(token)));
     app.get('/test', (_req, res) => {
       res.json({ ok: true });
     });
@@ -109,7 +110,7 @@ describe('createAuthMiddleware', () => {
 
   it('accepts a CORS_ORIGINS entry as same-site', async () => {
     const app = express();
-    app.use(createAuthMiddleware(undefined, false, { extraOrigins: ['https://deck.example'] }));
+    app.use(createAuthMiddleware(createAuthorizer(undefined, false, { extraOrigins: ['https://deck.example'] })));
     app.get('/test', (_req, res) => {
       res.json({ ok: true });
     });
@@ -469,6 +470,7 @@ describe('file responses', () => {
 describe('rate limiting', () => {
   const originalMax = process.env.RATE_LIMIT_MAX;
   const originalWindow = process.env.RATE_LIMIT_WINDOW_MS;
+  const originalRequireToken = process.env.REQUIRE_API_TOKEN;
 
   afterEach(() => {
     if (originalMax === undefined) {
@@ -480,6 +482,11 @@ describe('rate limiting', () => {
       delete process.env.RATE_LIMIT_WINDOW_MS;
     } else {
       process.env.RATE_LIMIT_WINDOW_MS = originalWindow;
+    }
+    if (originalRequireToken === undefined) {
+      delete process.env.REQUIRE_API_TOKEN;
+    } else {
+      process.env.REQUIRE_API_TOKEN = originalRequireToken;
     }
   });
 
@@ -516,6 +523,90 @@ describe('rate limiting', () => {
     }
     const limited = await request(app).get('/api/videos/refreshCache/status').query({ folder });
     expect(limited.status).toBe(429);
+  });
+
+  it('lets media reads with the right token through without spending the API budget', async () => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const folder = useTempLibrary('a.webp');
+    const app = createApp({ apiToken: 'media-token' });
+
+    // Five reads on a budget of three: the auth lets each one through, so
+    // none of them counts
+    for (let i = 0; i < 5; i += 1) {
+      const response = await request(app)
+        .get('/api/videos/file/a.webp')
+        .query({ folder })
+        .set('Authorization', 'Bearer media-token');
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it.each<[string, () => express.Express, Record<string, string>, number]>([
+    ['a wrong token', () => createApp({ apiToken: 'media-token' }), { Authorization: 'Bearer guess' }, 401],
+    ['a cross-site page', () => createApp(), { 'Sec-Fetch-Site': 'cross-site' }, 403],
+    [
+      'an untrusted origin on this host',
+      () => createApp(),
+      { 'Sec-Fetch-Site': 'same-site', Origin: 'http://localhost:4000' },
+      403,
+    ],
+    [
+      'REQUIRE_API_TOKEN without a token',
+      () => {
+        process.env.REQUIRE_API_TOKEN = 'true';
+        return createApp();
+      },
+      {},
+      401,
+    ],
+  ])('still counts a media read that auth refuses: %s', async (_case, makeApp, headers, refusal) => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const folder = useTempLibrary('a.webp');
+    const app = makeApp();
+    const read = () => request(app).get('/api/videos/file/a.webp').query({ folder }).set(headers);
+
+    // A refused read is a guess, at the token or at an origin the guard
+    // trusts, and the budget is what bounds the guesses
+    for (let i = 0; i < 3; i += 1) {
+      expect((await read()).status).toBe(refusal);
+    }
+    expect((await read()).status).toBe(429);
+  });
+
+  it.each<[string, (read: Test) => Test]>([
+    ['a JSON body', (read) => read.set('Content-Type', 'application/json').send('{}')],
+    ['a Content-Type alone', (read) => read.set('Content-Type', 'application/json')],
+    ['a body without a Content-Type', (read) => read.send(Buffer.from('{}'))],
+    ['a chunked body', (read) => read.set('Transfer-Encoding', 'chunked')],
+  ])('still counts a file read that carries %s', async (_case, withBody) => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const folder = useTempLibrary('a.webp');
+    const app = createApp();
+    const read = () => withBody(request(app).get('/api/videos/file/a.webp').query({ folder }));
+
+    // An img or a video element never sends a body. A GET that does goes
+    // through the JSON parser, whose failures reach the error log, so it pays
+    // like an API call
+    for (let i = 0; i < 3; i += 1) {
+      expect((await read()).status).toBe(200);
+    }
+    expect((await read()).status).toBe(429);
+  });
+
+  it('lets a media read that declares an empty body through', async () => {
+    process.env.RATE_LIMIT_MAX = '3';
+    process.env.RATE_LIMIT_WINDOW_MS = '60000';
+    const folder = useTempLibrary('a.webp');
+    const app = createApp();
+
+    // Content-Length: 0 says there is no body, as a missing one does
+    for (let i = 0; i < 5; i += 1) {
+      const response = await request(app).get('/api/videos/file/a.webp').query({ folder }).set('Content-Length', '0');
+      expect(response.status).toBe(200);
+    }
   });
 
   it('still counts a file read that asks Elasticsearch for its folder', async () => {
