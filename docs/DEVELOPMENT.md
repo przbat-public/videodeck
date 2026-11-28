@@ -30,10 +30,12 @@ pnpm run lint          # biome check + repository-invariant scripts
 pnpm run lint:types    # eslint --max-warnings 0 (type-aware, React, Playwright)
 ```
 
-Lint runs with zero tolerance: every warning fails the run, so the list of
-issues cannot grow. Where an indexed access is genuinely safe (e.g. yt-dlp
-log lines that never change order), a deliberate `eslint-disable` with
-justification is used.
+ESLint runs with zero tolerance (`--max-warnings 0`): every ESLint warning
+fails the run, so the list of issues cannot grow. Biome fails the run only
+on errors: a rule at warning level, such as the two `biome.json` sets to
+`warn`, prints its findings and the run still passes. Where an indexed
+access is genuinely safe (e.g. yt-dlp log lines that never change order),
+a deliberate `eslint-disable` with justification is used.
 
 ### Auto-fixing errors
 

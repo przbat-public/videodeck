@@ -127,7 +127,7 @@ test('ci-ok tells a documentation-only skip from a skip it must not accept', () 
   assert.match(
     ciOkBody(),
     /^ {10}DOCS_ONLY: \$\{\{ needs\.changes\.outputs\.code == 'false' \}\}\s*$/m,
-    "ci-ok must take DOCS_ONLY from the `changes` verdict: `${{ needs.changes.outputs.code == 'false' }}`",
+    "ci-ok must take DOCS_ONLY from the `changes` verdict (needs.changes.outputs.code == 'false')",
   );
 });
 
