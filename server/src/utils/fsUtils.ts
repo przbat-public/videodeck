@@ -105,8 +105,24 @@ export async function writeJsonAtomic(folderPath: string, fileName: string, data
 }
 
 /**
+ * Atomic plain-text write of `fileName` inside `folderPath`, refused before
+ * anything is opened when the name resolves outside the folder. For a name
+ * that comes from data (an index document's stem, say) rather than code.
+ */
+export async function writeTextFileAtomic(folderPath: string, fileName: string, text: string): Promise<void> {
+  await writeTextAtomicPrivate(containedFilePath(folderPath, fileName, 'write'), text);
+}
+
+/** Remove `fileName` inside `folderPath` (a missing one too), refused when it resolves outside */
+export async function removeContainedFile(folderPath: string, fileName: string): Promise<void> {
+  await fs.rm(containedFilePath(folderPath, fileName, 'remove'), { force: true });
+}
+
+/**
  * Atomic plain-text write: temp file + fsync + rename (the JSON sibling
- * writeJsonAtomic stringifies; this one writes raw text).
+ * writeJsonAtomic stringifies; this one writes raw text). For a path built
+ * from the configured folder and a fixed name; a name taken from data goes
+ * through writeTextFileAtomic.
  */
 export async function writeTextAtomic(filePath: string, text: string): Promise<void> {
   await writeTextAtomicPrivate(filePath, text);

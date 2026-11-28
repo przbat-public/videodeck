@@ -2,11 +2,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ApiError } from '@videodeck/shared/api';
 import type { Response } from 'express';
-import { getVideosFolderPaths } from '../../config';
 import { getVideoByFilePath } from '../../services/elasticsearchService';
 import { logger } from '../../utils/logger';
 import { thumbnailContentType } from '../../utils/thumbnails';
-import { getVideoFilePath, normalizeFolderPath } from '../../utils/videoPathUtils';
+import { findConfiguredFolder, getVideoFilePath } from '../../utils/videoPathUtils';
 import { stripVttCueSettings } from '../../utils/vttUtils';
 import type { RouteHandler } from '../http';
 
@@ -55,15 +54,12 @@ async function resolveServeFolder<Res>(
   res: Response<Res | ApiError>,
 ): Promise<string | undefined> {
   if (folderParam !== undefined) {
-    const normalized = typeof folderParam === 'string' ? normalizeFolderPath(folderParam) : undefined;
-    if (
-      normalized === undefined ||
-      !getVideosFolderPaths().some((allowed) => normalizeFolderPath(allowed) === normalized)
-    ) {
+    const configured = typeof folderParam === 'string' ? findConfiguredFolder(folderParam) : undefined;
+    if (configured === undefined) {
       res.status(403).json({ error: `Folder path is not in the allowed list: ${String(folderParam)}` });
       return undefined;
     }
-    return normalized;
+    return configured;
   }
   try {
     const video = await getVideoByFilePath(filename);
@@ -91,9 +87,8 @@ export const serveFile: RouteHandler<{ filename: string }, never> = async (req, 
   // Final allowlist assertion next to the file sinks: the guard must live on
   // the same code path as the reads so authorization cannot drift from use
   // (the Elasticsearch-lookup branch is re-checked here too).
-  const normalizedFolder = normalizeFolderPath(folderPath);
-  const allowedFolders = getVideosFolderPaths().map(normalizeFolderPath);
-  if (!allowedFolders.includes(normalizedFolder)) {
+  const normalizedFolder = findConfiguredFolder(folderPath);
+  if (normalizedFolder === undefined) {
     res.status(403).json({ error: `Folder path is not in the allowed list: ${folderPath}` });
     return;
   }
@@ -103,7 +98,7 @@ export const serveFile: RouteHandler<{ filename: string }, never> = async (req, 
   // filename can never escape the folder even if the sanitizer missed a
   // traversal. getVideoFilePath already rejects `..` segments — this is the
   // defense-in-depth layer the reads below depend on.
-  const filePath = path.resolve(getVideoFilePath(filename, folderPath));
+  const filePath = path.resolve(getVideoFilePath(filename, normalizedFolder));
   const folderRoot = `${normalizedFolder}${path.sep}`;
   if (!filePath.startsWith(folderRoot)) {
     res.status(403).json({ error: 'File is outside the video folder' });

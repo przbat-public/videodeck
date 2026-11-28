@@ -22,6 +22,25 @@ export function normalizeFolderPath(value: string): string {
   return normalized;
 }
 
+/**
+ * The configured folder a path names, as the configured entry itself, or
+ * undefined when the list holds no such folder. It resolves nothing, so the
+ * root, a parent or a `..` spelling never matches.
+ *
+ * It hands back the configured entry, never the argument: the two strings are
+ * equal, but only the configured one is provably free of request or index
+ * data, which is what lets CodeQL js/path-injection treat this check as the
+ * sanitizer it is. Callers build every later path from the return value. The
+ * folder routes (routes/folder/guards.ts), the file route
+ * (routes/videos/files.ts) and the single-video lookup
+ * (services/elasticsearch/search.ts) all decide through it.
+ */
+export function findConfiguredFolder(folderPath: string): string | undefined {
+  const normalized = normalizeFolderPath(folderPath);
+  const configured = getVideosFolderPaths().find((candidate) => normalizeFolderPath(candidate) === normalized);
+  return configured === undefined ? undefined : normalizeFolderPath(configured);
+}
+
 /** Whether anything exists at this path, a directory or not */
 async function pathExists(target: string): Promise<boolean> {
   try {

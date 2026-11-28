@@ -1,10 +1,13 @@
 import type { estypes } from '@elastic/elasticsearch';
 import type { SortOption, VideoListItem } from '@videodeck/shared/api';
-import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULT_WINDOW } from '@videodeck/shared/schemas';
+import { SEARCH_DEFAULT_PAGE_SIZE, SEARCH_MAX_RESULT_WINDOW, VideoListItemSchema } from '@videodeck/shared/schemas';
 import { defaultSortFor } from '@videodeck/shared/search';
 import { extractYoutubeVideoId, isYoutubeVideoId } from '@videodeck/shared/youtube';
 import { getVideosFolderPaths } from '../../config';
 import { logger } from '../../utils/logger';
+import { findConfiguredFolder } from '../../utils/videoPathUtils';
+import { isSafeVideoStem } from '../../utils/videoStem';
+import { isOwnSubtitleName } from '../../utils/vttUtils';
 import { ElasticsearchUnavailableError } from '../elasticsearchErrors';
 import { fromDocument, type VideoDocument } from './bulkIndexing';
 import { assertElasticsearchReachable, getElasticsearchClient } from './connection';
@@ -466,6 +469,46 @@ export async function getAllVideos(sortOption: SortOption = 'date-desc'): Promis
   return searchVideos(undefined, sortOption);
 }
 
+/** A single-video lookup that found nothing it may hand on, logged once */
+function ignoredHit(id: string | undefined, reason: string): null {
+  logger.warn(`Ignoring the index document ${JSON.stringify(id)}: ${reason}`);
+  return null;
+}
+
+/**
+ * The video a lookup hit names, when the server may act on it. Details,
+ * comments, the summary and the file route read and write at the folder,
+ * the stem and the subtitle a hit names, and Elasticsearch takes writes from
+ * anyone who reaches it. So the hit must parse as a video, sit in a configured
+ * folder (handed on as the configured entry), keep its stem one path
+ * segment and name a subtitle of its own stem. The parse comes first: an
+ * array stem would pass isSafeVideoStem.
+ */
+function trustedVideo(hit: estypes.SearchHit<VideoDocument> | undefined): VideoListItem | null {
+  if (hit?._source === undefined) {
+    return null;
+  }
+  const parsed = VideoListItemSchema.safeParse(hit._source);
+  if (!parsed.success) {
+    return ignoredHit(
+      hit._id,
+      `not a video (${parsed.error.issues.map((issue) => issue.path.map(String).join('.')).join(', ')})`,
+    );
+  }
+  const video = parsed.data;
+  const folderPath = findConfiguredFolder(video.folderPath);
+  if (folderPath === undefined) {
+    return ignoredHit(hit._id, `folder ${JSON.stringify(video.folderPath)} is not a configured one`);
+  }
+  if (!isSafeVideoStem(video.baseName)) {
+    return ignoredHit(hit._id, `stem ${JSON.stringify(video.baseName)} is not one path segment`);
+  }
+  if (video.subtitlePath !== undefined && !isOwnSubtitleName(video.baseName, video.subtitlePath)) {
+    return ignoredHit(hit._id, `subtitle ${JSON.stringify(video.subtitlePath)} is not one of its stem`);
+  }
+  return { ...fromDocument(video), folderPath };
+}
+
 async function findOne(query: Record<string, unknown>): Promise<VideoListItem | null> {
   assertElasticsearchReachable();
   const response = await searchAliases<VideoDocument>(getIndexPattern(), {
@@ -475,8 +518,7 @@ async function findOne(query: Record<string, unknown>): Promise<VideoListItem | 
       excludes: [...SEARCH_ONLY_SOURCE_FIELDS],
     },
   });
-  const hit = response.hits.hits[0];
-  return hit?._source ? fromDocument(hit._source) : null;
+  return trustedVideo(response.hits.hits[0]);
 }
 
 /**

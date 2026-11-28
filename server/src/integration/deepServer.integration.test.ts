@@ -337,6 +337,94 @@ describe('deep server integration (real app, fake external world)', () => {
     });
   });
 
+  it('refuses a planted document that points the reads outside the configured folders', async () => {
+    // Elasticsearch takes writes from anyone who reaches it. Five documents
+    // planted beside a real video: an outside folder, the root as the folder,
+    // a stem that walks out, an array stem, and another file as the subtitle.
+    const lib = await env.seedFolder('planted-lib', {
+      ...videoFiles('vidlegit001', 'Legit'),
+      'notes.txt': 'PRIVATE_NOTE_CANARY',
+    });
+    env.setFolders('planted-lib');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+
+    const outside = `${env.root}/outside-planted`;
+    await fs.mkdir(outside, { recursive: true });
+    await writeFile(
+      `${outside}/secret.info.json`,
+      JSON.stringify({ id: 'secret', title: 'Outside', comments: [{ id: 'c1', text: 'outside comment' }] }),
+    );
+    await writeFile(`${outside}/secret.en.vtt`, 'WEBVTT\n\n00:00.000 --> 00:01.000\nAPI_TOKEN=tok_CANARY\n');
+
+    const { getElasticsearchClient, getIndexNameFromFolderPath } = await import('../services/elasticsearchService.js');
+    const { logger } = await import('../utils/logger.js');
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {
+      /* every refusal is logged; silenced here */
+    });
+    try {
+      const planted: Record<string, Record<string, unknown>> = {
+        secret: { baseName: 'secret', folderPath: outside, subtitlePath: 'secret.en.vtt' },
+        plantroot01: {
+          baseName: `${lib.slice(1)}/20260101_Legit`,
+          folderPath: '/',
+          subtitlePath: `${lib.slice(1)}/20260101_Legit.en.vtt`,
+        },
+        plantstem01: {
+          baseName: '../../outside-planted/secret',
+          folderPath: lib,
+          subtitlePath: '../../outside-planted/secret.en.vtt',
+        },
+        plantarray1: {
+          baseName: ['../../outside-planted/secret'],
+          folderPath: lib,
+          subtitlePath: '../../outside-planted/secret.en.vtt',
+        },
+        plantsubs01: { baseName: 'plantsubs01', folderPath: lib, subtitlePath: 'notes.txt' },
+      };
+      for (const [id, fields] of Object.entries(planted)) {
+        await getElasticsearchClient().index({
+          index: getIndexNameFromFolderPath(lib),
+          id,
+          document: { videoId: id, title: 'Planted', thumbnailPath: `${id}.webp`, ...fields },
+          refresh: true,
+        });
+      }
+      const callsBefore = env.mockOpenai.requests.length;
+
+      const statuses: Record<string, number[]> = {};
+      for (const id of Object.keys(planted)) {
+        const row: number[] = [];
+        for (const route of [
+          `/api/videos/${id}/details`,
+          `/api/videos/${id}/comments`,
+          `/api/videos/${id}/summary`,
+          `/api/videos/file/${id}.webp`,
+        ]) {
+          row.push((await env.agent.get(route)).status);
+        }
+        statuses[id] = row;
+      }
+
+      expect(statuses).toEqual({
+        secret: [404, 404, 404, 404],
+        plantroot01: [404, 404, 404, 404],
+        plantstem01: [404, 404, 404, 404],
+        plantarray1: [404, 404, 404, 404],
+        plantsubs01: [404, 404, 404, 404],
+      });
+      expect(env.mockOpenai.requests.slice(callsBefore).map((call) => call.prompt)).toEqual([]);
+      expect(existsSync(`${outside}/secret.summary.txt`)).toBe(false);
+      expect(existsSync(`${lib}/20260101_Legit.summary.txt`)).toBe(false);
+      expect(existsSync(`${lib}/plantsubs01.summary.txt`)).toBe(false);
+      // The real video beside them still opens
+      const legit = await env.agent.get('/api/videos/vidlegit001/details').expect(200);
+      expect(VideoDetailsResponseSchema.parse(legit.body).details.title).toBe('Legit');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('answers a search whose page crosses the result window with a short page, not a 500', async () => {
     await env.seedFolder('window', videoFiles('vid00000010', 'Okno wyników'));
     env.setFolders('window');

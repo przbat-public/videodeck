@@ -2,9 +2,8 @@ import fs from 'node:fs/promises';
 import type { ApiError } from '@videodeck/shared/api';
 import { FOLDER_UNAVAILABLE_CODE } from '@videodeck/shared/schemas';
 import type { Response } from 'express';
-import { getVideosFolderPaths } from '../../config';
 import { logger } from '../../utils/logger';
-import { normalizeFolderPath } from '../../utils/videoPathUtils';
+import { findConfiguredFolder } from '../../utils/videoPathUtils';
 import { readString } from '../http';
 
 /**
@@ -12,9 +11,10 @@ import { readString } from '../http';
  *
  * The guard answers on the response itself and reports back with null, so all
  * callers keep the same 400/403 bodies and the same order: authorization
- * before a request body is parsed. Keeping the comparison in one module
- * matters because CodeQL treats it as the sanitizer for the file sinks further
- * down the request path.
+ * before a request body is parsed. The comparison itself is
+ * findConfiguredFolder (utils/videoPathUtils.ts), shared with the file route
+ * and the single-video lookup, and that function is what CodeQL reads as the
+ * sanitizer for the file sinks further down the request path.
  */
 
 /**
@@ -29,18 +29,14 @@ export function requireAllowedFolder<Res>(value: unknown, res: Response<Res | Ap
     res.status(400).json({ error: 'folderPath is required' });
     return null;
   }
-  const normalized = normalizeFolderPath(folderPath);
-  const allowed = getVideosFolderPaths().find((candidate) => normalizeFolderPath(candidate) === normalized);
+  const allowed = findConfiguredFolder(folderPath);
   if (allowed === undefined) {
     logger.warn(`Rejected folderPath not in the allowed list: ${folderPath}`);
     res.status(403).json({ error: `Folder path is not in the allowed list: ${folderPath}` });
     return null;
   }
-  // Hand back the configured entry, not the request value. The two strings
-  // are equal by the comparison above, but only the configured one is
-  // provably free of user input, which is what lets taint analysis (CodeQL
-  // js/path-injection) treat this check as the sanitizer it is.
-  return normalizeFolderPath(allowed);
+  // The configured entry, not the request value (see findConfiguredFolder)
+  return allowed;
 }
 
 /**

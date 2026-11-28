@@ -51,6 +51,19 @@ export function vttLanguage(fileName: string): string | undefined {
 /** What follows `<stem>.` in a subtitle of that stem: `vtt` alone, or a language with no dot and `.vtt` */
 const OWN_SUBTITLE_RE = /^(?:([^.]+)\.)?vtt$/;
 
+/**
+ * Whether a file name is a subtitle of this stem in the shape findSubtitleFiles
+ * hands the index: `<stem>.vtt` or `<stem>.<lang>.vtt`, in one path segment.
+ * Without the folder listing it cannot tell a sibling video's plain subtitle
+ * from a language track, so it accepts both; it refuses every other file,
+ * in the folder or outside it.
+ */
+export function isOwnSubtitleName(stem: string, fileName: string): boolean {
+  return (
+    fileName.startsWith(`${stem}.`) && !fileName.includes('/') && OWN_SUBTITLE_RE.test(fileName.slice(stem.length + 1))
+  );
+}
+
 /** The shape of a yt-dlp language code: `en`, `fil`, `en-US`, `zh-Hans`, `es-419`, `en-orig` */
 const LANGUAGE_CODE_RE = /^[a-z]{2,3}(?:-[A-Za-z0-9]+)*$/;
 

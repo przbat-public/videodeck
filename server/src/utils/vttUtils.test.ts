@@ -1,4 +1,4 @@
-import { findSubtitleFiles, stripVttCueSettings, vttLanguage } from './vttUtils';
+import { findSubtitleFiles, isOwnSubtitleName, stripVttCueSettings, vttLanguage } from './vttUtils';
 
 /** A realistic yt-dlp auto-caption file: settings on cues, tags, plain text */
 const YTDLP_VTT = `WEBVTT
@@ -67,6 +67,26 @@ describe('vttLanguage', () => {
   it('returns undefined without a language suffix', () => {
     expect(vttLanguage('20260906_Some_Title.vtt')).toBeUndefined();
     expect(vttLanguage('20260906_Some_Title.mp4')).toBeUndefined();
+  });
+});
+
+describe('isOwnSubtitleName', () => {
+  it('accepts only the subtitle names of its own stem', () => {
+    for (const name of ['20240101_Talk.vtt', '20240101_Talk.en.vtt', '20240101_Talk.en-orig.vtt']) {
+      expect(isOwnSubtitleName('20240101_Talk', name), name).toBe(true);
+    }
+    // A sibling's track, another stem, a walk out of the folder, a path
+    // (the language part holds no dot, but may hold a slash) and another file
+    for (const name of [
+      '20240101_Talk.info.json',
+      '20240101_Talk.5.en.vtt',
+      '20240101_Other.en.vtt',
+      '../20240101_Talk.en.vtt',
+      '20240101_Talk.sub/x.vtt',
+      'notes.txt',
+    ]) {
+      expect(isOwnSubtitleName('20240101_Talk', name), name).toBe(false);
+    }
   });
 });
 

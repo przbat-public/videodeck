@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A document planted in Elasticsearch no longer steers the server's
+  reads.** Details, comments, the summary and the file route act where a
+  lookup hit points, and Elasticsearch takes writes from anyone who reaches
+  it: a planted document had the server read an info.json anywhere on the
+  disk, bill a summary of an outside file and write it there. A
+  single-video lookup now hands on only a hit that parses as a video, sits
+  in a configured folder, keeps its stem one path segment and names a
+  subtitle of its own stem; anything else answers 404 with a warning. A
+  document an older build wrote that does not parse needs a full Refresh
+  index
 - **A foreign page can no longer drive a LAN deploy with the proxy's
   token.** Browsers send no Sec-Fetch-Site to a plain-HTTP address that is
   not loopback, so such a request reached the token check, and nginx adds

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { MockInstance } from 'vitest';
-import { removePartialDownloads, writeTextAtomic } from './fsUtils';
+import { removeContainedFile, removePartialDownloads, writeTextAtomic, writeTextFileAtomic } from './fsUtils';
 
 describe('removePartialDownloads', () => {
   let dir: string;
@@ -72,6 +72,43 @@ describe('removePartialDownloads', () => {
     expect(await fs.readdir(dir)).toEqual(['other.ytdl']);
     expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('other.ytdl'));
     unlink.mockRestore();
+  });
+});
+
+describe('writeTextFileAtomic and removeContainedFile', () => {
+  let root: string;
+  let folder: string;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'contained-'));
+    folder = path.join(root, 'folder');
+    await fs.mkdir(folder);
+  });
+
+  afterEach(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('writes a file inside the folder and refuses a name that resolves outside it', async () => {
+    await writeTextFileAtomic(folder, 'video.summary.txt', 'Summary');
+    await expect(writeTextFileAtomic(folder, '../escape.summary.txt', 'Summary')).rejects.toThrow(/resolved outside/);
+
+    expect(await fs.readFile(path.join(folder, 'video.summary.txt'), 'utf-8')).toBe('Summary');
+    expect(await fs.readdir(root)).toEqual(['folder']);
+    // No temp file is left behind either
+    expect(await fs.readdir(folder)).toEqual(['video.summary.txt']);
+  });
+
+  it('removes a file inside the folder, a missing one included, and refuses one outside it', async () => {
+    await fs.writeFile(path.join(folder, 'video.summary.truncated'), '1');
+    await fs.writeFile(path.join(root, 'keep.txt'), 'x');
+
+    await removeContainedFile(folder, 'video.summary.truncated');
+    await expect(removeContainedFile(folder, 'never-written.txt')).resolves.toBeUndefined();
+    await expect(removeContainedFile(folder, '../keep.txt')).rejects.toThrow(/resolved outside/);
+
+    expect(await fs.readdir(folder)).toEqual([]);
+    expect(await fs.readFile(path.join(root, 'keep.txt'), 'utf-8')).toBe('x');
   });
 });
 
