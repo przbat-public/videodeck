@@ -46,3 +46,15 @@ export function isSafeVideoStem(value: string): boolean {
   }
   return !value.includes('/') && !value.includes('\\') && !value.includes('\0');
 }
+
+/**
+ * Whether a stem may go into yt-dlp's `-o` template: a safe stem without `$`.
+ * yt-dlp runs the template through os.path.expandvars before it fills in the
+ * fields, and `$$` is no escape on POSIX, so `$API_TOKEN.%(ext)s` would name
+ * the file after the token. The folder index and the queue state keep
+ * isSafeVideoStem: a hand-named file with a `$` stays indexed, searchable
+ * and playable, and only a yt-dlp run on it is refused.
+ */
+export function isTemplateSafeStem(value: string): boolean {
+  return isSafeVideoStem(value) && !value.includes('$');
+}

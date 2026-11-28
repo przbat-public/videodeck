@@ -119,6 +119,19 @@ describe('folderIndex', () => {
       expect(new Date(entry(index.entries, 'id-first').infoMtime).getTime()).not.toBeNaN();
     });
 
+    it('keeps a video whose stem holds a $, which only yt-dlp runs refuse', async () => {
+      // A `$` reaches yt-dlp's -o as an environment variable, so buildYtDlpArgs
+      // refuses it; the file itself is still a downloaded video to list, search
+      // and play, read back from the index file as well as from the disk
+      await writeVideo(dir, '20240101_Price_$5_deal', 'id-dollar');
+
+      const rebuilt = await rebuildIndex(dir);
+      const loaded = await loadIndex(dir);
+
+      expect(entry(rebuilt.entries, 'id-dollar').baseName).toBe('20240101_Price_$5_deal');
+      expect(entry(loaded.entries, 'id-dollar').baseName).toBe('20240101_Price_$5_deal');
+    });
+
     it('records the video title from the info.json', async () => {
       await writeVideo(dir, '20240101_Oven', 'id-oven', {
         infoPrefix: JSON.stringify({ id: 'id-oven', title: 'Home built SMD Reflow Oven (v2)' }),

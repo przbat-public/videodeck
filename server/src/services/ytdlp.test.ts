@@ -80,6 +80,17 @@ describe('buildYtDlpArgs', () => {
     );
   });
 
+  it('refuses a stem yt-dlp would read as an environment variable', () => {
+    // yt-dlp expands environment variables in -o before it fills in the
+    // fields, and `$$` is no escape on POSIX, so `$API_TOKEN.%(ext)s` would
+    // name the file after the token. App downloads pass --restrict-filenames,
+    // which drops `$`; only a file named by hand reaches this check.
+    for (const baseName of ['$HOME', `\${TMPDIR}x`, '$API_TOKEN', 'Price $5']) {
+      expect(() => buildYtDlpArgs({ ...job, type: 'update', baseName })).toThrow(/baseName/);
+      expect(() => buildYtDlpArgs({ ...job, type: 'repair', baseName })).toThrow(/baseName/);
+    }
+  });
+
   it('fetches only sidecars for a repair job, and never consults the archive', () => {
     // A repair exists because something is missing, so the archive must not
     // decide that the video is done: `--download-archive` is what makes yt-dlp

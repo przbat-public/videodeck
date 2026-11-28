@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A `$` in a file name no longer pulls a secret into yt-dlp's output
+  path.** yt-dlp expands environment variables in `-o` before it fills in
+  the fields, so updating or repairing a video stored as
+  `$API_TOKEN.mp4` would have written the token into a file name. App
+  downloads never hold a `$` (`--restrict-filenames` drops it). A file
+  named by hand with one stays listed, searchable and playable, and the
+  server refuses to run yt-dlp on it
 - **The extension asks for storage only.** It also asked for `activeTab`
   and `scripting`, which none of its code calls: the content script comes
   from the manifest, and the popup reads only the active tab's id. Chrome
