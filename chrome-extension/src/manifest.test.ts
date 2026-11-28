@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 interface Manifest {
   minimum_chrome_version?: string;
+  permissions: string[];
   content_scripts: Array<{ matches: string[] }>;
 }
 
@@ -42,5 +43,13 @@ describe('extension manifest', () => {
     // which landed in Chrome 102; Chrome refuses to install the extension below
     // the declared floor.
     expect(Number(manifest.minimum_chrome_version)).toBeGreaterThanOrEqual(102);
+  });
+
+  it('asks only for the permissions its code calls', () => {
+    // storage backs chrome.storage.local (the options) and chrome.storage.session
+    // (background.ts's active downloads). Nothing calls chrome.scripting, and the
+    // popup reads only tab.id from chrome.tabs.query, which needs no activeTab
+    // grant, so a permission beyond storage is privilege nothing uses.
+    expect(manifest.permissions).toEqual(['storage']);
   });
 });

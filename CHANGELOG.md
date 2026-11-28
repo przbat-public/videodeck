@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **The extension asks for storage only.** It also asked for `activeTab`
+  and `scripting`, which none of its code calls: the content script comes
+  from the manifest, and the popup reads only the active tab's id. Chrome
+  drops both, without a prompt, once the rebuilt extension is reloaded
+
 ### Fixed
 
 - **`impersonate: true` works in the Docker image.** The image installed a
