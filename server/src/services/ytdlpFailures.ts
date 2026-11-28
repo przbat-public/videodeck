@@ -59,7 +59,7 @@ const PERMANENT_FAILURES: readonly PermanentFailure[] = [
     // Observed live for dead ids: "This video is unavailable". Older
     // removed-by-uploader and closed-account wordings stay covered.
     pattern:
-      /This video has been removed|This video is no longer available|This video isn't available|This video is unavailable/i,
+      /This video has been removed|This video is no longer available|This video isn['’]t available|This video is unavailable/i,
     code: 'removed',
     description: 'The video has been removed or is no longer available',
     scope: 'video',
@@ -85,8 +85,9 @@ const PERMANENT_FAILURES: readonly PermanentFailure[] = [
     scope: 'video',
   },
   {
-    // YouTube's bot wall: retrying with the same IP/UA never helps.
-    pattern: /Sign in to confirm you're not a bot/i,
+    // YouTube's bot wall: retrying with the same IP/UA never helps. YouTube
+    // writes the apostrophe as U+2019 and yt-dlp passes it through as sent.
+    pattern: /Sign in to confirm you['’]re not a bot/i,
     code: 'bot-wall',
     description: 'YouTube is asking for a sign-in (bot wall) — retrying will not help',
     scope: 'video',

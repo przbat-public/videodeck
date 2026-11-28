@@ -99,7 +99,10 @@ cd server && pnpm run test:integration  # requires a running ES; tests never rea
 **Integration tests with a real yt-dlp**: download-queue argument templates
 checked against the installed binary (`--simulate`, without
 downloading; skipped in the regular `pnpm test`). CI runs the same suite
-against the version `server/Dockerfile` pins:
+against the version and the extras `server/Dockerfile` pins. The impersonate
+case needs curl_cffi, which Homebrew's yt-dlp lacks, so it fails there and
+passes once `pipx install "yt-dlp[default,curl-cffi]"` puts a yt-dlp that has
+it first on PATH:
 
 ```bash
 cd server && pnpm run test:ytdlp-integration  # requires yt-dlp on PATH
@@ -158,7 +161,7 @@ small, pure logic in `chrome-extension/src/lib/`.
 - **Elasticsearch** - indexing and searching videos with full-text search and sorting
 - **Recursive structures** - nested comment tree
 - **Toast notifications** - unobtrusive success/error messages (react-hot-toast)
-- **Structured logger** - `server/src/utils/logger.ts` is the only place that touches `console`; the rest of the code logs through it (level + timestamp, `LOG_LEVEL`), and the middleware logs every request (method, path, status, time) with a correlating `X-Request-Id` in the header and logs
+- **Structured logger** - `server/src/utils/logger.ts` is the only place that touches `console`; the rest of the code logs through it (level + timestamp, `LOG_LEVEL`), and the middleware logs every request that reaches it (method, path, status, time) with a correlating `X-Request-Id` in the header and logs. The host guard, the rate limiter and the JSON body parser run before it, so a request they turn away leaves no request line and no `http_requests_total` sample. A `/health/live` probe that answers 200 is left out on purpose: the server image's healthcheck sends one every 30 s, so it counts in the metrics and stays out of the log
 - **Central error handling** - Express 5 forwards rejected handlers to a single middleware (`server/src/app.ts`), so every unhandled error is a consistent JSON 500 and a full log with the route, no try/catch in every handler
 - **Contract validation** - the bodies of `POST /api/folder/queue` and `PUT /api/folder/config` are parsed with zod schemas (`server/src/routes/validation.ts`); a validation error is a 400 with the first problem described directly
 - **Dependency injection** - `createApp` takes the token and the download queue (`createFolderRouter(queue)`), and the ES client has an injection point. Tests do not reach for module singletons

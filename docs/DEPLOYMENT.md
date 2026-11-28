@@ -57,8 +57,12 @@ points at `http://<host>:3001`.
 
 3. Bring the stack up:
    ```bash
-   docker compose up -d --build
+   docker compose up -d --build --wait
    ```
+   `--wait` returns once every service reports healthy. Elasticsearch gets
+   there when the cluster takes index work. The server and the UI only have to
+   answer their liveness probe, `/health/live`, which they do with the cluster
+   down as well.
    - Web UI: `http://<host>:3000`
    - API: `http://<host>:3001` (`/health`, `/api/...`)
    - First searchable content appears after `POST /api/videos/refreshCache`
@@ -73,7 +77,7 @@ points at `http://<host>:3001`.
 ## Upgrades
 
 ```bash
-docker compose pull && docker compose up -d --build
+docker compose pull && docker compose up -d --build --wait
 ```
 
 After an upgrade, check the boot log for "its index predates the current
@@ -82,6 +86,18 @@ mapping": each folder it names needs a full reindex, `POST
 skips every folder that already has an index).
 Elasticsearch data is rebuildable at any time. The video folders are the
 store of record.
+
+### yt-dlp in the image
+
+`server/Dockerfile` pins yt-dlp (`ARG YTDLP_VERSION`) and installs it with the
+`pin`, `pin-curl-cffi` and `pin-deno` extras (`ARG YTDLP_EXTRAS`), so every
+library it loads has a fixed version as well, and a rebuild changes nothing
+until you bump the argument. curl_cffi is what `impersonate: true` needs.
+yt-dlp-ejs and deno solve the JavaScript challenges YouTube puts in front of a
+download. yt-dlp starts deno with no permissions. The player code it runs can
+neither open a connection, not even to the `client` proxy that adds the token,
+nor read the environment that holds the API keys. The boot log names the
+version: `yt-dlp version: ...`.
 
 ### Restarts and the download queue
 

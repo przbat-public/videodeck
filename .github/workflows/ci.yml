@@ -240,11 +240,12 @@ jobs:
           # would let a later build step push with it.
           persist-credentials: false
       - uses: ./.github/actions/pnpm-setup
-      # The yt-dlp the Docker image ships: the version server/Dockerfile pins,
-      # installed without extras, as the image does. `yt-dlp --version` fails
-      # the step at once if pipx did not put the binary on PATH.
+      # The yt-dlp the Docker image ships: the version and the extras
+      # server/Dockerfile pins, so the impersonate case finds curl_cffi as the
+      # image does. `yt-dlp --version` fails the step at once if pipx did not
+      # put the binary on PATH.
       - name: Install the pinned yt-dlp
-        run: pipx install "yt-dlp==$(sed -n 's/^ARG YTDLP_VERSION=//p' server/Dockerfile)" && yt-dlp --version
+        run: pipx install "yt-dlp[$(sed -n 's/^ARG YTDLP_EXTRAS=//p' server/Dockerfile)]==$(sed -n 's/^ARG YTDLP_VERSION=//p' server/Dockerfile)" && yt-dlp --version
       # The yt-dlp suite checks the argument templates against that binary,
       # offline: every case targets a string that is not a URL. The
       # Elasticsearch suite runs against the service container above. Nothing
@@ -300,6 +301,13 @@ jobs:
           # The token is not needed after the clone; leaving it in .git/config
           # would let a later build step push with it.
           persist-credentials: false
+      # scripts/check-compose.test.mjs reads the compose file by indentation.
+      # Compose is the parser that counts, so it gets the last word on whether
+      # every service caps its log.
+      - name: Check the compose file
+        run: |
+          docker compose config --format json > /tmp/compose.json
+          jq -e '(.services | length) == 3 and ([.services[] | .logging.driver == "json-file" and (.logging.options["max-size"] | type) == "string" and (.logging.options["max-file"] | type) == "string"] | all)' /tmp/compose.json
       # The images are what a self-hosted operator actually runs, and until this
       # job existed nothing built them before a release: a broken --prod install
       # (the shared contract has its own zod dependency) or a failed client
@@ -314,6 +322,24 @@ jobs:
           # yt-dlp, so a base-image bump that breaks either is caught here.
           test "$(docker run --rm videodeck-server:ci id -u)" = "1000"
           docker run --rm videodeck-server:ci yt-dlp --version
+          # yt-dlp carries what the folder options ask of it: curl_cffi for
+          # `impersonate: true`, yt-dlp-ejs and a JavaScript runtime for the
+          # challenges YouTube sets. No network needed: -v lists the libraries
+          # and runtimes it found and stops at the missing URL, while a missing
+          # curl_cffi stops it earlier, with a traceback.
+          out=$(docker run --rm --network none videodeck-server:ci yt-dlp --ignore-config --impersonate chrome -v 2>&1 || true)
+          grep -q 'You must provide at least one URL' <<<"$out" || { echo "::error::yt-dlp cannot impersonate chrome, curl_cffi is missing"; echo "$out"; exit 1; }
+          grep -q 'yt_dlp_ejs-' <<<"$out" || { echo "::error::yt-dlp-ejs is missing, so YouTube challenges go unsolved"; echo "$out"; exit 1; }
+          grep -q 'JS runtimes: deno-' <<<"$out" || { echo "::error::yt-dlp finds no JavaScript runtime"; echo "$out"; exit 1; }
+          # The runtime install is the server's production closure: express is
+          # in it, the client's packages and the test tooling are not. The
+          # negative check is an if: bash -e never stops on a `!` command.
+          docker run --rm videodeck-server:ci ls /app/node_modules/.pnpm > /tmp/server-packages.txt
+          grep -q '^express@' /tmp/server-packages.txt
+          if grep -E '^(react|react-dom|lucide-react|i18next|typescript|supertest)@' /tmp/server-packages.txt; then
+            echo "::error::the server image installs packages the server never loads (listed above)"
+            exit 1
+          fi
           # No Elasticsearch on purpose: the server answers 503 and reports the
           # cluster as down, which still proves the compiled entrypoint loaded
           # every workspace import from the production-only install. The token
@@ -337,6 +363,22 @@ jobs:
           grep -q '"elasticsearch":"down"' /tmp/health.json
           # The token is enforced inside the image, not only in the tests
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8091/api/health)" = "401"
+          # Docker's own probe, run inside the container. It asks the liveness
+          # path, which answers while Elasticsearch is down, so the container
+          # turns healthy here too.
+          for _ in $(seq 1 30); do
+            health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' server)
+            [ "$health" = "healthy" ] && break
+            sleep 2
+          done
+          test "$health" = "healthy" || { echo "::error::the server container reports health '$health'"; exit 1; }
+          # The same probe where nothing listens has to fail, or "healthy"
+          # above proves nothing
+          probe=$(docker inspect -f '{{index .Config.Healthcheck.Test 3}}' videodeck-server:ci)
+          if docker run --rm --network none --entrypoint node videodeck-server:ci -e "$probe"; then
+            echo "::error::the server probe passed with no server listening"
+            exit 1
+          fi
       - name: Smoke-test the client image
         run: |
           # On the same network as the server, so nginx resolves its upstream at
@@ -358,11 +400,36 @@ jobs:
           done
           test "$code" = "503"
           grep -q '"elasticsearch":"down"' /tmp/proxied.json
+          # nginx answers its own probe, so the UI turns healthy whatever the
+          # server's state, and the probe fails where nginx is not running
+          for _ in $(seq 1 30); do
+            health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' client)
+            [ "$health" = "healthy" ] && break
+            sleep 2
+          done
+          test "$health" = "healthy" || { echo "::error::the client container reports health '$health'"; exit 1; }
+          probe=$(docker inspect -f '{{index .Config.Healthcheck.Test 1}}' videodeck-client:ci)
+          if docker run --rm --network none --entrypoint sh videodeck-client:ci -c "$probe"; then
+            echo "::error::the client probe passed with nginx not running"
+            exit 1
+          fi
+          # nginx logs the page but neither the API nor the probes: the server
+          # writes a line for each API request already, and nginx's line would
+          # add the query string. stdout only, which is the access log; the
+          # error log goes to stderr.
+          docker logs client > /tmp/client-access.log 2>/dev/null
+          grep -q '"GET / HTTP/1.1" 200' /tmp/client-access.log
+          if grep -E 'GET /(api/|health/live)' /tmp/client-access.log; then
+            echo "::error::nginx writes API requests or probes to its access log (listed above)"
+            exit 1
+          fi
       - name: Container logs on failure
         if: failure()
         run: |
           docker logs server || true
           docker logs client || true
+          # The last probe answers, for a container that never turned healthy
+          docker inspect -f '{{.Name}} {{json .State.Health}}' server client || true
 
   e2e:
     name: Playwright E2E (mocked API)

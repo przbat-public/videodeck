@@ -484,10 +484,10 @@ describe('deep server integration (real app, fake external world)', () => {
     await waitForRefreshIdle();
 
     // Three documents, one batch: the caller reports the refusal instead of
-    // counting all three as indexed
+    // counting all three as indexed, and apart from the videos it could not
+    // read, of which there are none here
     const status = await env.agent.get('/api/videos/refreshCache/status').expect(200);
-    expect(status.body.indexed).toBe(2);
-    expect(status.body.skipped).toBe(1);
+    expect(status.body).toMatchObject({ indexed: 2, skipped: 0, rejected: 1, folderErrors: 0 });
 
     // And the good documents are searchable, so the batch did not sink
     const search = await env.agent.get('/api/videos/search?q=film').expect(200);
@@ -891,6 +891,39 @@ describe('deep server integration (real app, fake external world)', () => {
       await env.agent.post('/api/folder/queue/resume?paused=0').expect(200);
     }
   });
+
+  it('reports a cluster that answers but refuses writes', async () => {
+    // The flood-stage disk watermark puts index.blocks.read_only_allow_delete
+    // on every index of a full node. A ping still answers and search still
+    // works, so the probe read that cluster as healthy while every download
+    // missed search.
+    const folderPath = await env.seedFolder('writes-refused', videoFiles('readonly001', 'Film tylko do odczytu'));
+    env.setFolders('writes-refused');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+    const { getIndexNameFromFolderPath } = await import('../services/elasticsearchService.js');
+    const alias = getIndexNameFromFolderPath(folderPath);
+    const health = async () => (await env.agent.get('/api/health').expect(200)).body as Record<string, unknown>;
+
+    env.fakeEs.blockWrites(alias);
+    try {
+      // A healthy answer from before the block may still be cached for 5 s
+      const refused = await waitFor(health, (body) => (body as Record<string, unknown>).writes === 'refused');
+      expect(refused).toMatchObject({ status: 'ok', elasticsearch: 'ok', writes: 'refused' });
+
+      const search = await env.agent.get('/api/videos/search?q=odczytu').expect(200);
+      expect((search.body as { videos: Array<{ title: string }> }).videos.map((video) => video.title)).toEqual([
+        'Film tylko do odczytu',
+      ]);
+    } finally {
+      env.fakeEs.unblockWrites(alias);
+    }
+    // No probe after the block lifts, on purpose: a healthy answer is cached
+    // for 5 s, and the outage test, which the nightly may run next, needs the
+    // probe to see a cluster stop at once. A refusal is never served from the
+    // cache, so the next probe runs whatever comes next; http.test.ts pins that
+    // it then answers without the refusal.
+  }, 30_000);
 
   it('reports an unreachable Elasticsearch and recovers when it comes back', async () => {
     const firstFolder = await env.seedFolder('es-down-a', {

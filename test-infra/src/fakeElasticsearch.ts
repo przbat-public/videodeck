@@ -85,6 +85,17 @@ import type { AddressInfo } from 'node:net';
  *   highlighted field passes the analyzed-offset limit, unless the request
  *   caps it", "refuses a page with a failed shard when partial results are
  *   not allowed").
+ * - a write block, the one index.blocks.read_only_allow_delete puts on an
+ *   index and the flood-stage disk watermark sets on every index of a full
+ *   node (blockWrites). Bulk items into the index and single-document writes
+ *   answer 429 cluster_block_exception while reads go on, and the blocks
+ *   section of the cluster state lists it under the physical index until the
+ *   index is deleted ("lists a write block the way Elasticsearch does, and
+ *   refuses writes into the index it blocks", "drops the write block of an
+ *   index it deletes, as the cluster does"). That section, asked for with no
+ *   parameter, is the only cluster state the fake serves; any other cluster
+ *   request answers 500 ("answers a cluster state request it does not model
+ *   with a 500 that names it").
  *
  * Search, over a _search URL or an _msearch pair, still implements only the
  * query shapes the service sends (match_all, multi_match over SEARCH_FIELDS,
@@ -170,6 +181,29 @@ function tooLongLineError(): Record<string, unknown> {
     reason: `An HTTP line is larger than ${MAX_INITIAL_LINE_LENGTH} bytes.`,
   };
   return { error: { root_cause: [cause], ...cause }, status: 400 };
+}
+
+/**
+ * The block index.blocks.read_only_allow_delete puts on an index, under its id
+ * as the cluster state of Elasticsearch 9.5 lists it: the write level alone,
+ * and a description that ends with a link to that version's docs. Hardcoded
+ * like RESULT_WINDOW: the fake has to answer what a cluster answers, not what
+ * the code under test expects.
+ */
+const WRITE_BLOCK_ID = '12';
+const WRITE_BLOCK = {
+  description:
+    'disk usage exceeded flood-stage watermark, index has read-only-allow-delete block; for more information, see https://www.elastic.co/docs/troubleshoot/elasticsearch/fix-watermark-errors?version=9.5',
+  retryable: false,
+  levels: ['write'],
+};
+
+/** The error a cluster answers a write into an index carrying that block with */
+function writeBlockedError(index: string): { type: string; reason: string } {
+  return {
+    type: 'cluster_block_exception',
+    reason: `index [${index}] blocked by: [TOO_MANY_REQUESTS/${WRITE_BLOCK_ID}/${WRITE_BLOCK.description}];`,
+  };
 }
 
 /** One search of an _msearch body: its header line and its body line */
@@ -550,6 +584,8 @@ export class FakeElasticsearch {
     released: Promise<void>;
   }> = [];
   private readonly releases = new Set<() => void>();
+  /** Physical indices whose writes blockWrites refuses */
+  private readonly writeBlocked = new Set<string>();
   private server: Server | null = null;
   private port: number | null = null;
 
@@ -605,6 +641,31 @@ export class FakeElasticsearch {
     };
     this.releases.add(release);
     return { reached, abandoned, release };
+  }
+
+  /**
+   * Refuse the writes into an index from now on, the way
+   * index.blocks.read_only_allow_delete does: bulk items into it and
+   * single-document writes answer 429, reads go on, and the cluster state
+   * lists the block. An alias blocks the index it points at, where a cluster
+   * keeps the setting. A name the fake does not hold throws.
+   */
+  blockWrites(name: string): void {
+    this.writeBlocked.add(this.physicalName(name));
+  }
+
+  /** Take the writes again, as clearing the setting does */
+  unblockWrites(name: string): void {
+    this.writeBlocked.delete(this.physicalName(name));
+  }
+
+  /** The physical index an index or alias name resolves to, for a test control */
+  private physicalName(name: string): string {
+    const entry = this.resolve(name);
+    if (!entry) {
+      throw new Error(`fake-elasticsearch: ${name} is neither an index nor an alias`);
+    }
+    return entry.name;
   }
 
   /** The physical index an alias currently points at, if any */
@@ -766,8 +827,8 @@ export class FakeElasticsearch {
       res.end();
       return true;
     }
-    if (url.pathname === '/_cluster/health') {
-      this.json(res, 200, { status: 'green' });
+    if (url.pathname.startsWith('/_cluster/')) {
+      this.handleClusterRoutes(res, url);
       return true;
     }
     if (url.pathname === '/_aliases') {
@@ -807,6 +868,31 @@ export class FakeElasticsearch {
       return true;
     }
     return false;
+  }
+
+  /**
+   * The cluster-level reads: health, which the fake's own tests hold, and the
+   * blocks section of the cluster state, which the health probe asks for.
+   * Anything else answers 500, a cluster state metric other than blocks or a
+   * parameter on it included: another metric carries sections the fake does
+   * not keep, and a parameter such as local changes which node answers.
+   */
+  private handleClusterRoutes(res: ServerResponse, url: URL): void {
+    if (url.pathname === '/_cluster/health') {
+      this.json(res, 200, { status: 'green' });
+      return;
+    }
+    const request = url.pathname + url.search;
+    if (request !== '/_cluster/state/blocks') {
+      throw new Error(`the cluster request ${request} is not modelled`);
+    }
+    const indices = [...this.writeBlocked].map((index) => [index, { [WRITE_BLOCK_ID]: WRITE_BLOCK }]);
+    this.json(res, 200, {
+      cluster_name: 'fake-elasticsearch',
+      cluster_uuid: 'fake-elasticsearch',
+      // No block at the cluster level, and the section is empty without any
+      blocks: indices.length === 0 ? {} : { indices: Object.fromEntries(indices) },
+    });
   }
 
   /** Bulk, alias and single-document routes. True when one handled the request. */
@@ -937,6 +1023,8 @@ export class FakeElasticsearch {
       return;
     }
     this.indices.delete(name);
+    // The block lives in the index settings, so it goes with the index
+    this.writeBlocked.delete(name);
     for (const [alias, index] of this.aliases) {
       if (index === name) {
         this.aliases.delete(alias);
@@ -1017,6 +1105,11 @@ export class FakeElasticsearch {
         continue;
       }
       const id = op.index?._id ?? String(Math.random());
+      if (this.writeBlocked.has(entry.name)) {
+        errors = true;
+        items.push({ index: { _index: entry.name, _id: id, status: 429, error: writeBlockedError(entry.name) } });
+        continue;
+      }
       const failure = numericRangeFailure(entry, doc);
       if (failure) {
         errors = true;
@@ -1042,6 +1135,11 @@ export class FakeElasticsearch {
     const entry = this.resolve(index);
     if (!entry) {
       this.json(res, 404, notFound(index));
+      return;
+    }
+    if (this.writeBlocked.has(entry.name)) {
+      const cause = writeBlockedError(entry.name);
+      this.json(res, 429, { error: { root_cause: [cause], ...cause }, status: 429 });
       return;
     }
     const docId = id ?? `doc-${entry.documents.size + 1}`;

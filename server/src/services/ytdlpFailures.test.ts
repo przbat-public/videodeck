@@ -41,6 +41,17 @@ describe('detectPermanentFailure', () => {
     expect(detectPermanentFailure(['ERROR: [youtube] x: Sign in to confirm your age'])?.code).toBe('age-gate');
   });
 
+  it('reads the typographic apostrophe YouTube writes into its reasons', () => {
+    // yt-dlp passes YouTube's reason through as sent, with U+2019 in "you’re"
+    // and "isn’t" (seen in live logs of 2026.08.19 and of a 2026.11 nightly)
+    expect(
+      detectPermanentFailure([
+        'ERROR: [youtube] x: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.',
+      ])?.code,
+    ).toBe('bot-wall');
+    expect(detectPermanentFailure(['ERROR: [youtube] x: This video isn’t available anymore'])?.code).toBe('removed');
+  });
+
   it('detects the geo-block wording yt-dlp 2026.8.19 prints for YouTube', () => {
     // _video.py raises YouTube's own subreason as a GeoRestrictedError
     expect(

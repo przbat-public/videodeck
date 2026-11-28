@@ -9,8 +9,10 @@ import { buildYtDlpArgs } from './ytdlp';
  *
  *   pnpm run test:ytdlp-integration
  *
- * CI installs the version server/Dockerfile pins, so a pin bump to a release
- * that drops or renames a flag the templates use turns that job red.
+ * CI installs the version and the extras server/Dockerfile pins, so a pin bump
+ * to a release that drops or renames a flag the templates use turns that job
+ * red, and so does an extras list that drops curl_cffi. Homebrew's yt-dlp
+ * ships without curl_cffi, so the impersonate case fails against it.
  *
  * Nothing goes over the network. Every case targets a string that is not a
  * URL, and yt-dlp validates the whole command line (option names and arity,
@@ -55,6 +57,25 @@ describeIntegration('yt-dlp integration', () => {
     const result = simulate(args);
 
     expect(result.error).toBeUndefined();
+    expect(result.stderr).toMatch(TEMPLATE_ACCEPTED);
+  });
+
+  it('accepts --impersonate chrome, so the curl_cffi it loads is installed', () => {
+    // `impersonate: true` in a folder's config.json adds the flag. yt-dlp
+    // looks the target up before it reads the URL, so a yt-dlp without
+    // curl_cffi (Homebrew's, or a bare pip install) stops with
+    // 'Impersonate target "chrome" is not available' and a traceback.
+    const args = buildYtDlpArgs({
+      type: 'download',
+      videoUrl: OFFLINE_TARGET,
+      options: { ...FAST_OPTIONS, impersonate: true },
+    });
+    expect(args.join(' ')).toContain('--impersonate chrome');
+
+    const result = simulate(args);
+
+    expect(result.error).toBeUndefined();
+    expect(result.stderr).not.toMatch(/Impersonate target "chrome" is not available/);
     expect(result.stderr).toMatch(TEMPLATE_ACCEPTED);
   });
 

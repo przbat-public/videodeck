@@ -222,6 +222,8 @@
     "finishedWithSkipped": "Indexing finished: {{indexed}} videos indexed, {{skipped}} skipped",
     "folderError_one": "{{count}} folder error",
     "folderError_other": "{{count}} folder errors",
+    "rejected_one": "{{count}} refused by Elasticsearch",
+    "rejected_other": "{{count}} refused by Elasticsearch",
     "nothingToDo": "Every folder already has an index in Elasticsearch — nothing to do",
     "statusFailed": "Failed to read indexing status (HTTP {{status}})",
     "startFailed": "Failed to start the index refresh",
@@ -293,6 +295,7 @@
   },
   "health": {
     "elasticsearchDown": "Elasticsearch is not responding. Search and indexing are off; downloads and the video list still work.",
+    "elasticsearchReadOnly": "Elasticsearch accepts reads only, usually because its disk is nearly full. Search works, but videos downloaded meanwhile may not appear in the results: once Elasticsearch accepts writes again, run \"{{refresh}}\" with \"{{onlyMissing}}\" unchecked.",
     "recheck": "Check again"
   },
   "theme": {
