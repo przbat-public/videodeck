@@ -3,7 +3,7 @@ import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { defineConfig } from 'vitest/config';
 
-// `ANALYZE=1 npm run build` writes a bundle report (dist/stats.html).
+// `ANALYZE=1 pnpm run build` writes a bundle report to client/stats.html.
 // Off by default: the report is a one-off inspection, not a build artifact.
 const analyze = process.env.ANALYZE === '1';
 

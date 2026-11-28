@@ -30,10 +30,12 @@ pnpm run lint          # biome check + repository-invariant scripts
 pnpm run lint:types    # eslint --max-warnings 0 (type-aware, React, Playwright)
 ```
 
-Lint runs with zero tolerance: every warning fails the run, so the list of
-issues cannot grow. Where an indexed access is genuinely safe (e.g. yt-dlp
-log lines that never change order), a deliberate `eslint-disable` with
-justification is used.
+ESLint runs with zero tolerance (`--max-warnings 0`): every ESLint warning
+fails the run, so the list of issues cannot grow. Biome fails the run only
+on errors: a rule at warning level, such as the two `biome.json` sets to
+`warn`, prints its findings and the run still passes. Where an indexed
+access is genuinely safe (e.g. yt-dlp log lines that never change order),
+a deliberate `eslint-disable` with justification is used.
 
 ### Auto-fixing errors
 
@@ -118,7 +120,7 @@ URL-driven search, "Show more" (pl: „Pokaż więcej") pagination, the details 
 with the player and subtitles, the status page:
 
 ```bash
-pnpm run test:e2e  # first time: cd client && pnpm exec playwright install chromium
+pnpm run test:e2e  # first run and after every Playwright bump: cd client && pnpm exec playwright install chromium
 ```
 
 The suite reuses a server already listening on port 3000, which is convenient
@@ -215,11 +217,13 @@ A short overview of the client's architectural decisions and what was consciousl
   useDownloadQueue) cover the caching, retries, and synchronization that
   TanStack Query provides out of the box; the migration is worth doing at the
   next larger data refactor, not during small changes.
-- **React Compiler**: a recommendation, not an implementation.
-  Auto-memoization would remove the manual `memo`/`useCallback`
-  (VideoItem, VideoCard, CommentComponent), but it needs verification
-  against react-window and react-i18next; enable it as a separate,
-  conscious step.
+- **React Compiler**: enabled. `client/vite.config.ts` runs
+  babel-plugin-react-compiler through `@rolldown/plugin-babel` and the
+  `reactCompilerPreset` of `@vitejs/plugin-react`, for the dev server, the
+  production build and the integration suite. Only the unit run stays
+  uncompiled, so its coverage measures the source. The manual
+  `memo`/`useCallback` in VideoItem, VideoCard and CommentComponent stays,
+  because removing it changes compiler output.
 
 ## Developer tooling
 

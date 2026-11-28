@@ -142,8 +142,8 @@ describe('DownloadQueue (property)', () => {
     );
   });
 
-  it('never runs two downloads of one folder at once, nor more than maxConcurrent processes', () => {
-    fc.assert(
+  it('never runs two downloads of one folder at once, nor more than maxConcurrent processes', async () => {
+    await fc.assert(
       fc.asyncProperty(
         fc.array(
           fc.oneof(

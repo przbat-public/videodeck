@@ -53,7 +53,7 @@ Element.prototype.scrollIntoView ??= () => {
   /* no-op: jsdom has no layout to scroll */
 };
 
-// jsdom 30 has the <dialog> element but none of its methods, and the modal
+// jsdom has the <dialog> element but none of its methods, and the modal
 // primitive opens itself with showModal(). The stub keeps the element's open
 // state and its close event; the top layer, the backdrop, the focus trap and
 // Escape-on-a-modal belong to the browser and are covered by the e2e suite.

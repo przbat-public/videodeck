@@ -106,8 +106,9 @@ which passes for `null`. `scripts/check-test-hygiene.mjs` (part of
   console warnings in existing suites are noise, not failures.
 - Mock at a boundary you do not own where you can; a mocked app module gets a
   comment naming the behavior that hides.
-- jest-dom 7 has no computed-style assertions; assert attributes or text
-  the component renders.
+- `toHaveStyle` reads jsdom's computed style. A component test imports no
+  stylesheet and jsdom does no layout, so assert attributes or text the
+  component renders and check stylesheet-driven styles in Playwright.
 
 ## Fakes at the boundaries
 

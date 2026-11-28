@@ -146,7 +146,7 @@ prowadzona po angielsku.
 ```bash
 pnpm run dev          # serwer :3001 + klient :3000
 pnpm run test         # testy jednostkowe: serwer, klient i rozszerzenie (vitest)
-pnpm run test:e2e     # Playwright z zamokowanym API (raz: cd client && pnpm exec playwright install chromium)
+pnpm run test:e2e     # Playwright z zamokowanym API (przy pierwszym uruchomieniu i po każdej aktualizacji Playwrighta: cd client && pnpm exec playwright install chromium)
 ```
 
 Reguły lintu, macierz testów, ratchet pokrycia i ścisłe flagi TypeScript:

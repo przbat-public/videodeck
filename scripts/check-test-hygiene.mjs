@@ -19,6 +19,10 @@
  *   tell the detail page from the list. Assert a state only the new page has.
  * - `no-cannot-fail-query-assertion`: `expect(await screen.queryBy…()).toBeDefined()`
  *   passes for `null`, so a missing element satisfies it.
+ * - `no-floating-async-property`: `fc.assert(fc.asyncProperty(…))` that is
+ *   neither awaited nor returned. The test passes as soon as the call
+ *   returns, and a counterexample turns up as an unhandled rejection no test
+ *   owns, or not at all once the file has finished.
  *
  * Comments are ignored on purpose (the scan runs on comment-stripped source).
  * Escape hatch: a file containing the marker `test-hygiene-ok` is skipped (add
@@ -49,6 +53,9 @@ const HAND_ROLLED_SLEEP_RE = /await\s+new\s+Promise\s*(?:<[^>]*>)?\s*\([\s\S]{0,
 const WAIT_FOR_TIMEOUT_RE = /\bwaitForTimeout\s*\(/g;
 const FOCUSED_RE = /\.\s*only\s*\(/g;
 const CANNOT_FAIL_QUERY_RE = /expect\s*\(\s*await\s+[^;]{0,200}?query(?:All)?By[^;]{0,200}?\)\s*\.\s*toBeDefined\s*\(/g;
+/** An async property's assert, with the `await`, `return` or arrow that hands its promise on, if any */
+const ASYNC_PROPERTY_ASSERT_RE =
+  /(\bawait\s+|\breturn\s+|=>\s*)?\bfc\s*\.\s*assert\s*\(\s*fc\s*\.\s*asyncProperty\s*\(/g;
 const ROLE_QUERY_RE =
   /(?:get|find|query)(?:All)?ByRole\(\s*'([a-z]+)'\s*,\s*\{\s*name:\s*(\/[^/\n]*\/[a-z]*|'[^'\n]*'|"[^"\n]*"|`[^`\n]*`)\s*\}/g;
 
@@ -231,6 +238,11 @@ export function findTestHygieneViolations(source) {
   reportMatches(WAIT_FOR_TIMEOUT_RE, 'no-wait-for-timeout', context);
   reportMatches(FOCUSED_RE, 'no-focused-test', context);
   reportMatches(CANNOT_FAIL_QUERY_RE, 'no-cannot-fail-query-assertion', context);
+  for (const match of stripped.matchAll(ASYNC_PROPERTY_ASSERT_RE)) {
+    if (match[1] === undefined) {
+      context.report('no-floating-async-property', match.index, match[0]);
+    }
+  }
   // A predicate poll in a named helper is the sanctioned fallback, so this one
   // only counts inside a test body.
   for (const match of stripped.matchAll(HAND_ROLLED_SLEEP_RE)) {

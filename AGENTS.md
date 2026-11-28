@@ -208,15 +208,23 @@ Playwright stays the thin mocked-API browser layer (`client/e2e/`).
 - **E2E queue mock**: the mocked queue endpoint is matched by **regex**
   (`/\/api\/folder\/queue/`); a naive glob like `queue*` misses `/queue/pause`,
   and `includes('pause')` matches the query string `?paused=0`.
-- **jest-dom 7** does not support computed-style assertions (e.g. `toHaveStyle`
-  against stylesheet rules). Assert what the component renders, or use
-  `getComputedStyle` where truly needed.
+- **Styles in jsdom**: jest-dom's `toHaveStyle` compares against
+  `getComputedStyle()`, and jsdom only has the CSS a test imports (both
+  client vitest configs set `css: true`). Component tests import none,
+  `<App />` tests get `App.css` without the `index.css` tokens, and jsdom
+  does no layout. Assert what the component renders, and check
+  stylesheet-driven styles in Playwright (`client/e2e/`).
 - **Major-version holds**: Dependabot ignores semver-major bumps of the type
   and compiler toolchain, naming `typescript` and `@types/node` today. Both
   waits are deliberate: a TypeScript major breaks the type-aware lint
   toolchain until `typescript-eslint` moves with it, and an `@types/node` major
   has to follow a Node runtime bump (`.nvmrc`), not lead it. Do those upgrades
   by hand, together, as one change.
+- **vitest and jest-dom majors move together**: jest-dom adds its matchers to
+  vitest's `Assertion` type and supports one vitest major at a time (jest-dom
+  8 needs vitest 5), a peer range pnpm does not enforce. When the two drift,
+  `client/src/test/matcherTypes.test.ts` fails `pnpm run typecheck`, because
+  skipLibCheck hides the clash everywhere else.
 - **vitest + the shared test infra**: `@videodeck/test-infra/*` and
   `@videodeck/shared/*` resolve through the pnpm workspace symlinks and each
   package's `exports` (no tsconfig paths or vite aliases; the
