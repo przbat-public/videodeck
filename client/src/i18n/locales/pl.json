@@ -231,7 +231,7 @@
     "recreateTitle": "Odbuduj wszystkie indeksy Elasticsearch",
     "recreateConfirm": {
       "title": "Odbudować wszystkie indeksy?",
-      "message": "Indeks każdego folderu zostanie zastąpiony pustym, więc wyszukiwanie nic nie znajdzie, dopóki nie uruchomisz ponownie „Odśwież indeks”.",
+      "message": "Indeks każdego folderu zostanie zastąpiony pustym, więc wyszukiwanie nic nie znajdzie, dopóki nie uruchomisz ponownie „{{refresh}}”.",
       "confirm": "Odbuduj indeksy"
     },
     "reloadTitle": "Odśwież listę filmów",

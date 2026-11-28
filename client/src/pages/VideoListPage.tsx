@@ -184,7 +184,7 @@ export default function VideoListPage(): JSX.Element {
           // refresh, so the menu asks first
           confirm: {
             title: t('reindex.recreateConfirm.title'),
-            message: t('reindex.recreateConfirm.message'),
+            message: t('reindex.recreateConfirm.message', { refresh: t('reindex.start') }),
             confirmLabel: t('reindex.recreateConfirm.confirm'),
           },
         },

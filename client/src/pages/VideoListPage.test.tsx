@@ -545,6 +545,8 @@ describe('VideoListPage', () => {
       await user.click(await screen.findByRole('menuitem', { name: i18n.t('reindex.recreate') }));
       const dialog = await screen.findByRole('dialog', { name: i18n.t('reindex.recreateConfirm.title') });
 
+      // The message names the action that brings search back, by its own label
+      expect(dialog).toHaveTextContent(i18n.t('reindex.start'));
       expect(recreatePosts()).toHaveLength(0);
 
       await user.click(within(dialog).getByRole('button', { name: i18n.t('reindex.recreateConfirm.confirm') }));

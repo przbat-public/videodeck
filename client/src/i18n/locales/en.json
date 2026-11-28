@@ -215,7 +215,7 @@
     "recreateTitle": "Rebuild all Elasticsearch indices",
     "recreateConfirm": {
       "title": "Rebuild every index?",
-      "message": "Each folder's index is replaced with an empty one, so search finds nothing until Refresh index runs again.",
+      "message": "Each folder's index is replaced with an empty one, so search finds nothing until \"{{refresh}}\" runs again.",
       "confirm": "Rebuild indices"
     },
     "reloadTitle": "Refresh the video list",

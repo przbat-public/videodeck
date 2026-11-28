@@ -47,6 +47,24 @@ function renderMenu(
   );
 }
 
+describe('sectionsSignature', () => {
+  it('counts the confirm text the dialog renders', () => {
+    // The provider keeps the sections it holds while the signature stays the
+    // same, so reworded confirm text has to change it or the dialog keeps the
+    // old words
+    const withMessage = (message: string): AppMenuSectionSpec[] => [
+      {
+        key: 'indexes',
+        items: [{ key: 'recreate', label: 'Rebuild', confirm: { title: 'T', message, confirmLabel: 'C' } }],
+      },
+    ];
+
+    expect(JSON.stringify(sectionsSignature(withMessage('M1')))).not.toBe(
+      JSON.stringify(sectionsSignature(withMessage('M2'))),
+    );
+  });
+});
+
 describe('AppMenu', () => {
   beforeEach(async () => {
     // The language test switches the shared i18n instance, so every test
