@@ -9,40 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- **yt-dlp lists a channel from the URL the app checked.** The playlist
-  fetch checked the configured `channelUrl` with Node's URL parser and then
-  handed yt-dlp the text itself. Python's urlsplit reads
+- **Repair requests share the queue's size limit.** The repair endpoint
+  walked every entry in its body, so tens of thousands of tiny invalid ones
+  cost a skip apiece while staying well inside the body limit. Past 40,330
+  entries it now answers 400 without touching the index
+- **yt-dlp lists a channel from the URL the app checked.** Fetching a
+  channel's list validated the configured `channelUrl` with Node's URL
+  parser, then passed yt-dlp the raw text. Python's urlsplit reads
   `https://www.youtube.com\@127.0.0.1:9200` as host 127.0.0.1, port 9200,
   where Node sees www.youtube.com. yt-dlp now gets the URL rebuilt from its
   host and path, a backslash or userinfo is refused when the config is
   saved and when it is read, and a shared link's `?si=…` no longer
   swallows the appended `/videos`
-- **A `$` in a file name no longer pulls a secret into yt-dlp's output
-  path.** yt-dlp expands environment variables in `-o` before it fills in
+- **Stems containing `$` stay out of yt-dlp's output template.** yt-dlp
+  expands environment variables in `-o` before it fills in
   the fields, so updating or repairing a video stored as
   `$API_TOKEN.mp4` would have written the token into a file name. App
-  downloads never hold a `$` (`--restrict-filenames` drops it). A file
-  named by hand with one stays listed, searchable and playable; an update
-  or a repair of it is skipped with the reason "file name contains $"
-  instead of queueing a job yt-dlp is never run for
+  downloads never hold a `$` (`--restrict-filenames` drops it). A
+  hand-named file holding one stays listed, searchable and playable;
+  updating or repairing it is skipped ("file name contains $") rather than
+  queued as a job that cannot run
 - **The extension asks for storage only.** It also asked for `activeTab`
-  and `scripting`, which none of its code calls: the content script comes
-  from the manifest, and the popup reads only the active tab's id. Chrome
+  and `scripting`, which none of its code calls: the manifest declares the
+  content script, and the popup needs just the active tab's id. Chrome
   drops both, without a prompt, once the rebuilt extension is reloaded
 
 ### Fixed
 
-- **Two requests for one channel's video list run yt-dlp once.** A second
-  tab, a reload while the list was being fetched or a script started
-  another yt-dlp for the same channel, outside every queue limit. A
-  request that arrives while the folder's listing runs now waits for it and
-  answers with the same result, and the next click lists the channel again
-- **A percentage in a file name no longer moves the progress bar.** The
-  parser took the first number before a `%` on any line, so a title such as
+- **One channel listing runs at a time per folder.** A second browser tab,
+  a reload mid-fetch or a script each started their own yt-dlp on that
+  channel, bypassing the queue's limits. Later callers now join the listing
+  already underway and get its answer; once it settles, a click lists
+  afresh
+- **Titles with a percentage leave the progress bar alone.** The parser
+  took the first number before a `%` on any line, so a title such as
   `50%_off`, or an error that quoted `42%`, set the bar, and a title with
   "completed" in it set it to 100. Only the `--progress-template` line and
-  yt-dlp's default bar count now. Both patterns are anchored, so a long run
-  of digits no longer makes the parser backtrack
+  yt-dlp's default bar count now. Both patterns are anchored, which also
+  ends the backtracking a long run of digits caused
 - **`impersonate: true` works in the Docker image.** The image installed a
   bare yt-dlp without curl_cffi, so every job of a folder set to impersonate
   failed at once. It now installs `yt-dlp[pin,pin-curl-cffi,pin-deno]` from
@@ -266,11 +270,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Rebuild indices asks before it runs.** It replaces every folder's
-  index with an empty one, so search finds nothing until Refresh index
-  runs again, and the menu entry started it on the first click. A dialog
-  now names that cost, with Cancel focused; Escape or Cancel leaves the
-  indices alone
+- **Rebuild indices asks before it runs.** It swaps each folder's index
+  for a blank one, so search finds nothing until Refresh index runs again,
+  and a single click on the menu entry used to start it. A dialog now names
+  that cost, with Cancel focused; Escape or Cancel leaves the indices alone
 - **Rebuild every index once after upgrading:** `POST /api/videos/refreshCache`
   without `onlyMissing` (Refresh index, with "only missing" unchecked). An
   `onlyMissing` run or a drive swap keeps indices built earlier, which lack

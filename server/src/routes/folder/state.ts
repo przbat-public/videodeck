@@ -23,6 +23,7 @@ import { needsRepair, videoDownloadState, wantedSidecars } from '../../services/
 import { stripUndefined } from '../../utils/objectUtils';
 import type { NoParams, RouteHandler } from '../http';
 import { readBody, readString } from '../http';
+import { MAX_QUEUE_VIDEOS } from '../validation';
 import { requireAllowedFolder, requireMountedFolder } from './guards';
 import type { DownloadQueueLike } from './queue';
 import { refreshableEntry } from './queue';
@@ -333,6 +334,12 @@ export function createRepairHandler(queue: DownloadQueueLike): RouteHandler<NoPa
     const rawVideos = Array.isArray(body.videos) ? body.videos : [];
     if (rawVideos.length === 0) {
       res.status(400).json({ error: 'videos must be a non-empty array' });
+      return;
+    }
+    // Before any element is walked: a body of tiny invalid entries would
+    // otherwise cost one skip each, far under the body limit
+    if (rawVideos.length > MAX_QUEUE_VIDEOS) {
+      res.status(400).json({ error: `videos must hold at most ${MAX_QUEUE_VIDEOS} entries` });
       return;
     }
 

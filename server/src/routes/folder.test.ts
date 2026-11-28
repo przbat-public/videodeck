@@ -1587,6 +1587,34 @@ describe('folder router', () => {
   });
 
   describe('repair endpoint', () => {
+    it('refuses more videos than one request may carry, before walking them', async () => {
+      // The cap POST /api/folder/queue has: a body of bare numbers stays far
+      // under the body limit, and each of them used to be walked into a skip
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      const videos = Array.from({ length: MAX_QUEUE_VIDEOS + 1 }, () => 1);
+
+      const response = await request(app)
+        .post('/api/folder/repair')
+        .send({ folderPath: FOLDER, method: 'sidecars', videos });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe(`videos must hold at most ${MAX_QUEUE_VIDEOS} entries`);
+      expect(mockedLoadIndex).not.toHaveBeenCalled();
+      expect(spawnCalls).toHaveLength(0);
+    });
+
+    it('takes exactly as many videos as one request may carry', async () => {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      const videos = Array.from({ length: MAX_QUEUE_VIDEOS }, () => 1);
+
+      const response = await request(app)
+        .post('/api/folder/repair')
+        .send({ folderPath: FOLDER, method: 'sidecars', videos });
+
+      expect(response.status).toBe(202);
+      expect(EnqueueJobsResponseSchema.parse(response.body).skipped).toHaveLength(MAX_QUEUE_VIDEOS);
+    });
+
     it('queues sidecar-only jobs pinned to the existing stem', async () => {
       mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
       mockedLoadIndex.mockResolvedValue({
