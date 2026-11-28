@@ -4,12 +4,14 @@ import { metricsRegistry } from '../metricsRegistry';
 import { at } from '../test-utils';
 import { logger } from '../utils/logger';
 import { MAX_COMMENTS_CHARS } from './elasticsearch/bulkIndexing';
+import { writeBlockLogThrottle } from './elasticsearch/indexLifecycle';
 import { isElasticsearchUnavailable } from './elasticsearchErrors';
 import {
   buildIndexVersionName,
   bulkIndexDocuments,
   bulkIndexVideos,
   checkElasticsearchConnection,
+  checkElasticsearchWrites,
   clearElasticsearchOutage,
   createIndex,
   createIndexVersion,
@@ -52,6 +54,9 @@ const mockClient = {
     updateAliases: vi.fn(),
     delete: vi.fn(),
     refresh: vi.fn(),
+  },
+  cluster: {
+    state: vi.fn(),
   },
   bulk: vi.fn(),
   index: vi.fn(),
@@ -605,6 +610,80 @@ describe('elasticsearchService', () => {
     });
   });
 
+  describe('checkElasticsearchWrites', () => {
+    /** A block as the cluster state lists it; its levels are what the check reads */
+    const block = (...levels: string[]) => ({ description: 'a block', retryable: false, levels });
+
+    beforeEach(() => {
+      writeBlockLogThrottle.reset();
+    });
+
+    it('takes writes while the cluster lists no block, asking for the blocks alone', async () => {
+      mockClient.cluster.state.mockResolvedValue({ cluster_name: 'docker-cluster', blocks: {} });
+
+      await expect(checkElasticsearchWrites()).resolves.toBe('accepted');
+      expect(mockClient.cluster.state).toHaveBeenCalledWith({ metric: 'blocks' });
+    });
+
+    it('refuses writes while a library index carries a write block', async () => {
+      // index.blocks.read_only_allow_delete, which the flood-stage disk
+      // watermark puts on every index of a full node: a ping still answers
+      mockClient.cluster.state.mockResolvedValue({
+        blocks: { indices: { [`${ALIAS_A}_20250101000000000`]: { '12': block('write') } } },
+      });
+
+      await expect(checkElasticsearchWrites()).resolves.toBe('refused');
+    });
+
+    it('refuses writes while the whole cluster carries a write block', async () => {
+      // cluster.blocks.read_only, or a cluster that lost its master
+      mockClient.cluster.state.mockResolvedValue({ blocks: { global: { '6': block('write', 'metadata_write') } } });
+
+      await expect(checkElasticsearchWrites()).resolves.toBe('refused');
+    });
+
+    it('takes writes past a block that stops none, and past one on an index outside the library', async () => {
+      mockClient.cluster.state.mockResolvedValue({
+        blocks: {
+          global: { '1': block('metadata_write') },
+          indices: {
+            '.kibana_1': { '8': block('write') },
+            [`${ALIAS_A}_20250101000000000`]: { '9': block('metadata_read', 'metadata_write') },
+          },
+        },
+      });
+
+      await expect(checkElasticsearchWrites()).resolves.toBe('accepted');
+    });
+
+    it('leaves the answer unknown, and quiet, when the cluster withholds its state', async () => {
+      // A role that grants the ping (cluster:monitor/main) and not
+      // cluster:monitor/state gets a 403 on every probe: a setting to
+      // document, not a failure to log each time. Without monitor, which
+      // grants both, the ping fails first and the cluster reads as down.
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+      mockClient.cluster.state.mockRejectedValue(
+        Object.assign(new Error('security_exception'), { name: 'ResponseError', meta: { statusCode: 403 } }),
+      );
+
+      await expect(checkElasticsearchWrites()).resolves.toBe('unknown');
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('leaves the answer unknown on any other failure, and warns once per window', async () => {
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+      // An answer of a shape the check does not read claims nothing either
+      mockClient.cluster.state.mockResolvedValueOnce({ blocks: { global: { '6': { levels: 'write' } } } });
+      await expect(checkElasticsearchWrites()).resolves.toBe('unknown');
+
+      mockClient.cluster.state.mockRejectedValueOnce(new Error('socket hang up'));
+      await expect(checkElasticsearchWrites()).resolves.toBe('unknown');
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Cannot read the write blocks of the cluster'));
+    });
+  });
+
   describe('promoteIndexVersion', () => {
     it('swaps the alias atomically and drops the previous version', async () => {
       aliasPointsAt(`${ALIAS_A}_old`);
@@ -1076,6 +1155,56 @@ describe('elasticsearchService', () => {
       await expect(bulkIndexVideos([video({ videoId: 'a' }), video({ videoId: 'b' })], { index: 'x' })).rejects.toThrow(
         'Bulk indexing failed for all 2 videos',
       );
+    });
+  });
+
+  describe('bulk items the cluster refused', () => {
+    /** One refused item, as a cluster with a write block answers it */
+    const refusedItem = (id: string) => ({
+      index: { _id: id, status: 429, error: { type: 'cluster_block_exception', reason: 'blocked' } },
+    });
+
+    /** Two stems of one video, the shape an older download next to a newer one leaves */
+    const sameVideoTwice = () => [
+      toDocument(video({ videoId: 'dup00000001', baseName: '20240101_Video' })),
+      toDocument(video({ videoId: 'dup00000001', baseName: '20240101_Video_dup00000001' })),
+    ];
+
+    it('throws when every item failed, even when two documents share an id', async () => {
+      // The guard compared the ids that failed with the batch size, so a batch
+      // whose refused documents shared an id read as partly written, and the
+      // reindex promoted a version that held none of them
+      mockClient.bulk.mockResolvedValue({
+        errors: true,
+        items: [refusedItem('dup00000001'), refusedItem('dup00000001')],
+      });
+
+      await expect(bulkIndexDocuments('x', sameVideoTwice(), false)).rejects.toThrow(
+        'Bulk indexing failed for all 2 videos in x',
+      );
+    });
+
+    it('counts each refused item, not each refused id', async () => {
+      mockClient.bulk.mockResolvedValue({
+        errors: true,
+        items: [refusedItem('dup00000001'), refusedItem('dup00000001'), { index: { _id: 'other', status: 201 } }],
+      });
+
+      await expect(
+        bulkIndexDocuments('x', [...sameVideoTwice(), toDocument(video({ videoId: 'other' }))], false),
+      ).resolves.toEqual({ indexed: 1, skipped: 2 });
+    });
+
+    it('logs them as refused, since the reindex status keeps skipped for unreadable files', async () => {
+      const error = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+      mockClient.bulk.mockResolvedValue({
+        errors: true,
+        items: [refusedItem('a'), { index: { _id: 'b', status: 201 } }],
+      });
+
+      await bulkIndexDocuments('x', [toDocument(video({ videoId: 'a' })), toDocument(video({ videoId: 'b' }))], false);
+
+      expect(error).toHaveBeenCalledWith('1 videos failed to index in x (refused):', ['a']);
     });
   });
 

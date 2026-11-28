@@ -14,7 +14,21 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
+    # The image's healthcheck asks here. nginx answers by itself, without the
+    # static files or the upstream, and the probe stays out of the log.
+    location = /health/live {
+        access_log off;
+        default_type text/plain;
+        return 200 'ok';
+    }
+
     location /api/ {
+        # The server writes a line for every API request already, and this
+        # log would add the query string it leaves out on purpose: a folder
+        # path or a search phrase. The price is the cross-site 403 below,
+        # which now leaves no line anywhere. The page and its assets stay
+        # logged.
+        access_log off;
         # The server refuses cross-site requests on its own; answering here too
         # keeps such a request from reaching it at all. Browsers set this
         # header, so clients without it (curl, the extension worker) are

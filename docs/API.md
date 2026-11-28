@@ -7,15 +7,17 @@ on-disk yt-dlp file layout and the per-channel `config.json` options.
 
 ### GET /health (public)
 
-Readiness probe: pings Elasticsearch and returns `200 { status: 'ok', elasticsearch: 'ok' }`, and when ES does not respond: `503 { status: 'degraded', elasticsearch: 'down' }`. The Chrome extension uses it in its "Test connection" (pl: „Test połączenia") button. The ping result is cached for 5 s, so frequent polling does not burden ES.
+Readiness probe: pings Elasticsearch and returns `200 { status: 'ok', elasticsearch: 'ok' }`, and when ES does not respond: `503 { status: 'degraded', elasticsearch: 'down' }`. The Chrome extension uses it in its "Test connection" (pl: „Test połączenia") button. A cluster that answers but refuses writes still gets a `200`, with `writes: 'refused'` added. That means a block at the write level on the cluster or on a `videos_*` index, such as the `index.blocks.read_only_allow_delete` the flood-stage disk watermark puts on the indices of a full node: search keeps working, new videos do not reach it, and the UI shows a read-only banner. The blocks come from `GET /_cluster/state/blocks`, which needs `cluster:monitor/state`. The ping needs `cluster:monitor/main`, and the `monitor` cluster privilege grants both: a user without it gets the `503` above, as if the cluster were down. Only a role that grants the ping without `cluster:monitor/state` gets past the ping and still never sees the `writes` field. A healthy answer is cached for 5 s, so frequent polling does not burden ES, while one that is down or refuses writes is checked again on every probe.
 
 ### GET /health/live (public)
 
-Dependency-free liveness probe: `200 { status: 'ok' }` when the server process responds.
+Dependency-free liveness probe: `200 { status: 'ok' }` when the server process responds. The server image's `HEALTHCHECK` asks it every 30 s, so a `200` here counts in `http_requests_total` but leaves no line in the request log.
 
-### GET /metrics (public)
+### GET /metrics
 
-Prometheus: `http_requests_total` and `http_request_duration_seconds` (method/route/status labels on the counter, method/route on the histogram; unknown paths go to the `unmatched` label so as not to multiply series per URL), `download_queue_size`, and summary cost metrics: `summary_requests_total`, `summary_tokens_total`, `summary_estimated_cost_cents_total`, each labelled with the provider (`openai` or `deepseek`) and the model (a USD estimate based on approximate model pricing; DeepSeek is priced at its off-peak rate).
+Prometheus: `http_requests_total` and `http_request_duration_seconds` (method/route/status labels on the counter, method/route on the histogram; unknown paths go to the `unmatched` label so as not to multiply series per URL), `download_queue_size`, and summary cost metrics: `summary_requests_total`, `summary_tokens_total`, `summary_estimated_cost_cents_total`, each labelled with the provider (`openai` or `deepseek`) and the model that was asked, by its configured name and not the dated snapshot a response names (`gpt-4o`, not `gpt-4o-2024-08-06`). The cost is a USD estimate based on that model's approximate pricing; DeepSeek is priced at its off-peak rate. An answer that holds no summary counts as an `error`, and its tokens are still recorded.
+
+The endpoint sits behind the same guard as `/api`: with `API_TOKEN` set, a scrape has to send `Authorization: Bearer <token>`.
 
 ### GET /api/events
 
@@ -67,11 +69,13 @@ State of the ongoing (or last) reindex.
   "filesTotal": 2563,
   "indexed": 3285,
   "skipped": 8,
-  "errors": []
+  "rejected": 0,
+  "errors": [],
+  "folderErrors": 0
 }
 ```
 
-`filesDone/filesTotal` refer to the current folder, `indexed/skipped` to the whole run. `errors` is the list of folders that failed to index (max. 20 entries), `lastError` the last error message, and `finishedAt` appears once finished. A video needs its video file (`.mp4` or `.mkv`) and its `info.json`; one without a thumbnail is indexed all the same. When a folder holds videos and not one of them could be read, as on a drive failing its reads, the folder keeps the index it had and shows up in `errors`.
+`filesDone/filesTotal` refer to the current folder, the counts to the whole run: `indexed` documents written, `skipped` videos whose files could not be read, and `rejected` documents Elasticsearch refused one at a time while the rest of their batch was written. A batch it refuses whole fails its folder instead. `errors` lists the first 20 failure messages, a folder's or the whole run's. `folderErrors` counts every folder that failed, those past the 20 messages included. `lastError` is the last error message, and `finishedAt` appears once finished. A video needs its video file (`.mp4` or `.mkv`) and its `info.json`; one without a thumbnail is indexed all the same. When a folder holds videos and not one of them could be read, as on a drive failing its reads, the folder keeps the index it had and shows up in `errors`.
 
 #### How the reindex works
 

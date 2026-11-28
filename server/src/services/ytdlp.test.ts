@@ -1,5 +1,7 @@
+import os from 'node:os';
+import path from 'node:path';
 import { DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
-import { buildPlaylistArgs, buildYtDlpArgs, getYtDlpVersion } from './ytdlp';
+import { buildPlaylistArgs, buildYtDlpArgs, getYtDlpVersion, resolveYtDlpCommand, runYtDlp } from './ytdlp';
 
 describe('buildPlaylistArgs', () => {
   it('fetches the flat playlist as NDJSON and ignores per-video errors', () => {
@@ -152,6 +154,28 @@ describe('buildYtDlpArgs', () => {
   });
 });
 
+/** The fake binary the deep tests run, as an absolute path */
+const FAKE_YTDLP = path.join(__dirname, '../../../scripts/fake-bin/yt-dlp');
+
+/**
+ * Run `body` with YTDLP_PATH set to `value`. process.env outlives a test file
+ * inside a vitest worker, so the value goes back the way this file found it:
+ * the next file would inherit the fake binary otherwise.
+ */
+async function withYtDlpPath(value: string, body: () => Promise<void>): Promise<void> {
+  const original = process.env.YTDLP_PATH;
+  process.env.YTDLP_PATH = value;
+  try {
+    await body();
+  } finally {
+    if (original === undefined) {
+      delete process.env.YTDLP_PATH;
+    } else {
+      process.env.YTDLP_PATH = original;
+    }
+  }
+}
+
 describe('getYtDlpVersion', () => {
   it('returns the version of a real executable', async () => {
     // node always exists in the test environment and prints "v22.x.y" for
@@ -163,5 +187,50 @@ describe('getYtDlpVersion', () => {
 
   it('returns null when the command does not exist', async () => {
     await expect(getYtDlpVersion('definitely-not-a-command-xyz')).resolves.toBeNull();
+  });
+
+  it('asks the binary YTDLP_PATH names when no command is given', async () => {
+    // The queue spawns YTDLP_PATH (downloadQueue/queue.ts), so the version in
+    // the boot log has to come from that binary and not from the one on PATH.
+    await withYtDlpPath(FAKE_YTDLP, async () => {
+      await expect(getYtDlpVersion()).resolves.toBe('2026.06.01-fake');
+    });
+  });
+});
+
+describe('a relative YTDLP_PATH', () => {
+  // spawn resolves a command with a slash against the child's working
+  // directory. The boot check runs in the server's own, while a queue job and
+  // the playlist fetch run in the channel folder, so the boot could report a
+  // version while every job failed with ENOENT.
+  const relative = path.relative(process.cwd(), FAKE_YTDLP);
+
+  it('runs the same binary whatever folder the run starts in', async () => {
+    await withYtDlpPath(relative, async () => {
+      expect((await runYtDlp(['--version'], os.tmpdir())).trim()).toBe('2026.06.01-fake');
+    });
+  });
+
+  it('reaches the download queue resolved the same way', async () => {
+    await withYtDlpPath(relative, async () => {
+      // The queue reads YTDLP_PATH once, when its module loads
+      vi.resetModules();
+      const queue = await import('./downloadQueue/queue.js');
+
+      expect(queue.YTDLP_PATH).toBe(FAKE_YTDLP);
+    });
+  });
+});
+
+describe('resolveYtDlpCommand', () => {
+  it('leaves PATH to find yt-dlp, or a bare name YTDLP_PATH gives', () => {
+    expect(resolveYtDlpCommand({})).toBe('yt-dlp');
+    expect(resolveYtDlpCommand({ YTDLP_PATH: 'yt-dlp-nightly' })).toBe('yt-dlp-nightly');
+  });
+
+  it('passes an empty value on as it is', () => {
+    // spawn refuses an empty command, so every job fails at its start and the
+    // boot warns, as it did before relative values were resolved
+    expect(resolveYtDlpCommand({ YTDLP_PATH: '' })).toBe('');
   });
 });

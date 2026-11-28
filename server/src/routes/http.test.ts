@@ -6,21 +6,29 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib, { type Gunzip, gzipSync } from 'node:zlib';
 import type { HealthResponse } from '@videodeck/shared/api';
+import { HealthResponseSchema } from '@videodeck/shared/schemas';
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import type { Test } from 'supertest';
 import request from 'supertest';
 import type { MockedFunction } from 'vitest';
 import { createApp } from '../app';
-import { checkElasticsearchConnection, getVideoByFilePath } from '../services/elasticsearchService';
+import { metricsRegistry } from '../metricsRegistry';
+import {
+  checkElasticsearchConnection,
+  checkElasticsearchWrites,
+  getVideoByFilePath,
+} from '../services/elasticsearchService';
 import { type Authorizer, createAuthMiddleware, createAuthorizer, isAllowedCorsOrigin } from './http';
 
 vi.mock('../services/elasticsearchService', () => ({
   checkElasticsearchConnection: vi.fn(),
+  checkElasticsearchWrites: vi.fn(),
   getVideoByFilePath: vi.fn(),
 }));
 
 const mockedCheckElasticsearch = checkElasticsearchConnection as MockedFunction<typeof checkElasticsearchConnection>;
+const mockedCheckWrites = checkElasticsearchWrites as MockedFunction<typeof checkElasticsearchWrites>;
 
 // config.ts validates VIDEOS_FOLDER_PATH at import time
 process.env.VIDEOS_FOLDER_PATH = '/test/videos';
@@ -49,6 +57,15 @@ afterEach(() => {
     fs.rmSync(folder, { recursive: true, force: true });
   }
 });
+
+/** The 200 answers to /health/live that http_requests_total has counted so far */
+async function countedLivenessProbes(): Promise<number> {
+  const counter = metricsRegistry.getSingleMetric('http_requests_total');
+  const samples = (await counter?.get())?.values ?? [];
+  return samples
+    .filter((sample) => sample.labels.route === '/health/live' && String(sample.labels.status) === '200')
+    .reduce((sum, sample) => sum + sample.value, 0);
+}
 
 describe('createAuthMiddleware', () => {
   /**
@@ -178,6 +195,7 @@ describe('createApp auth wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedCheckElasticsearch.mockResolvedValue(true);
+    mockedCheckWrites.mockResolvedValue('accepted');
   });
 
   it('guards /api when a token is configured and keeps /health public', async () => {
@@ -214,6 +232,48 @@ describe('createApp auth wiring', () => {
 
     expect(health.status).toBe(503);
     expect(health.body).toEqual({ status: 'degraded', elasticsearch: 'down', revision: expect.any(Number) });
+    // There is no cluster to ask for its blocks
+    expect(mockedCheckWrites).not.toHaveBeenCalled();
+  });
+
+  it('reports refused writes with a 200 while the cluster still answers', async () => {
+    // A read-only index serves search and refuses every write. A 503 would
+    // raise the outage banner over a search that works.
+    mockedCheckWrites.mockResolvedValue('refused');
+
+    const health = await request(createApp()).get('/api/health');
+
+    expect(health.status).toBe(200);
+    expect(health.body).toEqual({
+      status: 'ok',
+      elasticsearch: 'ok',
+      revision: expect.any(Number),
+      writes: 'refused',
+    });
+    expect(HealthResponseSchema.parse(health.body)).toEqual(health.body);
+  });
+
+  it('claims nothing about writes when the cluster does not say', async () => {
+    // A role that grants the ping (cluster:monitor/main) and not
+    // cluster:monitor/state cannot read the blocks. Without monitor, which
+    // grants both, the ping fails first and the cluster reads as down.
+    mockedCheckWrites.mockResolvedValue('unknown');
+
+    const health = await request(createApp()).get('/health');
+
+    expect(health.status).toBe(200);
+    expect(health.body).toEqual({ status: 'ok', elasticsearch: 'ok', revision: expect.any(Number) });
+  });
+
+  it('probes again while writes are refused, so their return shows at once', async () => {
+    // Like an outage, a refusal is not cached: the banner's retry would
+    // otherwise show it for the whole TTL after the disk was freed
+    mockedCheckWrites.mockResolvedValueOnce('refused').mockResolvedValueOnce('accepted');
+    const app = createApp();
+
+    expect((await request(app).get('/health')).body).toMatchObject({ writes: 'refused' });
+    expect((await request(app).get('/health')).body).not.toHaveProperty('writes');
+    expect(mockedCheckElasticsearch).toHaveBeenCalledTimes(2);
   });
 
   it('reports the library revision and moves it when the library changes', async () => {
@@ -297,6 +357,8 @@ describe('createApp auth wiring', () => {
     await request(app).get('/health');
 
     expect(mockedCheckElasticsearch).toHaveBeenCalledTimes(1);
+    // The blocks are part of the cached answer, not one more call per probe
+    expect(mockedCheckWrites).toHaveBeenCalledTimes(1);
   });
 
   it('stamps every response with an X-Request-Id', async () => {
@@ -322,6 +384,26 @@ describe('createApp auth wiring', () => {
     const line = String(log.mock.calls.at(-1)?.[0] ?? '');
     expect(line).toContain('GET /api/folder/queue');
     expect(line).not.toContain('/private/videos');
+
+    log.mockRestore();
+  });
+
+  it('keeps liveness probes out of the request log and still counts them', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {
+      /* captured by the assertions below */
+    });
+    const app = createApp();
+    const countedBefore = await countedLivenessProbes();
+
+    const response = await request(app).get('/health/live');
+
+    // The server image's healthcheck asks this path every 30 s: a line per
+    // probe buried the requests an operator reads the log for
+    expect(response.status).toBe(200);
+    const lines = log.mock.calls.map((call) => String(call[0]));
+    expect(lines.filter((line) => line.includes('/health/live'))).toEqual([]);
+    // A stalled event loop still shows up on /metrics
+    expect(await countedLivenessProbes()).toBe(countedBefore + 1);
 
     log.mockRestore();
   });

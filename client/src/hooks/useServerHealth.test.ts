@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { installFetchMock, jsonResponse } from '../test/fetchMock';
 import {
   getElasticsearchState,
+  getWritesRefused,
   reportElasticsearchUnavailable,
   resetElasticsearchState,
 } from '../utils/elasticsearchStatus';
@@ -53,6 +54,58 @@ describe('useServerHealth', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(result.current.elasticsearch).toBe('unknown');
+  });
+
+  it('reports writes the cluster refuses while it still answers, until it takes them again', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1, writes: 'refused' }));
+
+    const { result } = renderHook(() => useServerHealth());
+
+    await waitFor(() => expect(result.current.writesRefused).toBe(true));
+    // Reachable all the same: the pages keep searching
+    expect(result.current.elasticsearch).toBe('ok');
+    // The answer lands in the store, beside the reachability
+    expect(getWritesRefused()).toBe(true);
+
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1 }));
+    await act(async () => {
+      await result.current.recheck();
+    });
+    expect(result.current.writesRefused).toBe(false);
+    expect(getWritesRefused()).toBe(false);
+  });
+
+  it('forgets a refusal when the store starts from a clean slate', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1, writes: 'refused' }));
+    const { result } = renderHook(() => useServerHealth());
+    await waitFor(() => expect(result.current.writesRefused).toBe(true));
+
+    act(() => resetElasticsearchState());
+
+    expect(result.current.writesRefused).toBe(false);
+    expect(result.current.elasticsearch).toBe('unknown');
+  });
+
+  it('claims no refusal once the probe cannot be read', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1, writes: 'refused' }));
+    const { result } = renderHook(() => useServerHealth());
+    await waitFor(() => expect(result.current.writesRefused).toBe(true));
+
+    fetchMock.mockRejectedValue(new Error('network down'));
+    await act(async () => {
+      await result.current.recheck();
+    });
+    expect(result.current.writesRefused).toBe(false);
+
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', elasticsearch: 'ok', revision: 1, writes: 'refused' }));
+    await act(async () => {
+      await result.current.recheck();
+    });
+    fetchMock.mockResolvedValue(jsonResponse({ unexpected: true }));
+    await act(async () => {
+      await result.current.recheck();
+    });
+    expect(result.current.writesRefused).toBe(false);
   });
 
   it('picks up a failure another request already reported', async () => {

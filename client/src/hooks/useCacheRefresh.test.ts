@@ -30,7 +30,9 @@ const finished = (overrides: Partial<ReindexStatus> = {}): ReindexStatus => ({
   filesTotal: 10,
   indexed: 20,
   skipped: 0,
+  rejected: 0,
   errors: [],
+  folderErrors: 0,
   ...overrides,
 });
 
@@ -43,7 +45,9 @@ const running = (overrides: Partial<ReindexStatus> = {}): ReindexStatus => ({
   filesTotal: 10,
   indexed: 3,
   skipped: 0,
+  rejected: 0,
   errors: [],
+  folderErrors: 0,
   ...overrides,
 });
 
@@ -128,11 +132,25 @@ describe('formatReindexResult', () => {
   });
 
   it('mentions skipped files and folder errors', () => {
-    expect(formatReindexResult(finished({ skipped: 2, errors: ['a', 'b'] }))).toBe(
+    expect(formatReindexResult(finished({ skipped: 2, errors: ['a', 'b'], folderErrors: 2 }))).toBe(
       'Indeksowanie zakończone: 20 filmów zindeksowanych, 2 pominiętych, 2 błędy folderów',
     );
-    expect(formatReindexResult(finished({ errors: ['a'] }))).toBe(
+    expect(formatReindexResult(finished({ errors: ['a'], folderErrors: 1 }))).toBe(
       'Indeksowanie zakończone: 20 filmów zindeksowanych, 1 błąd folderu',
+    );
+  });
+
+  it('counts every failed folder and names the documents Elasticsearch refused', () => {
+    // The status keeps 20 messages, so a count read from them stopped at 20,
+    // and a refused document used to be one more skipped file
+    const errors = Array.from({ length: 20 }, (_unused, n) => `Error scanning folder /videos/${n}`);
+
+    expect(formatReindexResult(finished({ skipped: 1, rejected: 3, errors, folderErrors: 25 }))).toBe(
+      [
+        i18n.t('reindex.finishedWithSkipped', { indexed: 20, skipped: 1 }),
+        i18n.t('reindex.rejected', { count: 3 }),
+        i18n.t('reindex.folderError', { count: 25 }),
+      ].join(', '),
     );
   });
 });
@@ -444,6 +462,7 @@ describe('useCacheRefresh', () => {
       jsonResponse(
         finished({
           errors: ['Error scanning folder /videos/x: ENOENT'],
+          folderErrors: 1,
           lastError: 'Error scanning folder /videos/x: ENOENT',
         }),
       ),
@@ -558,7 +577,7 @@ describe('useCacheRefresh', () => {
 
   it('reports folder errors without a detail line the server did not send', async () => {
     mockServer(jsonResponse({ status: 'ok' }), [
-      jsonResponse(finished({ errors: ['Error scanning folder /videos/x'] })),
+      jsonResponse(finished({ errors: ['Error scanning folder /videos/x'], folderErrors: 1 })),
     ]);
 
     const { result } = renderHook(() => useCacheRefresh());

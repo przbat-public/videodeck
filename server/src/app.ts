@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ApiError } from '@videodeck/shared/api';
+import type { ApiError, HealthResponse } from '@videodeck/shared/api';
 import cors from 'cors';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import express from 'express';
@@ -22,7 +22,12 @@ import { createAuthMiddleware, createAuthorizer, isAllowedCorsOrigin } from './r
 import { JSON_BODY_LIMIT_BYTES } from './routes/validation';
 import videosRouter from './routes/videos';
 import { isElasticsearchUnavailable } from './services/elasticsearchErrors';
-import { checkElasticsearchConnection, noteElasticsearchUnavailable } from './services/elasticsearchService';
+import type { ElasticsearchWrites } from './services/elasticsearchService';
+import {
+  checkElasticsearchConnection,
+  checkElasticsearchWrites,
+  noteElasticsearchUnavailable,
+} from './services/elasticsearchService';
 import { getLibraryRevision } from './services/libraryState';
 import { readApiToken } from './utils/apiToken';
 import { logger } from './utils/logger';
@@ -31,6 +36,23 @@ import { describeError, LogThrottle } from './utils/logThrottle';
 /** How long a /health probe trusts the previous Elasticsearch check */
 const HEALTH_CACHE_TTL_MS = 5_000;
 
+/** What the last /health probe found */
+interface HealthCheck {
+  checkedAt: number;
+  esUp: boolean;
+  writes: ElasticsearchWrites;
+}
+
+/**
+ * Whether a probe may answer from the previous check. Only a healthy answer is
+ * cached: while Elasticsearch is down, or refuses writes, every probe runs (a
+ * refused connection is instant and silent), so the client sees the recovery
+ * as soon as it happens instead of a stale answer for the TTL.
+ */
+function isFreshHealthyCheck(check: HealthCheck | null, now: number): check is HealthCheck {
+  return check?.esUp === true && check.writes !== 'refused' && now - check.checkedAt <= HEALTH_CACHE_TTL_MS;
+}
+
 export interface CreateAppOptions {
   /** Bearer token guarding /api; undefined means the API is open */
   apiToken?: string;
@@ -38,7 +60,15 @@ export interface CreateAppOptions {
   downloadQueue?: DownloadQueueLike;
 }
 
-/** One log line and one metrics sample per finished request */
+/**
+ * The server image's healthcheck asks this path every 30 s. A log line per
+ * probe buried the requests an operator reads the log for, so a probe that
+ * answers 200 is counted in the metrics and left out of the log. Anything
+ * else it answers still gets a line.
+ */
+const LIVENESS_PATH = '/health/live';
+
+/** One metrics sample per finished request, and one log line for all but a healthy liveness probe */
 function requestLogger(req: Request, res: Response, next: NextFunction): void {
   const requestId = randomUUID();
   res.locals.requestId = requestId;
@@ -58,6 +88,9 @@ function requestLogger(req: Request, res: Response, next: NextFunction): void {
     // instead of a new series per URL (every filename would be one).
     const route = req.route?.path ?? 'unmatched';
     recordRequest(req.method, route, res.statusCode, durationMs);
+    if (requestPath === LIVENESS_PATH && res.statusCode === 200) {
+      return;
+    }
     // The path, not the whole URL: a query string carries folder paths and
     // search phrases, and the log is where they would outlive the request.
     logger.info(`${req.method} ${requestPath} → ${res.statusCode} (${durationMs}ms) [${requestId}]`);
@@ -265,23 +298,27 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   // "Test połączenia") whether
   // the whole stack (Elasticsearch included) is healthy. The ES check is
   // cached for a few seconds so a polling dashboard does not ping ES per hit.
-  let healthCache: { checkedAt: number; esUp: boolean } | null = null;
+  let healthCache: HealthCheck | null = null;
   const healthHandler: RequestHandler = async (_req, res) => {
     const now = Date.now();
-    // Only a healthy answer is cached. While Elasticsearch is down every probe
-    // runs (a refused connection is instant and silent), so the client sees the
-    // recovery as soon as it happens instead of a stale 'down' for the TTL.
-    if (!healthCache?.esUp || now - healthCache.checkedAt > HEALTH_CACHE_TTL_MS) {
-      healthCache = { checkedAt: now, esUp: await checkElasticsearchConnection() };
+    if (!isFreshHealthyCheck(healthCache, now)) {
+      const esUp = await checkElasticsearchConnection();
+      // A ping proves the cluster answers, not that it takes writes: the block
+      // a nearly full disk puts on its indices leaves search working while
+      // every download misses it. A cluster that is down has no blocks to ask.
+      healthCache = { checkedAt: now, esUp, writes: esUp ? await checkElasticsearchWrites() : 'unknown' };
     }
-    const esUp = healthCache.esUp;
-    res.status(esUp ? 200 : 503).json({
+    const { esUp, writes } = healthCache;
+    const body: HealthResponse = {
       status: esUp ? 'ok' : 'degraded',
       elasticsearch: esUp ? 'ok' : 'down',
       // The library this answer was built at, so a client can tell a stale page
       // from a current one without reading the folder list
       revision: getLibraryRevision(),
-    });
+      // Still a 200: reads work, and a 503 would raise the outage banner
+      ...(writes === 'refused' ? { writes } : {}),
+    };
+    res.status(esUp ? 200 : 503).json(body);
   };
   app.get('/health', healthHandler);
   // The browser reaches the API through the dev proxy and nginx, both of which

@@ -35,9 +35,10 @@ export {
   setElasticsearchClient,
 } from './elasticsearch/connection';
 
-export type { CachedFolderLookup } from './elasticsearch/indexLifecycle';
+export type { CachedFolderLookup, ElasticsearchWrites } from './elasticsearch/indexLifecycle';
 export {
   buildIndexVersionName,
+  checkElasticsearchWrites,
   createAllIndices,
   createIndex,
   createIndexVersion,

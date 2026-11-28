@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getElasticsearchState,
+  getWritesRefused,
   reportElasticsearchReachable,
   reportElasticsearchUnavailable,
   resetElasticsearchState,
   setElasticsearchState,
+  setWritesRefused,
   subscribeElasticsearchState,
 } from './elasticsearchStatus';
 
@@ -49,5 +51,34 @@ describe('elasticsearchStatus store', () => {
     unsubscribe();
     setElasticsearchState('ok');
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a write refusal beside the reachability until a reset clears both', () => {
+    expect(getWritesRefused()).toBe(false);
+
+    setElasticsearchState('ok');
+    setWritesRefused(true);
+
+    // A cluster that refuses writes still answers: two facts, side by side
+    expect(getElasticsearchState()).toBe('ok');
+    expect(getWritesRefused()).toBe(true);
+
+    resetElasticsearchState();
+
+    expect(getElasticsearchState()).toBe('unknown');
+    expect(getWritesRefused()).toBe(false);
+  });
+
+  it('notifies subscribers when the refusal changes, not when it repeats', () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeElasticsearchState(listener);
+
+    setWritesRefused(true);
+    setWritesRefused(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    setWritesRefused(false);
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
   });
 });

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import path from 'node:path';
 import type { DownloadOptions, JobType } from '@videodeck/shared/api';
 import { isSafeVideoStem } from '../utils/videoStem';
 import { assertExtraArgsAllowed, DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
@@ -251,14 +252,32 @@ const RUN_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_STDOUT_BYTES = 64 * 1024 * 1024;
 
 /**
+ * The yt-dlp command every spawn runs: `yt-dlp` from PATH when YTDLP_PATH is
+ * unset, a bare name as it is (PATH finds it too), and a value with a path
+ * separator resolved against the server's working directory. spawn would
+ * resolve that one against the child's instead, and the queue starts each job
+ * in its channel folder, so a relative value answered the boot check while
+ * every job failed with ENOENT. An empty value is passed on as it is: spawn
+ * refuses it, so every job fails at its start and the boot warns.
+ */
+export function resolveYtDlpCommand(env: NodeJS.ProcessEnv = process.env): string {
+  const value = env.YTDLP_PATH;
+  if (value === undefined) {
+    return 'yt-dlp';
+  }
+  return value.includes(path.sep) ? path.resolve(value) : value;
+}
+
+/**
  * Run yt-dlp to completion, resolving with its stdout or rejecting with a
  * message that includes the stderr tail. No shell is involved (`spawn` takes
  * an argument array), so channel URLs cannot inject commands. A hung yt-dlp
  * is killed after `RUN_TIMEOUT_MS` and the collected stdout is capped at
- * `MAX_STDOUT_BYTES`.
+ * `MAX_STDOUT_BYTES`. Without a command it runs the binary YTDLP_PATH names
+ * (resolveYtDlpCommand), the one the download queue spawns.
  */
-export function runYtDlp(args: string[], cwd: string, options: { command?: string } = {}): Promise<string> {
-  const command = options.command ?? process.env.YTDLP_PATH ?? 'yt-dlp';
+export function runYtDlp(args: string[], cwd: string, options: { command?: string | undefined } = {}): Promise<string> {
+  const command = options.command ?? resolveYtDlpCommand();
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd });
     const out: Buffer[] = [];
@@ -306,11 +325,14 @@ export function runYtDlp(args: string[], cwd: string, options: { command?: strin
 }
 
 /**
- * The installed yt-dlp version (`yt-dlp --version`), trimmed — or null when
- * the binary is missing or broken. Logged at startup: YouTube changes break
- * old yt-dlp releases regularly, so the version belongs in the boot log.
+ * The version of the yt-dlp binary the download queue spawns (`--version`,
+ * trimmed), or null when that binary is missing or broken. Without a command
+ * it asks the one YTDLP_PATH names, falling back to PATH like the queue does,
+ * so a typo in YTDLP_PATH shows at boot instead of PATH's version. Logged at
+ * startup: YouTube changes break old yt-dlp releases regularly, so the
+ * version belongs in the boot log.
  */
-export async function getYtDlpVersion(command = 'yt-dlp'): Promise<string | null> {
+export async function getYtDlpVersion(command?: string): Promise<string | null> {
   try {
     return (await runYtDlp(['--version'], process.cwd(), { command })).trim();
   } catch {

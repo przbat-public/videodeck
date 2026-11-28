@@ -1,7 +1,12 @@
 import { HealthResponseSchema } from '@videodeck/shared/schemas';
 import { useCallback, useEffect } from 'react';
 import type { ElasticsearchState } from '../utils/elasticsearchStatus';
-import { setElasticsearchState, useElasticsearchState } from '../utils/elasticsearchStatus';
+import {
+  setElasticsearchState,
+  setWritesRefused,
+  useElasticsearchState,
+  useWritesRefused,
+} from '../utils/elasticsearchStatus';
 import { applyLibraryRevision } from '../utils/libraryStatus';
 
 /** How often the shell asks the readiness probe while the app is open */
@@ -10,6 +15,11 @@ const DEFAULT_POLL_MS = 10_000;
 export interface UseServerHealthResult {
   /** Whether Elasticsearch answers; `unknown` while nothing has been checked */
   elasticsearch: ElasticsearchState;
+  /**
+   * True while the last probe said Elasticsearch answers but refuses writes,
+   * as it does on a nearly full disk: search works, new videos miss it
+   */
+  writesRefused: boolean;
   /** Ask right now (the banner's retry) */
   recheck: () => Promise<void>;
 }
@@ -17,11 +27,12 @@ export interface UseServerHealthResult {
 /**
  * Keeps the Elasticsearch state fresh: one `/health` poll, plus a check when
  * the window regains focus (the user comes back to the tab and wants to know if
- * it recovered). The answer lands in the small store so a failed request and
- * the menu read the same value.
+ * it recovered). The answer, the write refusal included, lands in the small
+ * store so a failed request and the menu read the same value.
  */
 export function useServerHealth(pollIntervalMs = DEFAULT_POLL_MS): UseServerHealthResult {
   const elasticsearch = useElasticsearchState();
+  const writesRefused = useWritesRefused();
 
   const check = useCallback(async (): Promise<void> => {
     try {
@@ -31,6 +42,7 @@ export function useServerHealth(pollIntervalMs = DEFAULT_POLL_MS): UseServerHeal
       const parsed = HealthResponseSchema.safeParse(await response.json().catch(() => null));
       if (parsed.success) {
         setElasticsearchState(parsed.data.elasticsearch);
+        setWritesRefused(parsed.data.writes === 'refused');
         // The same answer carries the library revision, which is what keeps a
         // page honest when the event stream never opens: same signal, slower
         // road.
@@ -39,10 +51,12 @@ export function useServerHealth(pollIntervalMs = DEFAULT_POLL_MS): UseServerHeal
       }
       // An answer we cannot read is not evidence about the cluster
       setElasticsearchState('unknown');
+      setWritesRefused(false);
     } catch {
       // The server itself is unreachable: the pages report that, and claiming
       // "Elasticsearch is down" would name the wrong cause
       setElasticsearchState('unknown');
+      setWritesRefused(false);
     }
   }, []);
 
@@ -70,5 +84,5 @@ export function useServerHealth(pollIntervalMs = DEFAULT_POLL_MS): UseServerHeal
     };
   }, [check, pollIntervalMs]);
 
-  return { elasticsearch, recheck: check };
+  return { elasticsearch, writesRefused, recheck: check };
 }

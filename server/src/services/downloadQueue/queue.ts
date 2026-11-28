@@ -17,7 +17,7 @@ import {
   usesStaging,
 } from '../refreshStaging';
 import { clearUnavailable, recordUnavailable } from '../unavailableVideos';
-import { buildYtDlpArgs } from '../ytdlp';
+import { buildYtDlpArgs, resolveYtDlpCommand } from '../ytdlp';
 import { detectPermanentFailure } from '../ytdlpFailures';
 import { PERSIST_COALESCE_MS, QUEUE_STATE_FILE, toEnqueueRequest, toPersistedJob } from './persistence';
 import { indexChangedVideos } from './postJobIndexing';
@@ -1199,9 +1199,12 @@ export function readConcurrency(value: string | undefined, fallback: number): nu
 
 /**
  * The yt-dlp binary the queue spawns: overridable per process (deep
- * integration tests point it at the fake binary), defaulting to PATH.
+ * integration tests point it at the fake binary), defaulting to PATH. Read
+ * once, when this module loads, and resolved the way runYtDlp resolves it, so
+ * a relative value names the same binary in every channel folder a job starts
+ * in as in the boot check.
  */
-export const YTDLP_PATH = process.env.YTDLP_PATH ?? 'yt-dlp';
+export const YTDLP_PATH = resolveYtDlpCommand();
 
 /** Application-wide queue instance */
 export const downloadQueue = new DownloadQueue({

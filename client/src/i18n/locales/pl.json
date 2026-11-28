@@ -240,6 +240,10 @@
     "folderError_few": "{{count}} błędy folderów",
     "folderError_many": "{{count}} błędów folderów",
     "folderError_other": "{{count}} błędów folderów",
+    "rejected_one": "{{count}} odrzucony przez Elasticsearch",
+    "rejected_few": "{{count}} odrzucone przez Elasticsearch",
+    "rejected_many": "{{count}} odrzuconych przez Elasticsearch",
+    "rejected_other": "{{count}} odrzuconych przez Elasticsearch",
     "nothingToDo": "Wszystkie foldery mają już indeks w Elasticsearch — nic do zrobienia",
     "statusFailed": "Nie udało się odczytać statusu indeksowania (HTTP {{status}})",
     "startFailed": "Nie udało się rozpocząć odświeżania indeksu",
@@ -317,6 +321,7 @@
   },
   "health": {
     "elasticsearchDown": "Elasticsearch nie odpowiada. Wyszukiwanie i indeksowanie są wyłączone, pobieranie i lista filmów działają dalej.",
+    "elasticsearchReadOnly": "Elasticsearch przyjmuje tylko odczyty, zwykle z powodu prawie pełnego dysku. Wyszukiwanie działa, ale filmy pobrane w międzyczasie mogą nie pojawić się w wynikach: gdy zapis znów będzie możliwy, uruchom „{{refresh}}” z odznaczoną opcją „{{onlyMissing}}”.",
     "recheck": "Sprawdź ponownie"
   },
   "theme": {

@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`impersonate: true` works in the Docker image.** The image installed a
+  bare yt-dlp without curl_cffi, so every job of a folder set to impersonate
+  failed at once. It now installs `yt-dlp[pin,pin-curl-cffi,pin-deno]` from
+  wheels only, which also brings yt-dlp-ejs and deno for YouTube's JavaScript
+  challenges. yt-dlp runs deno with no permissions, so the player code sees
+  neither the environment nor the network
+- **The boot log reports the yt-dlp the queue runs.** It asked the `yt-dlp`
+  on `PATH` even when `YTDLP_PATH` named another binary, so a typo there
+  printed a healthy version while every job failed. The version now comes
+  from the binary `YTDLP_PATH` names, resolved once, so a relative value
+  means one binary for the boot check and every job; a missing one gets a
+  boot warning that names the command and says to check `YTDLP_PATH`
+- **A cluster that refuses writes no longer reads as healthy.** A nearly full
+  disk turns Elasticsearch read-only: search keeps working while new
+  downloads never reach it, and `/health` only pinged. The probe now reads
+  the cluster's write blocks, answers `writes: "refused"`, and the app shows
+  a read-only banner until writes come back. The banner asks for a full
+  Refresh index afterwards, since the write after a download gives up after
+  about 10.5 minutes of retries
+- **A bot wall counts as a permanent failure.** YouTube writes "Sign
+  in to confirm you’re not a bot" with a typographic apostrophe, which the
+  pattern did not take, so each such job ran its whole retry backoff. Both
+  apostrophes match now, in the bot-wall and the unavailable-video reasons
+- **The Elasticsearch banners reach a screen reader.** Their live region was
+  mounted together with its text, which screen readers do not announce; the
+  region now stays mounted and the strip appears inside it
+- **Indexing after a download notices an unreachable cluster.**
+  `elasticsearch_up` stayed at 1 and the next probe kept trusting the old
+  client; each such failure now marks the outage and logs one line
+- **A reindex batch the cluster refused whole keeps the folder's index.** Two
+  copies of one video share an id, and the check counted ids, so such a batch
+  read as partly written and an empty version replaced the folder's index
+- **Summary costs count for dated model names.** Responses name a snapshot
+  such as `gpt-4o-2024-08-06`, which no price list held, so the cost metric
+  read 0 and each snapshot opened a series of its own. The request, token and
+  cost series carry the configured model now, and an answer without a summary
+  counts as an error with its billed tokens
+- **Container logs stop growing without bound.** Each compose service keeps
+  at most five 10 MB files, and so does the documented Elasticsearch
+  `docker run`, which names the json-file driver those caps belong to. nginx
+  no longer logs `/api` requests, query strings included.
+  A container keeps its old log settings until it is created again
 - **Videos with hundreds of thousands of comments no longer fail their
   folder's reindex.** Every comment went into the document's search text, so
   one such video pushed a bulk request past the 100 MB Elasticsearch takes,
@@ -200,6 +242,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`GET /api/videos/:id/details` no longer returns `duration`.** Nothing
   rendered it, and the index does not store it, so keeping it would have
   meant parsing the `info.json` on every view again
+- **The server image carries only the server's production dependencies**:
+  87 packages instead of 170, without the client's packages or the test
+  tooling. deno adds about 125 MB back
+- **The server image runs yt-dlp 2026.11.23** instead of 2026.8.19: the
+  pins of the older release held a brotli with an out-of-bounds write
+  (CVE-2026-111497), a certifi with compromised intermediates and an older
+  urllib3, and the libraries the new pins fix carry no published advisory
+- **A missing library folder at boot says why.** The refusal tells a typo
+  from a drive that looks unmounted, an empty mount point or a root link
+  left dangling included, and names a glob that would start without the
+  drive; for a link, one that starts where the link leads
+- **The reindex summary tells refused documents from unreadable files.**
+  `rejected` counts documents Elasticsearch refused, `skipped` only videos
+  that could not be read, and `folderErrors` counts every failed folder,
+  those past the 20 messages `errors` keeps included
 - **A typed phrase ranks by relevance unless you pick a sort.** Results
   stayed newest first, so a recent video sharing one common word with the
   phrase in a single comment outranked the video the phrase named in its
@@ -237,6 +294,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Both images report their health** through a `/health/live` healthcheck,
+  so `docker compose ps` shows it and `docker compose up --wait` waits for
+  it. The server's healthy probe counts in the metrics and leaves no line in
+  the request log
 - **Paste a YouTube link or id into search to check whether it is
   archived.** A watch, share or Shorts link is looked up by id within the
   current filters: the video comes back, or an empty list if the library

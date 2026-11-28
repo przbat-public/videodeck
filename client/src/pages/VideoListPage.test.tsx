@@ -40,7 +40,9 @@ const reindexStatus = () => ({
   filesTotal: 0,
   indexed: 0,
   skipped: 0,
+  rejected: 0,
   errors: [],
+  folderErrors: 0,
 });
 
 interface FetchHandlers {
