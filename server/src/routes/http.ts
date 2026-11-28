@@ -108,16 +108,32 @@ function bareHostname(host: string): string {
   return host.toLowerCase().replace(/^\[(.*)\]$/, '$1');
 }
 
+/** The name in a Host-style value ("nas.local:3000", "[::1]:8080"): lowercased, no port, no brackets */
+function hostnameOf(authority: string): string {
+  const lower = authority.toLowerCase();
+  return lower.startsWith('[') ? lower.replace(/^\[(.*)\](:\d+)?$/, '$1') : lower.replace(/:\d+$/, '');
+}
+
 /**
  * The address the browser used for this request: the first X-Forwarded-Host
- * value (nginx passes on the Host it received), else the Host header. It reads
+ * value (nginx passes on the Host it received), else the Host header. The
+ * forwarded value counts only when its name is one the Host guard in app.ts
+ * accepts, loopback or an ALLOWED_HOSTS entry: a proxy that sets Host to an
+ * address of its own hides a rebinding page's name from that guard, and the
+ * page would otherwise pass here by sending that name as its Origin. It reads
  * the raw headers, never req.host, so TRUST_PROXY cannot change the answer. A
  * page cannot set X-Forwarded-Host without a preflight, which CORS answers
  * without an Allow-Origin, and nginx overwrites it.
  */
-function requestAuthority(req: Request): string {
-  const forwarded = readString(req.headers['x-forwarded-host'])?.split(',')[0]?.trim();
-  return (forwarded || req.headers.host || '').toLowerCase();
+function requestAuthority(req: Request, allowedHosts: readonly string[]): string {
+  const host = (req.headers.host ?? '').toLowerCase();
+  const forwarded = readString(req.headers['x-forwarded-host'])?.split(',')[0]?.trim().toLowerCase();
+  if (!forwarded) {
+    return host;
+  }
+  const name = hostnameOf(forwarded);
+  const known = LOOPBACK_HOSTNAMES.has(name) || allowedHosts.some((allowed) => bareHostname(allowed) === name);
+  return known ? forwarded : host;
 }
 
 /**
@@ -175,6 +191,9 @@ function refuse(status: 401 | 403, error: string, message: string): AuthDecision
 const UNMARKED_ORIGIN_REFUSAL =
   'Requests from another origin are not allowed. List its host in ALLOWED_HOSTS or the origin in CORS_ORIGINS.';
 
+/** An extension is refused only when EXTENSION_ORIGINS is set without its id */
+const EXTENSION_ORIGIN_REFUSAL = 'Requests from this extension are not allowed. List its origin in EXTENSION_ORIGINS.';
+
 /**
  * The refusal a browser request earns by where it comes from, or null. The
  * marked verdicts come first and stay as they were: cross-site whatever the
@@ -184,21 +203,23 @@ const UNMARKED_ORIGIN_REFUSAL =
  */
 function refuseByOrigin(req: Request, options: AuthMiddlewareOptions): AuthDecision | null {
   const site = req.headers['sec-fetch-site'];
+  const origin = readOrigin(req);
   if (site === 'cross-site') {
     return refuse(403, 'Forbidden', 'Cross-site requests are not allowed.');
   }
-  if (
-    site === 'same-site' &&
-    !isAllowedCorsOrigin(readOrigin(req), options.extraOrigins ?? [], options.extensionOrigins)
-  ) {
+  if (site === 'same-site' && !isAllowedCorsOrigin(origin, options.extraOrigins ?? [], options.extensionOrigins)) {
     return refuse(
       403,
       'Forbidden',
       'Requests from another origin on this host are not allowed. List yours in CORS_ORIGINS.',
     );
   }
-  if (site === undefined && !isTrustedUnmarkedOrigin(readOrigin(req), requestAuthority(req), options)) {
-    return refuse(403, 'Forbidden', UNMARKED_ORIGIN_REFUSAL);
+  if (
+    site === undefined &&
+    !isTrustedUnmarkedOrigin(origin, requestAuthority(req, options.allowedHosts ?? []), options)
+  ) {
+    const extension = origin.startsWith('chrome-extension://');
+    return refuse(403, 'Forbidden', extension ? EXTENSION_ORIGIN_REFUSAL : UNMARKED_ORIGIN_REFUSAL);
   }
   return null;
 }

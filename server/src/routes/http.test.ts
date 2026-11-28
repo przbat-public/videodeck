@@ -198,6 +198,25 @@ describe('createAuthMiddleware', () => {
       .set('Authorization', 'Bearer secret')
       .set('Origin', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop');
     expect(response.status).toBe(403);
+    // The refusal names the setting that lets this extension in, not the
+    // ALLOWED_HOSTS and CORS_ORIGINS of the message for other pages
+    expect(response.body.message).toMatch(/EXTENSION_ORIGINS/);
+  });
+
+  it('ignores a forwarded host the Host allowlist would refuse', async () => {
+    // A proxy that rewrites Host to loopback hides the browser's host from the
+    // Host guard, and a DNS-rebinding page sends its own name as the Origin
+    // and, through the proxy, as X-Forwarded-Host. The forwarded name counts
+    // only when the Host guard would accept it.
+    for (const allowedHosts of [[], ['nas.local']]) {
+      const response = await request(guardedApp(createAuthorizer('secret', false, { allowedHosts })))
+        .post('/test')
+        .set('Authorization', 'Bearer secret')
+        .set('Host', '127.0.0.1:3001')
+        .set('X-Forwarded-Host', 'evil.example:3000')
+        .set('Origin', 'http://evil.example:3000');
+      expect(response.status, allowedHosts.join(',')).toBe(403);
+    }
   });
 
   it('keeps loopback names out of the ALLOWED_HOSTS rule', async () => {
@@ -213,17 +232,23 @@ describe('createAuthMiddleware', () => {
   });
 
   it('accepts an unmarked POST whose Origin is the address the browser used', async () => {
-    // Behind nginx the address comes as X-Forwarded-Host (its first value);
-    // without a proxy it is the Host itself
+    // Behind nginx the address comes as X-Forwarded-Host (its first value,
+    // port included), without a proxy it is the Host itself. Loopback is the
+    // case only this rule covers: the ALLOWED_HOSTS rule leaves it out.
     const post = (headers: Record<string, string>) =>
       request(buildApp('secret')).post('/test').set('Authorization', 'Bearer secret').set(headers);
 
     expect(
-      (await post({ Host: 'nas.local', 'X-Forwarded-Host': 'nas.local:3000', Origin: 'http://nas.local:3000' })).status,
+      (await post({ Host: '127.0.0.1', 'X-Forwarded-Host': '127.0.0.1:8092', Origin: 'http://127.0.0.1:8092' })).status,
     ).toBe(200);
     expect(
-      (await post({ Host: 'nas.local', 'X-Forwarded-Host': 'nas.local:3000, inner', Origin: 'http://nas.local:3000' }))
-        .status,
+      (
+        await post({
+          Host: '127.0.0.1',
+          'X-Forwarded-Host': '127.0.0.1:8092, inner',
+          Origin: 'http://127.0.0.1:8092',
+        })
+      ).status,
     ).toBe(200);
     expect((await post({ Host: 'localhost:8080', Origin: 'http://localhost:8080' })).status).toBe(200);
   });
