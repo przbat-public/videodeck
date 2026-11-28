@@ -197,13 +197,32 @@ describe('createAuthMiddleware', () => {
       .post('/test')
       .set('Authorization', 'Bearer secret')
       .set('Origin', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop');
-    expect(response.status).toBe(403);
     // The refusal names the setting that lets this extension in, not the
     // ALLOWED_HOSTS and CORS_ORIGINS of the message for other pages
-    expect(response.body.message).toMatch(/EXTENSION_ORIGINS/);
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      error: 'Forbidden',
+      message: 'Requests from this extension are not allowed. List its origin in EXTENSION_ORIGINS.',
+    });
   });
 
-  it('ignores a forwarded host the Host allowlist would refuse', async () => {
+  it('names CORS_ORIGINS alone when it refuses a loopback page', async () => {
+    // A loopback Origin is a page on the browser's own machine, which no
+    // ALLOWED_HOSTS entry lets in
+    const app = guardedApp(createAuthorizer('secret', false, { allowedHosts: ['nas.local'] }));
+    const response = await request(app)
+      .post('/test')
+      .set('Authorization', 'Bearer secret')
+      .set('Host', 'nas.local')
+      .set('Origin', 'http://localhost:9999');
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      error: 'Forbidden',
+      message: 'Requests from a loopback page are not allowed. List its origin in CORS_ORIGINS.',
+    });
+  });
+
+  it('refuses a rebinding name that arrives as X-Forwarded-Host', async () => {
     // A proxy that rewrites Host to loopback hides the browser's host from the
     // Host guard, and a DNS-rebinding page sends its own name as the Origin
     // and, through the proxy, as X-Forwarded-Host. The forwarded name counts
@@ -217,6 +236,35 @@ describe('createAuthMiddleware', () => {
         .set('Origin', 'http://evil.example:3000');
       expect(response.status, allowedHosts.join(',')).toBe(403);
     }
+  });
+
+  it('never compares the Origin with Host once the forwarded name is untrusted', async () => {
+    // Behind a proxy that sets Host to its own upstream, that Host is the
+    // proxy's address, and a loopback Origin there is a page on the visitor's
+    // machine. Falling back to Host let such a page post through an alias
+    // of the proxy that ALLOWED_HOSTS does not list.
+    for (const allowedHosts of [[], ['nas.local']]) {
+      const response = await request(guardedApp(createAuthorizer('secret', false, { allowedHosts })))
+        .post('/test')
+        .set('Authorization', 'Bearer secret')
+        .set('Host', '127.0.0.1:3001')
+        .set('X-Forwarded-Host', '192.168.0.10:8080')
+        .set('Origin', 'http://127.0.0.1:3001');
+      expect(response.status, allowedHosts.join(',')).toBe(403);
+    }
+  });
+
+  it('reads a rooted name, trailing dot and all, as the name it roots', async () => {
+    // nginx drops the dot from $host but not from $http_host: the Host guard
+    // sees nas.local, while X-Forwarded-Host and the Origin keep the dot
+    const app = guardedApp(createAuthorizer('secret', false, { allowedHosts: ['nas.local'] }));
+    const response = await request(app)
+      .post('/test')
+      .set('Authorization', 'Bearer secret')
+      .set('Host', 'nas.local')
+      .set('X-Forwarded-Host', 'nas.local.:3000')
+      .set('Origin', 'http://nas.local.:3000');
+    expect(response.status).toBe(200);
   });
 
   it('keeps loopback names out of the ALLOWED_HOSTS rule', async () => {
@@ -251,6 +299,10 @@ describe('createAuthMiddleware', () => {
       ).status,
     ).toBe(200);
     expect((await post({ Host: 'localhost:8080', Origin: 'http://localhost:8080' })).status).toBe(200);
+    // An IPv6 literal keeps its brackets in both headers
+    expect((await post({ Host: '[::1]', 'X-Forwarded-Host': '[::1]:8092', Origin: 'http://[::1]:8092' })).status).toBe(
+      200,
+    );
   });
 
   it('accepts an unmarked POST from an ALLOWED_HOSTS host on any port, IPv6 included', async () => {

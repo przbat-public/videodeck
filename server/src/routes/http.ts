@@ -103,15 +103,20 @@ function readOrigin(req: Request): string {
 /** Names that, in an Origin, mean a page on the browser's own machine */
 const LOOPBACK_HOSTNAMES: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '::1']);
 
-/** A hostname lowercased, without the brackets an IPv6 literal carries in a URL */
+/**
+ * A hostname lowercased, without the brackets an IPv6 literal carries in a URL
+ * or the dot that ends a rooted name (`nas.local.` is `nas.local`)
+ */
 function bareHostname(host: string): string {
-  return host.toLowerCase().replace(/^\[(.*)\]$/, '$1');
+  return host
+    .toLowerCase()
+    .replace(/^\[(.*)\]$/, '$1')
+    .replace(/\.$/, '');
 }
 
-/** The name in a Host-style value ("nas.local:3000", "[::1]:8080"): lowercased, no port, no brackets */
+/** The name in a Host-style value ("nas.local:3000", "[::1]:8080"), as bareHostname gives it */
 function hostnameOf(authority: string): string {
-  const lower = authority.toLowerCase();
-  return lower.startsWith('[') ? lower.replace(/^\[(.*)\](:\d+)?$/, '$1') : lower.replace(/:\d+$/, '');
+  return bareHostname(authority.replace(/:\d+$/, ''));
 }
 
 /**
@@ -120,20 +125,24 @@ function hostnameOf(authority: string): string {
  * forwarded value counts only when its name is one the Host guard in app.ts
  * accepts, loopback or an ALLOWED_HOSTS entry: a proxy that sets Host to an
  * address of its own hides a rebinding page's name from that guard, and the
- * page would otherwise pass here by sending that name as its Origin. It reads
- * the raw headers, never req.host, so TRUST_PROXY cannot change the answer. A
- * page cannot set X-Forwarded-Host without a preflight, which CORS answers
- * without an Allow-Origin, and nginx overwrites it.
+ * page would otherwise pass here by sending that name as its Origin. With an
+ * untrusted forwarded name there is no address at all, never Host: behind such
+ * a proxy Host is the proxy's own upstream, where a loopback Origin is a page
+ * on the visitor's machine. It reads the raw headers, never req.host, so
+ * TRUST_PROXY cannot change the answer. A rebinding page is same-origin with
+ * the API once its name resolves here, so it may set the header to anything;
+ * the value counts only for a trusted name, and the Origin, which the page
+ * cannot choose, must then name that very address.
  */
 function requestAuthority(req: Request, allowedHosts: readonly string[]): string {
-  const host = (req.headers.host ?? '').toLowerCase();
-  const forwarded = readString(req.headers['x-forwarded-host'])?.split(',')[0]?.trim().toLowerCase();
-  if (!forwarded) {
-    return host;
+  const header = readString(req.headers['x-forwarded-host']);
+  if (header === undefined) {
+    return (req.headers.host ?? '').toLowerCase();
   }
+  const forwarded = header.split(',')[0]?.trim().toLowerCase() ?? '';
   const name = hostnameOf(forwarded);
   const known = LOOPBACK_HOSTNAMES.has(name) || allowedHosts.some((allowed) => bareHostname(allowed) === name);
-  return known ? forwarded : host;
+  return known ? forwarded : '';
 }
 
 /**
@@ -195,6 +204,20 @@ const UNMARKED_ORIGIN_REFUSAL =
 /** An extension is refused only when EXTENSION_ORIGINS is set without its id */
 const EXTENSION_ORIGIN_REFUSAL = 'Requests from this extension are not allowed. List its origin in EXTENSION_ORIGINS.';
 
+/** No ALLOWED_HOSTS entry lets a loopback page in, so only CORS_ORIGINS can */
+const LOOPBACK_ORIGIN_REFUSAL = 'Requests from a loopback page are not allowed. List its origin in CORS_ORIGINS.';
+
+/** The refusal of a request without the marker, naming the setting that would let its Origin in */
+function unmarkedRefusal(origin: string): string {
+  if (origin.startsWith('chrome-extension://')) {
+    return EXTENSION_ORIGIN_REFUSAL;
+  }
+  const hostname = URL.parse(origin)?.hostname;
+  return hostname !== undefined && LOOPBACK_HOSTNAMES.has(bareHostname(hostname))
+    ? LOOPBACK_ORIGIN_REFUSAL
+    : UNMARKED_ORIGIN_REFUSAL;
+}
+
 /**
  * The refusal a browser request earns by where it comes from, or null. The
  * marked verdicts come first and stay as they were: cross-site whatever the
@@ -219,8 +242,7 @@ function refuseByOrigin(req: Request, options: AuthMiddlewareOptions): AuthDecis
     site === undefined &&
     !isTrustedUnmarkedOrigin(origin, requestAuthority(req, options.allowedHosts ?? []), options)
   ) {
-    const extension = origin.startsWith('chrome-extension://');
-    return refuse(403, 'Forbidden', extension ? EXTENSION_ORIGIN_REFUSAL : UNMARKED_ORIGIN_REFUSAL);
+    return refuse(403, 'Forbidden', unmarkedRefusal(origin));
   }
   return null;
 }

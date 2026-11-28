@@ -15,13 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it: a planted document had the server read an info.json anywhere on the
   disk, bill a summary of an outside file and write it there. A
   single-video lookup now hands on only a hit that parses as a video, sits
-  in a configured folder, has a stem of one path segment (200 characters
-  at most, no backslash) and names a subtitle of its own stem; anything
-  else answers 404 with a warning. A full Refresh index rewrites what an
-  older build stored, such as a document that no longer parses or one
-  holding another stem's captions. A hand-named file whose stem is longer
-  or holds a backslash stays listed, but its details answer 404 until it
-  is renamed
+  in a configured folder, has a stem of one path segment (not `.` or `..`,
+  no backslash or NUL, 200 characters at most) and names no subtitle or
+  one of its own stem; anything else answers 404 with a warning. A full
+  Refresh index rewrites what an older build stored, such as a document
+  that no longer parses or one holding another stem's captions. A
+  hand-named file whose stem breaks that rule stays listed, but its
+  details answer 404 until it is renamed
 - **Foreign pages stop sending writes to a LAN deploy with the proxy's
   token.** Browsers send no Sec-Fetch-Site to a plain-HTTP address that is
   not loopback, so such a request reached the token check, and nginx adds
@@ -78,10 +78,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing outbound, and the `CORS_ORIGINS` example is a same-site origin,
   because a request the browser marks cross-site is refused even when its
   origin is listed
-- **A failed channel listing keeps only the end of yt-dlp's stderr.** The
-  error carried every byte the listing, or the version probe, had written
-  there, held in memory and then logged whole. The last 64 KiB stay, from
-  their first full line, which keeps the closing ERROR line
+- **The compose stack hands `CORS_ORIGINS` and `EXTENSION_ORIGINS` to the
+  server.** Its 403s name both settings, yet putting them in `.env` changed
+  nothing, so a compose deploy could not pin the extension's id
+- **A failed channel listing keeps only the end of yt-dlp's stderr.** Its
+  error carried every byte yt-dlp had written there and was logged whole,
+  while the version probe kept its own in memory too. The last
+  64 KiB stay, from their first full line when there is one, which keeps
+  the closing ERROR line
 - **Sidecar repairs write under the file's own name.** To yt-dlp, an `-o`
   value that opens with output type names and a colon sets typed
   templates: a file someone called `Description:My talk.mp4` got its

@@ -187,10 +187,12 @@ small, pure logic in `chrome-extension/src/lib/`.
   loopback, where browsers mark each request with `Sec-Fetch-Site`. Opened
   from another machine through `vite --host`, the page sends its writes with
   its LAN address as `Origin` and no marker, and the dev proxy rewrites
-  `Host` to `localhost:3001` without an `X-Forwarded-Host`, so the server
-  answers 403 until that address is in `ALLOWED_HOSTS` (`server/.env`). The
-  proxy's `xfwd` option stays off: it adds `X-Forwarded-For`, which the rate
-  limiter reports as an error unless `TRUST_PROXY` is set
+  `Host` to `localhost:3001`, so the server answers 403 until that address
+  is in `ALLOWED_HOSTS` (`server/.env`). Forwarding the address would not
+  help, since the server counts an `X-Forwarded-Host` only for a loopback
+  or listed name. The proxy's `xfwd` option stays off: it would add
+  `X-Forwarded-For`, which the rate limiter reports as an error unless
+  `TRUST_PROXY` is set
 
 ### Typing
 

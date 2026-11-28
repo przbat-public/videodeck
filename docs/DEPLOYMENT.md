@@ -58,14 +58,18 @@ points at `http://<host>:3001`.
    on a LAN address like `http://nas.local:3000` the server reads the
    `Origin` header and refuses any origin but the UI's own address, a host
    in `ALLOWED_HOSTS` and the trusted ones: the dev client on `localhost` or
-   `127.0.0.1` (ports 3000, 4173 and 5173), the extension and
-   `CORS_ORIGINS`. A link or an image sends no `Origin`, so its GET reaches
-   the token check, and nginx adds the token; in this version a summary GET
-   still generates a summary that is not cached yet. Behind a plain-HTTP
-   proxy of your own, in front of the `client` container or in its place,
-   list the host the browser uses in `ALLOWED_HOSTS`, or the UI's writes
-   answer 403: the server takes the address from `Host`, or from an
-   `X-Forwarded-Host` whose name is loopback or listed there.
+   `127.0.0.1` (ports 3000, 4173 and 5173), any Chrome extension (only the
+   ids in `EXTENSION_ORIGINS` once that is set) and `CORS_ORIGINS`. These
+   three settings go in the same `.env`, and the stack passes them to the
+   server. A link or an image sends no `Origin`, so its GET reaches the token
+   check, and nginx adds the token; in this version a summary GET still
+   generates a summary that is not cached yet. Behind a plain-HTTP proxy of
+   your own, in front of the `client` container or in its place, pass the
+   browser's `Host` on (nginx `proxy_set_header Host $host`, Apache
+   `ProxyPreserveHost On`), so the server's DNS-rebinding guard sees the name
+   the browser used, and list that host in `ALLOWED_HOSTS` unless it is
+   loopback. Without the entry the server answers 403: an `X-Forwarded-Host`
+   counts only for a loopback or listed name.
    The pages the `client` container serves also refuse to load inside
    another site's frame, so a hostile page cannot lay the UI under a decoy
    and steer your clicks; an iframe embed, such as a dashboard panel, does

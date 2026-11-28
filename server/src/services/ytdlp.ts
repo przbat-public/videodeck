@@ -262,9 +262,9 @@ const MAX_STDOUT_BYTES = 64 * 1024 * 1024;
 /**
  * Stderr cap: a failed run reports the end of its stderr, where yt-dlp prints
  * the ERROR line. The callers are the channel listing and the version probe
- * (queue jobs spawn on their own and keep a tail of lines); whatever those
- * wrote there stayed in memory until the run ended, and then in the logged
- * message.
+ * (queue jobs spawn on their own and keep a tail of lines). Whatever they
+ * wrote there stayed in memory until the run ended, and a failed listing
+ * logged all of it; the probe drops its error and logs a fixed warning.
  */
 const MAX_STDERR_BYTES = 64 * 1024;
 

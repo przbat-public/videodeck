@@ -215,7 +215,7 @@ describe('runYtDlp', () => {
     expect(Buffer.byteLength(message)).toBeLessThan(128 * 1024);
     expect(message.includes('HEAD-MARKER')).toBe(false);
     expect(message.endsWith('ERROR: TAIL-MARKER')).toBe(true);
-    // The cap cuts 13 bytes into a line; the message starts at the next one
+    // The cap keeps the last 13 bytes of a line; the message starts at the next one
     expect(message).toMatch(/exited with code 1: WARNING: filler\n/);
   });
 

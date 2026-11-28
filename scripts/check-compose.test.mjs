@@ -131,6 +131,26 @@ function nginxLocationOwn(match) {
   return own;
 }
 
+test('the compose stack passes every setting the auth guard names in a refusal', () => {
+  // The 401 and 403 answers name the setting that would let the request in,
+  // and the UI shows them as they are. A name the stack does not hand to the
+  // server sends a compose user to a setting that changes nothing.
+  const source = read('server', 'src', 'routes', 'http.ts');
+  const messages = [
+    ...source.matchAll(/refuse\(\s*\d+,\s*'[^']*',\s*'((?:[^'\\]|\\.)*)'/g),
+    ...source.matchAll(/_REFUSAL\s*=\s*'((?:[^'\\]|\\.)*)'/g),
+  ].map((match) => match[1] ?? '');
+  const named = [...new Set(messages.flatMap((message) => message.match(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g) ?? []))];
+  assert.ok(
+    named.includes('ALLOWED_HOSTS'),
+    'the scan found no refusal in server/src/routes/http.ts naming ALLOWED_HOSTS',
+  );
+  const server = composeServices().find((service) => service.name === 'server');
+  assert.ok(server, 'docker-compose.yml has no server service');
+  const missing = named.filter((name) => !new RegExp(`^\\s+- ${name}=`, 'm').test(server.body));
+  assert.deepEqual(missing, [], 'docker-compose.yml does not pass the server these settings, which its refusals name');
+});
+
 test('every compose service carries a restart policy', () => {
   const services = composeServices();
   // A parse that found nothing would make the assertion below vacuous
@@ -160,13 +180,14 @@ test('the proxy tells the server which address the browser used', () => {
   // A write without Sec-Fetch-Site (curl, an older browser, a plain-HTTP LAN
   // address) is judged by its Origin, which the server compares with this
   // address, port included; $host drops the port. An ALLOWED_HOSTS name
-  // passes on any port anyway, a loopback one only this way.
+  // passes on any port anyway, and a loopback one on a dev client port (3000,
+  // 4173, 5173) as a trusted origin, but on any other port only this way.
   const api = nginxLocationOwn('/api/');
   assert.ok(api, 'client/nginx.conf.template has no `location /api/` block');
   assert.match(
     api,
     /^\s*proxy_set_header\s+X-Forwarded-Host\s+\$http_host;/m,
-    'location /api/ must forward X-Forwarded-Host $http_host, or an unmarked write from the UI on a loopback port is refused',
+    'location /api/ must forward X-Forwarded-Host $http_host, or an unmarked write from the UI on another loopback port is refused',
   );
   assert.match(
     api,

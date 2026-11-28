@@ -481,10 +481,10 @@ function ignoredHit(id: string | undefined, reason: string): null {
  * the stem and the subtitle a hit names, and Elasticsearch takes writes from
  * anyone who reaches it. So the hit must parse as a video, sit in a configured
  * folder (handed on as the configured entry), keep a stem isSafeVideoStem
- * accepts (one path segment of at most 200 characters, no backslash; the
- * scanner indexes a longer hand-named one all the same) and name a subtitle
- * of its own stem. The parse comes first: an array stem would pass
- * isSafeVideoStem.
+ * accepts (one path segment, not . or .., no backslash or NUL, 200
+ * characters at most; the scanner indexes a hand-named stem that breaks this
+ * all the same) and name no subtitle or one of its own stem. The parse comes
+ * first: an array stem would pass isSafeVideoStem.
  */
 function trustedVideo(hit: estypes.SearchHit<VideoDocument> | undefined): VideoListItem | null {
   if (hit?._source === undefined) {
@@ -505,7 +505,7 @@ function trustedVideo(hit: estypes.SearchHit<VideoDocument> | undefined): VideoL
   if (!isSafeVideoStem(video.baseName)) {
     return ignoredHit(
       hit._id,
-      `stem ${JSON.stringify(video.baseName)} is not one path segment of at most ${MAX_VIDEO_STEM_LENGTH} characters without a backslash`,
+      `stem ${JSON.stringify(video.baseName)} is not one path segment (not . or .., no backslash or NUL, at most ${MAX_VIDEO_STEM_LENGTH} characters)`,
     );
   }
   if (video.subtitlePath !== undefined && !isOwnSubtitleName(video.baseName, video.subtitlePath)) {
