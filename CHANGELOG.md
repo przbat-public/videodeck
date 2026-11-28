@@ -74,10 +74,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing outbound, and the `CORS_ORIGINS` example is a same-site origin,
   because a request the browser marks cross-site is refused even when its
   origin is listed
-- **A failed yt-dlp run keeps only the end of its stderr.** The error
-  carried every byte yt-dlp had written there, megabytes for a long run with
-  a warning per fragment, held in memory and then logged whole. The last
-  64 KiB stay, starting at a full line; the ERROR line is in them
+- **A failed channel listing keeps only the end of yt-dlp's stderr.** The
+  error carried every byte the listing, or the version probe, had written
+  there, held in memory and then logged whole. The last 64 KiB stay, from
+  their first full line, which keeps the closing ERROR line
+- **Sidecar repairs write under the file's own name.** To yt-dlp, an `-o`
+  value that opens with output type names and a colon sets typed
+  templates: a file someone called `Description:My talk.mp4` got its
+  sidecars under other names, where the app never looks
 - **One channel listing runs at a time per folder.** A second browser tab,
   a reload mid-fetch or a script each started their own yt-dlp on that
   channel, bypassing the queue's limits. Later callers now join the listing

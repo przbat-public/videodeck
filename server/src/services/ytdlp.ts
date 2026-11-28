@@ -132,12 +132,15 @@ export interface YtDlpJobSpec {
 /**
  * Where a metadata run writes. An update and a comment repair write into
  * their own staging directory (refreshStaging.ts merges the result into the
- * archive), a sidecar repair writes in place under --no-overwrites.
+ * archive), a sidecar repair writes in place under --no-overwrites. The
+ * in-place value starts with `./`: yt-dlp reads `TYPES:TEMPLATE` from the head
+ * of -o, so a stem such as `Description:My talk` would set one type's template
+ * and leave the run without a default one.
  */
 function metadataOutput(job: YtDlpJobSpec, baseName: string): string {
   const file = `${escapeOutputTemplate(baseName)}.%(ext)s`;
   if (!usesStaging(job)) {
-    return file;
+    return `./${file}`;
   }
   if (job.id === undefined || !/^[\w-]+$/.test(job.id)) {
     throw new Error('refusing yt-dlp output template: a staged run needs a plain job id');
@@ -258,14 +261,26 @@ const RUN_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_STDOUT_BYTES = 64 * 1024 * 1024;
 /**
  * Stderr cap: a failed run reports the end of its stderr, where yt-dlp prints
- * the ERROR line. A long run writes a warning per fragment or comment page,
- * and the whole of it went into memory and into the logged message.
+ * the ERROR line. The callers are the channel listing and the version probe
+ * (queue jobs spawn on their own and keep a tail of lines); whatever those
+ * wrote there stayed in memory until the run ended, and then in the logged
+ * message.
  */
 const MAX_STDERR_BYTES = 64 * 1024;
 
 /** The last `max` bytes of a buffer, copied so the dropped head can be freed */
 function keepLastBytes(buffer: Buffer, max: number): Buffer {
   return buffer.length > max ? Buffer.from(buffer.subarray(buffer.length - max)) : buffer;
+}
+
+/**
+ * A cut stderr tail from its first full line: the cut lands mid-line, maybe
+ * mid-character. When the last line alone passes the cap there is no full
+ * line, and the cut text stays as it is.
+ */
+function fromFirstFullLine(text: string): string {
+  const rest = text.slice(text.indexOf('\n') + 1);
+  return rest.trim() === '' ? text : rest;
 }
 
 /**
@@ -347,9 +362,8 @@ export function runYtDlp(args: string[], cwd: string, options: { command?: strin
           resolve(Buffer.concat(out).toString('utf-8'));
         }
       } else if (settle()) {
-        // A cut tail starts mid-line, maybe mid-character: drop to the next line
         const text = errTail.toString('utf-8');
-        const tail = errCut ? text.slice(text.indexOf('\n') + 1) : text;
+        const tail = errCut ? fromFirstFullLine(text) : text;
         reject(new Error(`${command} exited with code ${code}: ${tail.trim()}`));
       }
     });
