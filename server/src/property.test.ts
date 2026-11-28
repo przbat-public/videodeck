@@ -159,8 +159,8 @@ describe('stripVttCueSettings', () => {
 });
 
 describe('runPool', () => {
-  it('processes every item exactly once, whatever the input and concurrency', () => {
-    fc.assert(
+  it('processes every item exactly once, whatever the input and concurrency', async () => {
+    await fc.assert(
       fc.asyncProperty(
         fc.array(fc.integer(), { maxLength: 40 }),
         fc.integer({ min: 1, max: 8 }),

@@ -96,6 +96,35 @@ test('flags a query assertion that cannot fail on absence', () => {
   assert.deepEqual(rulesOf(source), ['no-cannot-fail-query-assertion']);
 });
 
+test('flags an async property that is neither awaited nor returned', () => {
+  const source = [
+    "it('floats', () => {",
+    '  fc.assert(',
+    '    fc.asyncProperty(fc.integer(), async (n) => {',
+    '      expect(n).toBe(n);',
+    '    }),',
+    '  );',
+    '});',
+    "it('awaits', async () => {",
+    '  await fc.assert(fc.asyncProperty(fc.integer(), async () => {}));',
+    '});',
+    "it('returns', () => {",
+    '  return fc.assert(fc.asyncProperty(fc.integer(), async () => {}));',
+    '});',
+    "it('returns it from an arrow', () => fc.assert(fc.asyncProperty(fc.integer(), async () => {})));",
+    "it('checks a sync property', () => {",
+    '  fc.assert(fc.property(fc.integer(), (n) => n === n));',
+    '});',
+  ].join('\n');
+
+  const hits = findTestHygieneViolations(source);
+
+  assert.deepEqual(
+    hits.map((hit) => [hit.rule, hit.line]),
+    [['no-floating-async-property', 2]],
+  );
+});
+
 test('ignores comments and the route-signal pattern', () => {
   const source = [
     '// sleep(350) used to sit here: past the search bar debounce',
