@@ -15,7 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the token to everything it proxies: a form on any website could pause
   the queue or empty every index. Without the marker, the server now lets
   a request on only when it carries no Origin (curl), a trusted origin,
-  the address the browser used, or a host from `ALLOWED_HOSTS`
+  the address the browser used, or a host from `ALLOWED_HOSTS`. The shipped
+  nginx forwards that address as `X-Forwarded-Host`; a hand-written proxy
+  config needs the same line, or the UI's host in `ALLOWED_HOSTS`
+- **Another site can no longer show the web UI in a frame.** The `client`
+  container answers every page with `Content-Security-Policy:
+  frame-ancestors 'none'` and `X-Frame-Options: DENY`. Inside a frame the
+  UI's requests carry its own origin, so nothing on the server could tell
+  a click a hostile page arranged from one the user meant. An iframe embed,
+  such as a Home Assistant panel, stops working; API answers keep the
+  headers helmet already sets
 - **Repair requests share the queue's size limit.** The repair endpoint
   walked every entry in its body, so tens of thousands of tiny invalid ones
   cost a skip apiece while staying well inside the body limit. Past 40,330

@@ -11,6 +11,18 @@ server {
 
     # SPA routing: let React Router handle unknown paths
     location / {
+        # No other site may show these pages in a frame. Inside one, the UI's
+        # requests carry its own Origin, so the server cannot tell a click a
+        # hostile page arranged from one the user meant. Only here: a location
+        # that declares an add_header drops the ones it would inherit, and at
+        # server level these would double what helmet sends on /api answers.
+        # frame-ancestors alone on purpose: a default-src would block the
+        # inline theme script in index.html and the style tags the toast and
+        # menu libraries add at runtime. Never send Referrer-Policy no-referrer
+        # from here: the UI's own writes would then carry Origin null, which the
+        # server refuses on plain HTTP.
+        add_header Content-Security-Policy "frame-ancestors 'none'" always;
+        add_header X-Frame-Options "DENY" always;
         try_files $uri $uri/ /index.html;
     }
 
@@ -29,16 +41,23 @@ server {
         # which now leaves no line anywhere. The page and its assets stay
         # logged.
         access_log off;
-        # The server refuses cross-site requests on its own; answering here too
-        # keeps such a request from reaching it at all. Browsers set this
-        # header, so clients without it (curl, the extension worker) are
-        # unaffected.
+        # Browsers mark a request cross-site only on loopback and HTTPS
+        # addresses. The server refuses those on its own, and answering here
+        # keeps them from reaching it at all. On a plain-HTTP LAN address there
+        # is no marker, and the server judges the Origin instead, against the
+        # X-Forwarded-Host below. Clients that send no header (curl, the
+        # extension worker) pass here.
         if ($http_sec_fetch_site = "cross-site") {
             return 403;
         }
         proxy_pass http://server:3001;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
+        # The address the browser used, port included ($host drops it). With no
+        # Sec-Fetch-Site the server takes a write only from a page whose Origin
+        # is this address, a host in ALLOWED_HOSTS or a trusted origin. Host
+        # stays $host: the server's Host check reads it.
+        proxy_set_header X-Forwarded-Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         # The server trusts one hop (TRUST_PROXY=1 in the compose stack) and
         # reads the client address from this header. Without it the rate limit

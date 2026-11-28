@@ -54,6 +54,10 @@ points at `http://<host>:3001`.
    only behind something that authenticates first, and keep `API_TOKEN` out
    of reach. A random website cannot do it from a browser, because nginx and
    the server both turn cross-site requests away, token or no token.
+   The pages the `client` container serves also refuse to load inside
+   another site's frame, so a hostile page cannot lay the UI under a decoy
+   and steer your clicks; an iframe embed, such as a dashboard panel, does
+   not work for the same reason.
 
 3. Bring the stack up:
    ```bash
