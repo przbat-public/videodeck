@@ -984,6 +984,9 @@ describe('folder router', () => {
         responses.push(postPlaylist());
         await vi.waitFor(() => expect(mockedReadFolderConfig).toHaveBeenCalledTimes(2));
         await flush();
+
+        // One process for both: without the join each request fails on its own
+        expect(mockedSpawn).toHaveBeenCalledTimes(1);
       } finally {
         for (const proc of held) {
           proc.release(1);

@@ -250,10 +250,12 @@ test('every `symbol` in `path` a doc names is found in that file', () => {
   // be checked; a bare path only proves the file exists.
   /** @type {string[]} */
   const stale = [];
+  let checked = 0;
   for (const file of ourDocs()) {
     const relative = path.relative(ROOT, file);
     if (HISTORY.includes(relative)) continue;
     for (const match of flatText(file).matchAll(/`([A-Za-z_]\w*)` in `([\w.-]+\/[\w./-]+\.[cm]?[jt]sx?)`/g)) {
+      checked += 1;
       const [, symbol = '', target = ''] = match;
       const full = path.join(ROOT, target);
       if (!existsSync(full) || !readFileSync(full, 'utf-8').includes(symbol)) {
@@ -261,5 +263,6 @@ test('every `symbol` in `path` a doc names is found in that file', () => {
       }
     }
   }
+  assert.ok(checked > 0, 'no doc names a `symbol` in `path`: the pattern no longer matches the docs');
   assert.deepEqual([...new Set(stale)], [], 'these docs name a symbol the file they point at does not contain');
 });

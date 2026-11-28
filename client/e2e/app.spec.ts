@@ -76,7 +76,8 @@ test.describe('search page', () => {
 
   test('Rebuild indices asks first, with Cancel focused, and Escape sends nothing', async ({ page }) => {
     // The rebuild empties every index. jsdom stubs showModal, so the focus the
-    // browser gives the dialog and the inert page behind it are proven here.
+    // browser gives the dialog is checked here; the AppMenu unit test covers
+    // the cancel path itself.
     await mockApi(page);
     let recreatePosts = 0;
     await page.context().route('**/api/videos/recreateIndices', async (route) => {
@@ -95,9 +96,18 @@ test.describe('search page', () => {
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Anuluj' })).toBeFocused();
 
+    // The route handler hears of a request some time after the page sends
+    // it, so the check waits for the request itself, a second at most
+    const sent = page
+      .waitForRequest((request) => request.url().includes('/api/videos/recreateIndices'), { timeout: 1000 })
+      .then(
+        () => true,
+        () => false,
+      );
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
     await expect(gear).toBeFocused();
+    expect(await sent).toBe(false);
     expect(recreatePosts).toBe(0);
   });
 
