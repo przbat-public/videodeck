@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { DownloadPlaylistResponse } from '@videodeck/shared/api';
-import { isYoutubeChannelUrl } from '@videodeck/shared/youtube';
+import { toChannelUrl } from '@videodeck/shared/youtube';
 import { toCatalogEntry, trimPlaylistEntries } from '../../services/channelList';
 import { readFolderConfig } from '../../services/folderConfig';
 import { buildPlaylistArgs, runYtDlp } from '../../services/ytdlp';
@@ -54,9 +54,10 @@ export const downloadPlaylist: RouteHandler<NoParams, DownloadPlaylistResponse> 
   }
   // Defense in depth: the save path validates too, but a hand-edited
   // config.json bypasses it. The URL must be an https YouTube channel
-  // before yt-dlp ever sees it — anything else is an SSRF/argument-
-  // injection primitive.
-  if (!isYoutubeChannelUrl(configuredUrl)) {
+  // before yt-dlp ever sees it, since anything else is an SSRF and
+  // argument-injection primitive, and yt-dlp gets the rebuilt string only.
+  const rebuiltUrl = toChannelUrl(configuredUrl);
+  if (rebuiltUrl === null) {
     res.status(400).json({
       error: 'channelUrl is not a YouTube channel URL',
       message:
@@ -66,7 +67,7 @@ export const downloadPlaylist: RouteHandler<NoParams, DownloadPlaylistResponse> 
   }
 
   await fs.mkdir(folderPath, { recursive: true });
-  const channelUrl = configuredUrl.endsWith('/videos') ? configuredUrl : `${configuredUrl}/videos`;
+  const channelUrl = rebuiltUrl.endsWith('/videos') ? rebuiltUrl : `${rebuiltUrl}/videos`;
 
   let stdout: string;
   try {

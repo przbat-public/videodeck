@@ -57,6 +57,11 @@ describe('folderConfig', () => {
       );
       expect(validateFolderConfig({ channelUrl: 'file:///etc/passwd' })).toMatch(/YouTube channel URL/);
       expect(validateFolderConfig({ channelUrl: 'https://evil.com/@x' })).toMatch(/YouTube channel URL/);
+      // Where Node's parser and yt-dlp's urlsplit part ways on the host
+      expect(validateFolderConfig({ channelUrl: 'https://www.youtube.com\\@127.0.0.1:9200' })).toMatch(
+        /YouTube channel URL/,
+      );
+      expect(validateFolderConfig({ channelUrl: 'https://user@www.youtube.com/@x' })).toMatch(/YouTube channel URL/);
       expect(validateFolderConfig({ channelUrl: '--help' })).toMatch(/YouTube channel URL/);
       expect(validateFolderConfig({ channelUrl: 'https://www.youtube.com/watch?v=abcdefghijk' })).toMatch(
         /YouTube channel URL/,

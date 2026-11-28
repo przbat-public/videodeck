@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **yt-dlp lists a channel from the URL the app checked.** The playlist
+  fetch checked the configured `channelUrl` with Node's URL parser and then
+  handed yt-dlp the text itself. Python's urlsplit reads
+  `https://www.youtube.com\@127.0.0.1:9200` as host 127.0.0.1, port 9200,
+  where Node sees www.youtube.com. yt-dlp now gets the URL rebuilt from its
+  host and path, a backslash or userinfo is refused when the config is
+  saved and when it is read, and a shared link's `?si=…` no longer
+  swallows the appended `/videos`
 - **A `$` in a file name no longer pulls a secret into yt-dlp's output
   path.** yt-dlp expands environment variables in `-o` before it fills in
   the fields, so updating or repairing a video stored as

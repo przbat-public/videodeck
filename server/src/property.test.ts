@@ -1,5 +1,5 @@
 import { extractYtDlpProgress, isYtDlpProgressLine } from '@videodeck/shared/progress';
-import { extractYoutubeVideoId, toWatchUrl } from '@videodeck/shared/youtube';
+import { extractYoutubeVideoId, toChannelUrl, toWatchUrl } from '@videodeck/shared/youtube';
 import fc from 'fast-check';
 import { extractTextFromVttSubtitles } from './services/summaryService';
 import { findVideoFiles, groupFilesByStemPrefix } from './services/videoScanner';
@@ -172,6 +172,65 @@ describe('extractYoutubeVideoId', () => {
       expect({ url, id: extractYoutubeVideoId(url) }).toEqual({ url, id });
     }
     expect(extractYoutubeVideoId(`https://www.youtube-nocookie.com.evil.test/embed/${id}`)).toBeNull();
+  });
+});
+
+describe('toChannelUrl', () => {
+  /** The authority a generic URL parser, such as yt-dlp's urlsplit, reads */
+  const authorityOf = (url: string) => /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i.exec(url)?.[1];
+  const part = fc.constantFrom(
+    '\\',
+    '@',
+    ':',
+    '?',
+    '#',
+    '/',
+    '%5C',
+    '%40',
+    ' ',
+    '\t',
+    '..',
+    'evil.example',
+    '127.0.0.1:9200',
+    'www.youtube.com',
+    '@h',
+    'videos',
+    'channel',
+    'UC1',
+    'user',
+    'x',
+  );
+  const candidate = fc
+    .tuple(
+      fc.constantFrom('https://', 'HTTPS://', 'https:\\\\', 'https:/', 'http://'),
+      fc.array(part, { maxLength: 8 }),
+    )
+    .map(([scheme, parts]) => scheme + parts.join(''));
+
+  it('rebuilds a channel URL from its host and path alone', () => {
+    expect(toChannelUrl('https://www.youtube.com/@a?si=xyz')).toBe('https://www.youtube.com/@a');
+    expect(toChannelUrl('https://www.youtube.com:8443/@a/videos#top')).toBe('https://www.youtube.com/@a/videos');
+    expect(toChannelUrl('https://www.youtube.com/@a/')).toBe('https://www.youtube.com/@a');
+    expect(toChannelUrl('https://www.youtube.com')).toBe('https://www.youtube.com');
+  });
+
+  it('refuses the forms where the WHATWG parser and urlsplit read different hosts', () => {
+    expect(toChannelUrl('https://www.youtube.com\\@127.0.0.1:9200')).toBeNull();
+    expect(toChannelUrl('https://user@www.youtube.com/@a')).toBeNull();
+    expect(toChannelUrl('https://www.youtube.com/watch?v=abcdefghijk')).toBeNull();
+  });
+
+  it('hands on only a URL whose authority every parser reads as its YouTube host', () => {
+    fc.assert(
+      fc.property(candidate, (raw) => {
+        const rebuilt = toChannelUrl(raw);
+        if (rebuilt !== null) {
+          expect(authorityOf(rebuilt)).toBe(new URL(rebuilt).hostname);
+          expect(toChannelUrl(rebuilt)).toBe(rebuilt);
+        }
+      }),
+      { numRuns: 2000 },
+    );
   });
 });
 

@@ -68,29 +68,12 @@ export function extractYoutubeVideoId(url: string): string | null {
   return candidate !== null && YOUTUBE_ID_RE.test(candidate) ? candidate : null;
 }
 
-/**
- * Whether a URL points at a YouTube channel. Accepts the canonical shapes:
- * `/@handle`, `/channel/<id>`, `/c/<name>`, `/user/<name>` and the bare host
- * (yt-dlp resolves the channel from the home page). Only `https:` URLs on
- * the allowlisted YouTube hosts pass — this doubles as the SSRF guard for
- * the playlist endpoint, which otherwise would hand an arbitrary URL to
- * yt-dlp (file:///etc/passwd, http://169.254.169.254/, …).
- */
-export function isYoutubeChannelUrl(url: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return false;
-  }
-  if (parsed.protocol !== 'https:' || !YOUTUBE_HOSTS.has(parsed.hostname)) {
-    return false;
-  }
-  const segments = parsed.pathname.split('/').filter(Boolean);
+/** Whether the path segments of a YouTube URL name a channel */
+function isChannelPath(segments: string[]): boolean {
   const [first, second] = segments;
   const rest = segments.slice(1);
   if (first === undefined) {
-    return true; // bare https://www.youtube.com — yt-dlp resolves the channel
+    return true; // bare https://www.youtube.com: yt-dlp resolves the channel
   }
   if (first.startsWith('@') || first === 'feed') {
     // @handle, optionally with a trailing /videos or /featured
@@ -105,4 +88,47 @@ export function isYoutubeChannelUrl(url: string): boolean {
     );
   }
   return false;
+}
+
+/**
+ * A YouTube channel URL rebuilt from its parsed host and path, or null when
+ * the URL is not one. Accepts the canonical shapes: `/@handle`,
+ * `/channel/<id>`, `/c/<name>`, `/user/<name>` and the bare host (yt-dlp
+ * resolves the channel from the home page). Only `https:` URLs on the
+ * allowlisted YouTube hosts pass, which makes this the SSRF guard of the
+ * playlist endpoint: yt-dlp would otherwise fetch an arbitrary URL
+ * (file:///etc/passwd, http://169.254.169.254/, …).
+ *
+ * The rebuilt string drops userinfo, port, query and hash, so yt-dlp never
+ * receives the configured text itself. A backslash or userinfo is refused
+ * outright: that is where this WHATWG parser and yt-dlp's urlsplit part ways,
+ * and `https://www.youtube.com\@127.0.0.1:9200` is www.youtube.com here but
+ * host 127.0.0.1, port 9200 to Python.
+ */
+export function toChannelUrl(url: string): string | null {
+  if (url.includes('\\')) {
+    return null;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:' || !YOUTUBE_HOSTS.has(parsed.hostname)) {
+    return null;
+  }
+  if (parsed.username !== '' || parsed.password !== '') {
+    return null;
+  }
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  if (!isChannelPath(segments)) {
+    return null;
+  }
+  return `https://${parsed.hostname}${segments.map((segment) => `/${segment}`).join('')}`;
+}
+
+/** Whether a URL points at a YouTube channel, by the rules of toChannelUrl */
+export function isYoutubeChannelUrl(url: string): boolean {
+  return toChannelUrl(url) !== null;
 }

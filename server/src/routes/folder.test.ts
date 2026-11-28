@@ -918,6 +918,29 @@ describe('folder router', () => {
       expect(mockedSpawn).not.toHaveBeenCalled();
     });
 
+    it('refuses a channel URL that yt-dlp would read with another host', async () => {
+      // The WHATWG parser takes the backslash for a path separator and sees
+      // www.youtube.com; yt-dlp's urlsplit reads host 127.0.0.1, port 9200
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com\\@127.0.0.1:9200' });
+
+      const response = await request(app).post('/api/folder/download-playlist').send({ folderPath: FOLDER });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/YouTube channel URL/);
+      expect(mockedSpawn).not.toHaveBeenCalled();
+    });
+
+    it('hands yt-dlp the channel URL rebuilt without its query', async () => {
+      // A shared link ends in ?si=…, and the appended /videos landed inside it
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a?si=xyz' });
+      fakeYtDlp('{"id":"v1","title":"One"}\n');
+
+      const response = await request(app).post('/api/folder/download-playlist').send({ folderPath: FOLDER });
+
+      expect(response.status).toBe(200);
+      expect(mockedSpawn.mock.calls[0]?.[1]?.at(-1)).toBe('https://www.youtube.com/@a/videos');
+    });
+
     it('refuses a playlist download into a folder whose drive is away', async () => {
       // The listing is written into the folder, so a folder that is not there
       // right now must not be materialised on the internal disk for it.
