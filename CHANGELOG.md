@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A failed yt-dlp run keeps only the end of its stderr.** The error
+  carried every byte yt-dlp had written there, megabytes for a long run with
+  a warning per fragment, held in memory and then logged whole. The last
+  64 KiB stay, starting at a full line; the ERROR line is in them
 - **One channel listing runs at a time per folder.** A second browser tab,
   a reload mid-fetch or a script each started their own yt-dlp on that
   channel, bypassing the queue's limits. Later callers now join the listing

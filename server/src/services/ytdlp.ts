@@ -251,6 +251,17 @@ export function buildPlaylistArgs(channelUrl: string): string[] {
 const RUN_TIMEOUT_MS = 10 * 60 * 1000;
 /** Stdout cap: bounds memory for pathological channels (NDJSON is tiny per line) */
 const MAX_STDOUT_BYTES = 64 * 1024 * 1024;
+/**
+ * Stderr cap: a failed run reports the end of its stderr, where yt-dlp prints
+ * the ERROR line. A long run writes a warning per fragment or comment page,
+ * and the whole of it went into memory and into the logged message.
+ */
+const MAX_STDERR_BYTES = 64 * 1024;
+
+/** The last `max` bytes of a buffer, copied so the dropped head can be freed */
+function keepLastBytes(buffer: Buffer, max: number): Buffer {
+  return buffer.length > max ? Buffer.from(buffer.subarray(buffer.length - max)) : buffer;
+}
 
 /**
  * The yt-dlp command every spawn runs: `yt-dlp` from PATH when YTDLP_PATH is
@@ -282,7 +293,8 @@ export function runYtDlp(args: string[], cwd: string, options: { command?: strin
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd });
     const out: Buffer[] = [];
-    const err: Buffer[] = [];
+    let errTail: Buffer = Buffer.alloc(0);
+    let errCut = false;
     let outBytes = 0;
     let settled = false;
     // Latches the promise: the first terminal event wins (timeout, error or
@@ -307,7 +319,11 @@ export function runYtDlp(args: string[], cwd: string, options: { command?: strin
         outBytes += chunk.length;
       }
     });
-    child.stderr.on('data', (chunk: Buffer) => err.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => {
+      const joined = Buffer.concat([errTail, chunk]);
+      errCut ||= joined.length > MAX_STDERR_BYTES;
+      errTail = keepLastBytes(joined, MAX_STDERR_BYTES);
+    });
     child.on('error', (error) => {
       if (settle()) {
         reject(error);
@@ -319,7 +335,10 @@ export function runYtDlp(args: string[], cwd: string, options: { command?: strin
           resolve(Buffer.concat(out).toString('utf-8'));
         }
       } else if (settle()) {
-        reject(new Error(`${command} exited with code ${code}: ${Buffer.concat(err).toString('utf-8').trim()}`));
+        // A cut tail starts mid-line, maybe mid-character: drop to the next line
+        const text = errTail.toString('utf-8');
+        const tail = errCut ? text.slice(text.indexOf('\n') + 1) : text;
+        reject(new Error(`${command} exited with code ${code}: ${tail.trim()}`));
       }
     });
   });

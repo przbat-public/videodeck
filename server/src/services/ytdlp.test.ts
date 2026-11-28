@@ -165,6 +165,30 @@ describe('buildYtDlpArgs', () => {
   });
 });
 
+describe('runYtDlp', () => {
+  it('keeps only the tail of a long stderr in the failure message', async () => {
+    // A long run prints a warning per fragment or comment page, and the ERROR
+    // line that explains the failure comes last. Node stands in for yt-dlp.
+    const script = [
+      "process.stderr.write('HEAD-MARKER\\n' + 'WARNING: filler\\n'.repeat(250000) + 'ERROR: TAIL-MARKER\\n');",
+      'process.exitCode = 1;',
+    ].join('');
+
+    const failure = await runYtDlp(['-e', script], os.tmpdir(), { command: process.execPath }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    const message = failure instanceof Error ? failure.message : '';
+    expect(message).toMatch(/exited with code 1: /);
+    // Numbers and booleans, so a failing run does not print 4 MB
+    expect(Buffer.byteLength(message)).toBeLessThan(128 * 1024);
+    expect(message.includes('HEAD-MARKER')).toBe(false);
+    expect(message.endsWith('ERROR: TAIL-MARKER')).toBe(true);
+  });
+});
+
 /** The fake binary the deep tests run, as an absolute path */
 const FAKE_YTDLP = path.join(__dirname, '../../../scripts/fake-bin/yt-dlp');
 
