@@ -191,6 +191,36 @@ describe('validateVideosFolder', () => {
 
     await expect(validation).rejects.toThrow(`${link} links to ${target}, which does not exist`);
     await expect(validation).rejects.toThrow('the drive looks unmounted');
+    // A glob segment matches real directories only, never a link, so the
+    // example is built from where the link leads
+    await expect(validation).rejects.toThrow(`for example ${path.join(base, 'NOT_MOUNTED')}/*`);
+    await expect(validation).rejects.not.toThrow(`for example ${base}/*`);
+    await expect(validation).rejects.toThrow('a linked folder then shows up under the path its link leads to');
+  });
+
+  it('reads a link written with a trailing slash the same way', async () => {
+    const target = path.join(base, 'NOT_MOUNTED', 'YouTube');
+    const link = path.join(base, 'linked-library');
+    fs.symlinkSync(target, link);
+    process.env.VIDEOS_FOLDER_PATH = `${link}/`;
+
+    await expect(validateVideosFolder()).rejects.toThrow(`links to ${target}, which does not exist`);
+  });
+
+  it('asks to check the link when it leads into a drive that is there', async () => {
+    // The drive holds other folders, so the link's own target was renamed or
+    // mistyped rather than unmounted
+    const media = path.join(base, 'MEDIA');
+    fs.mkdirSync(path.join(media, 'YouTube-renamed'), { recursive: true });
+    const link = path.join(base, 'linked-library');
+    fs.symlinkSync(path.join(media, 'YouTube'), link);
+    process.env.VIDEOS_FOLDER_PATH = link;
+
+    const validation = validateVideosFolder();
+
+    await expect(validation).rejects.toThrow(`${link} links to ${path.join(media, 'YouTube')}, which does not exist`);
+    await expect(validation).rejects.toThrow("check the link's target");
+    await expect(validation).rejects.not.toThrow('the drive looks unmounted');
   });
 
   it('promises the glob a warning only when nothing else matches', async () => {

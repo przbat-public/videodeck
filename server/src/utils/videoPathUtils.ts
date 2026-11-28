@@ -35,11 +35,13 @@ async function pathExists(target: string): Promise<boolean> {
 /**
  * Where a missing folder that is a link leads, or null when it is no link.
  * readlink only answers for a link, and the folder is missing, so a link here
- * is one left pointing nowhere.
+ * is one left pointing nowhere. A trailing slash would make readlink follow
+ * the link, so it goes first.
  */
 async function danglingLinkTarget(folderPath: string): Promise<string | null> {
+  const link = folderPath.replace(/\/+$/, '') || folderPath;
   try {
-    return path.resolve(path.dirname(folderPath), await fs.readlink(folderPath));
+    return path.resolve(path.dirname(link), await fs.readlink(link));
   } catch {
     return null;
   }
@@ -54,28 +56,55 @@ async function isEmptyDirectory(target: string): Promise<boolean> {
   }
 }
 
+/** What a missing folder looks like: the line that says so, and where a glob that waits for it would start */
+interface MissingFolder {
+  line: string;
+  globParent: string;
+  linked: boolean;
+}
+
 /**
- * The line for a folder that does not exist. A link left pointing nowhere
- * means the drive it led into is away. Otherwise the parent tells the usual
+ * The line for a folder that does not exist. The parent tells the usual
  * causes apart: an empty parent is how a Linux mount point (an fstab entry, a
  * Docker bind target) looks without its drive, though it may be a typo on a
  * drive that holds nothing else; a parent with entries points at a typo in
  * the last segment; and a parent that is missing as well at a drive that is
- * not mounted.
+ * not mounted. A link left pointing nowhere is read the same way, by the
+ * parent of its target, and the glob for it starts there: a glob segment
+ * matches real directories only, never a link.
  */
-async function describeMissingFolder(folderPath: string): Promise<string> {
+async function describeMissingFolder(folderPath: string): Promise<MissingFolder> {
   const linkTarget = await danglingLinkTarget(folderPath);
   if (linkTarget !== null) {
-    return `${folderPath} links to ${linkTarget}, which does not exist: the drive looks unmounted`;
+    const targetParent = path.dirname(linkTarget);
+    const driveHere = (await pathExists(targetParent)) && !(await isEmptyDirectory(targetParent));
+    const cause = driveHere ? "check the link's target" : 'the drive looks unmounted';
+    return {
+      line: `${folderPath} links to ${linkTarget}, which does not exist: ${cause}`,
+      globParent: targetParent,
+      linked: true,
+    };
   }
   const parent = path.dirname(folderPath);
   if (await isEmptyDirectory(parent)) {
-    return `${folderPath} does not exist, and ${parent} is empty: the drive looks unmounted, or check the spelling`;
+    return {
+      line: `${folderPath} does not exist, and ${parent} is empty: the drive looks unmounted, or check the spelling`,
+      globParent: parent,
+      linked: false,
+    };
   }
   if (await pathExists(parent)) {
-    return `${folderPath} does not exist, but ${parent} does: check the spelling`;
+    return {
+      line: `${folderPath} does not exist, but ${parent} does: check the spelling`,
+      globParent: parent,
+      linked: false,
+    };
   }
-  return `${folderPath} does not exist, and neither does ${parent}: the drive looks unmounted`;
+  return {
+    line: `${folderPath} does not exist, and neither does ${parent}: the drive looks unmounted`,
+    globParent: parent,
+    linked: false,
+  };
 }
 
 /**
@@ -92,12 +121,14 @@ async function describeMissingFolders(missing: readonly string[]): Promise<strin
   if (first === undefined) {
     return [];
   }
-  const lines = await Promise.all(missing.map((folderPath) => describeMissingFolder(folderPath)));
-  const pattern = path.join(path.dirname(first), '*');
+  const described = await Promise.all(missing.map((folderPath) => describeMissingFolder(folderPath)));
+  const lines = described.map((folder) => folder.line);
+  const pattern = path.join(described[0]?.globParent ?? path.dirname(first), '*');
   lines.push(
     'A folder written out in full must exist at startup. A glob that matches nothing lets the server start, ' +
       'with a warning only when nothing else matches, and picks up its folders once the drive is mounted: ' +
-      `for example ${pattern}, which also matches the folders beside the missing one.`,
+      `for example ${pattern}, which also matches the folders beside the missing one` +
+      (described[0]?.linked ? '; a linked folder then shows up under the path its link leads to.' : '.'),
   );
   return lines;
 }
