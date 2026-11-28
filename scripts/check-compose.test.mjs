@@ -156,6 +156,48 @@ test('the shipped proxy sends the header the server trusts', () => {
   );
 });
 
+test('the proxy tells the server which address the browser used', () => {
+  // On a plain-HTTP LAN address the browser sends no Sec-Fetch-Site, and the
+  // server takes a write from the UI's page when its Origin names this
+  // address. $host drops the port; $http_host keeps it.
+  const api = nginxLocationOwn('/api/');
+  assert.ok(api, 'client/nginx.conf.template has no `location /api/` block');
+  assert.match(
+    api,
+    /^\s*proxy_set_header\s+X-Forwarded-Host\s+\$http_host;/m,
+    'location /api/ must forward X-Forwarded-Host $http_host, or the server refuses the UI on a LAN address',
+  );
+  assert.match(
+    api,
+    /^\s*proxy_set_header\s+Host\s+\$host;/m,
+    'location /api/ must keep forwarding Host $host for the server Host check',
+  );
+});
+
+test('the UI pages refuse to be framed', () => {
+  // Inside a frame the UI sends its requests with its own Origin, so only the
+  // browser refusing the frame keeps a hostile page from steering its clicks
+  const pages = nginxLocationOwn('/');
+  assert.ok(pages, 'client/nginx.conf.template has no `location /` block');
+  assert.match(
+    pages,
+    /^\s*add_header\s+Content-Security-Policy\s+"frame-ancestors 'none'"\s+always;/m,
+    "location / must send frame-ancestors 'none' on every answer",
+  );
+  assert.match(
+    pages,
+    /^\s*add_header\s+X-Frame-Options\s+"?DENY"?\s+always;/m,
+    'location / must send X-Frame-Options DENY on every answer',
+  );
+  /** @param {string} text */
+  const addHeaderLines = (text) => text.split('\n').filter((line) => /^\s*add_header\b/.test(line)).length;
+  assert.equal(
+    addHeaderLines(NGINX_TEMPLATE),
+    addHeaderLines(pages),
+    'add_header belongs in `location /` only: elsewhere it doubles the headers helmet sets on /api/',
+  );
+});
+
 test('the compose stack never asks the server to trust every hop', () => {
   const line = COMPOSE.split('\n').find((candidate) => /TRUST_PROXY=/.test(candidate));
   assert.ok(line, 'docker-compose.yml no longer sets TRUST_PROXY');
