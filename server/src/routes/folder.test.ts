@@ -1348,6 +1348,29 @@ describe('folder router', () => {
       );
     });
 
+    it('skips an update or a repair of a video whose stem holds a $', async () => {
+      // yt-dlp would expand the `$` in its output template, so buildYtDlpArgs
+      // refuses the stem; the skip says why now, instead of a job that fails
+      mockedLoadIndex.mockResolvedValue({
+        ...indexFile([]),
+        entries: { aaaaaaaaaaa: indexEntry({ baseName: '20240101_Price_$5', videoFile: 'x.mp4' }) },
+      });
+
+      for (const type of ['update', 'repair'] as const) {
+        const response = await request(app)
+          .post('/api/folder/queue')
+          .send({ folderPath: FOLDER, type, videos: [{ videoId: 'aaaaaaaaaaa' }] });
+
+        expect(response.status).toBe(202);
+        expect(EnqueueJobsResponseSchema.parse(response.body)).toMatchObject({
+          jobs: [],
+          skipped: [{ videoId: 'aaaaaaaaaaa', reason: 'unsafe file name' }],
+        });
+      }
+      await flush();
+      expect(spawnCalls).toHaveLength(0);
+    });
+
     it('lists jobs, optionally filtered by folder', async () => {
       await request(app)
         .post('/api/folder/queue')
@@ -1490,6 +1513,26 @@ describe('folder router', () => {
         jobs: [],
         skipped: [{ videoId: 'aaaaaaaaaaa', reason: 'not downloaded' }],
       });
+    });
+
+    it('skips a video whose stem holds a $ rather than queueing a repair yt-dlp is refused', async () => {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      mockedLoadIndex.mockResolvedValue({
+        ...indexFile([]),
+        entries: { aaaaaaaaaaa: indexEntry({ baseName: '20240101_Price_$5' }) },
+      });
+
+      const response = await request(app)
+        .post('/api/folder/repair')
+        .send({ folderPath: FOLDER, method: 'sidecars', videos: [{ videoId: 'aaaaaaaaaaa' }] });
+
+      expect(response.status).toBe(202);
+      expect(EnqueueJobsResponseSchema.parse(response.body)).toMatchObject({
+        jobs: [],
+        skipped: [{ videoId: 'aaaaaaaaaaa', reason: 'unsafe file name' }],
+      });
+      await flush();
+      expect(spawnCalls).toHaveLength(0);
     });
 
     it('rejects an empty video list and an unknown method', async () => {

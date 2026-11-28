@@ -236,7 +236,8 @@
   },
   "skipReason": {
     "alreadyDownloaded": "already downloaded",
-    "notDownloaded": "not downloaded"
+    "notDownloaded": "not downloaded",
+    "unsafeFileName": "file name contains $"
   },
   "toast": {
     "addedToQueue_one": "Added {{count}} video to {{target}}",

@@ -25,6 +25,7 @@ import type { NoParams, RouteHandler } from '../http';
 import { readBody, readString } from '../http';
 import { requireAllowedFolder, requireMountedFolder } from './guards';
 import type { DownloadQueueLike } from './queue';
+import { refreshableEntry } from './queue';
 
 /**
  * The per-video state of a folder: what each video of the channel has on disk,
@@ -268,10 +269,11 @@ function toRepairRequest(
   if (!isYoutubeVideoId(videoId)) {
     return { skipped: { videoId, reason: 'videoId is not a valid YouTube video id' } };
   }
-  const entry = index.entries[videoId];
-  if (entry === undefined) {
-    return { skipped: { videoId, reason: 'not downloaded' } };
+  const refreshable = refreshableEntry(index.entries[videoId]);
+  if ('reason' in refreshable) {
+    return { skipped: { videoId, reason: refreshable.reason } };
   }
+  const { entry } = refreshable;
   return {
     request: stripUndefined<EnqueueRequest>({
       folderPath,

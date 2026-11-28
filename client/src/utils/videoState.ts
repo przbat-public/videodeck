@@ -62,6 +62,7 @@ export function missingSummary(missing: readonly string[], t: TFunction): string
 const SKIP_REASON_KEYS = {
   'already downloaded': 'skipReason.alreadyDownloaded',
   'not downloaded': 'skipReason.notDownloaded',
+  'unsafe file name': 'skipReason.unsafeFileName',
   'members-only': 'errors.job.members-only',
   'premium-only': 'errors.job.premium-only',
   private: 'errors.job.private',

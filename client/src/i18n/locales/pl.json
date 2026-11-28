@@ -256,7 +256,8 @@
   },
   "skipReason": {
     "alreadyDownloaded": "już pobrane",
-    "notDownloaded": "niepobrane"
+    "notDownloaded": "niepobrane",
+    "unsafeFileName": "nazwa pliku zawiera $"
   },
   "toast": {
     "addedToQueue_one": "Dodano {{count}} film do {{target}}",
