@@ -5,6 +5,13 @@ export interface AppMenuCheckboxSpec {
   onCheckedChange: (checked: boolean) => void;
 }
 
+/** The dialog an item asks in before it runs, in the item's own words */
+export interface AppMenuConfirmSpec {
+  title: string;
+  message: string;
+  confirmLabel: string;
+}
+
 export interface AppMenuItemSpec {
   key: string;
   label: string;
@@ -13,6 +20,8 @@ export interface AppMenuItemSpec {
   active?: boolean;
   title?: string;
   checkbox?: AppMenuCheckboxSpec;
+  /** Asks in a dialog before onSelect runs, for an action that cannot be taken back */
+  confirm?: AppMenuConfirmSpec;
 }
 
 export interface AppMenuSectionSpec {
@@ -41,6 +50,7 @@ export function sectionsSignature(sections: AppMenuSectionSpec[]): unknown {
       item.active ?? false,
       item.title ?? '',
       item.checkbox?.checked ?? null,
+      item.confirm ? [item.confirm.title, item.confirm.message, item.confirm.confirmLabel] : null,
     ]),
   ]);
 }

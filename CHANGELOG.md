@@ -266,6 +266,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Rebuild indices asks before it runs.** It replaces every folder's
+  index with an empty one, so search finds nothing until Refresh index
+  runs again, and the menu entry started it on the first click. A dialog
+  now names that cost, with Cancel focused; Escape or Cancel leaves the
+  indices alone
 - **Rebuild every index once after upgrading:** `POST /api/videos/refreshCache`
   without `onlyMissing` (Refresh index, with "only missing" unchecked). An
   `onlyMissing` run or a drive swap keeps indices built earlier, which lack

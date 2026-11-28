@@ -180,6 +180,13 @@ export default function VideoListPage(): JSX.Element {
           disabled: recreateIndicesLoading || elasticsearchDown,
           title: elasticsearchDown ? t('reindex.elasticsearchDownTitle') : t('reindex.recreateTitle'),
           onSelect: () => void handleRecreateIndices(),
+          // Every index is emptied, and search finds nothing until the next
+          // refresh, so the menu asks first
+          confirm: {
+            title: t('reindex.recreateConfirm.title'),
+            message: t('reindex.recreateConfirm.message'),
+            confirmLabel: t('reindex.recreateConfirm.confirm'),
+          },
         },
       ],
     },

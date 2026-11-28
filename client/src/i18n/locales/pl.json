@@ -229,6 +229,11 @@
     "recreate": "Odbuduj indeksy",
     "recreating": "Odbudowywanie...",
     "recreateTitle": "Odbuduj wszystkie indeksy Elasticsearch",
+    "recreateConfirm": {
+      "title": "Odbudować wszystkie indeksy?",
+      "message": "Indeks każdego folderu zostanie zastąpiony pustym, więc wyszukiwanie nic nie znajdzie, dopóki nie uruchomisz ponownie „Odśwież indeks”.",
+      "confirm": "Odbuduj indeksy"
+    },
     "reloadTitle": "Odśwież listę filmów",
     "onlyMissing": "tylko brakujące (użyj istniejącego indeksu)",
     "onlyMissingTitle": "Pomiń foldery, które mają już indeks w Elasticsearch (np. cache poprzednio podpiętego dysku)",
