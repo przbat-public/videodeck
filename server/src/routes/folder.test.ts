@@ -892,6 +892,112 @@ describe('folder router', () => {
       }) as unknown as typeof spawn);
     }
 
+    /** A yt-dlp that keeps running until released, and a handle on each process it started */
+    function heldYtDlp(stdout: string) {
+      const held: Array<{ release: (code?: number) => void }> = [];
+      mockedSpawn.mockImplementation((() => {
+        const proc = Object.assign(new EventEmitter(), {
+          stdout: new EventEmitter(),
+          stderr: new EventEmitter(),
+        });
+        held.push({
+          release: (code = 0) => {
+            if (code === 0) {
+              proc.stdout.emit('data', Buffer.from(stdout));
+            } else {
+              proc.stderr.emit('data', Buffer.from('boom'));
+            }
+            proc.emit('close', code);
+          },
+        });
+        return proc;
+      }) as unknown as typeof spawn);
+      return held;
+    }
+
+    const postPlaylist = (folderPath = FOLDER) =>
+      request(app)
+        .post('/api/folder/download-playlist')
+        .send({ folderPath })
+        .then((response) => response);
+
+    it('lists a channel once for two requests that arrive together', async () => {
+      // A second tab, a reload during the fetch or a script started another
+      // yt-dlp for the same channel, outside every queue limit
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
+      const held = heldYtDlp('{"id":"v1","title":"One"}\n');
+      const responses: Array<ReturnType<typeof postPlaylist>> = [];
+      try {
+        responses.push(postPlaylist());
+        await vi.waitFor(() => expect(mockedSpawn).toHaveBeenCalledTimes(1));
+        responses.push(postPlaylist());
+        await vi.waitFor(() => expect(mockedReadFolderConfig).toHaveBeenCalledTimes(2));
+        await flush();
+
+        expect(mockedSpawn).toHaveBeenCalledTimes(1);
+      } finally {
+        for (const proc of held) {
+          proc.release();
+        }
+      }
+      const [first, second] = await Promise.all(responses);
+      expect(first?.status).toBe(200);
+      expect(second?.status).toBe(200);
+      expect(second?.body).toEqual(first?.body);
+      expect(mockedFs.rename).toHaveBeenCalledTimes(1);
+    });
+
+    it('lists again once the first listing has settled', async () => {
+      // Joining is not caching: the next click asks yt-dlp again
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
+      fakeYtDlp('{"id":"v1","title":"One"}\n');
+
+      expect((await postPlaylist()).status).toBe(200);
+      expect((await postPlaylist()).status).toBe(200);
+
+      expect(mockedSpawn).toHaveBeenCalledTimes(2);
+    });
+
+    it('lists two folders at the same time', async () => {
+      // The listing is shared per folder, so another channel never waits
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
+      const held = heldYtDlp('{"id":"v1","title":"One"}\n');
+      const responses: Array<ReturnType<typeof postPlaylist>> = [];
+      try {
+        responses.push(postPlaylist(FOLDER), postPlaylist(OTHER_FOLDER));
+        await vi.waitFor(() => expect(mockedSpawn).toHaveBeenCalledTimes(2));
+      } finally {
+        for (const proc of held) {
+          proc.release();
+        }
+      }
+      expect((await Promise.all(responses)).map((response) => response.status)).toEqual([200, 200]);
+    });
+
+    it('answers 500 to every joined request when the listing fails, and the next one retries', async () => {
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
+      const held = heldYtDlp('');
+      const responses: Array<ReturnType<typeof postPlaylist>> = [];
+      try {
+        responses.push(postPlaylist());
+        await vi.waitFor(() => expect(mockedSpawn).toHaveBeenCalledTimes(1));
+        responses.push(postPlaylist());
+        await vi.waitFor(() => expect(mockedReadFolderConfig).toHaveBeenCalledTimes(2));
+        await flush();
+      } finally {
+        for (const proc of held) {
+          proc.release(1);
+        }
+      }
+      for (const response of await Promise.all(responses)) {
+        expect(response.status).toBe(500);
+        expect(response.body.error).toBe('Failed to download playlist');
+      }
+
+      fakeYtDlp('{"id":"v1","title":"One"}\n');
+      expect((await postPlaylist()).status).toBe(200);
+    });
+
     it('returns 404 when config.json is missing', async () => {
       mockedReadFolderConfig.mockResolvedValue(null);
 

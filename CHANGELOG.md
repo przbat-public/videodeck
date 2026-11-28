@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Two requests for one channel's video list run yt-dlp once.** A second
+  tab, a reload while the list was being fetched or a script started
+  another yt-dlp for the same channel, outside every queue limit. A
+  request that arrives while the folder's listing runs now waits for it and
+  answers with the same result, and the next click lists the channel again
 - **A percentage in a file name no longer moves the progress bar.** The
   parser took the first number before a `%` on any line, so a title such as
   `50%_off`, or an error that quoted `42%`, set the bar, and a title with
