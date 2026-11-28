@@ -125,7 +125,7 @@ A folder written out in full, as in these examples, has to exist when the server
 VIDEOS_FOLDER_PATH=/Volumes/*/*
 ```
 
-This single line finds all channels on every currently mounted volume. A drive that is absent simply contributes no folders (the server starts with a warning and picks the folders up when the drive comes back). The watch sits on `/Volumes` and on the top of each drive, never inside a channel, so downloads cost it nothing. Drives coming and going show up right away. So does a new channel, unless the folder sits empty for a while before its first `config.json` or `*.info.json` arrives; then it waits for the scan that runs every minute anyway, which is also how network shares, sending no events, get noticed. You can mix patterns with literals (`~/` expands to the home directory):
+This single line finds all channels on every currently mounted volume. A drive that is absent simply contributes no folders: the server starts anyway, warns when no folder at all matches, and picks the folders up when the drive comes back. The watch sits on `/Volumes` and on the top of each drive, never inside a channel, so downloads cost it nothing. Drives coming and going show up right away. So does a new channel, unless the folder sits empty for a while before its first `config.json` or `*.info.json` arrives; then it waits for the scan that runs every minute anyway, which is also how network shares, sending no events, get noticed. You can mix patterns with literals (`~/` expands to the home directory):
 
 ```
 VIDEOS_FOLDER_PATH=/Volumes/MEDIA/example-*;/Volumes/MEDIA/*;/Users/<user>/Downloads/youtube/youtube-chrome
