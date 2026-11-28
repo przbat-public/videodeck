@@ -83,18 +83,81 @@ function tokenMatches(provided: string, expected: string): boolean {
 }
 
 /**
- * Origins that may drive the API from a browser context, beyond the built-in
- * local client list: `CORS_ORIGINS` and, when set, the exact extension ids.
+ * Origins and hosts that may drive the API from a browser context, beyond
+ * the built-in local client list: `CORS_ORIGINS`, the exact extension ids
+ * when set, and the `ALLOWED_HOSTS` names, whose pages may post where the
+ * browser sends no `Sec-Fetch-Site`.
  */
 export interface AuthMiddlewareOptions {
   extraOrigins?: readonly string[];
   extensionOrigins?: readonly string[] | undefined;
+  allowedHosts?: readonly string[];
 }
 
 /** The request's Origin header, or an empty string when it has none */
 function readOrigin(req: Request): string {
   const origin = req.headers.origin;
   return typeof origin === 'string' ? origin : '';
+}
+
+/** Names that, in an Origin, mean a page on the browser's own machine */
+const LOOPBACK_HOSTNAMES: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '::1']);
+
+/** A hostname lowercased, without the brackets an IPv6 literal carries in a URL */
+function bareHostname(host: string): string {
+  return host.toLowerCase().replace(/^\[(.*)\]$/, '$1');
+}
+
+/**
+ * The address the browser used for this request: the first X-Forwarded-Host
+ * value (nginx passes on the Host it received), else the Host header. It reads
+ * the raw headers, never req.host, so TRUST_PROXY cannot change the answer. A
+ * page cannot set X-Forwarded-Host without a preflight, which CORS answers
+ * without an Allow-Origin, and nginx overwrites it.
+ */
+function requestAuthority(req: Request): string {
+  const forwarded = readString(req.headers['x-forwarded-host'])?.split(',')[0]?.trim();
+  return (forwarded || req.headers.host || '').toLowerCase();
+}
+
+/**
+ * Whether a browser request without `Sec-Fetch-Site` may go on, judged by its
+ * Origin. Browsers leave the marker out for a plain-HTTP address that is not
+ * loopback, which is how a LAN deploy is reached, so there:
+ * - no Origin passes (curl, the server itself, a same-origin GET), and the
+ *   token decides;
+ * - `null` or an Origin that does not parse is refused;
+ * - a trusted origin passes (the dev clients, `CORS_ORIGINS`, the allowed
+ *   extension ids);
+ * - an Origin naming the address the browser used passes: the UI's own page;
+ * - an Origin on an `ALLOWED_HOSTS` host passes on any port, unless the name
+ *   is a loopback one, which in an Origin means the browser's own machine.
+ */
+export function isTrustedUnmarkedOrigin(
+  origin: string,
+  authority: string,
+  options: AuthMiddlewareOptions = {},
+): boolean {
+  if (origin === '') {
+    return true;
+  }
+  if (origin === 'null') {
+    return false;
+  }
+  if (isAllowedCorsOrigin(origin, options.extraOrigins ?? [], options.extensionOrigins)) {
+    return true;
+  }
+  const url = URL.parse(origin);
+  if (url === null) {
+    return false;
+  }
+  if (url.host === authority) {
+    return true;
+  }
+  const hostname = bareHostname(url.hostname);
+  return (
+    !LOOPBACK_HOSTNAMES.has(hostname) && (options.allowedHosts ?? []).some((host) => bareHostname(host) === hostname)
+  );
 }
 
 /** What the guard for /api answers a request: let it through, or refuse it with this status and body */
@@ -107,6 +170,37 @@ const ALLOWED: AuthDecision = { allowed: true };
 
 function refuse(status: 401 | 403, error: string, message: string): AuthDecision {
   return { allowed: false, status, body: { error, message } };
+}
+
+const UNMARKED_ORIGIN_REFUSAL =
+  'Requests from another origin are not allowed. List its host in ALLOWED_HOSTS or the origin in CORS_ORIGINS.';
+
+/**
+ * The refusal a browser request earns by where it comes from, or null. The
+ * marked verdicts come first and stay as they were: cross-site whatever the
+ * Origin, then a same-site Origin off the trusted list. A request without the
+ * marker is judged by its Origin (isTrustedUnmarkedOrigin); `same-origin` and
+ * `none` pass.
+ */
+function refuseByOrigin(req: Request, options: AuthMiddlewareOptions): AuthDecision | null {
+  const site = req.headers['sec-fetch-site'];
+  if (site === 'cross-site') {
+    return refuse(403, 'Forbidden', 'Cross-site requests are not allowed.');
+  }
+  if (
+    site === 'same-site' &&
+    !isAllowedCorsOrigin(readOrigin(req), options.extraOrigins ?? [], options.extensionOrigins)
+  ) {
+    return refuse(
+      403,
+      'Forbidden',
+      'Requests from another origin on this host are not allowed. List yours in CORS_ORIGINS.',
+    );
+  }
+  if (site === undefined && !isTrustedUnmarkedOrigin(readOrigin(req), requestAuthority(req), options)) {
+    return refuse(403, 'Forbidden', UNMARKED_ORIGIN_REFUSAL);
+  }
+  return null;
 }
 
 /**
@@ -123,8 +217,11 @@ function refuse(status: 401 | 403, error: string, message: string): AuthDecision
  *   `Origin` is on the trusted list, which is the local dev clients plus
  *   `CORS_ORIGINS` and the allowed extension ids.
  *
- * What is left for the token check: non-browser clients (curl, the server
- * itself) send no `Sec-Fetch-Site` at all.
+ * - no marker at all, which is what a browser sends a plain-HTTP address that
+ *   is not loopback: the `Origin` decides (isTrustedUnmarkedOrigin), so a
+ *   foreign page's form cannot drive a LAN deploy with the token nginx adds.
+ *
+ * A request without an Origin (curl, the server itself) goes on to the token.
  *
  * With a configured token every remaining request needs
  * `Authorization: Bearer <token>` (the Chrome extension sends it from its
@@ -137,18 +234,10 @@ export function createAuthorizer(
   requireToken = false,
   options: AuthMiddlewareOptions = {},
 ): Authorizer {
-  const extraOrigins = options.extraOrigins ?? [];
   return (req) => {
-    const site = req.headers['sec-fetch-site'];
-    if (site === 'cross-site') {
-      return refuse(403, 'Forbidden', 'Cross-site requests are not allowed.');
-    }
-    if (site === 'same-site' && !isAllowedCorsOrigin(readOrigin(req), extraOrigins, options.extensionOrigins)) {
-      return refuse(
-        403,
-        'Forbidden',
-        'Requests from another origin on this host are not allowed. List yours in CORS_ORIGINS.',
-      );
+    const refusal = refuseByOrigin(req, options);
+    if (refusal !== null) {
+      return refusal;
     }
 
     if (token) {

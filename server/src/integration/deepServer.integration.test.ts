@@ -58,6 +58,12 @@ describe('deep server integration (real app, fake external world)', () => {
       (status) => (status as { running: boolean }).running === false,
     );
 
+  const waitForRecreateIdle = () =>
+    waitFor(
+      async () => (await env.agent.get('/api/videos/recreateIndices/status').expect(200)).body,
+      (status) => (status as { running: boolean }).running === false,
+    );
+
   const waitForJobStatus = (folderPath: string, videoId: string, status: QueueJob['status']) =>
     waitFor(
       async () => {
@@ -121,6 +127,28 @@ describe('deep server integration (real app, fake external world)', () => {
 
     // Clients without the marker (curl, the extension worker) are unaffected
     await env.agent.get('/api/status').expect(200);
+  });
+
+  it('refuses an unmarked POST from a foreign origin and keeps the index searchable', async () => {
+    // A foreign page reaches a plain-HTTP LAN deploy with no Sec-Fetch-Site,
+    // and its form POST to recreateIndices emptied every index
+    await env.seedFolder('origin-guard', videoFiles('origin00001', 'Forged form target'));
+    env.setFolders('origin-guard');
+    await env.agent.post('/api/videos/refreshCache').expect(202);
+    await waitForRefreshIdle();
+    expect((await env.agent.get('/api/videos/search?q=forged').expect(200)).body.totalCount).toBe(1);
+
+    const forged = await env.agent
+      .post('/api/videos/recreateIndices')
+      .set('Origin', 'http://evil.example')
+      .type('form')
+      .send('');
+    // A red run started a rebuild: let it finish, so the index lock is free
+    // for the next test
+    await waitForRecreateIdle();
+
+    expect(forged.status).toBe(403);
+    expect((await env.agent.get('/api/videos/search?q=forged').expect(200)).body.totalCount).toBe(1);
   });
 
   it('saves a folder config and serves it back through /api/status', async () => {

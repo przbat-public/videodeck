@@ -97,6 +97,9 @@ export function getCorsOrigins(): string[] {
  * use: every name/IP the clients will use must be listed, or the server
  * answers 403. This is the DNS-rebinding guard — a malicious domain resolving
  * to 127.0.0.1 sends its own Host header and gets refused.
+ *
+ * Where the browser sends no Sec-Fetch-Site (a plain-HTTP LAN address), the
+ * auth guard also accepts an Origin on these hosts, on any port.
  */
 export function getAllowedHosts(): string[] {
   return (process.env.ALLOWED_HOSTS ?? '')

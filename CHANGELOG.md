@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A foreign page can no longer drive a LAN deploy with the proxy's
+  token.** Browsers send no Sec-Fetch-Site to a plain-HTTP address that is
+  not loopback, so such a request reached the token check, and nginx adds
+  the token to everything it proxies: a form on any website could pause
+  the queue or empty every index. Without the marker, the server now lets
+  a request on only when it carries no Origin (curl), a trusted origin,
+  the address the browser used, or a host from `ALLOWED_HOSTS`
 - **Repair requests share the queue's size limit.** The repair endpoint
   walked every entry in its body, so tens of thousands of tiny invalid ones
   cost a skip apiece while staying well inside the body limit. Past 40,330

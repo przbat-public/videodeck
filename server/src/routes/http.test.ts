@@ -80,6 +80,9 @@ describe('createAuthMiddleware', () => {
     app.get('/test', (_req, res) => {
       res.json({ ok: true });
     });
+    app.post('/test', (_req, res) => {
+      res.json({ ok: true });
+    });
     return app;
   }
 
@@ -139,10 +142,124 @@ describe('createAuthMiddleware', () => {
   it('accepts a CORS_ORIGINS entry as same-site', async () => {
     const app = guardedApp(createAuthorizer(undefined, false, { extraOrigins: ['https://deck.example'] }));
 
-    expect((await request(app).get('/test').set('Sec-Fetch-Site', 'cross-site')).status).toBe(403);
+    // Listed or not, a request the browser marks cross-site stays refused:
+    // the Origin is read only after that verdict
+    expect(
+      (await request(app).get('/test').set('Sec-Fetch-Site', 'cross-site').set('Origin', 'https://deck.example'))
+        .status,
+    ).toBe(403);
     expect(
       (await request(app).get('/test').set('Sec-Fetch-Site', 'same-site').set('Origin', 'https://deck.example')).status,
     ).toBe(200);
+  });
+
+  // Browsers send no Sec-Fetch-Site to a plain-HTTP address that is not
+  // loopback, which is how a LAN deploy is reached, so there the Origin decides
+  const UNMARKED_REFUSAL = {
+    error: 'Forbidden',
+    message:
+      'Requests from another origin are not allowed. List its host in ALLOWED_HOSTS or the origin in CORS_ORIGINS.',
+  };
+
+  it('refuses a POST from a foreign origin when the browser sends no Sec-Fetch-Site, token or not', async () => {
+    const withToken = await request(buildApp('secret'))
+      .post('/test')
+      .set('Authorization', 'Bearer secret')
+      .set('Origin', 'http://evil.example');
+    const open = await request(buildApp()).post('/test').set('Origin', 'http://evil.example');
+
+    expect(withToken.status).toBe(403);
+    expect(withToken.body).toEqual(UNMARKED_REFUSAL);
+    expect(open.status).toBe(403);
+  });
+
+  it('refuses an opaque or unparsable Origin when the browser sends no Sec-Fetch-Site', async () => {
+    for (const origin of ['null', 'garbage']) {
+      const response = await request(buildApp('secret'))
+        .post('/test')
+        .set('Authorization', 'Bearer secret')
+        .set('Origin', origin);
+      expect(response.status).toBe(403);
+    }
+  });
+
+  it('refuses an unmarked GET from a foreign origin too, since some reads still write', async () => {
+    const response = await request(buildApp('secret'))
+      .get('/test')
+      .set('Authorization', 'Bearer secret')
+      .set('Origin', 'http://evil.example');
+    expect(response.status).toBe(403);
+  });
+
+  it('refuses an unmarked extension whose id EXTENSION_ORIGINS does not list', async () => {
+    const app = guardedApp(createAuthorizer('secret', false, { extensionOrigins: ['chrome-extension://otherid'] }));
+    const response = await request(app)
+      .post('/test')
+      .set('Authorization', 'Bearer secret')
+      .set('Origin', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop');
+    expect(response.status).toBe(403);
+  });
+
+  it('keeps loopback names out of the ALLOWED_HOSTS rule', async () => {
+    // In an Origin, localhost is a page on the browser's own machine
+    const app = guardedApp(createAuthorizer('secret', false, { allowedHosts: ['localhost', 'nas.local'] }));
+    const response = await request(app)
+      .post('/test')
+      .set('Host', 'nas.local')
+      .set('X-Forwarded-Host', 'nas.local:3000')
+      .set('Authorization', 'Bearer secret')
+      .set('Origin', 'http://localhost:9999');
+    expect(response.status).toBe(403);
+  });
+
+  it('accepts an unmarked POST whose Origin is the address the browser used', async () => {
+    // Behind nginx the address comes as X-Forwarded-Host (its first value);
+    // without a proxy it is the Host itself
+    const post = (headers: Record<string, string>) =>
+      request(buildApp('secret')).post('/test').set('Authorization', 'Bearer secret').set(headers);
+
+    expect(
+      (await post({ Host: 'nas.local', 'X-Forwarded-Host': 'nas.local:3000', Origin: 'http://nas.local:3000' })).status,
+    ).toBe(200);
+    expect(
+      (await post({ Host: 'nas.local', 'X-Forwarded-Host': 'nas.local:3000, inner', Origin: 'http://nas.local:3000' }))
+        .status,
+    ).toBe(200);
+    expect((await post({ Host: 'localhost:8080', Origin: 'http://localhost:8080' })).status).toBe(200);
+  });
+
+  it('accepts an unmarked POST from an ALLOWED_HOSTS host on any port, IPv6 included', async () => {
+    const app = guardedApp(createAuthorizer('secret', false, { allowedHosts: ['nas.local', 'fd00::1'] }));
+    const post = (host: string, origin: string) =>
+      request(app).post('/test').set('Authorization', 'Bearer secret').set('Host', host).set('Origin', origin);
+
+    expect((await post('nas.local', 'http://nas.local:3000')).status).toBe(200);
+    expect((await post('[fd00::1]', 'http://[fd00::1]:3000')).status).toBe(200);
+  });
+
+  it('lets an unmarked request without an Origin on to the token check', async () => {
+    // curl and the server itself send no Origin at all
+    expect((await request(buildApp('secret')).post('/test').set('Authorization', 'Bearer secret')).status).toBe(200);
+    const curl = await request(buildApp('secret')).post('/test');
+    expect(curl.status).toBe(401);
+    expect(curl.body).toEqual({ error: 'Unauthorized', message: 'Missing or invalid API token' });
+  });
+
+  it('accepts an unmarked POST from a trusted origin', async () => {
+    // The extension worker posts from its own origin to a LAN server
+    const app = guardedApp(createAuthorizer('secret', false, { extraOrigins: ['http://media.lan:8080'] }));
+    for (const origin of [
+      'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
+      'http://localhost:5173',
+      'http://media.lan:8080',
+    ]) {
+      const response = await request(app)
+        .post('/test')
+        .set('Host', 'nas.local:3001')
+        .set('Authorization', 'Bearer secret')
+        .set('Origin', origin);
+      expect(response.status).toBe(200);
+    }
   });
 
   it('rejects requests without an Authorization header', async () => {
@@ -210,6 +327,40 @@ describe('createApp auth wiring', () => {
     const health = await request(app).get('/health');
     expect(health.status).toBe(200);
     expect(health.body).toEqual({ status: 'ok', elasticsearch: 'ok', revision: expect.any(Number) });
+  });
+
+  it('refuses a form POST from a foreign page on an ALLOWED_HOSTS host, with the token the proxy adds', async () => {
+    const originalAllowedHosts = process.env.ALLOWED_HOSTS;
+    process.env.ALLOWED_HOSTS = 'nas.local';
+    try {
+      const queue = fakeQueue();
+      const app = createApp({ apiToken: 'lan-token', downloadQueue: queue });
+      // A form a foreign page submits: no preflight, no marker on plain HTTP
+      const pause = (origin: string) =>
+        request(app)
+          .post('/api/folder/queue/pause?paused=1')
+          .set('Host', 'nas.local')
+          .set('Authorization', 'Bearer lan-token')
+          .set('Origin', origin)
+          .type('form')
+          .send('');
+
+      const forged = await pause('http://evil.example');
+      expect(forged.status).toBe(403);
+      expect(queue.setPaused).not.toHaveBeenCalled();
+
+      // The UI's own page on that host passes, on its own port
+      const ui = await pause('http://nas.local:3000');
+      expect(ui.status).toBe(200);
+      expect(queue.setPaused).toHaveBeenCalledTimes(1);
+      expect(queue.setPaused).toHaveBeenCalledWith(true);
+    } finally {
+      if (originalAllowedHosts === undefined) {
+        delete process.env.ALLOWED_HOSTS;
+      } else {
+        process.env.ALLOWED_HOSTS = originalAllowedHosts;
+      }
+    }
   });
 
   it('leaves /api open without a configured token', async () => {
@@ -634,6 +785,7 @@ describe('rate limiting', () => {
   it.each<[string, () => express.Express, Record<string, string>, number]>([
     ['a wrong token', () => createApp({ apiToken: 'media-token' }), { Authorization: 'Bearer guess' }, 401],
     ['a cross-site page', () => createApp(), { 'Sec-Fetch-Site': 'cross-site' }, 403],
+    ['a foreign origin without the marker', () => createApp(), { Origin: 'http://evil.example' }, 403],
     [
       'an untrusted origin on this host',
       () => createApp(),
