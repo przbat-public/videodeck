@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a read-only banner until writes come back. The banner asks for a full
   Refresh index afterwards, since the write after a download gives up after
   about 10.5 minutes of retries
+- **A bot wall counts as a permanent failure.** YouTube writes "Sign
+  in to confirm you’re not a bot" with a typographic apostrophe, which the
+  pattern did not take, so each such job ran its whole retry backoff. Both
+  apostrophes match now, in the bot-wall and the unavailable-video reasons
 - **The Elasticsearch banners reach a screen reader.** Their live region was
   mounted together with its text, which screen readers do not announce; the
   region now stays mounted and the strip appears inside it
@@ -248,7 +252,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A missing library folder at boot says why.** The refusal tells a typo
   from a drive that looks unmounted, an empty mount point or a root link
   left dangling included, and names a glob that would start without the
-  drive
+  drive; for a link, one that starts where the link leads
 - **The reindex summary tells refused documents from unreadable files.**
   `rejected` counts documents Elasticsearch refused, `skipped` only videos
   that could not be read, and `folderErrors` counts every failed folder,
