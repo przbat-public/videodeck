@@ -174,8 +174,11 @@ Four working principles sit underneath the checklist:
 - **yt-dlp argument allowlist**: a folder config's `extraArgs` may only use
   the exact flag names in `ALLOWED_EXTRA_ARGS`
   (`server/src/services/folderConfig.ts`), each with a checked value shape,
-  and every call passes `--ignore-config`. Never widen either without a test
-  for the vector it reopens.
+  and every download, update, repair and listing passes `--ignore-config`.
+  Never widen either without a test for the vector it reopens, and never
+  allowlist `--js-runtimes`, `--remote-components` or `--plugin-dirs`: the
+  deno sandbox for YouTube's challenges (`docs/DEPLOYMENT.md`) holds only
+  while yt-dlp runs its pinned runtime and bundled solver.
 - **Secrets**: only `server/.env` (git-ignored); never commit real values.
 
 ## Type safety

@@ -11,8 +11,9 @@ Pre-commit and pre-merge checks for any change. Pair with
   reach it
 - [ ] No new outbound network call without host or URL validation
 - [ ] A yt-dlp flag joins `ALLOWED_EXTRA_ARGS`
-  (`server/src/services/folderConfig.ts`) only if it neither runs a command
-  nor reads a file, with a test for the vector it could reopen
+  (`server/src/services/folderConfig.ts`) only if it runs no command, reads
+  no file and fetches no code (never `--js-runtimes` or
+  `--remote-components`), with a test for the vector it could reopen
 
 ## Input and boundaries
 

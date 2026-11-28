@@ -147,7 +147,7 @@ HOST=127.0.0.1              # server bind address (defaults to loopback)
 API_TOKEN=secret            # bearer token protecting /api (see the Security section in the README)
 CORS_ORIGINS=http://localhost:8080  # extra same-site browser origins (another port or subdomain), comma-separated; a request the browser marks cross-site is refused even when listed
 ALLOWED_HOSTS=nas.local,192.168.0.10  # extra hostnames/IPs allowed in the Host header (needed with HOST=0.0.0.0); where browsers send no Sec-Fetch-Site (plain HTTP), an Origin on them is trusted too, on any port
-EXTENSION_ORIGINS=chrome-extension://abcdefghijklmnop  # exact extension id allowed by CORS (without it: any chrome-extension://)
+EXTENSION_ORIGINS=chrome-extension://abcdefghijklmnop  # exact extension id the server trusts (without it: any chrome-extension://); a stale id locks the extension out over plain HTTP
 RATE_LIMIT_MAX=2000         # HTTP request limit per time window per IP (default 2000; only a file read, such as a thumbnail, a video or a subtitle, that names its folder and passes the auth does not count)
 RATE_LIMIT_WINDOW_MS=600000 # rate-limit window length in ms (default 10 minutes)
 ```

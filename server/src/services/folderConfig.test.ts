@@ -116,6 +116,10 @@ describe('folderConfig', () => {
         ['--downloader-args', 'curl:--config /tmp/x'],
         ['--external-downloader-args', 'ffmpeg:-i /tmp/x'],
         ['--ffmpeg-location', '/tmp/evil'],
+        // the JS challenge sandbox: another runtime, or solver code fetched
+        // from GitHub or npm (docs/DEPLOYMENT.md)
+        ['--js-runtimes', 'node'],
+        ['--remote-components', 'ejs:github'],
         // cookie jar, credentials and network pivots
         ['--cookies', '/tmp/c.txt'],
         ['--cookies-from-browser', 'chrome'],

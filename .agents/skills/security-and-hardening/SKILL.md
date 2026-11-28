@@ -45,8 +45,10 @@ Name what the change trusts and what can reach it:
    (`server/src/services/folderConfig.ts`), each with a checked value.
    Anything else is refused when the config is saved, dropped with its
    value when a hand-edited file is read, and refused again before spawn;
-   every call adds `--ignore-config`. A flag joins the list only if it
-   neither runs a command nor reads a file.
+   every download, update, repair and listing adds `--ignore-config`. A flag
+   joins the list only if it runs no command, reads no file and fetches no
+   code: `--js-runtimes` and `--remote-components` stay out, because the
+   deno sandbox depends on yt-dlp's pinned runtime and bundled solver.
 4. **Untrusted text in and out.** Video titles, descriptions, comments and
    transcripts are attacker-influenced data, parsed with zod
    (`shared/schemas.ts`) and rendered by React, which escapes output. Any
@@ -84,7 +86,10 @@ Name what the change trusts and what can reach it:
   limited to its own containers.
 - **Broken access control.** Any route that writes files or enqueues jobs
   must validate the folder path against the allowed list
-  (`requireAllowedFolder` in `server/src/routes/folder/guards.ts`).
+  (`requireAllowedFolder` in `server/src/routes/folder/guards.ts`). The
+  comparison itself is `findConfiguredFolder` in
+  `server/src/utils/videoPathUtils.ts`, which the file route and the
+  single-video lookup share.
 - **Security misconfiguration.** Defaults stay safe: loopback host, token
   optional only when self-hosting deliberately, CORS origins opt-in.
 - **SSRF.** Covered by the threat model above; new outbound calls reuse
@@ -121,7 +126,7 @@ Review the `pnpm-lock.yaml` diff on every upgrade.
 ## Red Flags
 
 - `fetch(userInput)` or shell string building with user input
-- A new `ALLOWED_EXTRA_ARGS` entry without a test, or a yt-dlp call without `--ignore-config`
+- A new `ALLOWED_EXTRA_ARGS` entry without a test, or a download, update, repair or listing run without `--ignore-config`
 - A real token or password in a diff
 - A new route without auth or folder-path validation
 - A dependency bump with an unreviewed lockfile diff

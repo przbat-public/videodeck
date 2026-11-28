@@ -724,8 +724,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- **Requests a browser marks cross-site are refused on every path, token or
-  not.** The Docker
+- **Cross-site requests are refused on every path, token or not.** The Docker
   UI receives the API token from nginx, so a request carrying the token said
   nothing about who sent it: a page on another origin could reindex, drain the
   download queue or rewrite a folder config. A `Sec-Fetch-Site: cross-site`

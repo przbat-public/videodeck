@@ -189,13 +189,17 @@ przełączanie języka w obie strony.
 Serwer słucha domyślnie tylko na `127.0.0.1`, a CORS przepuszcza wyłącznie
 lokalnego klienta deweloperskiego (`localhost`/`127.0.0.1` na portach 3000,
 4173 i 5173), rozszerzenia Chrome i originy wpisane w `CORS_ORIGINS`. Bez
-`API_TOKEN` API jest otwarte dla lokalnych procesów, ale żądania przeglądarki
-z obcych stron są odrzucane. Żądanie oznaczone `Sec-Fetch-Site: cross-site`
-dostaje 403. Przeglądarka wysyła ten znacznik tylko do adresów HTTPS
-i loopback, więc na adresie w sieci lokalnej, takim jak
-`http://nas.local:3000`, serwer odrzuca `Origin`, który nie jest adresem
-samego UI, hostem z `ALLOWED_HOSTS` ani zaufanym originem. Złośliwa strona
-WWW nie wywoła reindeksu ani nie dopisze zadań do kolejki.
+`API_TOKEN` API jest otwarte dla lokalnych procesów.
+
+Żądania przeglądarki z obcych stron są odrzucane, z tokenem czy bez.
+Żądanie oznaczone `Sec-Fetch-Site: cross-site` dostaje 403. Przeglądarka
+wysyła ten znacznik tylko do adresów HTTPS i loopback, więc na adresie
+w sieci lokalnej, takim jak `http://nas.local:3000`, serwer czyta zamiast
+niego `Origin` i przepuszcza tylko adres samego UI, hosty z `ALLOWED_HOSTS`
+(na dowolnym porcie) i originy z `CORS_ORIGINS`. Strona z każdej innej
+witryny nie wywoła reindeksu ani nie dopisze zadań do kolejki; strona
+z hosta z `ALLOWED_HOSTS` albo z originu z listy już tak, więc wpisuj tam
+tylko to, co sam uruchamiasz.
 
 Dodatkowe zabezpieczenia:
 
@@ -206,7 +210,10 @@ Dodatkowe zabezpieczenia:
 - **SSRF w URL wideo** — `POST /api/folder/queue` i `/api/folder/download-video`
   przyjmują wyłącznie adresy YouTube (rozpoznane przez `shared/youtube.ts`);
   każdy inny URL (także `file://` czy adresy IP) jest odrzucany, a do yt-dlp
-  trafia zawsze kanoniczny `https://www.youtube.com/watch?v=<id>`.
+  trafia zawsze kanoniczny `https://www.youtube.com/watch?v=<id>`. Adres
+  kanału z `config.json` przechodzi tę samą kontrolę hosta przy zapisie
+  i jeszcze raz przed pobraniem listy, a yt-dlp dostaje go odbudowanego
+  z hosta i ścieżki.
 - **Allowlista argumentów yt-dlp**: `extraArgs` w `config.json` przyjmuje
   tylko dokładne nazwy flag z `ALLOWED_EXTRA_ARGS`
   (`server/src/services/folderConfig.ts`), każdą ze sprawdzoną wartością.
@@ -216,8 +223,8 @@ Dodatkowe zabezpieczenia:
   `PUT /api/folder/config` odpowiada 400 i wymienia dozwolone flagi,
   z ręcznie edytowanego pliku taki wpis wypada razem ze swoją wartością,
   a budowanie argumentów sprawdza listę jeszcze raz, zanim wystartuje yt-dlp.
-  Każde wywołanie dostaje `--ignore-config`, więc `yt-dlp.conf` w folderze
-  kanału niczego nie dodaje.
+  Każde pobieranie, aktualizacja, naprawa i pobranie listy kanału dostaje
+  `--ignore-config`, więc `yt-dlp.conf` w folderze kanału niczego nie dodaje.
 - **Brak otwartego API na interfejsie sieciowym** — serwer nie wystartuje,
   gdy `HOST` nie jest adresem loopback i nie ustawiono ani `API_TOKEN`, ani
   `REQUIRE_API_TOKEN=true`. Wystawienie API do sieci wymaga tokenu, a nie
@@ -226,7 +233,8 @@ Dodatkowe zabezpieczenia:
   każde `chrome-extension://…`, bo rozszerzenia developerskie dostają nowe ID
   przy każdym załadowaniu. Ustaw `EXTENSION_ORIGINS` z dokładnym ID
   (widoczne na `chrome://extensions`), aby API wywoływało tylko Twoje
-  rozszerzenie.
+  rozszerzenie. Aktualizuj tę listę: przez zwykłe HTTP serwer odrzuca
+  rozszerzenie, którego ID na niej nie ma.
 
 Dla zdalnego dostępu ustaw `API_TOKEN` (i ewentualnie `HOST=0.0.0.0` +
 `ALLOWED_HOSTS`): każdy request na `/api` musi wtedy nieść

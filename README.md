@@ -190,13 +190,16 @@ language switching in both directions.
 The server listens on `127.0.0.1` only by default, and CORS allows only
 the local dev client (`localhost`/`127.0.0.1` on ports 3000, 4173 and 5173),
 Chrome extensions and the origins listed in `CORS_ORIGINS`. Without
-`API_TOKEN`, the API is open to local processes, but browser requests
-from foreign pages are rejected. One marked `Sec-Fetch-Site: cross-site`
-is answered 403. Browsers send that marker only to HTTPS and loopback
-addresses, so on a LAN address such as `http://nas.local:3000` the server
-refuses an `Origin` that is not the UI's own address, a host in
-`ALLOWED_HOSTS` or a trusted origin. A malicious website cannot trigger a
-reindex or enqueue jobs.
+`API_TOKEN`, the API is open to local processes.
+
+Browser requests from foreign pages are rejected, token or not. One marked
+`Sec-Fetch-Site: cross-site` is answered 403. Browsers send that marker
+only to HTTPS and loopback addresses, so on a LAN address such as
+`http://nas.local:3000` the server reads the `Origin` instead and lets
+through only the UI's own address, a host in `ALLOWED_HOSTS` (on any port)
+and the origins in `CORS_ORIGINS`. A page on any other site cannot trigger
+a reindex or enqueue jobs; one served from an `ALLOWED_HOSTS` host or a
+listed origin can, so list only what you run.
 
 Additional protections:
 
@@ -207,7 +210,10 @@ Additional protections:
 - **SSRF via video URL**: `POST /api/folder/queue` and `/api/folder/download-video`
   accept only YouTube URLs (recognized by `shared/youtube.ts`);
   any other URL (including `file://` or IP addresses) is rejected, and yt-dlp
-  always receives the canonical `https://www.youtube.com/watch?v=<id>`.
+  always receives the canonical `https://www.youtube.com/watch?v=<id>`. A
+  channel URL in `config.json` passes the same host check when it is saved
+  and again before the playlist fetch, and yt-dlp lists the URL rebuilt
+  from its host and path.
 - **yt-dlp argument allowlist**: `extraArgs` in `config.json` accepts only
   the exact flag names in `ALLOWED_EXTRA_ARGS`
   (`server/src/services/folderConfig.ts`), each with its value checked.
@@ -216,8 +222,9 @@ Additional protections:
   yt-dlp (RCE, cookie theft, credential leaks). `PUT /api/folder/config`
   answers 400 and lists the allowed flags, a hand-edited file loses the
   entry together with its value, and the argument builder checks again
-  before yt-dlp starts. Every call passes `--ignore-config`, so a
-  `yt-dlp.conf` in a channel folder adds nothing.
+  before yt-dlp starts. Every download, update, repair and channel listing
+  passes `--ignore-config`, so a `yt-dlp.conf` in a channel folder adds
+  nothing.
 - **No open API on a network interface**: the server refuses to start when
   `HOST` is not a loopback address and neither `API_TOKEN` nor
   `REQUIRE_API_TOKEN=true` is set. Publishing the API to the network takes a
@@ -226,7 +233,8 @@ Additional protections:
   any `chrome-extension://…` because developer extensions get a new id
   each time they are loaded. Set `EXTENSION_ORIGINS` with the exact id
   (visible on `chrome://extensions`) so that the API is only called by
-  your extension.
+  your extension. Keep it current: over plain HTTP the server refuses an
+  extension whose id the list does not name.
 
 For remote access, set `API_TOKEN` (and optionally `HOST=0.0.0.0` +
 `ALLOWED_HOSTS`): every request to `/api` must then carry
