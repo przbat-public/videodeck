@@ -147,7 +147,7 @@ Security implications are in the Security section below.
 ```bash
 pnpm run dev          # server :3001 + client :3000
 pnpm run test         # unit tests: server, client and extension (vitest)
-pnpm run test:e2e     # Playwright against the mocked API (once: cd client && pnpm exec playwright install chromium)
+pnpm run test:e2e     # Playwright against the mocked API (first run and after every Playwright bump: cd client && pnpm exec playwright install chromium)
 ```
 
 Lint rules, the test matrix, the coverage ratchet and the strict TypeScript

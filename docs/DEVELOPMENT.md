@@ -118,7 +118,7 @@ URL-driven search, "Show more" (pl: „Pokaż więcej") pagination, the details 
 with the player and subtitles, the status page:
 
 ```bash
-pnpm run test:e2e  # first time: cd client && pnpm exec playwright install chromium
+pnpm run test:e2e  # first run and after every Playwright bump: cd client && pnpm exec playwright install chromium
 ```
 
 The suite reuses a server already listening on port 3000, which is convenient
