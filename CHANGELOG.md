@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A percentage in a file name no longer moves the progress bar.** The
+  parser took the first number before a `%` on any line, so a title such as
+  `50%_off`, or an error that quoted `42%`, set the bar, and a title with
+  "completed" in it set it to 100. Only the `--progress-template` line and
+  yt-dlp's default bar count now. Both patterns are anchored, so a long run
+  of digits no longer makes the parser backtrack
 - **`impersonate: true` works in the Docker image.** The image installed a
   bare yt-dlp without curl_cffi, so every job of a folder set to impersonate
   failed at once. It now installs `yt-dlp[pin,pin-curl-cffi,pin-deno]` from

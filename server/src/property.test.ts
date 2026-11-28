@@ -11,6 +11,13 @@ import { stripVttCueSettings } from './utils/vttUtils';
  * the examples. fast-check generates (and shrinks) counterexamples.
  */
 
+/**
+ * Far above what an anchored parse of a 2,000-digit line costs (microseconds)
+ * and far below what a backtracking one costs (about a second), so neither a
+ * slow runner nor a fast one can flip the linear-time check
+ */
+const PROGRESS_PARSE_BUDGET_MS = 50;
+
 describe('extractTextFromVttSubtitles', () => {
   it('never throws and never leaks markup/metadata', () => {
     fc.assert(
@@ -56,6 +63,42 @@ describe('extractYtDlpProgress', () => {
         expect(extractYtDlpProgress(`[download] ${percent}% of 10MiB`)).toBe(percent);
       }),
     );
+  });
+
+  it('reads the --progress-template line every job prints', () => {
+    expect(extractYtDlpProgress('download  12.3% (1.10GiB @ 69.50MiB/s, ETA 00:14)')).toBe(12.3);
+    expect(extractYtDlpProgress('download  100% (10MiB @ 1MiB/s, ETA 00:00)')).toBe(100);
+  });
+
+  it('reads no percentage from a file name or an error line', () => {
+    // A title reaches the log through the Destination line, and an error can
+    // quote a figure; neither tells how far the download got
+    expect(extractYtDlpProgress('[download] Destination: 20240101_50%_off.f137.mp4')).toBeUndefined();
+    expect(extractYtDlpProgress('[download] Destination: 20240101_100%_off_dQw4w9WgXcQ.f137.mp4')).toBeUndefined();
+    expect(extractYtDlpProgress('[download] Destination: 20240101_Project_completed_dQw4w9WgXcQ.mp4')).toBeUndefined();
+    expect(extractYtDlpProgress('ERROR: something failed at 42%')).toBeUndefined();
+  });
+
+  it('reads a percentage only from a line isYtDlpProgressLine flags', () => {
+    // The queue log hides exactly the lines isYtDlpProgressLine flags, so a
+    // percentage read from any other line moves the bar from a line still shown
+    fc.assert(
+      fc.property(fc.string(), fc.integer({ min: 0, max: 100 }), fc.string(), (head, percent, tail) => {
+        const line = `${head}${percent}%${tail}`;
+        if (extractYtDlpProgress(line) !== undefined) {
+          expect(isYtDlpProgressLine(line)).toBe(true);
+        }
+      }),
+    );
+  });
+
+  it('parses a long run of digits in linear time', () => {
+    // An unanchored /(-?\d+\.?\d*)%/ backtracks from every start position, about
+    // a second for these 2,000 digits; an anchored match takes microseconds
+    const line = `[download] ${'9'.repeat(2000)}x`;
+    const started = performance.now();
+    extractYtDlpProgress(line);
+    expect(performance.now() - started).toBeLessThan(PROGRESS_PARSE_BUDGET_MS);
   });
 });
 

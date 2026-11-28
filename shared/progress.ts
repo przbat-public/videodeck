@@ -1,54 +1,43 @@
 /**
- * Runtime helpers shared by the server (download queue log parsing) and the
- * Chrome extension (SSE output parsing). Unlike api.ts, this module is
- * imported for real — the ESLint restricted-import rule only protects api.ts.
+ * yt-dlp progress lines, read by the server's download queue. Unlike api.ts,
+ * which holds types only, this module is imported for real. The Chrome
+ * extension takes its progress from the queue's SSE events and imports
+ * nothing from here.
  */
 
 /** Our `--progress-template` line starts with a literal `download ` marker */
 const TEMPLATE_PROGRESS_RE = /^download\s+(\d+(?:\.\d+)?)%/;
 
 /**
+ * The default yt-dlp bar. Anchored like the template, so a percentage
+ * anywhere else in a line never matches, and a long run of digits costs
+ * linear time. The sign is captured, so a stray negative value clamps to 0.
+ */
+const BAR_PROGRESS_RE = /^\[download\]\s+(-?\d+(?:\.\d+)?)%\s+of\s+/;
+
+/**
  * Extract the download progress percentage from a yt-dlp output line.
  * Understands two formats:
  *  1. our `--progress-template` line: `download  45.2% (123MiB @ 1MiB/s, ETA 00:45)`
  *  2. the default yt-dlp bar: `[download]  45.2% of 123.45MiB at 1.23MiB/s ETA 00:45`
- * Returns undefined when the line carries no percentage.
+ * Returns undefined for every other line, so a file name or an error that
+ * quotes a percentage never moves the bar. A job that finishes reads 100
+ * from the queue itself.
  */
 export function extractYtDlpProgress(message: string): number | undefined {
-  const templateMatch = message.match(TEMPLATE_PROGRESS_RE);
-  if (templateMatch?.[1] !== undefined) {
-    return Math.min(100, Math.max(0, parseFloat(templateMatch[1])));
+  const match = TEMPLATE_PROGRESS_RE.exec(message) ?? BAR_PROGRESS_RE.exec(message);
+  if (match?.[1] === undefined) {
+    return undefined;
   }
-
-  // Fallback for the default progress bar (and older yt-dlp versions that
-  // predate --progress-template). Capture the sign too, so a stray negative
-  // value clamps to 0 below.
-  const percentMatch = message.match(/(-?\d+\.?\d*)%/);
-  if (percentMatch?.[1] !== undefined) {
-    return Math.min(100, Math.max(0, parseFloat(percentMatch[1])));
-  }
-
-  // If the message says "100%" or "completed" (in any wording the regex above
-  // did not catch), report the download as finished.
-  const lower = message.toLowerCase();
-  if (lower.includes('100%') || lower.includes('completed')) {
-    return 100;
-  }
-
-  return undefined;
+  return Math.min(100, Math.max(0, parseFloat(match[1])));
 }
 
 /**
- * True only for the two yt-dlp progress line formats the queue log carries:
- *  1. our `--progress-template` line: `download  45.2% (123MiB @ 1MiB/s, ETA 00:45)`
- *  2. the default yt-dlp bar: `[download]  45.2% of 123.45MiB at 1.23MiB/s ETA 00:45`
- * The client masks these lines behind a progress bar. Deliberately narrower
- * than `extractYtDlpProgress`: an error line that happens to mention a
- * percentage must never be masked.
+ * True only for the two progress formats above. The queue keeps these lines
+ * out of the job's log, and extractYtDlpProgress reads a percentage from
+ * these lines and no others, so a line that stays visible, such as an error
+ * that happens to mention a percentage, never moves the bar.
  */
 export function isYtDlpProgressLine(message: string): boolean {
-  if (TEMPLATE_PROGRESS_RE.test(message)) {
-    return true;
-  }
-  return /^\[download\]\s+-?\d+(?:\.\d+)?%\s+of\s+/.test(message);
+  return TEMPLATE_PROGRESS_RE.test(message) || BAR_PROGRESS_RE.test(message);
 }
