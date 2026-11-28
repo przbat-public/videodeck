@@ -217,11 +217,13 @@ A short overview of the client's architectural decisions and what was consciousl
   useDownloadQueue) cover the caching, retries, and synchronization that
   TanStack Query provides out of the box; the migration is worth doing at the
   next larger data refactor, not during small changes.
-- **React Compiler**: a recommendation, not an implementation.
-  Auto-memoization would remove the manual `memo`/`useCallback`
-  (VideoItem, VideoCard, CommentComponent), but it needs verification
-  against react-window and react-i18next; enable it as a separate,
-  conscious step.
+- **React Compiler**: enabled. `client/vite.config.ts` runs
+  babel-plugin-react-compiler through `@rolldown/plugin-babel` and the
+  `reactCompilerPreset` of `@vitejs/plugin-react`, for the dev server, the
+  production build and the integration suite. Only the unit run stays
+  uncompiled, so its coverage measures the source. The manual
+  `memo`/`useCallback` in VideoItem, VideoCard and CommentComponent stays,
+  because removing it changes compiler output.
 
 ## Developer tooling
 
