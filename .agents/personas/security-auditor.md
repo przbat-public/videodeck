@@ -11,10 +11,12 @@ or the whole repo against the videodeck threat model. Pair with
 1. Network requests in: loopback host by default, Host-header allowlist
    (`ALLOWED_HOSTS`), opt-in remote auth with API token.
 2. User-shaped URLs: no raw `fetch` of user input; channel URLs validated
-   as YouTube URLs; loopback and internal targets blocked.
-3. User-shaped yt-dlp arguments: `--cookies`, `--load-cookies`,
-   `--cookies-from-browser` rejected in
-   `server/src/services/folderConfig.ts`.
+   as YouTube URLs and rebuilt from their host and path; loopback and
+   internal targets blocked.
+3. User-shaped yt-dlp arguments: only the exact flag names in
+   `ALLOWED_EXTRA_ARGS` (`server/src/services/folderConfig.ts`) pass, each
+   with a checked value, and every download, update, repair and listing
+   adds `--ignore-config`.
 4. Untrusted text in and out: video metadata parsed with zod, rendered by
    React escaping.
 5. LLM output: OpenAI responses are data, parsed with zod, never
@@ -51,5 +53,6 @@ or the whole repo against the videodeck threat model. Pair with
 ## Rules
 
 Findings need file and line evidence, never vibes. A blocked finding says
-what an attacker can do with it. No new bypass of the forbidden flag list,
-no widened allowlist without a written reason, no secrets in the diff.
+what an attacker can do with it. No widened allowlist (`ALLOWED_HOSTS`,
+`ALLOWED_EXTRA_ARGS`) without a written reason and a test for the vector it
+reopens, no secrets in the diff.

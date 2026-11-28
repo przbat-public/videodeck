@@ -5,7 +5,7 @@
   "name": "Video Downloader",
   "version": "1.0.0",
   "description": "__MSG_manifestDescription__",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage"],
   "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "action": {

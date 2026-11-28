@@ -892,6 +892,115 @@ describe('folder router', () => {
       }) as unknown as typeof spawn);
     }
 
+    /** A yt-dlp that keeps running until released, and a handle on each process it started */
+    function heldYtDlp(stdout: string) {
+      const held: Array<{ release: (code?: number) => void }> = [];
+      mockedSpawn.mockImplementation((() => {
+        const proc = Object.assign(new EventEmitter(), {
+          stdout: new EventEmitter(),
+          stderr: new EventEmitter(),
+        });
+        held.push({
+          release: (code = 0) => {
+            if (code === 0) {
+              proc.stdout.emit('data', Buffer.from(stdout));
+            } else {
+              proc.stderr.emit('data', Buffer.from('boom'));
+            }
+            proc.emit('close', code);
+          },
+        });
+        return proc;
+      }) as unknown as typeof spawn);
+      return held;
+    }
+
+    const postPlaylist = (folderPath = FOLDER) =>
+      request(app)
+        .post('/api/folder/download-playlist')
+        .send({ folderPath })
+        .then((response) => response);
+
+    it('lists a channel once for two requests that arrive together', async () => {
+      // A second tab, a reload during the fetch or a script started another
+      // yt-dlp for the same channel, outside every queue limit
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
+      const held = heldYtDlp('{"id":"v1","title":"One"}\n');
+      const responses: Array<ReturnType<typeof postPlaylist>> = [];
+      try {
+        responses.push(postPlaylist());
+        await vi.waitFor(() => expect(mockedSpawn).toHaveBeenCalledTimes(1));
+        responses.push(postPlaylist());
+        await vi.waitFor(() => expect(mockedReadFolderConfig).toHaveBeenCalledTimes(2));
+        await flush();
+
+        expect(mockedSpawn).toHaveBeenCalledTimes(1);
+      } finally {
+        for (const proc of held) {
+          proc.release();
+        }
+      }
+      const [first, second] = await Promise.all(responses);
+      expect(first?.status).toBe(200);
+      expect(second?.status).toBe(200);
+      expect(second?.body).toEqual(first?.body);
+      expect(mockedFs.rename).toHaveBeenCalledTimes(1);
+    });
+
+    it('lists again once the first listing has settled', async () => {
+      // Joining is not caching: the next click asks yt-dlp again
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
+      fakeYtDlp('{"id":"v1","title":"One"}\n');
+
+      expect((await postPlaylist()).status).toBe(200);
+      expect((await postPlaylist()).status).toBe(200);
+
+      expect(mockedSpawn).toHaveBeenCalledTimes(2);
+    });
+
+    it('lists two folders at the same time', async () => {
+      // The listing is shared per folder, so another channel never waits
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
+      const held = heldYtDlp('{"id":"v1","title":"One"}\n');
+      const responses: Array<ReturnType<typeof postPlaylist>> = [];
+      try {
+        responses.push(postPlaylist(FOLDER), postPlaylist(OTHER_FOLDER));
+        await vi.waitFor(() => expect(mockedSpawn).toHaveBeenCalledTimes(2));
+      } finally {
+        for (const proc of held) {
+          proc.release();
+        }
+      }
+      expect((await Promise.all(responses)).map((response) => response.status)).toEqual([200, 200]);
+    });
+
+    it('answers 500 to every joined request when the listing fails, and the next one retries', async () => {
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a' });
+      const held = heldYtDlp('');
+      const responses: Array<ReturnType<typeof postPlaylist>> = [];
+      try {
+        responses.push(postPlaylist());
+        await vi.waitFor(() => expect(mockedSpawn).toHaveBeenCalledTimes(1));
+        responses.push(postPlaylist());
+        await vi.waitFor(() => expect(mockedReadFolderConfig).toHaveBeenCalledTimes(2));
+        await flush();
+
+        // One process for both: without the join each request fails on its own
+        expect(mockedSpawn).toHaveBeenCalledTimes(1);
+      } finally {
+        for (const proc of held) {
+          proc.release(1);
+        }
+      }
+      for (const response of await Promise.all(responses)) {
+        expect(response.status).toBe(500);
+        expect(response.body.error).toBe('Failed to download playlist');
+      }
+
+      fakeYtDlp('{"id":"v1","title":"One"}\n');
+      expect((await postPlaylist()).status).toBe(200);
+    });
+
     it('returns 404 when config.json is missing', async () => {
       mockedReadFolderConfig.mockResolvedValue(null);
 
@@ -916,6 +1025,29 @@ describe('folder router', () => {
       expect(response.status).toBe(400);
       expect(response.body.error).toMatch(/YouTube channel URL/);
       expect(mockedSpawn).not.toHaveBeenCalled();
+    });
+
+    it('refuses a channel URL that yt-dlp would read with another host', async () => {
+      // The WHATWG parser takes the backslash for a path separator and sees
+      // www.youtube.com; yt-dlp's urlsplit reads host 127.0.0.1, port 9200
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com\\@127.0.0.1:9200' });
+
+      const response = await request(app).post('/api/folder/download-playlist').send({ folderPath: FOLDER });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatch(/YouTube channel URL/);
+      expect(mockedSpawn).not.toHaveBeenCalled();
+    });
+
+    it('hands yt-dlp the channel URL rebuilt without its query', async () => {
+      // A shared link ends in ?si=…, and the appended /videos landed inside it
+      mockedReadFolderConfig.mockResolvedValue({ channelUrl: 'https://www.youtube.com/@a?si=xyz' });
+      fakeYtDlp('{"id":"v1","title":"One"}\n');
+
+      const response = await request(app).post('/api/folder/download-playlist').send({ folderPath: FOLDER });
+
+      expect(response.status).toBe(200);
+      expect(mockedSpawn.mock.calls[0]?.[1]?.at(-1)).toBe('https://www.youtube.com/@a/videos');
     });
 
     it('refuses a playlist download into a folder whose drive is away', async () => {
@@ -1348,6 +1480,29 @@ describe('folder router', () => {
       );
     });
 
+    it('skips an update or a repair of a video whose stem holds a $', async () => {
+      // yt-dlp would expand the `$` in its output template, so buildYtDlpArgs
+      // refuses the stem; the skip says why now, instead of a job that fails
+      mockedLoadIndex.mockResolvedValue({
+        ...indexFile([]),
+        entries: { aaaaaaaaaaa: indexEntry({ baseName: '20240101_Price_$5', videoFile: 'x.mp4' }) },
+      });
+
+      for (const type of ['update', 'repair'] as const) {
+        const response = await request(app)
+          .post('/api/folder/queue')
+          .send({ folderPath: FOLDER, type, videos: [{ videoId: 'aaaaaaaaaaa' }] });
+
+        expect(response.status).toBe(202);
+        expect(EnqueueJobsResponseSchema.parse(response.body)).toMatchObject({
+          jobs: [],
+          skipped: [{ videoId: 'aaaaaaaaaaa', reason: 'unsafe file name' }],
+        });
+      }
+      await flush();
+      expect(spawnCalls).toHaveLength(0);
+    });
+
     it('lists jobs, optionally filtered by folder', async () => {
       await request(app)
         .post('/api/folder/queue')
@@ -1435,6 +1590,34 @@ describe('folder router', () => {
   });
 
   describe('repair endpoint', () => {
+    it('refuses more videos than one request may carry, before walking them', async () => {
+      // The cap POST /api/folder/queue has: a body of bare numbers stays far
+      // under the body limit, and each of them used to be walked into a skip
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      const videos = Array.from({ length: MAX_QUEUE_VIDEOS + 1 }, () => 1);
+
+      const response = await request(app)
+        .post('/api/folder/repair')
+        .send({ folderPath: FOLDER, method: 'sidecars', videos });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe(`videos must hold at most ${MAX_QUEUE_VIDEOS} entries`);
+      expect(mockedLoadIndex).not.toHaveBeenCalled();
+      expect(spawnCalls).toHaveLength(0);
+    });
+
+    it('takes exactly as many videos as one request may carry', async () => {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      const videos = Array.from({ length: MAX_QUEUE_VIDEOS }, () => 1);
+
+      const response = await request(app)
+        .post('/api/folder/repair')
+        .send({ folderPath: FOLDER, method: 'sidecars', videos });
+
+      expect(response.status).toBe(202);
+      expect(EnqueueJobsResponseSchema.parse(response.body).skipped).toHaveLength(MAX_QUEUE_VIDEOS);
+    });
+
     it('queues sidecar-only jobs pinned to the existing stem', async () => {
       mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
       mockedLoadIndex.mockResolvedValue({
@@ -1490,6 +1673,26 @@ describe('folder router', () => {
         jobs: [],
         skipped: [{ videoId: 'aaaaaaaaaaa', reason: 'not downloaded' }],
       });
+    });
+
+    it('skips a video whose stem holds a $ rather than queueing a repair yt-dlp is refused', async () => {
+      mockedGetVideosFolderPaths.mockReturnValue([FOLDER]);
+      mockedLoadIndex.mockResolvedValue({
+        ...indexFile([]),
+        entries: { aaaaaaaaaaa: indexEntry({ baseName: '20240101_Price_$5' }) },
+      });
+
+      const response = await request(app)
+        .post('/api/folder/repair')
+        .send({ folderPath: FOLDER, method: 'sidecars', videos: [{ videoId: 'aaaaaaaaaaa' }] });
+
+      expect(response.status).toBe(202);
+      expect(EnqueueJobsResponseSchema.parse(response.body)).toMatchObject({
+        jobs: [],
+        skipped: [{ videoId: 'aaaaaaaaaaa', reason: 'unsafe file name' }],
+      });
+      await flush();
+      expect(spawnCalls).toHaveLength(0);
     });
 
     it('rejects an empty video list and an unknown method', async () => {

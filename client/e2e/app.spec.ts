@@ -74,6 +74,43 @@ test.describe('search page', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   });
 
+  test('Rebuild indices asks first, with Cancel focused, and Escape sends nothing', async ({ page }) => {
+    // The rebuild empties every index. jsdom stubs showModal, so the focus the
+    // browser gives the dialog is checked here; the AppMenu unit test covers
+    // the cancel path itself.
+    await mockApi(page);
+    let recreatePosts = 0;
+    await page.context().route('**/api/videos/recreateIndices', async (route) => {
+      if (route.request().method() === 'POST') {
+        recreatePosts += 1;
+      }
+      await route.fulfill(json({ message: 'Indices recreation process started', status: 'ok' }, 202));
+    });
+
+    await page.goto('/');
+    const gear = page.getByRole('button', { name: 'Menu aplikacji' });
+    await gear.click();
+    await page.getByRole('menuitem', { name: 'Odbuduj indeksy' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Odbudować wszystkie indeksy?' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Anuluj' })).toBeFocused();
+
+    // The route handler hears of a request some time after the page sends
+    // it, so the check waits for the request itself, a second at most
+    const sent = page
+      .waitForRequest((request) => request.url().includes('/api/videos/recreateIndices'), { timeout: 1000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(gear).toBeFocused();
+    expect(await sent).toBe(false);
+    expect(recreatePosts).toBe(0);
+  });
+
   test('the sort select opens the list and changes the sort', async ({ page }) => {
     const sorts: (string | null)[] = [];
     await mockApi(page, {

@@ -80,6 +80,9 @@ describe('createAuthMiddleware', () => {
     app.get('/test', (_req, res) => {
       res.json({ ok: true });
     });
+    app.post('/test', (_req, res) => {
+      res.json({ ok: true });
+    });
     return app;
   }
 
@@ -139,10 +142,232 @@ describe('createAuthMiddleware', () => {
   it('accepts a CORS_ORIGINS entry as same-site', async () => {
     const app = guardedApp(createAuthorizer(undefined, false, { extraOrigins: ['https://deck.example'] }));
 
-    expect((await request(app).get('/test').set('Sec-Fetch-Site', 'cross-site')).status).toBe(403);
+    // Listed or not, a request the browser marks cross-site stays refused:
+    // the Origin is read only after that verdict
+    expect(
+      (await request(app).get('/test').set('Sec-Fetch-Site', 'cross-site').set('Origin', 'https://deck.example'))
+        .status,
+    ).toBe(403);
     expect(
       (await request(app).get('/test').set('Sec-Fetch-Site', 'same-site').set('Origin', 'https://deck.example')).status,
     ).toBe(200);
+  });
+
+  // Browsers send no Sec-Fetch-Site to a plain-HTTP address that is not
+  // loopback, which is how a LAN deploy is reached, so there the Origin decides
+  const UNMARKED_REFUSAL = {
+    error: 'Forbidden',
+    message:
+      'Requests from another origin are not allowed. List its host in ALLOWED_HOSTS or the origin in CORS_ORIGINS.',
+  };
+
+  it('refuses a POST from a foreign origin when the browser sends no Sec-Fetch-Site, token or not', async () => {
+    const withToken = await request(buildApp('secret'))
+      .post('/test')
+      .set('Authorization', 'Bearer secret')
+      .set('Origin', 'http://evil.example');
+    const open = await request(buildApp()).post('/test').set('Origin', 'http://evil.example');
+
+    expect(withToken.status).toBe(403);
+    expect(withToken.body).toEqual(UNMARKED_REFUSAL);
+    expect(open.status).toBe(403);
+  });
+
+  it('refuses an opaque or unparsable Origin when the browser sends no Sec-Fetch-Site', async () => {
+    for (const origin of ['null', 'garbage']) {
+      const response = await request(buildApp('secret'))
+        .post('/test')
+        .set('Authorization', 'Bearer secret')
+        .set('Origin', origin);
+      expect(response.status).toBe(403);
+    }
+  });
+
+  it('names no setting when it refuses an opaque origin', async () => {
+    // A sandboxed frame or a file: page sends Origin null, and no list
+    // lets one in, so the refusal points at none
+    const response = await request(buildApp('secret'))
+      .post('/test')
+      .set('Authorization', 'Bearer secret')
+      .set('Origin', 'null');
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      error: 'Forbidden',
+      message: 'Requests from an opaque origin (null) are not allowed.',
+    });
+  });
+
+  it('refuses an unmarked GET from a foreign origin too, since some reads still write', async () => {
+    const response = await request(buildApp('secret'))
+      .get('/test')
+      .set('Authorization', 'Bearer secret')
+      .set('Origin', 'http://evil.example');
+    expect(response.status).toBe(403);
+  });
+
+  it('refuses an unmarked extension whose id EXTENSION_ORIGINS does not list', async () => {
+    const app = guardedApp(createAuthorizer('secret', false, { extensionOrigins: ['chrome-extension://otherid'] }));
+    const response = await request(app)
+      .post('/test')
+      .set('Authorization', 'Bearer secret')
+      .set('Origin', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop');
+    // The refusal names the setting that lets this extension in, not the
+    // ALLOWED_HOSTS and CORS_ORIGINS of the message for other pages
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      error: 'Forbidden',
+      message: 'Requests from this extension are not allowed. List its origin in EXTENSION_ORIGINS.',
+    });
+  });
+
+  it('names CORS_ORIGINS alone when it refuses a loopback page', async () => {
+    // A loopback Origin is a page on the browser's own machine, which no
+    // ALLOWED_HOSTS entry lets in
+    const app = guardedApp(createAuthorizer('secret', false, { allowedHosts: ['nas.local'] }));
+    // IPv6 loopback too, which the Origin writes in brackets
+    for (const origin of ['http://localhost:9999', 'http://[::1]:9999']) {
+      const response = await request(app)
+        .post('/test')
+        .set('Authorization', 'Bearer secret')
+        .set('Host', 'nas.local')
+        .set('Origin', origin);
+      expect(response.status, origin).toBe(403);
+      expect(response.body, origin).toEqual({
+        error: 'Forbidden',
+        message: 'Requests from a loopback page are not allowed. List its origin in CORS_ORIGINS.',
+      });
+    }
+  });
+
+  it('refuses a rebinding name that arrives as X-Forwarded-Host', async () => {
+    // A proxy that rewrites Host to loopback hides the browser's host from the
+    // Host guard, and a DNS-rebinding page sends its own name as the Origin
+    // and, through the proxy, as X-Forwarded-Host. The forwarded name counts
+    // only when the Host guard would accept it.
+    for (const allowedHosts of [[], ['nas.local']]) {
+      const response = await request(guardedApp(createAuthorizer('secret', false, { allowedHosts })))
+        .post('/test')
+        .set('Authorization', 'Bearer secret')
+        .set('Host', '127.0.0.1:3001')
+        .set('X-Forwarded-Host', 'evil.example:3000')
+        .set('Origin', 'http://evil.example:3000');
+      expect(response.status, allowedHosts.join(',')).toBe(403);
+    }
+  });
+
+  it('never compares the Origin with Host once the forwarded name is untrusted', async () => {
+    // Behind a proxy that sets Host to its own upstream, that Host is the
+    // proxy's address, and a loopback Origin there is a page on the visitor's
+    // machine. Falling back to Host let such a page post through an alias
+    // of the proxy that ALLOWED_HOSTS does not list.
+    for (const allowedHosts of [[], ['nas.local']]) {
+      const response = await request(guardedApp(createAuthorizer('secret', false, { allowedHosts })))
+        .post('/test')
+        .set('Authorization', 'Bearer secret')
+        .set('Host', '127.0.0.1:3001')
+        .set('X-Forwarded-Host', '192.168.0.10:8080')
+        .set('Origin', 'http://127.0.0.1:3001');
+      expect(response.status, allowedHosts.join(',')).toBe(403);
+    }
+  });
+
+  it('reads a rooted name, trailing dot and all, as the name it roots', async () => {
+    // nginx drops the dot from $host but not from $http_host: the Host guard
+    // sees nas.local, while X-Forwarded-Host and the Origin keep the dot
+    const app = guardedApp(createAuthorizer('secret', false, { allowedHosts: ['nas.local'] }));
+    const post = (host: string, forwarded: string, origin: string) =>
+      request(app)
+        .post('/test')
+        .set('Authorization', 'Bearer secret')
+        .set('Host', host)
+        .set('X-Forwarded-Host', forwarded)
+        .set('Origin', origin);
+
+    expect((await post('nas.local', 'nas.local.:3000', 'http://nas.local.:3000')).status).toBe(200);
+    // A rooted loopback name passes only as the forwarded address, since the
+    // ALLOWED_HOSTS rule leaves loopback out
+    expect((await post('localhost', 'localhost.:8092', 'http://localhost.:8092')).status).toBe(200);
+  });
+
+  it('keeps loopback names out of the ALLOWED_HOSTS rule', async () => {
+    // In an Origin, localhost is a page on the browser's own machine
+    const app = guardedApp(createAuthorizer('secret', false, { allowedHosts: ['localhost', 'nas.local'] }));
+    const response = await request(app)
+      .post('/test')
+      .set('Host', 'nas.local')
+      .set('X-Forwarded-Host', 'nas.local:3000')
+      .set('Authorization', 'Bearer secret')
+      .set('Origin', 'http://localhost:9999');
+    expect(response.status).toBe(403);
+
+    // A rooted loopback name stays loopback, however the entry is written
+    const rooted = guardedApp(createAuthorizer('secret', false, { allowedHosts: ['nas.local', 'localhost.'] }));
+    const rootedResponse = await request(rooted)
+      .post('/test')
+      .set('Host', 'nas.local')
+      .set('Authorization', 'Bearer secret')
+      .set('Origin', 'http://localhost.:9999');
+    expect(rootedResponse.status).toBe(403);
+  });
+
+  it('accepts an unmarked POST whose Origin is the address the browser used', async () => {
+    // Behind nginx the address comes as X-Forwarded-Host (its first value,
+    // port included), without a proxy it is the Host itself. Loopback is the
+    // case only this rule covers: the ALLOWED_HOSTS rule leaves it out.
+    const post = (headers: Record<string, string>) =>
+      request(buildApp('secret')).post('/test').set('Authorization', 'Bearer secret').set(headers);
+
+    expect(
+      (await post({ Host: '127.0.0.1', 'X-Forwarded-Host': '127.0.0.1:8092', Origin: 'http://127.0.0.1:8092' })).status,
+    ).toBe(200);
+    expect(
+      (
+        await post({
+          Host: '127.0.0.1',
+          'X-Forwarded-Host': '127.0.0.1:8092, inner',
+          Origin: 'http://127.0.0.1:8092',
+        })
+      ).status,
+    ).toBe(200);
+    expect((await post({ Host: 'localhost:8080', Origin: 'http://localhost:8080' })).status).toBe(200);
+    // An IPv6 literal keeps its brackets in both headers
+    expect((await post({ Host: '[::1]', 'X-Forwarded-Host': '[::1]:8092', Origin: 'http://[::1]:8092' })).status).toBe(
+      200,
+    );
+  });
+
+  it('accepts an unmarked POST from an ALLOWED_HOSTS host on any port, IPv6 included', async () => {
+    const app = guardedApp(createAuthorizer('secret', false, { allowedHosts: ['nas.local', 'fd00::1'] }));
+    const post = (host: string, origin: string) =>
+      request(app).post('/test').set('Authorization', 'Bearer secret').set('Host', host).set('Origin', origin);
+
+    expect((await post('nas.local', 'http://nas.local:3000')).status).toBe(200);
+    expect((await post('[fd00::1]', 'http://[fd00::1]:3000')).status).toBe(200);
+  });
+
+  it('lets an unmarked request without an Origin on to the token check', async () => {
+    // curl and the server itself send no Origin at all
+    expect((await request(buildApp('secret')).post('/test').set('Authorization', 'Bearer secret')).status).toBe(200);
+    const curl = await request(buildApp('secret')).post('/test');
+    expect(curl.status).toBe(401);
+    expect(curl.body).toEqual({ error: 'Unauthorized', message: 'Missing or invalid API token' });
+  });
+
+  it('accepts an unmarked POST from a trusted origin', async () => {
+    // The extension worker posts from its own origin to a LAN server
+    const app = guardedApp(createAuthorizer('secret', false, { extraOrigins: ['http://media.lan:8080'] }));
+    for (const origin of [
+      'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
+      'http://localhost:5173',
+      'http://media.lan:8080',
+    ]) {
+      const response = await request(app)
+        .post('/test')
+        .set('Host', 'nas.local:3001')
+        .set('Authorization', 'Bearer secret')
+        .set('Origin', origin);
+      expect(response.status).toBe(200);
+    }
   });
 
   it('rejects requests without an Authorization header', async () => {
@@ -210,6 +435,40 @@ describe('createApp auth wiring', () => {
     const health = await request(app).get('/health');
     expect(health.status).toBe(200);
     expect(health.body).toEqual({ status: 'ok', elasticsearch: 'ok', revision: expect.any(Number) });
+  });
+
+  it('refuses a form POST from a foreign page on an ALLOWED_HOSTS host, with the token the proxy adds', async () => {
+    const originalAllowedHosts = process.env.ALLOWED_HOSTS;
+    process.env.ALLOWED_HOSTS = 'nas.local';
+    try {
+      const queue = fakeQueue();
+      const app = createApp({ apiToken: 'lan-token', downloadQueue: queue });
+      // A form a foreign page submits: no preflight, no marker on plain HTTP
+      const pause = (origin: string) =>
+        request(app)
+          .post('/api/folder/queue/pause?paused=1')
+          .set('Host', 'nas.local')
+          .set('Authorization', 'Bearer lan-token')
+          .set('Origin', origin)
+          .type('form')
+          .send('');
+
+      const forged = await pause('http://evil.example');
+      expect(forged.status).toBe(403);
+      expect(queue.setPaused).not.toHaveBeenCalled();
+
+      // The UI's own page on that host passes, on its own port
+      const ui = await pause('http://nas.local:3000');
+      expect(ui.status).toBe(200);
+      expect(queue.setPaused).toHaveBeenCalledTimes(1);
+      expect(queue.setPaused).toHaveBeenCalledWith(true);
+    } finally {
+      if (originalAllowedHosts === undefined) {
+        delete process.env.ALLOWED_HOSTS;
+      } else {
+        process.env.ALLOWED_HOSTS = originalAllowedHosts;
+      }
+    }
   });
 
   it('leaves /api open without a configured token', async () => {
@@ -634,6 +893,7 @@ describe('rate limiting', () => {
   it.each<[string, () => express.Express, Record<string, string>, number]>([
     ['a wrong token', () => createApp({ apiToken: 'media-token' }), { Authorization: 'Bearer guess' }, 401],
     ['a cross-site page', () => createApp(), { 'Sec-Fetch-Site': 'cross-site' }, 403],
+    ['a foreign origin without the marker', () => createApp(), { Origin: 'http://evil.example' }, 403],
     [
       'an untrusted origin on this host',
       () => createApp(),

@@ -213,6 +213,11 @@
     "recreate": "Rebuild indices",
     "recreating": "Rebuilding...",
     "recreateTitle": "Rebuild all Elasticsearch indices",
+    "recreateConfirm": {
+      "title": "Rebuild every index?",
+      "message": "Each folder's index is replaced with an empty one, so search finds nothing until \"{{refresh}}\" runs again.",
+      "confirm": "Rebuild indices"
+    },
     "reloadTitle": "Refresh the video list",
     "onlyMissing": "missing only (use existing index)",
     "onlyMissingTitle": "Skip folders that already have an index in Elasticsearch (e.g. a previously plugged disk's cache)",
@@ -236,7 +241,8 @@
   },
   "skipReason": {
     "alreadyDownloaded": "already downloaded",
-    "notDownloaded": "not downloaded"
+    "notDownloaded": "not downloaded",
+    "unsafeFileName": "file name contains $"
   },
   "toast": {
     "addedToQueue_one": "Added {{count}} video to {{target}}",

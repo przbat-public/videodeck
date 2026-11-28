@@ -1692,6 +1692,19 @@
   color: var(--color-text);
 }
 
+.ui-modal-message {
+  margin: 0.5rem 0 1rem;
+}
+
+/* Cancel comes first in the markup, so the browser focuses it when the
+   dialog opens; the action that cannot be taken back sits after it */
+.ui-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 /* Top bar: the brand and the back link on the left, the gear menu on
    the right. Everything lives in the page flow, never on top of content;
    on a phone the bar wraps instead of floating over the page. The 2rem

@@ -153,7 +153,10 @@ Eight shared primitives in `client/src/components/ui/`:
   and the panel's own buttons all run through the same `onClose`, and focus goes
   back to the control that opened the dialog. A click on the backdrop leaves the form alone, because
   half-filled fields should not lose their edits to a stray click. The config
-  form on the download console is its first user.
+  form on the download console is its first user. The second is the
+  confirmation a gear menu item asks for when it registers `confirm` (Rebuild
+  indices): the message, then Cancel, which comes first so the browser
+  focuses it, and a `danger` button that runs the action.
 
 Composite patterns: top bar (brand icon, back link on the detail page,
 gear menu), skip link (the first focusable element in the shell, off screen

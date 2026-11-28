@@ -138,6 +138,8 @@ function hasNoBody(req: Request): boolean {
  * this check such a page could drive the local API like the real client.
  * Loopback hosts are always allowed; `extraHosts` (ALLOWED_HOSTS) extends
  * the list for LAN setups. Requests without a Host header (HTTP/1.0) pass.
+ * The auth guard reads the same list for the pages it trusts on a request
+ * without Sec-Fetch-Site (routes/http.ts).
  */
 function createHostGuard(extraHosts: readonly string[]): (req: Request, res: Response, next: NextFunction) => void {
   const allowed = new Set(['localhost', '127.0.0.1', '::1', ...extraHosts]);
@@ -228,17 +230,20 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
 
   const extraCorsOrigins = getCorsOrigins();
   const extensionOrigins = getExtensionOrigins();
+  const allowedHosts = getAllowedHosts();
 
   // One auth decision for the two places that need it: the guard on /api and
   // /metrics below, and the rate limit, which must not wave through a read
-  // the guard refuses
+  // the guard refuses. ALLOWED_HOSTS also names the hosts whose pages it
+  // trusts on a request the browser sends without Sec-Fetch-Site.
   const authorize = createAuthorizer(readApiToken(options.apiToken), isTokenRequired(), {
     extraOrigins: extraCorsOrigins,
     extensionOrigins,
+    allowedHosts,
   });
 
   // DNS-rebinding guard first — every request pays the Host check
-  app.use(createHostGuard(getAllowedHosts()));
+  app.use(createHostGuard(allowedHosts));
 
   app.use(helmet());
 

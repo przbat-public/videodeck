@@ -3,8 +3,9 @@ import path from 'node:path';
 import { Counter } from '@prometheus-io/client';
 import OpenAI from 'openai';
 import { metricsRegistry } from '../metricsRegistry';
-import { resolveContainedPath, writeTextAtomic } from '../utils/fsUtils';
+import { removeContainedFile, resolveContainedPath, writeTextFileAtomic } from '../utils/fsUtils';
 import { logger } from '../utils/logger';
+import { isSafeVideoStem } from '../utils/videoStem';
 import {
   resolveSummaryProvider,
   type SummaryModelProfile,
@@ -241,15 +242,21 @@ export function activeGenerationCount(): number {
  */
 export async function generateSummary(input: GenerateSummaryInput): Promise<GeneratedSummary> {
   const { folderPath, baseName } = input;
-  const summaryFilePath = path.join(folderPath, `${baseName}.summary.txt`);
-  const truncatedMarkerPath = path.join(folderPath, `${baseName}.summary.truncated`);
+  // Every cached file is <stem>.summary.* beside the video, so a stem with a
+  // separator would point them elsewhere. Refused first: the cache read below
+  // swallows its errors, and nothing may be billed for such a stem.
+  if (!isSafeVideoStem(baseName)) {
+    throw new Error(`Refusing to summarize ${baseName}: its summary would resolve outside ${folderPath}`);
+  }
+  const names = summaryFileNames(baseName);
+  const summaryFilePath = path.join(folderPath, names.summary);
 
   // A summary on disk wins — it was paid for once already. Unless the
   // subtitles are NEWER: an update that brings a changed subtitle moves it in
   // with the commit time as its mtime (refreshStaging.ts), so a summary of
   // the old text reads as older and must not be served forever.
   try {
-    const realPath = await resolveContainedPath(folderPath, `${baseName}.summary.txt`);
+    const realPath = await resolveContainedPath(folderPath, names.summary);
     const [summaryStats, subtitleStats] = await Promise.all([
       fs.stat(realPath),
       fs.stat(await resolveContainedPath(folderPath, input.subtitlePath)),
@@ -257,7 +264,7 @@ export async function generateSummary(input: GenerateSummaryInput): Promise<Gene
     if (summaryStats.mtimeMs >= subtitleStats.mtimeMs) {
       const existingSummary = await fs.readFile(realPath, 'utf-8');
       if (existingSummary.trim()) {
-        const truncated = await readTruncatedMarker(truncatedMarkerPath);
+        const truncated = await readTruncatedMarker(folderPath, names.marker);
         return { summary: existingSummary.trim(), truncated };
       }
     }
@@ -271,28 +278,32 @@ export async function generateSummary(input: GenerateSummaryInput): Promise<Gene
     return pending;
   }
 
-  const generation = generateUncached(input, summaryFilePath).finally(() => {
+  const generation = generateUncached(input).finally(() => {
     inFlight.delete(summaryFilePath);
   });
   inFlight.set(summaryFilePath, generation);
   return generation;
 }
 
-async function readTruncatedMarker(markerPath: string): Promise<boolean> {
+/** The cached files of one video's summary, beside it in its folder */
+function summaryFileNames(baseName: string): { summary: string; marker: string } {
+  return { summary: `${baseName}.summary.txt`, marker: `${baseName}.summary.truncated` };
+}
+
+async function readTruncatedMarker(folderPath: string, markerName: string): Promise<boolean> {
   try {
-    return (await fs.readFile(markerPath, 'utf-8')).trim() === '1';
+    return (await fs.readFile(await resolveContainedPath(folderPath, markerName), 'utf-8')).trim() === '1';
   } catch {
     return false;
   }
 }
 
-async function writeTruncatedMarker(markerPath: string, truncated: boolean): Promise<void> {
+/** The marker of a summary cut to the input budget; a missing one needs no removal */
+async function writeTruncatedMarker(folderPath: string, markerName: string, truncated: boolean): Promise<void> {
   if (truncated) {
-    await writeTextAtomic(markerPath, '1');
+    await writeTextFileAtomic(folderPath, markerName, '1');
   } else {
-    await fs.rm(markerPath, { force: true }).catch(() => {
-      /* marker may never have existed */
-    });
+    await removeContainedFile(folderPath, markerName);
   }
 }
 
@@ -304,7 +315,7 @@ export class SummaryUnavailableError extends Error {
   }
 }
 
-async function generateUncached(input: GenerateSummaryInput, summaryFilePath: string): Promise<GeneratedSummary> {
+async function generateUncached(input: GenerateSummaryInput): Promise<GeneratedSummary> {
   const { folderPath, baseName, subtitlePath } = input;
   const resolution = resolveSummaryProvider();
   if (resolution.status === 'unconfigured') {
@@ -364,11 +375,9 @@ async function generateUncached(input: GenerateSummaryInput, summaryFilePath: st
     // Save summary to disk for future use (atomic: a crash must not leave a
     // half-written file the next read would accept as the final summary).
     try {
-      await writeTextAtomic(summaryFilePath, summary);
-      await writeTruncatedMarker(
-        path.join(path.dirname(summaryFilePath), `${path.basename(summaryFilePath, '.txt')}.truncated`),
-        truncated,
-      );
+      const names = summaryFileNames(baseName);
+      await writeTextFileAtomic(folderPath, names.summary, summary);
+      await writeTruncatedMarker(folderPath, names.marker, truncated);
     } catch (writeError) {
       logger.error('Error saving summary to disk:', writeError);
       // Continue even if save fails - still return the summary

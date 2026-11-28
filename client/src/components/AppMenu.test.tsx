@@ -1,6 +1,6 @@
 // polish-ok: asserts the default-locale labels of the top bar menu
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { JSX, ReactNode } from 'react';
 import { useCallback, useState } from 'react';
@@ -47,6 +47,24 @@ function renderMenu(
   );
 }
 
+describe('sectionsSignature', () => {
+  it('counts the confirm text the dialog renders', () => {
+    // The provider keeps the sections it holds while the signature stays the
+    // same, so reworded confirm text has to change it or the dialog keeps the
+    // old words
+    const withMessage = (message: string): AppMenuSectionSpec[] => [
+      {
+        key: 'indexes',
+        items: [{ key: 'recreate', label: 'Rebuild', confirm: { title: 'T', message, confirmLabel: 'C' } }],
+      },
+    ];
+
+    expect(JSON.stringify(sectionsSignature(withMessage('M1')))).not.toBe(
+      JSON.stringify(sectionsSignature(withMessage('M2'))),
+    );
+  });
+});
+
 describe('AppMenu', () => {
   beforeEach(async () => {
     // The language test switches the shared i18n instance, so every test
@@ -74,6 +92,72 @@ describe('AppMenu', () => {
     expect(screen.getByRole('menuitem', { name: 'Odśwież indeks' })).toBeInTheDocument();
     expect(screen.getByText('Motyw')).toBeInTheDocument();
     expect(screen.getByText('Język')).toBeInTheDocument();
+  });
+
+  const confirmedItem = (onSelect: () => void): AppMenuSectionSpec[] => [
+    {
+      key: 'indexes',
+      items: [
+        {
+          key: 'recreate',
+          label: 'Rebuild',
+          onSelect,
+          confirm: {
+            title: 'Rebuild every index?',
+            message: 'Search finds nothing until the next refresh.',
+            confirmLabel: 'Rebuild now',
+          },
+        },
+      ],
+    },
+  ];
+
+  it('runs an item that asks for confirmation only after its confirm button', async () => {
+    const onSelect = vi.fn();
+    renderMenu(confirmedItem(onSelect));
+
+    await user.click(screen.getByRole('button', { name: i18n.t('menu.label') }));
+    await user.click(screen.getByRole('menuitem', { name: 'Rebuild' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Rebuild every index?' });
+    expect(dialog).toHaveTextContent('Search finds nothing until the next refresh.');
+    expect(onSelect).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Rebuild now' }));
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('runs nothing when Escape cancels the dialog', async () => {
+    // A browser turns Escape on a modal dialog into a cancel event; jsdom has
+    // no such step, so the event itself stands in for the key here
+    const onSelect = vi.fn();
+    renderMenu(confirmedItem(onSelect));
+
+    await user.click(screen.getByRole('button', { name: i18n.t('menu.label') }));
+    await user.click(screen.getByRole('menuitem', { name: 'Rebuild' }));
+    fireEvent(screen.getByRole('dialog', { name: 'Rebuild every index?' }), new Event('cancel', { cancelable: true }));
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('runs nothing on cancel and gives focus back to the gear', async () => {
+    // The menu entry that opened the dialog is gone once it closes, so the
+    // gear is where a keyboard user continues from
+    const onSelect = vi.fn();
+    renderMenu(confirmedItem(onSelect));
+    const gear = screen.getByRole('button', { name: i18n.t('menu.label') });
+
+    await user.click(gear);
+    await user.click(screen.getByRole('menuitem', { name: 'Rebuild' }));
+    const dialog = screen.getByRole('dialog', { name: 'Rebuild every index?' });
+    await user.click(within(dialog).getByRole('button', { name: i18n.t('app.cancel') }));
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(gear).toHaveFocus();
   });
 
   it('marks the active theme and reports the picked one', async () => {

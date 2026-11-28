@@ -62,12 +62,14 @@ the refresh icon next to the extension in `chrome://extensions/`.
 ## Development
 
 - Source code: `src/*.ts` (TypeScript, strict, the same strict flags as the
-  rest of the repo). Pure logic (SSE framing, progress extraction, YouTube id
-  detection) lives in `src/lib/` with unit tests (Vitest):
-  `cd chrome-extension && pnpm run test`.
-- The SSE event contract (`DownloadVideoEvent`) and the yt-dlp progress parser
-  come from `shared/` (`api.ts`, types via `import type`; `progress.ts`, real
-  logic, bundled by esbuild).
+  rest of the repo). Pure logic (SSE framing and the messages between the
+  popup, the content script and the worker) lives in `src/lib/` with unit
+  tests (Vitest): `cd chrome-extension && pnpm run test`.
+- The SSE event contract (`DownloadVideoEvent`) comes from `shared/`
+  (`api.ts`, types via `import type`), and so do the frame parser
+  (`sse.ts`) and the YouTube URL rules (`youtube.ts`), real logic bundled by
+  esbuild. The download progress arrives in the events as a number: the
+  server reads yt-dlp's output.
 - `cd chrome-extension && pnpm run typecheck` checks the types, `pnpm run
   build:extension` generates `background.js`, `content.js`, `popup.js` and
   `options.js` (generated files are not committed). From the repo root,

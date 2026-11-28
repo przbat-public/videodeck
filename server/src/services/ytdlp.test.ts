@@ -80,6 +80,30 @@ describe('buildYtDlpArgs', () => {
     );
   });
 
+  it('refuses a stem yt-dlp would read as an environment variable', () => {
+    // yt-dlp expands environment variables in -o before it fills in the
+    // fields, and `$$` is no escape on POSIX, so `$API_TOKEN.%(ext)s` would
+    // name the file after the token. App downloads pass --restrict-filenames,
+    // which drops `$`; only a file named by hand reaches this check.
+    for (const baseName of ['$HOME', `\${TMPDIR}x`, '$API_TOKEN', 'Price $5']) {
+      expect(() => buildYtDlpArgs({ ...job, type: 'update', baseName })).toThrow(/baseName/);
+      expect(() => buildYtDlpArgs({ ...job, type: 'repair', baseName })).toThrow(/baseName/);
+    }
+  });
+
+  it('never starts the -o of an in-place repair with the stem, where yt-dlp reads TYPES:', () => {
+    // yt-dlp takes `-o TYPES:TEMPLATE` when the value starts with output type
+    // names and a colon (checked against its parseOpts): a file named
+    // `Description:My talk` set the description's template and left the run
+    // without a default one. Python's case folding also takes `ſubtitle:` and
+    // `linK:` with a Kelvin sign, so no list of names covers it, while a value
+    // that starts with `./` is always the default template.
+    for (const baseName of ['Description:My talk', 'infojson,thumbnail:x', 'ſubtitle:x', 'lin\u212a:x']) {
+      const args = buildYtDlpArgs({ ...job, type: 'repair', baseName });
+      expect(args[args.indexOf('-o') + 1]).toBe(`./${baseName}.%(ext)s`);
+    }
+  });
+
   it('fetches only sidecars for a repair job, and never consults the archive', () => {
     // A repair exists because something is missing, so the archive must not
     // decide that the video is done: `--download-archive` is what makes yt-dlp
@@ -95,7 +119,7 @@ describe('buildYtDlpArgs', () => {
     expect(args).toContain('--write-subs');
     expect(args).toContain('--write-auto-subs');
     expect(args[args.indexOf('--sub-lang') + 1]).toBe('pl,en');
-    expect(args[args.indexOf('-o') + 1]).toBe('20260101_A_Video.%(ext)s');
+    expect(args[args.indexOf('-o') + 1]).toBe('./20260101_A_Video.%(ext)s');
     expect(args.some((arg) => arg.includes('archive'))).toBe(false);
     expect(args).not.toContain('-f');
     expect(args).not.toContain('--merge-output-format');
@@ -139,7 +163,7 @@ describe('buildYtDlpArgs', () => {
     const sidecars = buildYtDlpArgs({ ...job, type: 'repair', baseName: '20260101_A_Video' });
 
     expect(updateArgs[updateArgs.indexOf('-o') + 1]).toBe('.videodeck-staging/job-1/20260101_A_Video.%(ext)s');
-    expect(sidecars[sidecars.indexOf('-o') + 1]).toBe('20260101_A_Video.%(ext)s');
+    expect(sidecars[sidecars.indexOf('-o') + 1]).toBe('./20260101_A_Video.%(ext)s');
   });
 
   it('refuses a staged run without a plain job id', () => {
@@ -151,6 +175,61 @@ describe('buildYtDlpArgs', () => {
 
   it('still validates the output stem of a repair job', () => {
     expect(() => buildYtDlpArgs({ ...job, type: 'repair', baseName: '../x' })).toThrow(/baseName/);
+  });
+});
+
+describe('runYtDlp', () => {
+  it('rejects a run whose stdout passes the cap, so a cut listing never reads as complete', async () => {
+    // A flat playlist of a very large channel can pass the cap; resolving with
+    // the part that fit replaced list.json with the newest videos only. Node
+    // stands in for yt-dlp: about 80 MiB of NDJSON, then a clean exit.
+    const script =
+      'const line = \'{"id":"x"}\\n\'.repeat(1024 * 1024); for (let i = 0; i < 7; i += 1) process.stdout.write(line);';
+
+    const failure = await runYtDlp(['-e', script], os.tmpdir(), { command: process.execPath }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure instanceof Error ? failure.message : '').toMatch(/output passed 64 MiB/);
+  });
+
+  it('keeps only the tail of a long stderr in the failure message', async () => {
+    // yt-dlp prints the ERROR line that explains a failure last, after any
+    // warnings. Node stands in for yt-dlp and writes 4 MB of warnings first.
+    const script = [
+      "process.stderr.write('HEAD-MARKER\\n' + 'WARNING: filler\\n'.repeat(250000) + 'ERROR: TAIL-MARKER\\n');",
+      'process.exitCode = 1;',
+    ].join('');
+
+    const failure = await runYtDlp(['-e', script], os.tmpdir(), { command: process.execPath }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    const message = failure instanceof Error ? failure.message : '';
+    expect(message).toMatch(/exited with code 1: /);
+    // Numbers and booleans, so a failing run does not print 4 MB
+    expect(Buffer.byteLength(message)).toBeLessThan(128 * 1024);
+    expect(message.includes('HEAD-MARKER')).toBe(false);
+    expect(message.endsWith('ERROR: TAIL-MARKER')).toBe(true);
+    // The cap keeps the last 13 bytes of a line; the message starts at the next one
+    expect(message).toMatch(/exited with code 1: WARNING: filler\n/);
+  });
+
+  it('keeps the cut text when the last line alone passes the stderr cap', async () => {
+    // Dropping to the first full line left nothing when the only newline in the
+    // kept 64 KiB was the last byte, and the message ended at the colon
+    const script = "process.stderr.write('x'.repeat(100 * 1024) + ' ERROR: LONG-LINE\\n'); process.exitCode = 1;";
+
+    const failure = await runYtDlp(['-e', script], os.tmpdir(), { command: process.execPath }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(failure instanceof Error ? failure.message : '').toMatch(/exited with code 1: x+ ERROR: LONG-LINE$/);
   });
 });
 

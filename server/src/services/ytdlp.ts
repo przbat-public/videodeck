@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import type { DownloadOptions, JobType } from '@videodeck/shared/api';
-import { isSafeVideoStem } from '../utils/videoStem';
+import { isTemplateSafeStem } from '../utils/videoStem';
 import { assertExtraArgsAllowed, DEFAULT_DOWNLOAD_OPTIONS } from './folderConfig';
 import { STAGING_DIR, usesStaging } from './refreshStaging';
 
@@ -97,7 +97,8 @@ function buildMetadataArgs(options: DownloadOptions, writeComments = options.wri
   }
   if (options.impersonate) {
     // The cookie-less answer to YouTube bot walls; also safe for us because
-    // it never touches the browser's cookie jar (unlike the forbidden flags).
+    // it never touches a cookie jar, and the extraArgs allowlist admits no
+    // cookie flag either.
     args.push('--impersonate', 'chrome');
   }
   if (options.extraArgs) {
@@ -131,12 +132,15 @@ export interface YtDlpJobSpec {
 /**
  * Where a metadata run writes. An update and a comment repair write into
  * their own staging directory (refreshStaging.ts merges the result into the
- * archive), a sidecar repair writes in place under --no-overwrites.
+ * archive), a sidecar repair writes in place under --no-overwrites. The
+ * in-place value starts with `./`: yt-dlp reads `TYPES:TEMPLATE` from the head
+ * of -o, so a stem such as `Description:My talk` would set one type's template
+ * and leave the run without a default one.
  */
 function metadataOutput(job: YtDlpJobSpec, baseName: string): string {
   const file = `${escapeOutputTemplate(baseName)}.%(ext)s`;
   if (!usesStaging(job)) {
-    return file;
+    return `./${file}`;
   }
   if (job.id === undefined || !/^[\w-]+$/.test(job.id)) {
     throw new Error('refusing yt-dlp output template: a staged run needs a plain job id');
@@ -146,11 +150,12 @@ function metadataOutput(job: YtDlpJobSpec, baseName: string): string {
 
 export function buildYtDlpArgs(job: YtDlpJobSpec): string[] {
   const options = job.options ?? DEFAULT_DOWNLOAD_OPTIONS;
-  // Last line before spawn: the stem lands inside a path template, and every
-  // caller (index lookup, restored state file, the next one somebody adds)
-  // goes through here, so an unusable stem stops at this boundary.
-  if (job.baseName !== undefined && !isSafeVideoStem(job.baseName)) {
-    throw new Error('refusing yt-dlp output template: baseName must be a single path segment');
+  // Last line before spawn: the stem lands inside a path template that yt-dlp
+  // also runs through expandvars, and every caller (index lookup, restored
+  // state file, the next one somebody adds) goes through here, so an unusable
+  // stem stops at this boundary.
+  if (job.baseName !== undefined && !isTemplateSafeStem(job.baseName)) {
+    throw new Error('refusing yt-dlp output template: baseName must be a single path segment without $');
   }
   if (job.type === 'update') {
     if (!job.baseName) {
@@ -248,8 +253,35 @@ export function buildPlaylistArgs(channelUrl: string): string[] {
 
 /** Wall-clock limit for a playlist fetch (huge channels are slow) */
 const RUN_TIMEOUT_MS = 10 * 60 * 1000;
-/** Stdout cap: bounds memory for pathological channels (NDJSON is tiny per line) */
+/**
+ * Stdout cap: bounds memory for pathological channels (NDJSON is tiny per
+ * line). A run that passes it is killed and rejected: the part that fit is a
+ * cut listing, and a caller that stored it would lose the older videos.
+ */
 const MAX_STDOUT_BYTES = 64 * 1024 * 1024;
+/**
+ * Stderr cap: a failed run reports the end of its stderr, where yt-dlp prints
+ * the ERROR line. The callers are the channel listing and the version probe
+ * (queue jobs spawn on their own and keep a tail of lines). Whatever they
+ * wrote there stayed in memory until the run ended, and a failed listing
+ * logged all of it; the probe drops its error and logs a fixed warning.
+ */
+const MAX_STDERR_BYTES = 64 * 1024;
+
+/** The last `max` bytes of a buffer, copied so the dropped head can be freed */
+function keepLastBytes(buffer: Buffer, max: number): Buffer {
+  return buffer.length > max ? Buffer.from(buffer.subarray(buffer.length - max)) : buffer;
+}
+
+/**
+ * A cut stderr tail from its first full line: the cut lands mid-line, maybe
+ * mid-character. When the last line alone passes the cap there is no full
+ * line, and the cut text stays as it is.
+ */
+function fromFirstFullLine(text: string): string {
+  const rest = text.slice(text.indexOf('\n') + 1);
+  return rest.trim() === '' ? text : rest;
+}
 
 /**
  * The yt-dlp command every spawn runs: `yt-dlp` from PATH when YTDLP_PATH is
@@ -272,8 +304,8 @@ export function resolveYtDlpCommand(env: NodeJS.ProcessEnv = process.env): strin
  * Run yt-dlp to completion, resolving with its stdout or rejecting with a
  * message that includes the stderr tail. No shell is involved (`spawn` takes
  * an argument array), so channel URLs cannot inject commands. A hung yt-dlp
- * is killed after `RUN_TIMEOUT_MS` and the collected stdout is capped at
- * `MAX_STDOUT_BYTES`. Without a command it runs the binary YTDLP_PATH names
+ * is killed after `RUN_TIMEOUT_MS`, and a run whose stdout passes
+ * `MAX_STDOUT_BYTES` is killed and rejected. Without a command it runs the binary YTDLP_PATH names
  * (resolveYtDlpCommand), the one the download queue spawns.
  */
 export function runYtDlp(args: string[], cwd: string, options: { command?: string | undefined } = {}): Promise<string> {
@@ -281,7 +313,8 @@ export function runYtDlp(args: string[], cwd: string, options: { command?: strin
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd });
     const out: Buffer[] = [];
-    const err: Buffer[] = [];
+    let errTail: Buffer = Buffer.alloc(0);
+    let errCut = false;
     let outBytes = 0;
     let settled = false;
     // Latches the promise: the first terminal event wins (timeout, error or
@@ -301,12 +334,23 @@ export function runYtDlp(args: string[], cwd: string, options: { command?: strin
       }
     }, RUN_TIMEOUT_MS);
     child.stdout.on('data', (chunk: Buffer) => {
-      if (outBytes < MAX_STDOUT_BYTES) {
-        out.push(chunk);
-        outBytes += chunk.length;
+      outBytes += chunk.length;
+      if (outBytes > MAX_STDOUT_BYTES) {
+        child.kill('SIGKILL');
+        if (settle()) {
+          reject(
+            new Error(`${command} output passed ${MAX_STDOUT_BYTES / (1024 * 1024)} MiB; refusing the cut result`),
+          );
+        }
+        return;
       }
+      out.push(chunk);
     });
-    child.stderr.on('data', (chunk: Buffer) => err.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => {
+      const joined = Buffer.concat([errTail, chunk]);
+      errCut ||= joined.length > MAX_STDERR_BYTES;
+      errTail = keepLastBytes(joined, MAX_STDERR_BYTES);
+    });
     child.on('error', (error) => {
       if (settle()) {
         reject(error);
@@ -318,7 +362,9 @@ export function runYtDlp(args: string[], cwd: string, options: { command?: strin
           resolve(Buffer.concat(out).toString('utf-8'));
         }
       } else if (settle()) {
-        reject(new Error(`${command} exited with code ${code}: ${Buffer.concat(err).toString('utf-8').trim()}`));
+        const text = errTail.toString('utf-8');
+        const tail = errCut ? fromFirstFullLine(text) : text;
+        reject(new Error(`${command} exited with code ${code}: ${tail.trim()}`));
       }
     });
   });

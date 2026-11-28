@@ -57,6 +57,11 @@ describe('folderConfig', () => {
       );
       expect(validateFolderConfig({ channelUrl: 'file:///etc/passwd' })).toMatch(/YouTube channel URL/);
       expect(validateFolderConfig({ channelUrl: 'https://evil.com/@x' })).toMatch(/YouTube channel URL/);
+      // Where Node's parser and yt-dlp's urlsplit part ways on the host
+      expect(validateFolderConfig({ channelUrl: 'https://www.youtube.com\\@127.0.0.1:9200' })).toMatch(
+        /YouTube channel URL/,
+      );
+      expect(validateFolderConfig({ channelUrl: 'https://user@www.youtube.com/@x' })).toMatch(/YouTube channel URL/);
       expect(validateFolderConfig({ channelUrl: '--help' })).toMatch(/YouTube channel URL/);
       expect(validateFolderConfig({ channelUrl: 'https://www.youtube.com/watch?v=abcdefghijk' })).toMatch(
         /YouTube channel URL/,
@@ -111,6 +116,10 @@ describe('folderConfig', () => {
         ['--downloader-args', 'curl:--config /tmp/x'],
         ['--external-downloader-args', 'ffmpeg:-i /tmp/x'],
         ['--ffmpeg-location', '/tmp/evil'],
+        // the JS challenge sandbox: another runtime, or solver code fetched
+        // from GitHub or npm (docs/DEPLOYMENT.md)
+        ['--js-runtimes', 'node'],
+        ['--remote-components', 'ejs:github'],
         // cookie jar, credentials and network pivots
         ['--cookies', '/tmp/c.txt'],
         ['--cookies-from-browser', 'chrome'],

@@ -80,9 +80,10 @@ export const getRefreshStatus: RouteHandler<NoParams, ReindexStatus> = (_req, re
 // ?onlyMissing=1 reindexes only the folders whose cache does not exist in
 // Elasticsearch yet, so a swapped-in disk with a cache from a previous
 // session is searched immediately and only new folders are scanned.
-// POST (not GET) because starting a reindex is a side effect: a GET could be
-// triggered by a cross-site navigation in browsers that do not send
-// Sec-Fetch-Site.
+// POST (not GET) because starting a reindex is a side effect: a link or an
+// image on a foreign page sends a GET with no Origin, which the guard in
+// routes/http.ts cannot tell from curl on a plain-HTTP LAN address, while
+// every browser POST carries one.
 export const startRefresh: RouteHandler<
   NoParams,
   AcceptedResponse | ReindexConflictResponse | ApiError | IndexMaintenanceConflictResponse

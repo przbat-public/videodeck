@@ -187,10 +187,25 @@ przełączanie języka w obie strony.
 ## Bezpieczeństwo
 
 Serwer słucha domyślnie tylko na `127.0.0.1`, a CORS przepuszcza wyłącznie
-lokalne originy (`localhost`/`127.0.0.1`) i rozszerzenia Chrome. Bez
-`API_TOKEN` API jest otwarte dla lokalnych procesów, ale żądania przeglądarki
-z obcych stron są odrzucane (`Sec-Fetch-Site: cross-site` → 403), więc złośliwa
-strona WWW nie wywoła reindeksu ani nie dopisze zadań do kolejki.
+lokalnego klienta deweloperskiego (`localhost`/`127.0.0.1` na portach 3000,
+4173 i 5173), rozszerzenia Chrome i originy wpisane w `CORS_ORIGINS`. Bez
+`API_TOKEN` API jest otwarte dla lokalnych procesów.
+
+Żądanie przeglądarki oznaczone `Sec-Fetch-Site: cross-site` dostaje 403,
+z tokenem czy bez. Przeglądarka wysyła ten znacznik tylko do adresów HTTPS
+i loopback, więc na adresie w sieci lokalnej, takim jak
+`http://nas.local:3000`, serwer czyta zamiast niego `Origin`. Zapis
+z przeglądarki przechodzi tam tylko z adresu samego UI, z hosta
+z `ALLOWED_HOSTS` (na dowolnym porcie) albo z zaufanego originu: portów
+klienta deweloperskiego podanych wyżej (na komputerze oglądającego może je
+zająć dowolna lokalna aplikacja), rozszerzenia Chrome (tylko id
+z `EXTENSION_ORIGINS`, gdy jest ustawione) i `CORS_ORIGINS`. Strona z każdej
+innej witryny nie wywoła reindeksu ani nie dopisze zadań do kolejki, więc
+wpisuj tam tylko to, co sam uruchamiasz. Link albo obrazek nie wysyła
+`Origin` wcale, a jego GET trafia do sprawdzenia tokenu tak jak żądanie
+curl. Strona nie odczyta odpowiedzi, ale w tej wersji GET streszczenia
+wciąż generuje streszczenie, którego nie ma jeszcze w cache, a dostawca
+nalicza za nie opłatę.
 
 Dodatkowe zabezpieczenia:
 
@@ -201,16 +216,21 @@ Dodatkowe zabezpieczenia:
 - **SSRF w URL wideo** — `POST /api/folder/queue` i `/api/folder/download-video`
   przyjmują wyłącznie adresy YouTube (rozpoznane przez `shared/youtube.ts`);
   każdy inny URL (także `file://` czy adresy IP) jest odrzucany, a do yt-dlp
-  trafia zawsze kanoniczny `https://www.youtube.com/watch?v=<id>`.
-- **Zabronione flagi yt-dlp** — `extraArgs` w `config.json` nie przepuści
-  `--exec`, `--config-locations`, `--cookies`/`--load-cookies`/
-  `--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`
-  i `--video-password` (RCE, kradzież ciasteczek, wyciek poświadczeń).
-  `PUT /api/folder/config` odrzuca te flagi, a w ręcznie edytowanym pliku
-  są ignorowane (razem ze swoją wartością). Dopasowanie obejmuje też krótkie
-  zapisy (`-a`, `-u`, `-p`) i skrócone formy długich flag, które przyjmuje
-  yt-dlp (`--prox`, `--print-to-fi`), a budowanie argumentów odrzuca je
-  zanim wystartuje yt-dlp.
+  trafia zawsze kanoniczny `https://www.youtube.com/watch?v=<id>`. Adres
+  kanału z `config.json` przechodzi tę samą kontrolę hosta przy zapisie
+  i jeszcze raz przed pobraniem listy, a yt-dlp dostaje go odbudowanego
+  z hosta i ścieżki.
+- **Allowlista argumentów yt-dlp**: `extraArgs` w `config.json` przyjmuje
+  tylko dokładne nazwy flag z `ALLOWED_EXTRA_ARGS`
+  (`server/src/services/folderConfig.ts`), każdą ze sprawdzoną wartością.
+  Nic innego nie przejdzie, więc do yt-dlp nie trafią ani `--exec`, ani
+  flagi ciasteczek i poświadczeń, ani `--alias`, sklejone krótkie opcje czy
+  skrócone długie formy (RCE, kradzież ciasteczek, wyciek poświadczeń).
+  `PUT /api/folder/config` odpowiada 400 i wymienia dozwolone flagi,
+  z ręcznie edytowanego pliku taki wpis wypada razem ze swoją wartością,
+  a budowanie argumentów sprawdza listę jeszcze raz, zanim wystartuje yt-dlp.
+  Każde pobieranie, aktualizacja, naprawa i pobranie listy kanału dostaje
+  `--ignore-config`, więc `yt-dlp.conf` w folderze kanału niczego nie dodaje.
 - **Brak otwartego API na interfejsie sieciowym** — serwer nie wystartuje,
   gdy `HOST` nie jest adresem loopback i nie ustawiono ani `API_TOKEN`, ani
   `REQUIRE_API_TOKEN=true`. Wystawienie API do sieci wymaga tokenu, a nie
@@ -219,11 +239,18 @@ Dodatkowe zabezpieczenia:
   każde `chrome-extension://…`, bo rozszerzenia developerskie dostają nowe ID
   przy każdym załadowaniu. Ustaw `EXTENSION_ORIGINS` z dokładnym ID
   (widoczne na `chrome://extensions`), aby API wywoływało tylko Twoje
-  rozszerzenie.
+  rozszerzenie. Aktualizuj tę listę: przez zwykłe HTTP serwer odrzuca
+  rozszerzenie, którego ID na niej nie ma.
 
 Dla zdalnego dostępu ustaw `API_TOKEN` (i ewentualnie `HOST=0.0.0.0` +
-`ALLOWED_HOSTS` + `CORS_ORIGINS`): każdy request na `/api` musi wtedy nieść
-`Authorization: Bearer <token>`. Rozszerzenie Chrome ma pole „Token API" w
+`ALLOWED_HOSTS`): każdy request na `/api` musi wtedy nieść
+`Authorization: Bearer <token>`. `CORS_ORIGINS` służy stronie na innym
+porcie lub subdomenie tej samej witryny, która woła API bezpośrednio;
+żądanie oznaczone przez przeglądarkę jako cross-site dostaje 403 nawet
+z originem z listy. Przez zwykłe HTTP host, którego używa przeglądarka,
+musi być loopbackiem albo stać w `ALLOWED_HOSTS`, jakiekolwiek proxy stoi
+przed serwerem: `X-Forwarded-Host` liczy się tylko dla takiej nazwy.
+Rozszerzenie Chrome ma pole „Token API" w
 opcjach; `/health` pozostaje publiczne do testów połączenia.
 
 Zgłaszanie podatności i zakres: [SECURITY.md](../SECURITY.md).

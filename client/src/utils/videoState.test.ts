@@ -56,6 +56,13 @@ describe('skipReasonText', () => {
     expect(skipReasonText('not downloaded', i18n.t)).toBe(i18n.t('skipReason.notDownloaded'));
   });
 
+  it('names the $ that keeps an update or a repair from running', () => {
+    // yt-dlp would expand a `$` in the stem as an environment variable, so the
+    // server skips the video instead of queueing a job that cannot run
+    expect(i18n.exists('skipReason.unsafeFileName')).toBe(true);
+    expect(skipReasonText('unsafe file name', i18n.t)).toBe(i18n.t('skipReason.unsafeFileName'));
+  });
+
   it('keeps a reason it has no key for', () => {
     // A validation message the server wrote itself is already readable
     expect(skipReasonText('videoId is not a valid YouTube video id', i18n.t)).toBe(

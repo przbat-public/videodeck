@@ -188,10 +188,23 @@ language switching in both directions.
 ## Security
 
 The server listens on `127.0.0.1` only by default, and CORS allows only
-local origins (`localhost`/`127.0.0.1`) and Chrome extensions. Without
-`API_TOKEN`, the API is open to local processes, but browser requests
-from foreign pages are rejected (`Sec-Fetch-Site: cross-site` → 403), so a
-malicious website cannot trigger a reindex or enqueue jobs.
+the local dev client (`localhost`/`127.0.0.1` on ports 3000, 4173 and 5173),
+Chrome extensions and the origins listed in `CORS_ORIGINS`. Without
+`API_TOKEN`, the API is open to local processes.
+
+A browser request marked `Sec-Fetch-Site: cross-site` is answered 403,
+token or not. Browsers send that marker only to HTTPS and loopback
+addresses, so on a LAN address such as `http://nas.local:3000` the server
+reads the `Origin` instead. There a browser's write passes only from the
+UI's own address, a host in `ALLOWED_HOSTS` (on any port) or a trusted
+origin: the dev client ports above (any local app on the viewer's machine
+can serve one), a Chrome extension (just the ids in `EXTENSION_ORIGINS`
+once that is set) and `CORS_ORIGINS`. A page on any other site cannot
+trigger a reindex or enqueue jobs, so list only what you run. A link or an
+image sends no `Origin`, and its GET goes on to the token check like
+curl's. The page cannot read the answer, but in this version a summary
+GET still generates a summary that is not cached yet, and the provider
+bills it.
 
 Additional protections:
 
@@ -202,16 +215,21 @@ Additional protections:
 - **SSRF via video URL**: `POST /api/folder/queue` and `/api/folder/download-video`
   accept only YouTube URLs (recognized by `shared/youtube.ts`);
   any other URL (including `file://` or IP addresses) is rejected, and yt-dlp
-  always receives the canonical `https://www.youtube.com/watch?v=<id>`.
-- **Forbidden yt-dlp flags**: `extraArgs` in `config.json` will not pass
-  through `--exec`, `--config-locations`, `--cookies`/`--load-cookies`/
-  `--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`,
-  or `--video-password` (RCE, cookie theft, credential leaks).
-  `PUT /api/folder/config` rejects these flags, and in a hand-edited file
-  they are ignored (together with their value). The match also covers the
-  short spellings (`-a`, `-u`, `-p`) and the abbreviated long forms yt-dlp
-  accepts (`--prox`, `--print-to-fi`), and the argument builder refuses them
-  before yt-dlp starts.
+  always receives the canonical `https://www.youtube.com/watch?v=<id>`. A
+  channel URL in `config.json` passes the same host check when it is saved
+  and again before the playlist fetch, and yt-dlp lists the URL rebuilt
+  from its host and path.
+- **yt-dlp argument allowlist**: `extraArgs` in `config.json` accepts only
+  the exact flag names in `ALLOWED_EXTRA_ARGS`
+  (`server/src/services/folderConfig.ts`), each with its value checked.
+  Nothing else gets through, so `--exec`, the cookie and credential flags,
+  `--alias`, clustered short options and abbreviated long forms never reach
+  yt-dlp (RCE, cookie theft, credential leaks). `PUT /api/folder/config`
+  answers 400 and lists the allowed flags, a hand-edited file loses the
+  entry together with its value, and the argument builder checks again
+  before yt-dlp starts. Every download, update, repair and channel listing
+  passes `--ignore-config`, so a `yt-dlp.conf` in a channel folder adds
+  nothing.
 - **No open API on a network interface**: the server refuses to start when
   `HOST` is not a loopback address and neither `API_TOKEN` nor
   `REQUIRE_API_TOKEN=true` is set. Publishing the API to the network takes a
@@ -220,11 +238,17 @@ Additional protections:
   any `chrome-extension://…` because developer extensions get a new id
   each time they are loaded. Set `EXTENSION_ORIGINS` with the exact id
   (visible on `chrome://extensions`) so that the API is only called by
-  your extension.
+  your extension. Keep it current: over plain HTTP the server refuses an
+  extension whose id the list does not name.
 
 For remote access, set `API_TOKEN` (and optionally `HOST=0.0.0.0` +
-`ALLOWED_HOSTS` + `CORS_ORIGINS`): every request to `/api` must then carry
-`Authorization: Bearer <token>`. The Chrome extension has a "Token API" (pl: „Token API")
+`ALLOWED_HOSTS`): every request to `/api` must then carry
+`Authorization: Bearer <token>`. `CORS_ORIGINS` is for a page on another
+port or subdomain of the API's own site that calls it directly; a request
+the browser marks cross-site stays refused even from a listed origin.
+Over plain HTTP the host the browser uses must be loopback or in
+`ALLOWED_HOSTS`, whatever proxy sits in front: an `X-Forwarded-Host`
+counts only for such a name. The Chrome extension has a "Token API" (pl: „Token API")
 ("API token") field in its options; `/health` stays public for connection
 tests.
 

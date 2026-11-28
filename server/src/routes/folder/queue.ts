@@ -19,11 +19,12 @@ import type { Response } from 'express';
 import type { DownloadQueue, EnqueueRequest } from '../../services/downloadQueue';
 import { toListJob } from '../../services/downloadQueue';
 import { loadDownloadOptions } from '../../services/folderConfig';
-import type { FolderIndex } from '../../services/folderIndex';
+import type { FolderIndex, FolderIndexEntry } from '../../services/folderIndex';
 import { findEntryByVideoId, loadIndex } from '../../services/folderIndex';
 import type { UnavailableLookup } from '../../services/unavailableVideos';
 import { readUnavailability } from '../../services/unavailableVideos';
 import { stripUndefined } from '../../utils/objectUtils';
+import { isTemplateSafeStem } from '../../utils/videoStem';
 import type { NoParams, RouteHandler } from '../http';
 import { errnoCode, readBody, readString } from '../http';
 import { firstZodError, queueBodySchema } from '../validation';
@@ -112,6 +113,24 @@ function resolveVideoId(video: QueueVideoInput): { videoId: string } | { reason:
   return { videoId };
 }
 
+/**
+ * The downloaded entry an update or a repair runs on, or why it cannot run:
+ * the video is not on disk, or its stem holds a `$`, which yt-dlp would read
+ * as an environment variable in its output template (buildYtDlpArgs refuses
+ * it at spawn, so a job would only fail).
+ */
+export function refreshableEntry(
+  entry: FolderIndexEntry | undefined,
+): { entry: FolderIndexEntry } | { reason: 'not downloaded' | 'unsafe file name' } {
+  if (entry === undefined) {
+    return { reason: 'not downloaded' };
+  }
+  if (!isTemplateSafeStem(entry.baseName)) {
+    return { reason: 'unsafe file name' };
+  }
+  return { entry };
+}
+
 function toEnqueueRequest(
   video: QueueVideoInput,
   type: JobType,
@@ -133,8 +152,9 @@ function toEnqueueRequest(
   const entry = folderIndex?.entries[videoId];
 
   if (type === 'update') {
-    if (!entry) {
-      return { skipped: { videoId, reason: 'not downloaded' } };
+    const refreshable = refreshableEntry(entry);
+    if ('reason' in refreshable) {
+      return { skipped: { videoId, reason: refreshable.reason } };
     }
     return {
       request: stripUndefined<EnqueueRequest>({
@@ -143,15 +163,16 @@ function toEnqueueRequest(
         videoUrl: url,
         title,
         type,
-        baseName: entry.baseName,
+        baseName: refreshable.entry.baseName,
         options,
       }),
     };
   }
 
   if (type === 'repair') {
-    if (!entry) {
-      return { skipped: { videoId, reason: 'not downloaded' } };
+    const refreshable = refreshableEntry(entry);
+    if ('reason' in refreshable) {
+      return { skipped: { videoId, reason: refreshable.reason } };
     }
     return {
       request: stripUndefined<EnqueueRequest>({
@@ -160,7 +181,7 @@ function toEnqueueRequest(
         videoUrl: url,
         title,
         type,
-        baseName: entry.baseName,
+        baseName: refreshable.entry.baseName,
         options,
         ...(video.comments === true ? { writeComments: true } : {}),
       }),

@@ -390,6 +390,13 @@ jobs:
             sleep 1
           done
           grep -q '<div id="root">' /tmp/index.html
+          # No other site may frame the pages: inside a frame the UI's requests
+          # carry its own Origin, and nothing on the server tells them apart
+          for page in / /download; do
+            headers=$(curl -sI "http://127.0.0.1:8092${page}")
+            grep -qi "^content-security-policy: frame-ancestors 'none'" <<<"$headers" || { echo "::error::${page} lacks frame-ancestors 'none'"; echo "$headers"; exit 1; }
+            grep -qi '^x-frame-options: deny' <<<"$headers" || { echo "::error::${page} lacks X-Frame-Options DENY"; echo "$headers"; exit 1; }
+          done
           # Through the proxy: the client container holds the token and adds it,
           # so the answer is the server's Elasticsearch-down body rather than a
           # 401, and a broken proxy_pass would answer 502 instead.
@@ -400,6 +407,15 @@ jobs:
           done
           test "$code" = "503"
           grep -q '"elasticsearch":"down"' /tmp/proxied.json
+          # helmet already sends X-Frame-Options on /api answers; nginx adds none
+          test "$(curl -sI http://127.0.0.1:8092/api/health | grep -ci '^x-frame-options:')" = "1"
+          # curl sends no Sec-Fetch-Site, as a browser does on a plain-HTTP LAN
+          # address (to loopback it sends one), so the server judges a write by
+          # its Origin: the UI's own address, which nginx forwards as
+          # X-Forwarded-Host, passes; a foreign page does not, token or no token.
+          # Nothing sets ALLOWED_HOSTS here.
+          test "$(curl -s -o /dev/null -w '%{http_code}' --data '' -H 'Origin: http://evil.example' 'http://127.0.0.1:8092/api/folder/queue/pause?paused=0')" = "403"
+          test "$(curl -s -o /dev/null -w '%{http_code}' --data '' -H 'Origin: http://127.0.0.1:8092' 'http://127.0.0.1:8092/api/folder/queue/pause?paused=0')" = "200"
           # nginx answers its own probe, so the UI turns healthy whatever the
           # server's state, and the probe fails where nginx is not running
           for _ in $(seq 1 30); do

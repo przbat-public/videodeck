@@ -18,10 +18,11 @@ export const JSON_BODY_LIMIT_BYTES = 1024 * 1024;
 const SMALLEST_QUEUE_ENTRY_BYTES = 26;
 
 /**
- * The most videos one POST /api/folder/queue may name. A body that holds this
- * many real entries is already over the body limit, so the cap never refuses
- * a request the client can send. What it refuses is a body of tinier elements
- * (bare numbers, `{}`), and zod checks it before it walks them.
+ * The most videos one POST /api/folder/queue or /api/folder/repair may name.
+ * A body that holds this many real entries is already over the body limit,
+ * so the cap never refuses a request the client can send. What it refuses is
+ * a body of tinier elements (bare numbers, `{}`), checked before any element
+ * is walked: by zod for the queue, by a length check for a repair.
  */
 export const MAX_QUEUE_VIDEOS = Math.ceil(JSON_BODY_LIMIT_BYTES / SMALLEST_QUEUE_ENTRY_BYTES);
 

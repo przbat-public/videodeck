@@ -48,13 +48,28 @@ export async function startBackend(): Promise<DeepServerTestEnv> {
   }
 
   const originalFetch = globalThis.fetch.bind(globalThis);
+  /**
+   * A browser sends the page's Origin on every write and Node's fetch sends
+   * none, which the server would let through as curl. The origin is the
+   * server's own address, never jsdom's http://localhost:3000, which the dev
+   * client list would pass by itself: every write journey then rides on the
+   * rule that the UI's own address may write.
+   */
+  const withPageOrigin = (init: RequestInit | undefined): RequestInit | undefined => {
+    if (['GET', 'HEAD'].includes((init?.method ?? 'GET').toUpperCase())) {
+      return init;
+    }
+    const headers = new Headers(init?.headers);
+    headers.set('Origin', baseUrl);
+    return { ...init, headers };
+  };
   globalThis.fetch = function integrationFetchProxy(
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     if (url.startsWith('/api')) {
-      return originalFetch(`${baseUrl}${url}`, init);
+      return originalFetch(`${baseUrl}${url}`, withPageOrigin(init));
     }
     return originalFetch(input, init);
   } as typeof fetch;

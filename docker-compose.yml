@@ -88,7 +88,11 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-}
       - SUMMARY_PROVIDER=${SUMMARY_PROVIDER:-}
+      # The settings the server's 403s name: the hosts browsers may use, extra
+      # same-site origins, and the exact extension ids (unset lets any in)
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+      - EXTENSION_ORIGINS=${EXTENSION_ORIGINS:-}
       # One proxy hop (the client container) sits in front of the server, and
       # the rate limit counts per client IP. nginx forwards X-Forwarded-For, so
       # this describes the connection rather than trusting a header. Remove it

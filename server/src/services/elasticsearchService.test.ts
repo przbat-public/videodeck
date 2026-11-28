@@ -1680,6 +1680,59 @@ describe('elasticsearchService', () => {
       });
     });
 
+    /** A lookup answered with one document: these fields laid over a real one */
+    const answerLookup = (fields: Record<string, unknown>) =>
+      answerSearch({ hits: { hits: [{ _id: 'planted', _source: { ...toDocument(video()), ...fields } }] } });
+
+    it.each<[string, Record<string, unknown>]>([
+      ['a folder outside the configured ones', { folderPath: '/elsewhere' }],
+      ['the filesystem root as its folder', { folderPath: '/' }],
+      ['the parent of a configured folder as its folder', { folderPath: '/videos' }],
+      ['a stem that walks out of its folder', { baseName: '../b/20240101_Video' }],
+      ['a stem that is a path', { baseName: 'b/20240101_Video' }],
+      ['an array as its stem', { baseName: ['../b/20240101_Video'] }],
+      ['a title that is no string', { title: 42 }],
+      ['a subtitle of another stem', { subtitlePath: '20240101_Other.en.vtt' }],
+      ['a subtitle that walks out of its folder', { subtitlePath: '../b/20240101_Video.en.vtt' }],
+      ['another file of its folder as its subtitle', { subtitlePath: '20240101_Video.info.json' }],
+    ])('refuses a hit with %s, and logs it', async (_case, fields) => {
+      // Elasticsearch takes writes from anyone who reaches it, and details,
+      // comments, the summary and the file route all act where a hit points
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {
+        /* the refusal is logged; silenced here */
+      });
+      answerLookup(fields);
+
+      expect(await getVideoByBaseName('20240101_Video')).toBeNull();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('planted'));
+    });
+
+    it('hands on the configured entry, and keeps a hit without a thumbnail', async () => {
+      const { thumbnailPath: _thumbnailPath, ...withoutThumbnail } = toDocument(
+        video({ subtitlePath: '20240101_Video.en.vtt' }),
+      );
+      answerSearch({ hits: { hits: [{ _id: 'x', _source: { ...withoutThumbnail, folderPath: '/videos/a/' } }] } });
+
+      const found = await getVideoByVideoId('vid00000001');
+
+      expect(found).toMatchObject({
+        baseName: '20240101_Video',
+        folderPath: '/videos/a',
+        subtitlePath: '20240101_Video.en.vtt',
+      });
+      expect(found).not.toHaveProperty('thumbnailPath');
+    });
+
+    it('refuses an untrusted hit on the id and file-name lookups too', async () => {
+      vi.spyOn(logger, 'warn').mockImplementation(() => {
+        /* the refusal is logged; silenced here */
+      });
+      answerLookup({ folderPath: '/elsewhere' });
+
+      expect(await getVideoByVideoId('vid00000001')).toBeNull();
+      expect(await getVideoByFilePath('20240101_Video.webp')).toBeNull();
+    });
+
     it('getVideoByFilePath matches video or thumbnail file names', async () => {
       await getVideoByFilePath('a.mp4');
 

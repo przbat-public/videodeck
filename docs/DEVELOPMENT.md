@@ -183,6 +183,16 @@ small, pure logic in `chrome-extension/src/lib/`.
 - **Path validation** - checking file existence before serving
 - **Environment separation** - separate configuration for dev and prod
 - **Environment variables** - sensitive data in `.env` (not committed)
+- **The dev server on the LAN** - `pnpm run dev` serves the client on
+  loopback, where browsers mark each request with `Sec-Fetch-Site`. Opened
+  from another machine through `vite --host`, the page sends its writes with
+  its LAN address as `Origin` and no marker, and the dev proxy rewrites
+  `Host` to `localhost:3001`, so the server answers 403 until that address
+  is in `ALLOWED_HOSTS` (`server/.env`). Forwarding the address would not
+  help, since the server counts an `X-Forwarded-Host` only for a loopback
+  or listed name. The proxy's `xfwd` option stays off: it would add
+  `X-Forwarded-For`, which the rate limiter reports as an error unless
+  `TRUST_PROXY` is set
 
 ### Typing
 
@@ -196,7 +206,7 @@ All three projects are compiled with TypeScript 6.0 (the same version Cursor use
 | `noUnusedLocals`, `noUnusedParameters`                                  | unused variables are a compile error (deliberately ignored parameters start with `_`)                                                                                          |
 | `verbatimModuleSyntax` (client, extension)                              | types are imported via `import type`; on the server, ESLint enforces the same (`consistent-type-imports`)                                                                      |
 
-**The shared API contract** lives in the `@videodeck/shared` workspace package: the zod schemas (`schemas.ts`) are the single source of truth for response shapes, and `api.ts` re-exports the types derived with `z.infer` (plus request types and SSE event types). The server, client, and extension import the types as `@videodeck/shared/api`; the client **parses** every response against a schema (parse, don't trust), and the server route tests check responses against the same schemas, so types and validation cannot drift apart. `api.ts` stays types-only (`import type` enforced by ESLint), while `schemas.ts` and `progress.ts` are deliberate runtime modules shared by the server and the extension.
+**The shared API contract** lives in the `@videodeck/shared` workspace package: the zod schemas (`schemas.ts`) are the single source of truth for response shapes, and `api.ts` re-exports the types derived with `z.infer` (plus request types and SSE event types). The server, client, and extension import the types as `@videodeck/shared/api`; the client **parses** every response against a schema (parse, don't trust), and the server route tests check responses against the same schemas, so types and validation cannot drift apart. `api.ts` stays types-only (`import type` enforced by ESLint), while `schemas.ts`, `sse.ts` and `youtube.ts` are deliberate runtime modules the extension shares with the server, and `progress.ts` is the server's alone.
 
 Express routers use `RouteHandler<Params, Response>` from `server/src/routes/http.ts`: path params are derived from the route pattern, `req.body` is typed `unknown` and narrowed with the `readBody`/`readString` helpers, and `res.json()` only accepts the contract type (or `ApiError`). `any` is banned by lint (`no-explicit-any: error`) in code and tests.
 ## Frontend architecture

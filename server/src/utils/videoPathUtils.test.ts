@@ -2,7 +2,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { invalidateVideosFolderCache } from '../config';
-import { getVideoFilePath, normalizeFolderPath, sanitizeFilename, validateVideosFolder } from './videoPathUtils';
+import {
+  findConfiguredFolder,
+  getVideoFilePath,
+  normalizeFolderPath,
+  sanitizeFilename,
+  validateVideosFolder,
+} from './videoPathUtils';
 
 describe('normalizeFolderPath', () => {
   const realHomedir = os.homedir();
@@ -32,6 +38,40 @@ describe('normalizeFolderPath', () => {
   it('does not touch other paths', () => {
     expect(normalizeFolderPath('~/')).toBe(realHomedir);
     expect(normalizeFolderPath('relative/x/')).toBe('relative/x');
+  });
+});
+
+describe('findConfiguredFolder', () => {
+  // process.env outlives a test file inside a vitest worker, so the value goes
+  // back the way this file found it
+  const originalVideosFolderPath = process.env.VIDEOS_FOLDER_PATH;
+
+  beforeEach(() => {
+    process.env.VIDEOS_FOLDER_PATH = '/videos/a;/videos/b/';
+    invalidateVideosFolderCache();
+  });
+
+  afterEach(() => {
+    if (originalVideosFolderPath === undefined) {
+      delete process.env.VIDEOS_FOLDER_PATH;
+    } else {
+      process.env.VIDEOS_FOLDER_PATH = originalVideosFolderPath;
+    }
+    invalidateVideosFolderCache();
+  });
+
+  it('hands back the configured entry for a path that names one', () => {
+    expect(findConfiguredFolder('/videos/a')).toBe('/videos/a');
+    expect(findConfiguredFolder('/videos/a/')).toBe('/videos/a');
+    // Configured with a trailing slash, handed back normalized
+    expect(findConfiguredFolder('/videos/b')).toBe('/videos/b');
+  });
+
+  it('finds nothing for a path the list does not hold', () => {
+    // It resolves nothing: the root, a parent or a `..` spelling never matches
+    for (const value of ['/videos', '/', '/videos/c', '/videos/a/../b', '']) {
+      expect(findConfiguredFolder(value), value).toBeUndefined();
+    }
   });
 });
 

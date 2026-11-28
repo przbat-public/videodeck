@@ -131,6 +131,36 @@ function nginxLocationOwn(match) {
   return own;
 }
 
+test('the compose stack passes every setting the auth guard names in a refusal', () => {
+  // The 401 and 403 answers name the setting that would let the request in,
+  // and the UI shows them as they are. A name the stack does not hand to the
+  // server sends a compose user to a setting that changes nothing.
+  const source = read('server', 'src', 'routes', 'http.ts');
+  // Either quote style or a template literal, since Biome keeps a message
+  // with an apostrophe in double quotes, and a typed constant as well
+  const messages = [
+    ...[...source.matchAll(/refuse\(\s*\d+,\s*(['"`])(?:(?!\1)[^\\]|\\.)*\1,\s*(['"`])((?:(?!\2)[^\\]|\\.)*)\2/g)].map(
+      (match) => match[3] ?? '',
+    ),
+    ...[...source.matchAll(/_REFUSAL(?::\s*string)?\s*=\s*(['"`])((?:(?!\1)[^\\]|\\.)*)\1/g)].map(
+      (match) => match[2] ?? '',
+    ),
+  ];
+  const named = [...new Set(messages.flatMap((message) => message.match(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g) ?? []))];
+  for (const expected of ['ALLOWED_HOSTS', 'CORS_ORIGINS', 'EXTENSION_ORIGINS']) {
+    assert.ok(named.includes(expected), `the scan of server/src/routes/http.ts found no refusal naming ${expected}`);
+  }
+  const server = composeServices().find((service) => service.name === 'server');
+  assert.ok(server, 'docker-compose.yml has no server service');
+  const environment = nestedBlock(server.body, 'environment');
+  assert.ok(environment, 'the server service in docker-compose.yml has no environment block');
+  // The value must come from .env: a hard-coded one never reaches the server
+  const missing = named.filter(
+    (name) => !new RegExp(`^\\s+- ${name}=\\$\\{${name}(?::-[^}]*)?\\}\\s*$`, 'm').test(environment),
+  );
+  assert.deepEqual(missing, [], 'docker-compose.yml does not pass the server these settings, which its refusals name');
+});
+
 test('every compose service carries a restart policy', () => {
   const services = composeServices();
   // A parse that found nothing would make the assertion below vacuous
@@ -153,6 +183,51 @@ test('the shipped proxy sends the header the server trusts', () => {
     NGINX_TEMPLATE,
     /proxy_set_header\s+X-Forwarded-For\s+\$proxy_add_x_forwarded_for;/,
     'client/nginx.conf.template must forward X-Forwarded-For, or the server trusts a header the client supplies',
+  );
+});
+
+test('the proxy tells the server which address the browser used', () => {
+  // A write without Sec-Fetch-Site (curl, an older browser, a plain-HTTP LAN
+  // address) is judged by its Origin, which the server compares with this
+  // address, port included; $host drops the port. An ALLOWED_HOSTS name
+  // passes on any port anyway, and localhost or 127.0.0.1 on a dev client
+  // port (3000, 4173, 5173) as a trusted origin; any other loopback address
+  // passes only this way.
+  const api = nginxLocationOwn('/api/');
+  assert.ok(api, 'client/nginx.conf.template has no `location /api/` block');
+  assert.match(
+    api,
+    /^\s*proxy_set_header\s+X-Forwarded-Host\s+\$http_host;/m,
+    'location /api/ must forward X-Forwarded-Host $http_host, or an unmarked write from the UI on another loopback port is refused',
+  );
+  assert.match(
+    api,
+    /^\s*proxy_set_header\s+Host\s+\$host;/m,
+    'location /api/ must keep forwarding Host $host for the server Host check',
+  );
+});
+
+test('the UI pages refuse to be framed', () => {
+  // Inside a frame the UI sends its requests with its own Origin, so only the
+  // browser refusing the frame keeps a hostile page from steering its clicks
+  const pages = nginxLocationOwn('/');
+  assert.ok(pages, 'client/nginx.conf.template has no `location /` block');
+  assert.match(
+    pages,
+    /^\s*add_header\s+Content-Security-Policy\s+"frame-ancestors 'none'"\s+always;/m,
+    "location / must send frame-ancestors 'none' on every answer",
+  );
+  assert.match(
+    pages,
+    /^\s*add_header\s+X-Frame-Options\s+"?DENY"?\s+always;/m,
+    'location / must send X-Frame-Options DENY on every answer',
+  );
+  /** @param {string} text */
+  const addHeaderLines = (text) => text.split('\n').filter((line) => /^\s*add_header\b/.test(line)).length;
+  assert.equal(
+    addHeaderLines(NGINX_TEMPLATE),
+    addHeaderLines(pages),
+    'add_header belongs in `location /` only: elsewhere it doubles the headers helmet sets on /api/',
   );
 });
 

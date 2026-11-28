@@ -534,12 +534,22 @@ describe('VideoListPage', () => {
       );
     });
 
-    it('Recreate Indices posts to the reindex endpoint', async () => {
+    it('Recreate Indices asks first, then posts to the reindex endpoint once', async () => {
+      // The rebuild empties every index, and search finds nothing until the
+      // next refresh, so the menu click alone must not send it
       renderWithMenu('/');
       await screen.findByText('First');
+      const recreatePosts = () => fetchMock.mock.calls.filter(([url]) => url === '/api/videos/recreateIndices');
 
       await openMenu();
-      await user.click(await screen.findByRole('menuitem', { name: 'Odbuduj indeksy' }));
+      await user.click(await screen.findByRole('menuitem', { name: i18n.t('reindex.recreate') }));
+      const dialog = await screen.findByRole('dialog', { name: i18n.t('reindex.recreateConfirm.title') });
+
+      // The message names the action that brings search back, by its own label
+      expect(dialog).toHaveTextContent(i18n.t('reindex.start'));
+      expect(recreatePosts()).toHaveLength(0);
+
+      await user.click(within(dialog).getByRole('button', { name: i18n.t('reindex.recreateConfirm.confirm') }));
 
       await waitFor(() =>
         expect(fetchMock).toHaveBeenCalledWith('/api/videos/recreateIndices', {
@@ -547,6 +557,7 @@ describe('VideoListPage', () => {
           signal: expect.any(AbortSignal),
         }),
       );
+      expect(recreatePosts()).toHaveLength(1);
     });
 
     it('turns the index actions off while Elasticsearch is down', async () => {

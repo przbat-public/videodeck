@@ -7,8 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **A document planted in Elasticsearch no longer steers the server's
+  reads.** Details, comments, the summary and the file route act where a
+  lookup hit points, and Elasticsearch takes writes from anyone who reaches
+  it: a planted document had the server read an info.json anywhere on the
+  disk, bill a summary of an outside file and write it there. A
+  single-video lookup now hands on only a hit that parses as a video, sits
+  in a configured folder, has a stem of one path segment (not `.` or `..`,
+  no backslash or NUL, 200 characters at most) and names no subtitle or
+  one of its own stem; anything else answers 404 with a warning. A full
+  Refresh index rewrites what an older build stored, such as a document
+  that no longer parses or one holding another stem's captions. A
+  hand-named file whose stem breaks that rule stays listed, but its
+  details answer 404 until it is renamed
+- **Foreign pages stop sending writes to a LAN deploy with the proxy's
+  token.** Browsers send no Sec-Fetch-Site to a plain-HTTP address that is
+  not loopback, so such a request reached the token check, and nginx adds
+  the token to everything it proxies: a form on any website could pause
+  the queue or empty every index. Without the marker, the server now lets
+  a request on only when it carries no Origin (curl, a link, an image), a
+  trusted origin, the address the browser used, or a host from
+  `ALLOWED_HOSTS`. Behind any plain-HTTP proxy, list the host the browser
+  uses in `ALLOWED_HOSTS` unless it is loopback, or the UI's writes answer
+  403: an `X-Forwarded-Host` counts only for such a name. Keep
+  `EXTENSION_ORIGINS` current: over plain HTTP a stale id now locks the
+  extension out
+- **The web UI refuses to load inside another site's frame.** The `client`
+  container answers every page with `Content-Security-Policy:
+  frame-ancestors 'none'` and `X-Frame-Options: DENY`. Inside a frame the
+  UI's requests carry its own origin, so nothing on the server could tell
+  a click a hostile page arranged from one the user meant. An iframe embed,
+  such as a Home Assistant panel, stops working; API answers keep the
+  headers helmet already sets
+- **Repair requests share the queue's size limit.** The repair endpoint
+  walked every entry in its body, so tens of thousands of tiny invalid ones
+  cost a skip apiece while staying well inside the body limit. Past 40,330
+  entries it now answers 400 without touching the index
+- **yt-dlp lists a channel from the URL the app checked.** Fetching a
+  channel's list validated the configured `channelUrl` with Node's URL
+  parser, then passed yt-dlp the raw text. Python's urlsplit reads
+  `https://www.youtube.com\@127.0.0.1:9200` as host 127.0.0.1, port 9200,
+  where Node sees www.youtube.com. yt-dlp now gets the URL rebuilt from its
+  host and path, a backslash or userinfo is refused when the config is
+  saved and when it is read, and a shared link's `?si=…` no longer
+  swallows the appended `/videos`
+- **Stems containing `$` stay out of yt-dlp's output template.** yt-dlp
+  expands environment variables in `-o` before it fills in
+  the fields, so updating or repairing a video stored as
+  `$API_TOKEN.mp4` would have written the token into a file name. App
+  downloads never hold a `$` (`--restrict-filenames` drops it). A
+  hand-named file holding one stays listed, searchable and playable;
+  updating or repairing it is skipped ("file name contains $") rather than
+  queued as a job that cannot run
+- **The extension asks for storage only.** It also asked for `activeTab`
+  and `scripting`, which none of its code calls: the manifest declares the
+  content script, and the popup needs just the active tab's id. Chrome
+  drops both, without a prompt, once the rebuilt extension is reloaded
+
 ### Fixed
 
+- **A channel list past 64 MiB of yt-dlp output fails instead of saving a
+  cut list.** The fetch kept what fit under its cap and reported success,
+  so list.json of a very large channel lost its older videos. yt-dlp is now
+  stopped at the cap, the fetch answers 500 and the old list stays
+- **The security docs describe the checks the code makes.** `extraArgs`
+  takes only the names in `ALLOWED_EXTRA_ARGS`, `ALLOWED_HOSTS` judges
+  incoming requests (their `Host`, and over plain HTTP their `Origin`) and
+  nothing outbound, and the `CORS_ORIGINS` example is a same-site origin,
+  because a request the browser marks cross-site is refused even when its
+  origin is listed
+- **The compose stack hands `CORS_ORIGINS` and `EXTENSION_ORIGINS` to the
+  server.** Its 403s name both settings, yet putting them in `.env` changed
+  nothing, so a compose deploy could not pin the extension's id
+- **A failed channel listing keeps only the end of yt-dlp's stderr.** Its
+  error carried every byte yt-dlp had written there and was logged whole,
+  while the version probe kept its own in memory too. The last
+  64 KiB stay, from their first full line when there is one, which keeps
+  the closing ERROR line
+- **Sidecar repairs write under the file's own name.** To yt-dlp, an `-o`
+  value that opens with output type names and a colon sets typed
+  templates: a file someone called `Description:My talk.mp4` got its
+  sidecars under other names, where the app never looks
+- **One channel listing runs at a time per folder.** A second browser tab,
+  a reload mid-fetch or a script each started their own yt-dlp on that
+  channel, bypassing the queue's limits. Later callers now join the listing
+  already underway and get its answer; once it settles, a click lists
+  afresh
+- **Titles with a percentage leave the progress bar alone.** The parser
+  took the first number before a `%` on any line, so a title such as
+  `50%_off`, or an error that quoted `42%`, set the bar, and a title with
+  "completed" in it set it to 100. Only the `--progress-template` line and
+  yt-dlp's default bar count now. Both patterns are anchored, which also
+  ends the backtracking a long run of digits caused
 - **`impersonate: true` works in the Docker image.** The image installed a
   bare yt-dlp without curl_cffi, so every job of a folder set to impersonate
   failed at once. It now installs `yt-dlp[pin,pin-curl-cffi,pin-deno]` from
@@ -232,6 +324,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Rebuild indices asks before it runs.** It swaps each folder's index
+  for a blank one, so search finds nothing until Refresh index runs again,
+  and a single click on the menu entry used to start it. A dialog now names
+  that cost, with Cancel focused; Escape or Cancel leaves the indices alone
 - **Rebuild every index once after upgrading:** `POST /api/videos/refreshCache`
   without `onlyMissing` (Refresh index, with "only missing" unchecked). An
   `onlyMissing` run or a drive swap keeps indices built earlier, which lack

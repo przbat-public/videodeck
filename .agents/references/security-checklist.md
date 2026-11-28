@@ -10,14 +10,16 @@ Pre-commit and pre-merge checks for any change. Pair with
 - [ ] The threat model is clear: what does the change trust, and what can
   reach it
 - [ ] No new outbound network call without host or URL validation
-- [ ] No new yt-dlp argument without checking the forbidden list
-  (`server/src/services/folderConfig.ts`)
+- [ ] A yt-dlp flag joins `ALLOWED_EXTRA_ARGS`
+  (`server/src/services/folderConfig.ts`) only if it runs no command, reads
+  no file and fetches no code (never `--js-runtimes` or
+  `--remote-components`), with a test for the vector it could reopen
 
 ## Input and boundaries
 
 - [ ] Network data parsed with zod (`shared/schemas.ts`), never `as`-cast
 - [ ] Folder paths validated against the allowed list before any file or
-  queue operation (`server/src/routes/folder.ts`)
+  queue operation (`requireAllowedFolder` in `server/src/routes/folder/guards.ts`)
 - [ ] Channel URLs validated as YouTube URLs before yt-dlp runs
 - [ ] LLM output parsed with zod before use
 

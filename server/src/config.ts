@@ -82,7 +82,9 @@ export function isTokenRequired(): boolean {
 /**
  * Extra browser origins allowed by CORS, on top of the built-in defaults:
  * the local dev client (localhost on the known dev ports) and Chrome
- * extensions.
+ * extensions. Meant for another port or subdomain of the API's own site: the
+ * guard in routes/http.ts answers 403 to every request a browser marks
+ * cross-site before it reads this list (#132), listed or not.
  */
 export function getCorsOrigins(): string[] {
   return (process.env.CORS_ORIGINS ?? '')
@@ -95,8 +97,11 @@ export function getCorsOrigins(): string[] {
  * Extra hosts accepted in the `Host` header, on top of the loopback defaults
  * (localhost, 127.0.0.1, [::1]). Needed together with `HOST=0.0.0.0` for LAN
  * use: every name/IP the clients will use must be listed, or the server
- * answers 403. This is the DNS-rebinding guard — a malicious domain resolving
+ * answers 403. This is the DNS-rebinding guard: a malicious domain resolving
  * to 127.0.0.1 sends its own Host header and gets refused.
+ *
+ * Where the browser sends no Sec-Fetch-Site (a plain-HTTP LAN address), the
+ * auth guard also accepts an Origin on these hosts, on any port.
  */
 export function getAllowedHosts(): string[] {
   return (process.env.ALLOWED_HOSTS ?? '')

@@ -35,12 +35,19 @@ Name what the change trusts and what can reach it:
    `REQUIRE_API_TOKEN` is on (`server/src/config.ts`).
 2. **User-shaped URLs.** No user-controlled URL goes straight to `fetch`.
    Channel URLs are validated as YouTube channel URLs before yt-dlp sees
-   them (`server/src/routes/folder.ts`). Internal and loopback targets
-   stay blocked.
-3. **User-shaped yt-dlp arguments.** `--cookies`, `--load-cookies` and
-   `--cookies-from-browser` are rejected in
-   `server/src/services/folderConfig.ts` (cookie-jar exfiltration). A new
-   flag that reads local files or credentials needs the same treatment.
+   them: `isYoutubeChannelUrl` in `shared/youtube.ts` when a config is
+   saved, and `toChannelUrl` in `server/src/routes/folder/playlist.ts`
+   again before the playlist fetch, which hands yt-dlp the URL rebuilt from
+   its host and path. Internal and loopback targets stay blocked.
+3. **User-shaped yt-dlp arguments.** A folder config's `extraArgs` passes
+   only the exact flag names in `ALLOWED_EXTRA_ARGS`
+   (`server/src/services/folderConfig.ts`), each with a checked value.
+   Anything else is refused when the config is saved, dropped with its
+   value when a hand-edited file is read, and refused again before spawn;
+   every download, update, repair and listing adds `--ignore-config`. A flag
+   joins the list only if it runs no command, reads no file and fetches no
+   code: `--js-runtimes` and `--remote-components` stay out, because the
+   deno sandbox depends on yt-dlp's pinned runtime and bundled solver.
 4. **Untrusted text in and out.** Video titles, descriptions, comments and
    transcripts are attacker-influenced data, parsed with zod
    (`shared/schemas.ts`) and rendered by React, which escapes output. Any
@@ -53,19 +60,20 @@ Name what the change trusts and what can reach it:
 
 - **Always:** validate at the boundary with zod, never `as`-cast network
   data; keep secrets in `server/.env` only; keep the Host allowlist and
-  the forbidden flag list intact.
-- **Ask first:** widening `ALLOWED_HOSTS`, adding an outbound fetch target,
-  any new dependency, any change to auth or CORS
+  the yt-dlp argument allowlist intact.
+- **Ask first:** widening `ALLOWED_HOSTS` or `ALLOWED_EXTRA_ARGS`, adding an
+  outbound fetch target, any new dependency, any change to auth or CORS
   (`server/src/routes/http.ts`).
 - **Never:** pass user-controlled URLs to `fetch` or a shell, commit real
-  `server/.env` values, remove or weaken the forbidden yt-dlp flags, log
-  secrets or API tokens.
+  `server/.env` values, add a flag to `ALLOWED_EXTRA_ARGS` without a test
+  for the vector it reopens, drop `--ignore-config`, log secrets or API
+  tokens.
 
 ## OWASP checks mapped to this app
 
 - **Injection.** Command injection surface is yt-dlp arguments: the
-  downloader runs with an argument list, never a shell string, and the
-  forbidden flags are dropped before a job is enqueued. SQL injection does
+  downloader runs with an argument list, never a shell string, and nothing
+  outside `ALLOWED_EXTRA_ARGS` reaches that list. SQL injection does
   not apply (Elasticsearch queries are structured). Watch for path
   traversal on folder paths: they must resolve inside the configured
   videos root.
@@ -77,7 +85,10 @@ Name what the change trusts and what can reach it:
   limited to its own containers.
 - **Broken access control.** Any route that writes files or enqueues jobs
   must validate the folder path against the allowed list
-  (`requireAllowedFolder` in `server/src/routes/folder.ts`).
+  (`requireAllowedFolder` in `server/src/routes/folder/guards.ts`). The
+  comparison itself is `findConfiguredFolder` in
+  `server/src/utils/videoPathUtils.ts`, which the file route and the
+  single-video lookup share.
 - **Security misconfiguration.** Defaults stay safe: loopback host, token
   optional only when self-hosting deliberately, CORS origins opt-in.
 - **SSRF.** Covered by the threat model above; new outbound calls reuse
@@ -108,13 +119,13 @@ Review the `pnpm-lock.yaml` diff on every upgrade.
 | --- | --- |
 | "It is a local tool, no one can reach it" | LAN deployments and rebinding attacks reach it anyway. |
 | "One extra fetch is fine" | Unvalidated outbound calls are how SSRF starts. |
-| "The flag is harmless here" | The forbidden list is cheap to keep and costly to lose. |
+| "The flag is harmless here" | yt-dlp's parser turns harmless-looking entries into other flags (`--alias`, clustered short options, prefixes); the allowlist takes exact names only. |
 | "I will rotate the token later" | A leaked secret is live until rotated. |
 
 ## Red Flags
 
 - `fetch(userInput)` or shell string building with user input
-- A weakened or bypassed forbidden flag check
+- A new `ALLOWED_EXTRA_ARGS` entry without a test, or a download, update, repair or listing run without `--ignore-config`
 - A real token or password in a diff
 - A new route without auth or folder-path validation
 - A dependency bump with an unreviewed lockfile diff

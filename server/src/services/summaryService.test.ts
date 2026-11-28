@@ -504,6 +504,25 @@ This is a test subtitle`;
     expect(result.summary).toBe('Summary');
   });
 
+  it('refuses a stem that would put the summary outside the folder, before any provider call', async () => {
+    // Every cached file sits beside the video as <stem>.summary.*, so a stem
+    // with a separator wrote wherever it pointed, after a paid call
+    mockedFs.readFile.mockResolvedValue(VTT as never);
+    mockOpenAIInstance.chat.completions.create.mockResolvedValue(mockCompletion('Summary'));
+
+    await expect(generateSummary({ ...INPUT, baseName: '../escape' })).rejects.toThrow('outside /test/videos');
+
+    expect(MockedOpenAI).not.toHaveBeenCalled();
+    expect(mockOpenAIInstance.chat.completions.create).not.toHaveBeenCalled();
+    expect(mockedFs.readFile).not.toHaveBeenCalled();
+    const touched = [
+      ...mockedFs.open.mock.calls.map(([target]) => String(target)),
+      ...mockedFs.rename.mock.calls.map(([, target]) => String(target)),
+      ...mockedFs.rm.mock.calls.map(([target]) => String(target)),
+    ];
+    expect(touched).toEqual([]);
+  });
+
   it('requires an API key (typed SummaryUnavailableError naming the variables)', async () => {
     delete process.env.OPENAI_API_KEY;
     mockedFs.readFile.mockRejectedValueOnce(new Error('no cache'));
