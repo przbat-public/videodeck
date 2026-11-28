@@ -136,18 +136,28 @@ test('the compose stack passes every setting the auth guard names in a refusal',
   // and the UI shows them as they are. A name the stack does not hand to the
   // server sends a compose user to a setting that changes nothing.
   const source = read('server', 'src', 'routes', 'http.ts');
+  // Either quote style or a template literal, since Biome keeps a message
+  // with an apostrophe in double quotes, and a typed constant as well
   const messages = [
-    ...source.matchAll(/refuse\(\s*\d+,\s*'[^']*',\s*'((?:[^'\\]|\\.)*)'/g),
-    ...source.matchAll(/_REFUSAL\s*=\s*'((?:[^'\\]|\\.)*)'/g),
-  ].map((match) => match[1] ?? '');
+    ...[...source.matchAll(/refuse\(\s*\d+,\s*(['"`])(?:(?!\1)[^\\]|\\.)*\1,\s*(['"`])((?:(?!\2)[^\\]|\\.)*)\2/g)].map(
+      (match) => match[3] ?? '',
+    ),
+    ...[...source.matchAll(/_REFUSAL(?::\s*string)?\s*=\s*(['"`])((?:(?!\1)[^\\]|\\.)*)\1/g)].map(
+      (match) => match[2] ?? '',
+    ),
+  ];
   const named = [...new Set(messages.flatMap((message) => message.match(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g) ?? []))];
-  assert.ok(
-    named.includes('ALLOWED_HOSTS'),
-    'the scan found no refusal in server/src/routes/http.ts naming ALLOWED_HOSTS',
-  );
+  for (const expected of ['ALLOWED_HOSTS', 'CORS_ORIGINS', 'EXTENSION_ORIGINS']) {
+    assert.ok(named.includes(expected), `the scan of server/src/routes/http.ts found no refusal naming ${expected}`);
+  }
   const server = composeServices().find((service) => service.name === 'server');
   assert.ok(server, 'docker-compose.yml has no server service');
-  const missing = named.filter((name) => !new RegExp(`^\\s+- ${name}=`, 'm').test(server.body));
+  const environment = nestedBlock(server.body, 'environment');
+  assert.ok(environment, 'the server service in docker-compose.yml has no environment block');
+  // The value must come from .env: a hard-coded one never reaches the server
+  const missing = named.filter(
+    (name) => !new RegExp(`^\\s+- ${name}=\\$\\{${name}(?::-[^}]*)?\\}\\s*$`, 'm').test(environment),
+  );
   assert.deepEqual(missing, [], 'docker-compose.yml does not pass the server these settings, which its refusals name');
 });
 
@@ -180,8 +190,9 @@ test('the proxy tells the server which address the browser used', () => {
   // A write without Sec-Fetch-Site (curl, an older browser, a plain-HTTP LAN
   // address) is judged by its Origin, which the server compares with this
   // address, port included; $host drops the port. An ALLOWED_HOSTS name
-  // passes on any port anyway, and a loopback one on a dev client port (3000,
-  // 4173, 5173) as a trusted origin, but on any other port only this way.
+  // passes on any port anyway, and localhost or 127.0.0.1 on a dev client
+  // port (3000, 4173, 5173) as a trusted origin; any other loopback address
+  // passes only this way.
   const api = nginxLocationOwn('/api/');
   assert.ok(api, 'client/nginx.conf.template has no `location /api/` block');
   assert.match(

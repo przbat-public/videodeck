@@ -183,6 +183,20 @@ describe('createAuthMiddleware', () => {
     }
   });
 
+  it('names no setting when it refuses an opaque origin', async () => {
+    // A sandboxed frame or a file: page sends Origin null, and no list
+    // lets one in, so the refusal points at none
+    const response = await request(buildApp('secret'))
+      .post('/test')
+      .set('Authorization', 'Bearer secret')
+      .set('Origin', 'null');
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      error: 'Forbidden',
+      message: 'Requests from an opaque origin (null) are not allowed.',
+    });
+  });
+
   it('refuses an unmarked GET from a foreign origin too, since some reads still write', async () => {
     const response = await request(buildApp('secret'))
       .get('/test')
@@ -210,16 +224,19 @@ describe('createAuthMiddleware', () => {
     // A loopback Origin is a page on the browser's own machine, which no
     // ALLOWED_HOSTS entry lets in
     const app = guardedApp(createAuthorizer('secret', false, { allowedHosts: ['nas.local'] }));
-    const response = await request(app)
-      .post('/test')
-      .set('Authorization', 'Bearer secret')
-      .set('Host', 'nas.local')
-      .set('Origin', 'http://localhost:9999');
-    expect(response.status).toBe(403);
-    expect(response.body).toEqual({
-      error: 'Forbidden',
-      message: 'Requests from a loopback page are not allowed. List its origin in CORS_ORIGINS.',
-    });
+    // IPv6 loopback too, which the Origin writes in brackets
+    for (const origin of ['http://localhost:9999', 'http://[::1]:9999']) {
+      const response = await request(app)
+        .post('/test')
+        .set('Authorization', 'Bearer secret')
+        .set('Host', 'nas.local')
+        .set('Origin', origin);
+      expect(response.status, origin).toBe(403);
+      expect(response.body, origin).toEqual({
+        error: 'Forbidden',
+        message: 'Requests from a loopback page are not allowed. List its origin in CORS_ORIGINS.',
+      });
+    }
   });
 
   it('refuses a rebinding name that arrives as X-Forwarded-Host', async () => {
@@ -258,13 +275,18 @@ describe('createAuthMiddleware', () => {
     // nginx drops the dot from $host but not from $http_host: the Host guard
     // sees nas.local, while X-Forwarded-Host and the Origin keep the dot
     const app = guardedApp(createAuthorizer('secret', false, { allowedHosts: ['nas.local'] }));
-    const response = await request(app)
-      .post('/test')
-      .set('Authorization', 'Bearer secret')
-      .set('Host', 'nas.local')
-      .set('X-Forwarded-Host', 'nas.local.:3000')
-      .set('Origin', 'http://nas.local.:3000');
-    expect(response.status).toBe(200);
+    const post = (host: string, forwarded: string, origin: string) =>
+      request(app)
+        .post('/test')
+        .set('Authorization', 'Bearer secret')
+        .set('Host', host)
+        .set('X-Forwarded-Host', forwarded)
+        .set('Origin', origin);
+
+    expect((await post('nas.local', 'nas.local.:3000', 'http://nas.local.:3000')).status).toBe(200);
+    // A rooted loopback name passes only as the forwarded address, since the
+    // ALLOWED_HOSTS rule leaves loopback out
+    expect((await post('localhost', 'localhost.:8092', 'http://localhost.:8092')).status).toBe(200);
   });
 
   it('keeps loopback names out of the ALLOWED_HOSTS rule', async () => {
@@ -277,6 +299,15 @@ describe('createAuthMiddleware', () => {
       .set('Authorization', 'Bearer secret')
       .set('Origin', 'http://localhost:9999');
     expect(response.status).toBe(403);
+
+    // A rooted loopback name stays loopback, however the entry is written
+    const rooted = guardedApp(createAuthorizer('secret', false, { allowedHosts: ['nas.local', 'localhost.'] }));
+    const rootedResponse = await request(rooted)
+      .post('/test')
+      .set('Host', 'nas.local')
+      .set('Authorization', 'Bearer secret')
+      .set('Origin', 'http://localhost.:9999');
+    expect(rootedResponse.status).toBe(403);
   });
 
   it('accepts an unmarked POST whose Origin is the address the browser used', async () => {

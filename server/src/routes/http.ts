@@ -122,17 +122,18 @@ function hostnameOf(authority: string): string {
 /**
  * The address the browser used for this request: the first X-Forwarded-Host
  * value (nginx passes on the Host it received), else the Host header. The
- * forwarded value counts only when its name is one the Host guard in app.ts
- * accepts, loopback or an ALLOWED_HOSTS entry: a proxy that sets Host to an
- * address of its own hides a rebinding page's name from that guard, and the
- * page would otherwise pass here by sending that name as its Origin. With an
- * untrusted forwarded name there is no address at all, never Host: behind such
- * a proxy Host is the proxy's own upstream, where a loopback Origin is a page
- * on the visitor's machine. It reads the raw headers, never req.host, so
- * TRUST_PROXY cannot change the answer. A rebinding page is same-origin with
- * the API once its name resolves here, so it may set the header to anything;
- * the value counts only for a trusted name, and the Origin, which the page
- * cannot choose, must then name that very address.
+ * forwarded value counts only when its name, a trailing dot aside, is one the
+ * Host guard in app.ts accepts, loopback or an ALLOWED_HOSTS entry: a proxy
+ * that sets Host to an address of its own hides a rebinding page's name from
+ * that guard, and the page would otherwise pass here by sending that name as
+ * its Origin. With an untrusted forwarded name there is no address at all,
+ * never Host: behind such a proxy Host is the proxy's own upstream, where a
+ * loopback Origin is a page on the visitor's machine. It reads the raw
+ * headers, never req.host, so TRUST_PROXY cannot change the answer. A
+ * rebinding page is same-origin with the API once its name resolves here, so
+ * it may set the header to anything; the value counts only for a trusted
+ * name, and the Origin, which the page cannot choose, must then name that very
+ * address.
  */
 function requestAuthority(req: Request, allowedHosts: readonly string[]): string {
   const header = readString(req.headers['x-forwarded-host']);
@@ -207,8 +208,17 @@ const EXTENSION_ORIGIN_REFUSAL = 'Requests from this extension are not allowed. 
 /** No ALLOWED_HOSTS entry lets a loopback page in, so only CORS_ORIGINS can */
 const LOOPBACK_ORIGIN_REFUSAL = 'Requests from a loopback page are not allowed. List its origin in CORS_ORIGINS.';
 
-/** The refusal of a request without the marker, naming the setting that would let its Origin in */
+/** isTrustedUnmarkedOrigin refuses `null` before it reads any list, so no setting lets one in */
+const NULL_ORIGIN_REFUSAL = 'Requests from an opaque origin (null) are not allowed.';
+
+/**
+ * The refusal of a request without the marker, naming the setting that would
+ * let its Origin in, and none for an opaque one
+ */
 function unmarkedRefusal(origin: string): string {
+  if (origin === 'null') {
+    return NULL_ORIGIN_REFUSAL;
+  }
   if (origin.startsWith('chrome-extension://')) {
     return EXTENSION_ORIGIN_REFUSAL;
   }

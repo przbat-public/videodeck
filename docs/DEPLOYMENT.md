@@ -68,8 +68,10 @@ points at `http://<host>:3001`.
    browser's `Host` on (nginx `proxy_set_header Host $host`, Apache
    `ProxyPreserveHost On`), so the server's DNS-rebinding guard sees the name
    the browser used, and list that host in `ALLOWED_HOSTS` unless it is
-   loopback. Without the entry the server answers 403: an `X-Forwarded-Host`
-   counts only for a loopback or listed name.
+   loopback. Without the entry the server's Host check answers 403 to every
+   request. A proxy that rewrites `Host` instead gets that 403 on writes
+   alone, since an `X-Forwarded-Host` counts only for a loopback or listed
+   name.
    The pages the `client` container serves also refuse to load inside
    another site's frame, so a hostile page cannot lay the UI under a decoy
    and steer your clicks; an iframe embed, such as a dashboard panel, does
