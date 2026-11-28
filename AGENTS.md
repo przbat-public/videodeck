@@ -217,6 +217,11 @@ Playwright stays the thin mocked-API browser layer (`client/e2e/`).
   toolchain until `typescript-eslint` moves with it, and an `@types/node` major
   has to follow a Node runtime bump (`.nvmrc`), not lead it. Do those upgrades
   by hand, together, as one change.
+- **vitest and jest-dom majors move together**: jest-dom adds its matchers to
+  vitest's `Assertion` type and supports one vitest major at a time (jest-dom
+  8 needs vitest 5), a peer range pnpm does not enforce. When the two drift,
+  `client/src/test/matcherTypes.test.ts` fails `pnpm run typecheck`, because
+  skipLibCheck hides the clash everywhere else.
 - **vitest + the shared test infra**: `@videodeck/test-infra/*` and
   `@videodeck/shared/*` resolve through the pnpm workspace symlinks and each
   package's `exports` (no tsconfig paths or vite aliases; the
