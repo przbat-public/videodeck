@@ -250,7 +250,11 @@ export function buildPlaylistArgs(channelUrl: string): string[] {
 
 /** Wall-clock limit for a playlist fetch (huge channels are slow) */
 const RUN_TIMEOUT_MS = 10 * 60 * 1000;
-/** Stdout cap: bounds memory for pathological channels (NDJSON is tiny per line) */
+/**
+ * Stdout cap: bounds memory for pathological channels (NDJSON is tiny per
+ * line). A run that passes it is killed and rejected: the part that fit is a
+ * cut listing, and a caller that stored it would lose the older videos.
+ */
 const MAX_STDOUT_BYTES = 64 * 1024 * 1024;
 /**
  * Stderr cap: a failed run reports the end of its stderr, where yt-dlp prints
@@ -285,8 +289,8 @@ export function resolveYtDlpCommand(env: NodeJS.ProcessEnv = process.env): strin
  * Run yt-dlp to completion, resolving with its stdout or rejecting with a
  * message that includes the stderr tail. No shell is involved (`spawn` takes
  * an argument array), so channel URLs cannot inject commands. A hung yt-dlp
- * is killed after `RUN_TIMEOUT_MS` and the collected stdout is capped at
- * `MAX_STDOUT_BYTES`. Without a command it runs the binary YTDLP_PATH names
+ * is killed after `RUN_TIMEOUT_MS`, and a run whose stdout passes
+ * `MAX_STDOUT_BYTES` is killed and rejected. Without a command it runs the binary YTDLP_PATH names
  * (resolveYtDlpCommand), the one the download queue spawns.
  */
 export function runYtDlp(args: string[], cwd: string, options: { command?: string | undefined } = {}): Promise<string> {
@@ -315,10 +319,17 @@ export function runYtDlp(args: string[], cwd: string, options: { command?: strin
       }
     }, RUN_TIMEOUT_MS);
     child.stdout.on('data', (chunk: Buffer) => {
-      if (outBytes < MAX_STDOUT_BYTES) {
-        out.push(chunk);
-        outBytes += chunk.length;
+      outBytes += chunk.length;
+      if (outBytes > MAX_STDOUT_BYTES) {
+        child.kill('SIGKILL');
+        if (settle()) {
+          reject(
+            new Error(`${command} output passed ${MAX_STDOUT_BYTES / (1024 * 1024)} MiB; refusing the cut result`),
+          );
+        }
+        return;
       }
+      out.push(chunk);
     });
     child.stderr.on('data', (chunk: Buffer) => {
       const joined = Buffer.concat([errTail, chunk]);

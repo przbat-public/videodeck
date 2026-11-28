@@ -64,6 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A channel list past 64 MiB of yt-dlp output fails instead of saving a
+  cut list.** The fetch kept what fit under its cap and reported success,
+  so list.json of a very large channel lost its older videos. yt-dlp is now
+  stopped at the cap, the fetch answers 500 and the old list stays
 - **The security docs describe the checks the code makes.** `extraArgs`
   takes only the names in `ALLOWED_EXTRA_ARGS`, `ALLOWED_HOSTS` judges
   incoming requests (their `Host`, and over plain HTTP their `Origin`) and

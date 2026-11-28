@@ -166,6 +166,22 @@ describe('buildYtDlpArgs', () => {
 });
 
 describe('runYtDlp', () => {
+  it('rejects a run whose stdout passes the cap, so a cut listing never reads as complete', async () => {
+    // A flat playlist of a very large channel can pass the cap; resolving with
+    // the part that fit replaced list.json with the newest videos only. Node
+    // stands in for yt-dlp: about 80 MiB of NDJSON, then a clean exit.
+    const script =
+      'const line = \'{"id":"x"}\\n\'.repeat(1024 * 1024); for (let i = 0; i < 7; i += 1) process.stdout.write(line);';
+
+    const failure = await runYtDlp(['-e', script], os.tmpdir(), { command: process.execPath }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure instanceof Error ? failure.message : '').toMatch(/output passed 64 MiB/);
+  });
+
   it('keeps only the tail of a long stderr in the failure message', async () => {
     // A long run prints a warning per fragment or comment page, and the ERROR
     // line that explains the failure comes last. Node stands in for yt-dlp.
