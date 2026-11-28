@@ -35,9 +35,9 @@ because you would have written it differently.
    `shared/schemas.ts`, never `as`-cast. A new abstraction must remove
    moving parts, not relocate them; a "temporary" branch is permanent debt.
 4. **Security.** Defer the deep pass to `security-and-hardening`. At
-   minimum: user input validated at boundaries, no secrets, outbound
-   fetches through the `ALLOWED_HOSTS` rules, no new yt-dlp flag that
-   bypasses the forbidden list.
+   minimum: user input validated at boundaries, no secrets, no user URL
+   handed to `fetch` or yt-dlp without the checks in `shared/youtube.ts`,
+   and no yt-dlp flag outside `ALLOWED_EXTRA_ARGS`.
 5. **Performance.** No N+1 queries, no unbounded loops, pagination on list
    endpoints, no pointless re-renders in the client. For structural claims
    run `pnpm run knip` and `pnpm run lint:deps`.

@@ -160,10 +160,17 @@ Four working principles sit underneath the checklist:
 
 ## Security invariants (server)
 
-- **Host allowlist**: outbound fetches must go through the `ALLOWED_HOSTS`
-  validation (`server/src/config.ts`, `server/src/routes/http.ts`); never
-  pass user-controlled URLs straight to `fetch`.
-- **No SSRF**: internal/loopback addresses stay blocked.
+- **Host allowlist (inbound)**: `ALLOWED_HOSTS` (`server/src/config.ts`)
+  names the hosts the server answers to beyond loopback. The guard in
+  `server/src/app.ts` refuses any other `Host` header with a 403, which
+  stops DNS rebinding. The auth guard in `server/src/routes/http.ts` also
+  trusts a browser `Origin` on those hosts when the request carries no
+  `Sec-Fetch-Site`, after it has refused every request marked cross-site.
+  The list has no say over where the server connects.
+- **No SSRF**: a user-supplied URL reaches yt-dlp only after the YouTube
+  checks in `shared/youtube.ts`, which also rebuild a channel URL from its
+  host and path, and the server never passes one to `fetch`, so internal and
+  loopback targets stay out of reach.
 - **yt-dlp argument allowlist**: a folder config's `extraArgs` may only use
   the exact flag names in `ALLOWED_EXTRA_ARGS`
   (`server/src/services/folderConfig.ts`), each with a checked value shape,

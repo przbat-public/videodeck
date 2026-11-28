@@ -97,7 +97,8 @@ function buildMetadataArgs(options: DownloadOptions, writeComments = options.wri
   }
   if (options.impersonate) {
     // The cookie-less answer to YouTube bot walls; also safe for us because
-    // it never touches the browser's cookie jar (unlike the forbidden flags).
+    // it never touches a cookie jar, and the extraArgs allowlist admits no
+    // cookie flag either.
     args.push('--impersonate', 'chrome');
   }
   if (options.extraArgs) {

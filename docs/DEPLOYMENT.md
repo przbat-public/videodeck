@@ -52,8 +52,12 @@ points at `http://<host>:3001`.
    drain the download queue, rewrite a folder config. The shipped compose
    file binds both ports to `127.0.0.1` for that reason. Publish them wider
    only behind something that authenticates first, and keep `API_TOKEN` out
-   of reach. A random website cannot do it from a browser, because nginx and
-   the server both turn cross-site requests away, token or no token.
+   of reach. A random website cannot do it from a browser. nginx and the
+   server refuse a request the browser marks cross-site, token or no token.
+   Browsers send that marker only to HTTPS and loopback addresses, so on a
+   LAN address like `http://nas.local:3000` the server reads the `Origin`
+   header and refuses any origin but the UI's own address, a host in
+   `ALLOWED_HOSTS` and the trusted ones (`CORS_ORIGINS`, the extension).
    The pages the `client` container serves also refuse to load inside
    another site's frame, so a hostile page cannot lay the UI under a decoy
    and steer your clicks; an iframe embed, such as a dashboard panel, does

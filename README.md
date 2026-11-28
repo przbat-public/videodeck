@@ -188,10 +188,15 @@ language switching in both directions.
 ## Security
 
 The server listens on `127.0.0.1` only by default, and CORS allows only
-local origins (`localhost`/`127.0.0.1`) and Chrome extensions. Without
+the local dev client (`localhost`/`127.0.0.1` on ports 3000, 4173 and 5173),
+Chrome extensions and the origins listed in `CORS_ORIGINS`. Without
 `API_TOKEN`, the API is open to local processes, but browser requests
-from foreign pages are rejected (`Sec-Fetch-Site: cross-site` → 403), so a
-malicious website cannot trigger a reindex or enqueue jobs.
+from foreign pages are rejected. One marked `Sec-Fetch-Site: cross-site`
+is answered 403. Browsers send that marker only to HTTPS and loopback
+addresses, so on a LAN address such as `http://nas.local:3000` the server
+refuses an `Origin` that is not the UI's own address, a host in
+`ALLOWED_HOSTS` or a trusted origin. A malicious website cannot trigger a
+reindex or enqueue jobs.
 
 Additional protections:
 
@@ -203,15 +208,16 @@ Additional protections:
   accept only YouTube URLs (recognized by `shared/youtube.ts`);
   any other URL (including `file://` or IP addresses) is rejected, and yt-dlp
   always receives the canonical `https://www.youtube.com/watch?v=<id>`.
-- **Forbidden yt-dlp flags**: `extraArgs` in `config.json` will not pass
-  through `--exec`, `--config-locations`, `--cookies`/`--load-cookies`/
-  `--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`,
-  or `--video-password` (RCE, cookie theft, credential leaks).
-  `PUT /api/folder/config` rejects these flags, and in a hand-edited file
-  they are ignored (together with their value). The match also covers the
-  short spellings (`-a`, `-u`, `-p`) and the abbreviated long forms yt-dlp
-  accepts (`--prox`, `--print-to-fi`), and the argument builder refuses them
-  before yt-dlp starts.
+- **yt-dlp argument allowlist**: `extraArgs` in `config.json` accepts only
+  the exact flag names in `ALLOWED_EXTRA_ARGS`
+  (`server/src/services/folderConfig.ts`), each with its value checked.
+  Nothing else gets through, so `--exec`, the cookie and credential flags,
+  `--alias`, clustered short options and abbreviated long forms never reach
+  yt-dlp (RCE, cookie theft, credential leaks). `PUT /api/folder/config`
+  answers 400 and lists the allowed flags, a hand-edited file loses the
+  entry together with its value, and the argument builder checks again
+  before yt-dlp starts. Every call passes `--ignore-config`, so a
+  `yt-dlp.conf` in a channel folder adds nothing.
 - **No open API on a network interface**: the server refuses to start when
   `HOST` is not a loopback address and neither `API_TOKEN` nor
   `REQUIRE_API_TOKEN=true` is set. Publishing the API to the network takes a
@@ -223,8 +229,10 @@ Additional protections:
   your extension.
 
 For remote access, set `API_TOKEN` (and optionally `HOST=0.0.0.0` +
-`ALLOWED_HOSTS` + `CORS_ORIGINS`): every request to `/api` must then carry
-`Authorization: Bearer <token>`. The Chrome extension has a "Token API" (pl: „Token API")
+`ALLOWED_HOSTS`): every request to `/api` must then carry
+`Authorization: Bearer <token>`. `CORS_ORIGINS` is for a page on another
+port or subdomain of the API's own site that calls it directly; a request
+the browser marks cross-site stays refused even from a listed origin. The Chrome extension has a "Token API" (pl: „Token API")
 ("API token") field in its options; `/health` stays public for connection
 tests.
 

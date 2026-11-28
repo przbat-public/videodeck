@@ -11,9 +11,8 @@ about.
 
 ## Non-goals
 
-- No cookies and no new yt-dlp flags. The allowlist in `folderConfig.ts` and the
-  forbidden list stay untouched; downloading members-only content is out of
-  scope by decision.
+- No cookies and no new yt-dlp flags. The allowlist in `folderConfig.ts` stays
+  untouched; downloading members-only content is out of scope by decision.
 - No per-video reason in the folder state response. Row badges read
   `availability`, which the catalog already carries.
 - No UI for the `force` escape hatch. It stays an API-level switch documented in

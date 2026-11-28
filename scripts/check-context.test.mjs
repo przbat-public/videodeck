@@ -149,3 +149,117 @@ test('every pnpm version our docs mention matches packageManager', () => {
     }
   }
 });
+
+/**
+ * A doc's text with every whitespace run folded to one space, so a phrase
+ * that Markdown wraps across lines still matches as one.
+ *
+ * @param {string} file
+ * @returns {string}
+ */
+const flatText = (file) => readFileSync(file, 'utf-8').replace(/\s+/g, ' ');
+
+/** The CHANGELOG records the rules a release replaced, in the old words. */
+const HISTORY = ['CHANGELOG.md'];
+
+/**
+ * Wording of the deny model that #128 replaced with ALLOWED_EXTRA_ARGS. yt-dlp
+ * has no --load-cookies option at all: the name only ever lived in that list.
+ */
+const DENY_MODEL_WORDING = [
+  /\bforbidden (?:yt-dlp )?flags?\b/i,
+  /\bforbidden list\b/i,
+  /\bforbidden\b[^.]{0,20}`--/i,
+  /\bzabronione flagi\b/i,
+  /--load-cookies\b/,
+];
+
+test('our docs describe the yt-dlp argument rule as the allowlist the code enforces', () => {
+  // A denylist loses to yt-dlp's parser (--alias, clustered short options,
+  // prefixes), so folderConfig.ts accepts exact names only. A doc that still
+  // speaks of forbidden flags tells the reader every other flag gets through.
+  const source = readFileSync(path.join(ROOT, 'server', 'src', 'services', 'folderConfig.ts'), 'utf-8');
+  assert.match(
+    source,
+    /\bconst ALLOWED_EXTRA_ARGS\b/,
+    'server/src/services/folderConfig.ts no longer defines ALLOWED_EXTRA_ARGS, which AGENTS.md and the security docs name',
+  );
+  assert.match(readFileSync(AGENTS, 'utf-8'), /`ALLOWED_EXTRA_ARGS`/, 'AGENTS.md no longer names ALLOWED_EXTRA_ARGS');
+  /** @type {Set<string>} */
+  const offenders = new Set();
+  for (const file of ourDocs()) {
+    const relative = path.relative(ROOT, file);
+    if (HISTORY.includes(relative)) continue;
+    const text = flatText(file);
+    for (const pattern of DENY_MODEL_WORDING) {
+      const match = pattern.exec(text);
+      if (match !== null) offenders.add(`${relative}: "${match[0]}"`);
+    }
+  }
+  assert.deepEqual(
+    [...offenders],
+    [],
+    'these docs describe a yt-dlp flag denylist; only the exact names in ALLOWED_EXTRA_ARGS (server/src/services/folderConfig.ts) pass',
+  );
+});
+
+test('no doc ties ALLOWED_HOSTS to outbound requests', () => {
+  // ALLOWED_HOSTS only judges incoming requests: the Host guard in
+  // server/src/app.ts and the Origin of an unmarked browser request in
+  // server/src/routes/http.ts. The outbound rule is the YouTube check in
+  // shared/youtube.ts.
+  /** @type {Set<string>} */
+  const offenders = new Set();
+  for (const file of ourDocs()) {
+    const relative = path.relative(ROOT, file);
+    if (HISTORY.includes(relative)) continue;
+    const match = /\boutbound\b[^.;]{0,80}ALLOWED_HOSTS/i.exec(flatText(file));
+    if (match !== null) offenders.add(`${relative}: "${match[0]}"`);
+  }
+  assert.deepEqual(
+    [...offenders],
+    [],
+    'these docs call ALLOWED_HOSTS an outbound check; it only judges incoming requests',
+  );
+});
+
+test('the CORS_ORIGINS docs say a cross-site request stays refused', () => {
+  // routes/http.ts answers 403 to a request marked Sec-Fetch-Site: cross-site
+  // before it reads CORS_ORIGINS (#132), so a listed origin on another site
+  // still fails. INSTALL.md once showed https://example.com as the example.
+  /** @type {string[]} */
+  const silent = [];
+  for (const file of ['docs/INSTALL.md', 'server/.env.example']) {
+    const lines = readFileSync(path.join(ROOT, file), 'utf-8').split('\n');
+    const at = lines.findIndex((line) => line.includes('CORS_ORIGINS='));
+    assert.ok(at >= 0, `${file} no longer documents CORS_ORIGINS`);
+    let start = at;
+    while (start > 0 && (lines[start - 1] ?? '').startsWith('#')) start -= 1;
+    if (!/cross-site/i.test(lines.slice(start, at + 1).join(' '))) silent.push(file);
+  }
+  assert.deepEqual(
+    silent,
+    [],
+    'these files document CORS_ORIGINS without saying that a cross-site request is refused even from a listed origin',
+  );
+});
+
+test('every `symbol` in `path` a doc names is found in that file', () => {
+  // The folder routes moved into server/src/routes/folder/, and the security
+  // docs kept pointing at the old file. A reference that names its symbol can
+  // be checked; a bare path only proves the file exists.
+  /** @type {string[]} */
+  const stale = [];
+  for (const file of ourDocs()) {
+    const relative = path.relative(ROOT, file);
+    if (HISTORY.includes(relative)) continue;
+    for (const match of flatText(file).matchAll(/`([A-Za-z_]\w*)` in `([\w.-]+\/[\w./-]+\.[cm]?[jt]sx?)`/g)) {
+      const [, symbol = '', target = ''] = match;
+      const full = path.join(ROOT, target);
+      if (!existsSync(full) || !readFileSync(full, 'utf-8').includes(symbol)) {
+        stale.push(`${relative}: ${symbol} in ${target}`);
+      }
+    }
+  }
+  assert.deepEqual([...new Set(stale)], [], 'these docs name a symbol the file they point at does not contain');
+});

@@ -187,10 +187,15 @@ przełączanie języka w obie strony.
 ## Bezpieczeństwo
 
 Serwer słucha domyślnie tylko na `127.0.0.1`, a CORS przepuszcza wyłącznie
-lokalne originy (`localhost`/`127.0.0.1`) i rozszerzenia Chrome. Bez
+lokalnego klienta deweloperskiego (`localhost`/`127.0.0.1` na portach 3000,
+4173 i 5173), rozszerzenia Chrome i originy wpisane w `CORS_ORIGINS`. Bez
 `API_TOKEN` API jest otwarte dla lokalnych procesów, ale żądania przeglądarki
-z obcych stron są odrzucane (`Sec-Fetch-Site: cross-site` → 403), więc złośliwa
-strona WWW nie wywoła reindeksu ani nie dopisze zadań do kolejki.
+z obcych stron są odrzucane. Żądanie oznaczone `Sec-Fetch-Site: cross-site`
+dostaje 403. Przeglądarka wysyła ten znacznik tylko do adresów HTTPS
+i loopback, więc na adresie w sieci lokalnej, takim jak
+`http://nas.local:3000`, serwer odrzuca `Origin`, który nie jest adresem
+samego UI, hostem z `ALLOWED_HOSTS` ani zaufanym originem. Złośliwa strona
+WWW nie wywoła reindeksu ani nie dopisze zadań do kolejki.
 
 Dodatkowe zabezpieczenia:
 
@@ -202,15 +207,17 @@ Dodatkowe zabezpieczenia:
   przyjmują wyłącznie adresy YouTube (rozpoznane przez `shared/youtube.ts`);
   każdy inny URL (także `file://` czy adresy IP) jest odrzucany, a do yt-dlp
   trafia zawsze kanoniczny `https://www.youtube.com/watch?v=<id>`.
-- **Zabronione flagi yt-dlp** — `extraArgs` w `config.json` nie przepuści
-  `--exec`, `--config-locations`, `--cookies`/`--load-cookies`/
-  `--cookies-from-browser`, `--proxy`, `--netrc`, `--username`, `--password`
-  i `--video-password` (RCE, kradzież ciasteczek, wyciek poświadczeń).
-  `PUT /api/folder/config` odrzuca te flagi, a w ręcznie edytowanym pliku
-  są ignorowane (razem ze swoją wartością). Dopasowanie obejmuje też krótkie
-  zapisy (`-a`, `-u`, `-p`) i skrócone formy długich flag, które przyjmuje
-  yt-dlp (`--prox`, `--print-to-fi`), a budowanie argumentów odrzuca je
-  zanim wystartuje yt-dlp.
+- **Allowlista argumentów yt-dlp**: `extraArgs` w `config.json` przyjmuje
+  tylko dokładne nazwy flag z `ALLOWED_EXTRA_ARGS`
+  (`server/src/services/folderConfig.ts`), każdą ze sprawdzoną wartością.
+  Nic innego nie przejdzie, więc do yt-dlp nie trafią ani `--exec`, ani
+  flagi ciasteczek i poświadczeń, ani `--alias`, sklejone krótkie opcje czy
+  skrócone długie formy (RCE, kradzież ciasteczek, wyciek poświadczeń).
+  `PUT /api/folder/config` odpowiada 400 i wymienia dozwolone flagi,
+  z ręcznie edytowanego pliku taki wpis wypada razem ze swoją wartością,
+  a budowanie argumentów sprawdza listę jeszcze raz, zanim wystartuje yt-dlp.
+  Każde wywołanie dostaje `--ignore-config`, więc `yt-dlp.conf` w folderze
+  kanału niczego nie dodaje.
 - **Brak otwartego API na interfejsie sieciowym** — serwer nie wystartuje,
   gdy `HOST` nie jest adresem loopback i nie ustawiono ani `API_TOKEN`, ani
   `REQUIRE_API_TOKEN=true`. Wystawienie API do sieci wymaga tokenu, a nie
@@ -222,8 +229,11 @@ Dodatkowe zabezpieczenia:
   rozszerzenie.
 
 Dla zdalnego dostępu ustaw `API_TOKEN` (i ewentualnie `HOST=0.0.0.0` +
-`ALLOWED_HOSTS` + `CORS_ORIGINS`): każdy request na `/api` musi wtedy nieść
-`Authorization: Bearer <token>`. Rozszerzenie Chrome ma pole „Token API" w
+`ALLOWED_HOSTS`): każdy request na `/api` musi wtedy nieść
+`Authorization: Bearer <token>`. `CORS_ORIGINS` służy stronie na innym
+porcie lub subdomenie tej samej witryny, która woła API bezpośrednio;
+żądanie oznaczone przez przeglądarkę jako cross-site dostaje 403 nawet
+z originem z listy. Rozszerzenie Chrome ma pole „Token API" w
 opcjach; `/health` pozostaje publiczne do testów połączenia.
 
 Zgłaszanie podatności i zakres: [SECURITY.md](../SECURITY.md).

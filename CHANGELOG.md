@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subtitle of its own stem; anything else answers 404 with a warning. A
   document an older build wrote that does not parse needs a full Refresh
   index
-- **A foreign page can no longer drive a LAN deploy with the proxy's
+- **Forms on foreign pages stop driving a LAN deploy with the proxy's
   token.** Browsers send no Sec-Fetch-Site to a plain-HTTP address that is
   not loopback, so such a request reached the token check, and nginx adds
   the token to everything it proxies: a form on any website could pause
@@ -27,8 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a request on only when it carries no Origin (curl), a trusted origin,
   the address the browser used, or a host from `ALLOWED_HOSTS`. The shipped
   nginx forwards that address as `X-Forwarded-Host`; a hand-written proxy
-  config needs the same line, or the UI's host in `ALLOWED_HOSTS`
-- **Another site can no longer show the web UI in a frame.** The `client`
+  config needs the same line, or the UI's host in `ALLOWED_HOSTS`. Keep
+  `EXTENSION_ORIGINS` current: over plain HTTP a stale id now locks the
+  extension out
+- **The web UI refuses to load inside another site's frame.** The `client`
   container answers every page with `Content-Security-Policy:
   frame-ancestors 'none'` and `X-Frame-Options: DENY`. Inside a frame the
   UI's requests carry its own origin, so nothing on the server could tell
@@ -62,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The security docs describe the checks the code makes.** `extraArgs`
+  takes only the names in `ALLOWED_EXTRA_ARGS`, `ALLOWED_HOSTS` judges
+  incoming requests (their `Host`, and over plain HTTP their `Origin`) and
+  nothing outbound, and the `CORS_ORIGINS` example is a same-site origin,
+  because a request the browser marks cross-site is refused even when its
+  origin is listed
 - **A failed yt-dlp run keeps only the end of its stderr.** The error
   carried every byte yt-dlp had written there, megabytes for a long run with
   a warning per fragment, held in memory and then logged whole. The last
@@ -712,7 +720,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- **Cross-site requests are refused on every path, token or not.** The Docker
+- **Requests a browser marks cross-site are refused on every path, token or
+  not.** The Docker
   UI receives the API token from nginx, so a request carrying the token said
   nothing about who sent it: a page on another origin could reindex, drain the
   download queue or rewrite a folder config. A `Sec-Fetch-Site: cross-site`
