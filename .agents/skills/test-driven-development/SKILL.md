@@ -166,8 +166,9 @@ appears; the three obligations it owes are under "Fakes and mocks" above.
   previous page also satisfies (the card title, the row label) resolves
   before the navigation, so it cannot fail. Wait on the route, on an element
   only the new page renders, or on the previous page's form being gone.
-- jest-dom 7 has no computed-style assertions; assert what the component
-  renders instead.
+- In a component test jsdom has no app stylesheet and no layout, so
+  `toHaveStyle` sees little beyond inline styles. Assert what the component
+  renders instead, and leave stylesheet-driven styles to Playwright.
 
 ## Rationalizations
 

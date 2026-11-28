@@ -475,8 +475,8 @@ describe('CommentComponent', () => {
 
       const { container } = render(<CommentComponent comment={comment} />);
       const commentItem = container.querySelector<HTMLElement>('.comment-item');
-      // Inline style, read straight from the element: jest-dom v7 checks the
-      // COMPUTED style, where `0rem` collapses to `0px` in jsdom.
+      // Inline style, read straight from the element: jest-dom's toHaveStyle
+      // checks the COMPUTED style, where `0rem` collapses to `0px` in jsdom.
       expect(commentItem?.style.marginLeft).toBe('0rem');
       expect(commentItem).not.toHaveClass('comment-reply');
     });

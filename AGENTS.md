@@ -208,9 +208,12 @@ Playwright stays the thin mocked-API browser layer (`client/e2e/`).
 - **E2E queue mock**: the mocked queue endpoint is matched by **regex**
   (`/\/api\/folder\/queue/`); a naive glob like `queue*` misses `/queue/pause`,
   and `includes('pause')` matches the query string `?paused=0`.
-- **jest-dom 7** does not support computed-style assertions (e.g. `toHaveStyle`
-  against stylesheet rules). Assert what the component renders, or use
-  `getComputedStyle` where truly needed.
+- **Styles in jsdom**: jest-dom's `toHaveStyle` compares against
+  `getComputedStyle()`, and jsdom only has the CSS a test imports (both
+  client vitest configs set `css: true`). Component tests import none,
+  `<App />` tests get `App.css` without the `index.css` tokens, and jsdom
+  does no layout. Assert what the component renders, and check
+  stylesheet-driven styles in Playwright (`client/e2e/`).
 - **Major-version holds**: Dependabot ignores semver-major bumps of the type
   and compiler toolchain, naming `typescript` and `@types/node` today. Both
   waits are deliberate: a TypeScript major breaks the type-aware lint

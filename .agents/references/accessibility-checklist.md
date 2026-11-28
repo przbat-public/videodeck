@@ -52,8 +52,9 @@ item below is checkable in code or in the browser.
 
 - [ ] Component tests assert by role and accessible name
   (`getByRole('button', { name: 'search.submit' })`), not by class
-- [ ] jest-dom 7 cannot assert computed styles; assert rendered
-  attributes and text instead
+- [ ] Component tests assert rendered attributes and text, not styles:
+  jsdom has no app stylesheet there and does no layout, so contrast and
+  focus rings need a real browser (Playwright)
 - [ ] The Playwright e2e suite is the smoke layer: keyboard navigation
   and the language/theme switches are covered there
 - [ ] New visible text lands in both i18n catalogs and `locales.test.ts`
