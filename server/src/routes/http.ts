@@ -145,7 +145,8 @@ function requestAuthority(req: Request, allowedHosts: readonly string[]): string
  * - `null` or an Origin that does not parse is refused;
  * - a trusted origin passes (the dev clients, `CORS_ORIGINS`, the allowed
  *   extension ids);
- * - an Origin naming the address the browser used passes: the UI's own page;
+ * - an Origin naming the address the browser used (requestAuthority) passes:
+ *   the UI's own page;
  * - an Origin on an `ALLOWED_HOSTS` host passes on any port, unless the name
  *   is a loopback one, which in an Origin means the browser's own machine.
  */
@@ -240,7 +241,9 @@ function refuseByOrigin(req: Request, options: AuthMiddlewareOptions): AuthDecis
  *
  * - no marker at all, which is what a browser sends a plain-HTTP address that
  *   is not loopback: the `Origin` decides (isTrustedUnmarkedOrigin), so a
- *   foreign page's form cannot drive a LAN deploy with the token nginx adds.
+ *   foreign page cannot send a write to a LAN deploy with the token nginx
+ *   adds. A link or an image sends no Origin, and its GET goes on to the
+ *   token like curl's.
  *
  * A request without an Origin (curl, the server itself) goes on to the token.
  *

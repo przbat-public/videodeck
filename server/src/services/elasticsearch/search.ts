@@ -6,7 +6,7 @@ import { extractYoutubeVideoId, isYoutubeVideoId } from '@videodeck/shared/youtu
 import { getVideosFolderPaths } from '../../config';
 import { logger } from '../../utils/logger';
 import { findConfiguredFolder } from '../../utils/videoPathUtils';
-import { isSafeVideoStem } from '../../utils/videoStem';
+import { isSafeVideoStem, MAX_VIDEO_STEM_LENGTH } from '../../utils/videoStem';
 import { isOwnSubtitleName } from '../../utils/vttUtils';
 import { ElasticsearchUnavailableError } from '../elasticsearchErrors';
 import { fromDocument, type VideoDocument } from './bulkIndexing';
@@ -480,9 +480,11 @@ function ignoredHit(id: string | undefined, reason: string): null {
  * comments, the summary and the file route read and write at the folder,
  * the stem and the subtitle a hit names, and Elasticsearch takes writes from
  * anyone who reaches it. So the hit must parse as a video, sit in a configured
- * folder (handed on as the configured entry), keep its stem one path
- * segment and name a subtitle of its own stem. The parse comes first: an
- * array stem would pass isSafeVideoStem.
+ * folder (handed on as the configured entry), keep a stem isSafeVideoStem
+ * accepts (one path segment of at most 200 characters, no backslash; the
+ * scanner indexes a longer hand-named one all the same) and name a subtitle
+ * of its own stem. The parse comes first: an array stem would pass
+ * isSafeVideoStem.
  */
 function trustedVideo(hit: estypes.SearchHit<VideoDocument> | undefined): VideoListItem | null {
   if (hit?._source === undefined) {
@@ -501,7 +503,10 @@ function trustedVideo(hit: estypes.SearchHit<VideoDocument> | undefined): VideoL
     return ignoredHit(hit._id, `folder ${JSON.stringify(video.folderPath)} is not a configured one`);
   }
   if (!isSafeVideoStem(video.baseName)) {
-    return ignoredHit(hit._id, `stem ${JSON.stringify(video.baseName)} is not one path segment`);
+    return ignoredHit(
+      hit._id,
+      `stem ${JSON.stringify(video.baseName)} is not one path segment of at most ${MAX_VIDEO_STEM_LENGTH} characters without a backslash`,
+    );
   }
   if (video.subtitlePath !== undefined && !isOwnSubtitleName(video.baseName, video.subtitlePath)) {
     return ignoredHit(hit._id, `subtitle ${JSON.stringify(video.subtitlePath)} is not one of its stem`);

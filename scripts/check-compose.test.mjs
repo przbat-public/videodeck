@@ -157,15 +157,16 @@ test('the shipped proxy sends the header the server trusts', () => {
 });
 
 test('the proxy tells the server which address the browser used', () => {
-  // On a plain-HTTP LAN address the browser sends no Sec-Fetch-Site, and the
-  // server takes a write from the UI's page when its Origin names this
-  // address. $host drops the port; $http_host keeps it.
+  // A write without Sec-Fetch-Site (curl, an older browser, a plain-HTTP LAN
+  // address) is judged by its Origin, which the server compares with this
+  // address, port included; $host drops the port. An ALLOWED_HOSTS name
+  // passes on any port anyway, a loopback one only this way.
   const api = nginxLocationOwn('/api/');
   assert.ok(api, 'client/nginx.conf.template has no `location /api/` block');
   assert.match(
     api,
     /^\s*proxy_set_header\s+X-Forwarded-Host\s+\$http_host;/m,
-    'location /api/ must forward X-Forwarded-Host $http_host, or the server refuses the UI on a LAN address',
+    'location /api/ must forward X-Forwarded-Host $http_host, or an unmarked write from the UI on a loopback port is refused',
   );
   assert.match(
     api,

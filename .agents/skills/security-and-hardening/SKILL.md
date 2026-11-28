@@ -35,11 +35,10 @@ Name what the change trusts and what can reach it:
    `REQUIRE_API_TOKEN` is on (`server/src/config.ts`).
 2. **User-shaped URLs.** No user-controlled URL goes straight to `fetch`.
    Channel URLs are validated as YouTube channel URLs before yt-dlp sees
-   them (`isYoutubeChannelUrl` in `shared/youtube.ts`, checked when a config
-   is saved and again before the playlist fetch in
-   `server/src/routes/folder/playlist.ts`), and yt-dlp gets the URL rebuilt
-   from its host and path (`toChannelUrl` in `shared/youtube.ts`). Internal
-   and loopback targets stay blocked.
+   them: `isYoutubeChannelUrl` in `shared/youtube.ts` when a config is
+   saved, and `toChannelUrl` in `server/src/routes/folder/playlist.ts`
+   again before the playlist fetch, which hands yt-dlp the URL rebuilt from
+   its host and path. Internal and loopback targets stay blocked.
 3. **User-shaped yt-dlp arguments.** A folder config's `extraArgs` passes
    only the exact flag names in `ALLOWED_EXTRA_ARGS`
    (`server/src/services/folderConfig.ts`), each with a checked value.

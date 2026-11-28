@@ -15,19 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it: a planted document had the server read an info.json anywhere on the
   disk, bill a summary of an outside file and write it there. A
   single-video lookup now hands on only a hit that parses as a video, sits
-  in a configured folder, keeps its stem one path segment and names a
-  subtitle of its own stem; anything else answers 404 with a warning. A
-  document an older build wrote that does not parse needs a full Refresh
-  index
-- **Forms on foreign pages stop driving a LAN deploy with the proxy's
+  in a configured folder, has a stem of one path segment (200 characters
+  at most, no backslash) and names a subtitle of its own stem; anything
+  else answers 404 with a warning. A full Refresh index rewrites what an
+  older build stored, such as a document that no longer parses or one
+  holding another stem's captions. A hand-named file whose stem is longer
+  or holds a backslash stays listed, but its details answer 404 until it
+  is renamed
+- **Foreign pages stop sending writes to a LAN deploy with the proxy's
   token.** Browsers send no Sec-Fetch-Site to a plain-HTTP address that is
   not loopback, so such a request reached the token check, and nginx adds
   the token to everything it proxies: a form on any website could pause
   the queue or empty every index. Without the marker, the server now lets
-  a request on only when it carries no Origin (curl), a trusted origin,
-  the address the browser used, or a host from `ALLOWED_HOSTS`. The shipped
-  nginx forwards that address as `X-Forwarded-Host`; a hand-written proxy
-  config needs the same line, or the UI's host in `ALLOWED_HOSTS`. Keep
+  a request on only when it carries no Origin (curl, a link, an image), a
+  trusted origin, the address the browser used, or a host from
+  `ALLOWED_HOSTS`. Behind any plain-HTTP proxy, list the host the browser
+  uses in `ALLOWED_HOSTS` unless it is loopback, or the UI's writes answer
+  403: an `X-Forwarded-Host` counts only for such a name. Keep
   `EXTENSION_ORIGINS` current: over plain HTTP a stale id now locks the
   extension out
 - **The web UI refuses to load inside another site's frame.** The `client`

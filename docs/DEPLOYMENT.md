@@ -52,12 +52,20 @@ points at `http://<host>:3001`.
    drain the download queue, rewrite a folder config. The shipped compose
    file binds both ports to `127.0.0.1` for that reason. Publish them wider
    only behind something that authenticates first, and keep `API_TOKEN` out
-   of reach. A random website cannot do it from a browser. nginx and the
-   server refuse a request the browser marks cross-site, token or no token.
-   Browsers send that marker only to HTTPS and loopback addresses, so on a
-   LAN address like `http://nas.local:3000` the server reads the `Origin`
-   header and refuses any origin but the UI's own address, a host in
-   `ALLOWED_HOSTS` and the trusted ones (`CORS_ORIGINS`, the extension).
+   of reach. A random website cannot send writes from a browser. nginx and
+   the server refuse a request the browser marks cross-site, token or no
+   token. Browsers send that marker only to HTTPS and loopback addresses, so
+   on a LAN address like `http://nas.local:3000` the server reads the
+   `Origin` header and refuses any origin but the UI's own address, a host
+   in `ALLOWED_HOSTS` and the trusted ones: the dev client on `localhost` or
+   `127.0.0.1` (ports 3000, 4173 and 5173), the extension and
+   `CORS_ORIGINS`. A link or an image sends no `Origin`, so its GET reaches
+   the token check, and nginx adds the token; in this version a summary GET
+   still generates a summary that is not cached yet. Behind a plain-HTTP
+   proxy of your own, in front of the `client` container or in its place,
+   list the host the browser uses in `ALLOWED_HOSTS`, or the UI's writes
+   answer 403: the server takes the address from `Host`, or from an
+   `X-Forwarded-Host` whose name is loopback or listed there.
    The pages the `client` container serves also refuse to load inside
    another site's frame, so a hostile page cannot lay the UI under a decoy
    and steer your clicks; an iframe embed, such as a dashboard panel, does

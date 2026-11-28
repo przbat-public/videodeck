@@ -192,14 +192,19 @@ the local dev client (`localhost`/`127.0.0.1` on ports 3000, 4173 and 5173),
 Chrome extensions and the origins listed in `CORS_ORIGINS`. Without
 `API_TOKEN`, the API is open to local processes.
 
-Browser requests from foreign pages are rejected, token or not. One marked
-`Sec-Fetch-Site: cross-site` is answered 403. Browsers send that marker
-only to HTTPS and loopback addresses, so on a LAN address such as
-`http://nas.local:3000` the server reads the `Origin` instead and lets
-through only the UI's own address, a host in `ALLOWED_HOSTS` (on any port)
-and the origins in `CORS_ORIGINS`. A page on any other site cannot trigger
-a reindex or enqueue jobs; one served from an `ALLOWED_HOSTS` host or a
-listed origin can, so list only what you run.
+A browser request marked `Sec-Fetch-Site: cross-site` is answered 403,
+token or not. Browsers send that marker only to HTTPS and loopback
+addresses, so on a LAN address such as `http://nas.local:3000` the server
+reads the `Origin` instead. There a browser's write passes only from the
+UI's own address, a host in `ALLOWED_HOSTS` (on any port) or a trusted
+origin: the dev client ports above (any local app on the viewer's machine
+can serve one), a Chrome extension (just the ids in `EXTENSION_ORIGINS`
+once that is set) and `CORS_ORIGINS`. A page on any other site cannot
+trigger a reindex or enqueue jobs, so list only what you run. A link or an
+image sends no `Origin`, and its GET goes on to the token check like
+curl's. The page cannot read the answer, but in this version a summary
+GET still generates a summary that is not cached yet, and the provider
+bills it.
 
 Additional protections:
 
@@ -240,7 +245,10 @@ For remote access, set `API_TOKEN` (and optionally `HOST=0.0.0.0` +
 `ALLOWED_HOSTS`): every request to `/api` must then carry
 `Authorization: Bearer <token>`. `CORS_ORIGINS` is for a page on another
 port or subdomain of the API's own site that calls it directly; a request
-the browser marks cross-site stays refused even from a listed origin. The Chrome extension has a "Token API" (pl: „Token API")
+the browser marks cross-site stays refused even from a listed origin.
+Over plain HTTP the host the browser uses must be loopback or in
+`ALLOWED_HOSTS`, whatever proxy sits in front: an `X-Forwarded-Host`
+counts only for such a name. The Chrome extension has a "Token API" (pl: „Token API")
 ("API token") field in its options; `/health` stays public for connection
 tests.
 

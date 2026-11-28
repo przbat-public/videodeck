@@ -166,6 +166,8 @@ Four working principles sit underneath the checklist:
   stops DNS rebinding. The auth guard in `server/src/routes/http.ts` also
   trusts a browser `Origin` on those hosts when the request carries no
   `Sec-Fetch-Site`, after it has refused every request marked cross-site.
+  It counts an `X-Forwarded-Host` only for a name the Host guard accepts,
+  so a proxy that rewrites `Host` cannot pass a rebinding page's name on.
   The list has no say over where the server connects.
 - **No SSRF**: a user-supplied URL reaches yt-dlp only after the YouTube
   checks in `shared/youtube.ts`, which also rebuild a channel URL from its

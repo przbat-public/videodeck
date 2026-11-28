@@ -409,7 +409,8 @@ jobs:
           grep -q '"elasticsearch":"down"' /tmp/proxied.json
           # helmet already sends X-Frame-Options on /api answers; nginx adds none
           test "$(curl -sI http://127.0.0.1:8092/api/health | grep -ci '^x-frame-options:')" = "1"
-          # Plain HTTP carries no Sec-Fetch-Site, so the server judges a write by
+          # curl sends no Sec-Fetch-Site, as a browser does on a plain-HTTP LAN
+          # address (to loopback it sends one), so the server judges a write by
           # its Origin: the UI's own address, which nginx forwards as
           # X-Forwarded-Host, passes; a foreign page does not, token or no token.
           # Nothing sets ALLOWED_HOSTS here.

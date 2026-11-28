@@ -191,15 +191,21 @@ lokalnego klienta deweloperskiego (`localhost`/`127.0.0.1` na portach 3000,
 4173 i 5173), rozszerzenia Chrome i originy wpisane w `CORS_ORIGINS`. Bez
 `API_TOKEN` API jest otwarte dla lokalnych procesów.
 
-Żądania przeglądarki z obcych stron są odrzucane, z tokenem czy bez.
-Żądanie oznaczone `Sec-Fetch-Site: cross-site` dostaje 403. Przeglądarka
-wysyła ten znacznik tylko do adresów HTTPS i loopback, więc na adresie
-w sieci lokalnej, takim jak `http://nas.local:3000`, serwer czyta zamiast
-niego `Origin` i przepuszcza tylko adres samego UI, hosty z `ALLOWED_HOSTS`
-(na dowolnym porcie) i originy z `CORS_ORIGINS`. Strona z każdej innej
-witryny nie wywoła reindeksu ani nie dopisze zadań do kolejki; strona
-z hosta z `ALLOWED_HOSTS` albo z originu z listy już tak, więc wpisuj tam
-tylko to, co sam uruchamiasz.
+Żądanie przeglądarki oznaczone `Sec-Fetch-Site: cross-site` dostaje 403,
+z tokenem czy bez. Przeglądarka wysyła ten znacznik tylko do adresów HTTPS
+i loopback, więc na adresie w sieci lokalnej, takim jak
+`http://nas.local:3000`, serwer czyta zamiast niego `Origin`. Zapis
+z przeglądarki przechodzi tam tylko z adresu samego UI, z hosta
+z `ALLOWED_HOSTS` (na dowolnym porcie) albo z zaufanego originu: portów
+klienta deweloperskiego podanych wyżej (na komputerze oglądającego może je
+zająć dowolna lokalna aplikacja), rozszerzenia Chrome (tylko id
+z `EXTENSION_ORIGINS`, gdy jest ustawione) i `CORS_ORIGINS`. Strona z każdej
+innej witryny nie wywoła reindeksu ani nie dopisze zadań do kolejki, więc
+wpisuj tam tylko to, co sam uruchamiasz. Link albo obrazek nie wysyła
+`Origin` wcale, a jego GET trafia do sprawdzenia tokenu tak jak żądanie
+curl. Strona nie odczyta odpowiedzi, ale w tej wersji GET streszczenia
+wciąż generuje streszczenie, którego nie ma jeszcze w cache, a dostawca
+nalicza za nie opłatę.
 
 Dodatkowe zabezpieczenia:
 
@@ -241,7 +247,10 @@ Dla zdalnego dostępu ustaw `API_TOKEN` (i ewentualnie `HOST=0.0.0.0` +
 `Authorization: Bearer <token>`. `CORS_ORIGINS` służy stronie na innym
 porcie lub subdomenie tej samej witryny, która woła API bezpośrednio;
 żądanie oznaczone przez przeglądarkę jako cross-site dostaje 403 nawet
-z originem z listy. Rozszerzenie Chrome ma pole „Token API" w
+z originem z listy. Przez zwykłe HTTP host, którego używa przeglądarka,
+musi być loopbackiem albo stać w `ALLOWED_HOSTS`, jakiekolwiek proxy stoi
+przed serwerem: `X-Forwarded-Host` liczy się tylko dla takiej nazwy.
+Rozszerzenie Chrome ma pole „Token API" w
 opcjach; `/health` pozostaje publiczne do testów połączenia.
 
 Zgłaszanie podatności i zakres: [SECURITY.md](../SECURITY.md).

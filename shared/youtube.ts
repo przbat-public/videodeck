@@ -99,8 +99,8 @@ function isChannelPath(segments: string[]): boolean {
  * playlist endpoint: yt-dlp would otherwise fetch an arbitrary URL
  * (file:///etc/passwd, http://169.254.169.254/, …).
  *
- * The rebuilt string drops userinfo, port, query and hash, so yt-dlp never
- * receives the configured text itself. A backslash or userinfo is refused
+ * The rebuilt string drops port, query and hash, so yt-dlp never receives
+ * the configured text itself. A backslash or userinfo is refused
  * outright: that is where this WHATWG parser and yt-dlp's urlsplit part ways,
  * and `https://www.youtube.com\@127.0.0.1:9200` is www.youtube.com here but
  * host 127.0.0.1, port 9200 to Python.
